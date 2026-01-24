@@ -1,0 +1,18 @@
+John Doe
+john.doe@example.com
+
+Summary:
+Senior software engineer with 8 years of experience building backend systems.
+
+Skills:
+- Scala, Kotlin, Java
+- Functional Programming
+- AWS, Docker, Kubernetes
+
+Education:
+- MS Computer Science, MIT, 2016
+- BS Computer Engineering, UCLA, 2014
+
+Experience:
+- Staff Engineer at Acme Corp (2020-present)
+- Senior Engineer at Globex (2016-2020)

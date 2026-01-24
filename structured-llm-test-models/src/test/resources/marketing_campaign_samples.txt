@@ -1,0 +1,63 @@
+Campaign draft: {"campaignId":"mc-1","name":"Winter Blast","channel":"email","budget":10000;"currency":"USD","startDate":"2024-01-01","endDate":"2024-02-01","goals":["signup","demo"]}
+---SAMPLE---
+{"campaignId":"mc-2","name":"Spring Push","channel":"social","budget":15000,"currency":"USD","startDate":"2024-03-01","endDate":"2024-04-01","goals":{"kpi":"traffic"}}
+---SAMPLE---
+{"campaignId":"mc-3","name":"Summer Sale","channel":"ads","budget":"25000","currency":"EUR","startDate":"2024-06-01","endDate":"2024-07-01","goals":["revenue"],}
+---SAMPLE---
+text {'campaignId':'mc-4','name':'Fall Promo','channel':'email','budget':5000,'currency':'USD','startDate':'2024-09-01','endDate':'2024-09-30','goals':['retention']}
+---SAMPLE---
+{"campaignId":"mc-5","name":"Brand Lift","channel":"tv","budget":100000,"currency":"USD","startDate":"2024-02-01","endDate":"2024-03-15","goals":["awareness"],"channel":["tv"]}
+---SAMPLE---
+// comment
+---SAMPLE---
+{"campaignId":"mc-6","name":"Referral","channel":"email","budget":3000,"currency":"USD","startDate":"2024-01-15","endDate":"2024-02-15","goals":["referrals"];;}
+---SAMPLE---
+{"campaignId":"mc-7","name":"ABM","channel":"linkedin","budget":8000,"currency":"USD","startDate":"2024-02-01","endDate":"2024-03-01"}
+---SAMPLE---
+{"campaignId":"mc-8","name":"Nurture","channel":"drip","budget":2000,"currency":"USD","startDate":"2024-01-05","endDate":"2024-02-05","goals":["engagement"]}
+---SAMPLE---
+Partial {"campaignId":"mc-9","name":"SEO","channel":"organic",
+---SAMPLE---
+{"campaignId":"mc-10","name":"Retarget","channel":"ads","budget":4000,"currency":"USD","startDate":"2024-02-10","endDate":"2024-03-10","goals":["return"]}
+---SAMPLE---
+```json
+{"campaignId":"mc-11","name":"Influencer","channel":"social","budget":12000,"currency":"USD","startDate":"2024-03-01","endDate":"2024-04-15","goals":["ugc"]}
+```
+---SAMPLE---
+{"campaignId":"mc-12","name":"Podcast","channel":"audio","budget":6000,"currency":"USD","startDate":"2024-02-20","endDate":"2024-03-20","goals":["awareness","traffic"]}
+---SAMPLE---
+{"campaignId":"mc-13","name":"Billboard","channel":"ooo","budget":9000,"currency":"USD","startDate":"2024-04-01","endDate":"2024-05-01","goals":["reach"]}
+---SAMPLE---
+{"campaignId":"mc-14","name":"Flash Sale","channel":"sms","budget":1200,"currency":"USD","startDate":"2024-01-20","endDate":"2024-01-25","goals":["orders"]}
+---SAMPLE---
+{"campaignId":"mc-15","name":"Upsell","channel":"email","budget":1800,"currency":"USD","startDate":"2024-02-05","endDate":"2024-03-05","goals":["expansion"]}
+---SAMPLE---
+lead {'campaignId':'mc-16','name':'Winback','channel':'email','budget':2200,'currency':'USD','startDate':'2024-03-05','endDate':'2024-04-05','goals':['churn']} text
+---SAMPLE---
+{"campaignId":"mc-17","name":"Awareness","channel":"display","budget":7000,"currency":"USD","startDate":"2024-05-01","endDate":"2024-06-01","goals":["brand"]}
+---SAMPLE---
+{"campaignId":"mc-18","name":"Cross-sell","channel":"in-app","budget":3100,"currency":"USD","startDate":"2024-02-12","endDate":"2024-03-12","goals":["attach"]}
+---SAMPLE---
+{"campaignId":"mc-19","name":"Holiday","channel":"email","budget":4500,"currency":"USD","startDate":"2024-12-01","endDate":"2024-12-31","goals":["orders","revenue"]}
+---SAMPLE---
+{"campaignId":"mc-20","name":"New Market","channel":"ads","budget":15000,"currency":"GBP","startDate":"2024-07-01","endDate":"2024-08-01","goals":["mql"]}
+---SAMPLE---
+{"campaignId":"mc-21","name":"Webinar","channel":"email","budget":1600,"currency":"USD","startDate":"2024-02-18","endDate":"2024-02-25","goals":["registrations"]}
+---SAMPLE---
+{"campaignId":"mc-22","name":"Event","channel":"field","budget":20000,"currency":"USD","startDate":"2024-05-10","endDate":"2024-05-12","goals":["meetings"]}
+---SAMPLE---
+{"campaignId":"mc-23","name":"Newsletter","channel":"email","budget":800,"currency":"USD","startDate":"2024-01-07","endDate":"2024-02-07","goals":["opens"]}
+---SAMPLE---
+{"campaignId":"mc-24","name":"Course","channel":"social","budget":5000,"currency":"USD","startDate":"2024-03-15","endDate":"2024-04-15","goals":["signups"]}
+---SAMPLE---
+{"campaignId":"mc-25","name":"Survey","channel":"email","budget":700,"currency":"USD","startDate":"2024-02-01","endDate":"2024-02-08","goals":["feedback"]}
+---SAMPLE---
+{"campaignId":"mc-26","name":"Charity","channel":"social","budget":3000,"currency":"USD","startDate":"2024-04-20","endDate":"2024-05-20","goals":["donations"]}
+---SAMPLE---
+{"campaignId":"mc-27","name":"Trial","channel":"ads","budget":2600,"currency":"USD","startDate":"2024-03-03","endDate":"2024-04-03","goals":["trials"]}
+---SAMPLE---
+{"campaignId":"mc-28","name":"Pilot","channel":"email","budget":900,"currency":"USD","startDate":"2024-01-18","endDate":"2024-02-18","goals":["pilot"]}
+---SAMPLE---
+{"campaignId":"mc-29","name":"Rebrand","channel":"pr","budget":40000,"currency":"USD","startDate":"2024-06-01","endDate":"2024-08-01","goals":["sentiment"]}
+---SAMPLE---
+{'campaignId':'mc-30','name':'Flash B','channel':'sms','budget':1100,'currency':'USD','startDate':'2024-01-22','endDate':'2024-01-27','goals':['orders']}

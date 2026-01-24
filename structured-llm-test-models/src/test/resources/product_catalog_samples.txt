@@ -1,0 +1,69 @@
+Product drop:
+---SAMPLE---
+{"sku":"sku-1","name":"Widget A","description":"basic widget","price":9.99,"currency":"USD","categories":["tools"],"active":true}
+---SAMPLE---
+{"sku":"sku-2","name":"Widget B","description":"deluxe widget","price":19.99,"currency":"USD","categories":["tools","premium"],"active":true}
+---SAMPLE---
+{"sku":"sku-3","name":"Widget C","description":"","price":4.99,"currency":"USD","categories":[],"active":false}
+---SAMPLE---
+{"sku":"sku-4","name":"Gadget","description":"gadgety","price":29.5,"currency":"EUR","categories":["gadgets"],"active":true}
+---SAMPLE---
+{"sku":"sku-5","name":"Thing","description":"thing desc","price":15,"currency":"GBP","categories":["things"],"active":true,"currency":["GBP"]}
+---SAMPLE---
+// trailing comma
+---SAMPLE---
+{"sku":"sku-6","name":"Doodad","description":"doodad","price":1.99,"currency":"USD","categories":["small"],"active":true,}
+---SAMPLE---
+Before text {'sku':'sku-7','name':'Frob','price':2.5,'currency':'USD','categories':['misc'],'active':true}
+---SAMPLE---
+{"sku":"sku-8","name":"Mega","description":"mega","price":199.0,"currency":"USD","categories":["pro"],"active":true;"extra":1}
+---SAMPLE---
+{"sku":"sku-9","name":"Mini","description":"mini","price":0.99,"currency":"USD","categories":["small","cheap"],"active":false,"name":["Mini"]}
+---SAMPLE---
+Partial {"sku":"sku-10","name":"Ultra","description":"ultra","price":10.0,
+---SAMPLE---
+{"sku":"sku-11","name":"Eco","description":"eco","price":7.7,"currency":"USD","categories":["green"],"active":true,"price":"7.7"}
+---SAMPLE---
+{"sku":"sku-12","name":"Lux","description":"lux","price":299.99,"currency":"USD","categories":["premium"],"active":true}
+---SAMPLE---
+```json
+{"sku":"sku-13","name":"Refurb","description":"refurb","price":5.0,"currency":"USD","categories":["refurb"],"active":false}
+```
+---SAMPLE---
+{"sku":"sku-14","name":"Bundle","description":"bundle","price":49.0,"currency":"USD","categories":["bundle"],"active":true}
+---SAMPLE---
+text {"sku":"sku-15","name":"Kit","description":"kit","price":24.0,"currency":"USD","categories":["kit"],"active":true} text
+---SAMPLE---
+{"sku":"sku-16","name":"Pack","description":"pack","price":12.0,"currency":"USD","categories":["pack"],"active":true}
+---SAMPLE---
+{"sku":"sku-17","name":"Sample","description":"sample","price":0,"currency":"USD","categories":[]}
+---SAMPLE---
+{"sku":"sku-18","name":"Beta","description":"beta","price":3.14,"currency":"USD","categories":["beta"],"active":false}
+---SAMPLE---
+{"sku":"sku-19","name":"Alpha","description":"alpha","price":6.28,"currency":"USD","categories":["alpha"],"active":true}
+---SAMPLE---
+{"sku":"sku-20","name":"Gamma","description":"gamma","price":11.11,"currency":"USD","categories":["gamma"],"active":true}
+---SAMPLE---
+{"sku":"sku-21","name":"Delta","description":"delta","price":22.22,"currency":"USD","categories":["delta"],"active":true}
+---SAMPLE---
+{"sku":"sku-22","name":"Epsilon","description":"eps","price":33.33,"currency":"USD","categories":["eps"],"active":false,"categories":"eps"}
+---SAMPLE---
+{"sku":"sku-23","name":"Zeta","description":"z","price":44.44,"currency":"USD","categories":["z"],"active":true}
+---SAMPLE---
+{"sku":"sku-24","name":"Eta","description":"e","price":55.55,"currency":"USD","categories":["e"],"active":true}
+---SAMPLE---
+/* comment */ {"sku":"sku-25","name":"Theta","description":"t","price":66.66,"currency":"USD","categories":["t"],"active":true}
+---SAMPLE---
+{"sku":"sku-26","name":"Iota","description":"i","price":77.77,"currency":"USD","categories":["i"],"active":false,"sku":{"id":"sku-26"}}
+---SAMPLE---
+{"sku":"sku-27","name":"Kappa","description":"k","price":88.88,"currency":"USD","categories":["k"],"active":true}
+---SAMPLE---
+{"sku":"sku-28","name":"Lambda","description":"l","price":99.99,"currency":"USD","categories":["l"],"active":true;"active":true}
+---SAMPLE---
+{"sku":"sku-29","name":"Mu","description":"m","price":1.11,"currency":"USD","categories":["m"],"active":true}
+---SAMPLE---
+lead text ```json
+---SAMPLE---
+{"sku":"sku-30","name":"Nu","description":"n","price":2.22,"currency":"USD","categories":["n"],"active":true,"price":}
+---SAMPLE---
+```

@@ -1,0 +1,63 @@
+Ticket info: {"ticketId":"t-1","customerId":"c-1","subject":"Login issue","description":"Cannot login","priority":"HIGH";"status":"OPEN","createdAt":"2024-01-01"}
+---SAMPLE---
+{"ticketId":"t-2","customerId":"c-2","subject":"Payment failed","description":"card declined","priority":"MEDIUM","status":"OPEN","createdAt":"2024-01-02","customerId":["c-2"]}
+---SAMPLE---
+{"ticketId":"t-3","customerId":"c-3","subject":"Bug","description":"page crash","priority":"LOW","status":"CLOSED","createdAt":"2024-01-03","priority":null}
+---SAMPLE---
+text before {'ticketId':'t-4','customerId':'c-4','subject':'Shipping','description':'late','priority':'HIGH','status':'OPEN','createdAt':'2024-01-04'}
+---SAMPLE---
+{"ticketId":"t-5","customerId":"c-5","subject":"Refund","description":"need refund","priority":"HIGH","status":"PENDING","createdAt":"2024-01-05","ticketId":{}}
+---SAMPLE---
+// inline comment
+---SAMPLE---
+{"ticketId":"t-6","customerId":"c-6","subject":"Feature","description":"add dark mode","priority":"LOW","status":"OPEN","createdAt":"2024-01-06","subject":["Feature"]}
+---SAMPLE---
+{"ticketId":"t-7","customerId":"c-7","subject":"Crash","description":"app crash","priority":"HIGH","status":"OPEN","createdAt":"2024-01-07","status":}
+---SAMPLE---
+{"ticketId":"t-8","customerId":"c-8","subject":"Invoice","description":"need copy","priority":"MEDIUM","status":"CLOSED","createdAt":"2024-01-08","priority":"MEDIUM";}
+---SAMPLE---
+partial {"ticketId":"t-9","customerId":"c-9","subject":"Password","description":"reset","priority":"LOW",
+---SAMPLE---
+{"ticketId":"t-10","customerId":"c-10","subject":"API","description":"timeout","priority":"HIGH","status":"OPEN","createdAt":"2024-01-10","description":["timeout"]}
+---SAMPLE---
+{"ticketId":"t-11","customerId":"c-11","subject":"Billing","description":"double charge","priority":"HIGH","status":"OPEN","createdAt":"2024-01-11"}
+---SAMPLE---
+{"ticketId":"t-12","customerId":"c-12","subject":"UI","description":"typo","priority":"LOW","status":"CLOSED","createdAt":"2024-01-12"}
+---SAMPLE---
+{"ticketId":"t-13","customerId":"c-13","subject":"Perf","description":"slow","priority":"MEDIUM","status":"OPEN","createdAt":"2024-01-13"}
+---SAMPLE---
+```json
+{"ticketId":"t-14","customerId":"c-14","subject":"Data","description":"missing data","priority":"HIGH","status":"OPEN","createdAt":"2024-01-14"}
+```
+---SAMPLE---
+{"ticketId":"t-15","customerId":"c-15","subject":"Email","description":"not received","priority":"MEDIUM","status":"OPEN","createdAt":"2024-01-15"}
+---SAMPLE---
+{"ticketId":"t-16","customerId":"c-16","subject":"Notification","description":"spam","priority":"LOW","status":"CLOSED","createdAt":"2024-01-16"}
+---SAMPLE---
+{"ticketId":"t-17","customerId":"c-17","subject":"Integration","description":"webhook fail","priority":"HIGH","status":"OPEN","createdAt":"2024-01-17"}
+---SAMPLE---
+{"ticketId":"t-18","customerId":"c-18","subject":"Security","description":"suspicious login","priority":"HIGH","status":"PENDING","createdAt":"2024-01-18","customerId":null}
+---SAMPLE---
+{"ticketId":"t-19","customerId":"c-19","subject":"Plan","description":"upgrade","priority":"LOW","status":"OPEN","createdAt":"2024-01-19"}
+---SAMPLE---
+{"ticketId":"t-20","customerId":"c-20","subject":"Export","description":"csv broken","priority":"MEDIUM","status":"OPEN","createdAt":"2024-01-20"}
+---SAMPLE---
+{"ticketId":"t-21","customerId":"c-21","subject":"Attachment","description":"cannot upload","priority":"MEDIUM","status":"OPEN","createdAt":"2024-01-21"}
+---SAMPLE---
+{"ticketId":"t-22","customerId":"c-22","subject":"Locale","description":"accent issue","priority":"LOW","status":"CLOSED","createdAt":"2024-01-22"}
+---SAMPLE---
+/* multi */ {"ticketId":"t-23","customerId":"c-23","subject":"404","description":"missing page","priority":"HIGH","status":"OPEN","createdAt":"2024-01-23"}
+---SAMPLE---
+{"ticketId":"t-24","customerId":"c-24","subject":"Import","description":"xls fail","priority":"MEDIUM","status":"OPEN","createdAt":"2024-01-24"}
+---SAMPLE---
+{"ticketId":"t-25","customerId":"c-25","subject":"Latency","description":"too slow","priority":"HIGH","status":"OPEN","createdAt":"2024-01-25","description":{}}
+---SAMPLE---
+{"ticketId":"t-26","customerId":"c-26","subject":"Report","description":"empty report","priority":"MEDIUM","status":"OPEN","createdAt":"2024-01-26","priority":["MEDIUM"]}
+---SAMPLE---
+{"ticketId":"t-27","customerId":"c-27","subject":"Search","description":"no results","priority":"LOW","status":"CLOSED","createdAt":"2024-01-27"}
+---SAMPLE---
+{"ticketId":"t-28","customerId":"c-28","subject":"Quota","description":"over limit","priority":"HIGH","status":"OPEN","createdAt":"2024-01-28"}
+---SAMPLE---
+{"ticketId":"t-29","customerId":"c-29","subject":"Webhook","description":"signature fail","priority":"HIGH","status":"OPEN","createdAt":"2024-01-29","createdAt":["2024-01-29"]}
+---SAMPLE---
+text + {'ticketId':'t-30','customerId':'c-30','subject':'Colors','description':'theme off','priority':'LOW','status':'OPEN','createdAt':'2024-01-30'}

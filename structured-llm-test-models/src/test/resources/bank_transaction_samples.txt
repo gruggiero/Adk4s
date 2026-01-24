@@ -1,0 +1,62 @@
+Txn line: {"transactionId":"txn-1","accountId":"acc-1","type":"debit","amount":120.5,"currency":"USD","timestamp":"2024-01-01T10:00:00Z""description":"groceries"}
+---SAMPLE---
+{"transactionId":"txn-2","accountId":"acc-2","type":"credit","amount":2000.0,"currency":"USD","timestamp":"2024-01-02T11:00:00Z","description":"payroll"} trailing text
+---SAMPLE---
+{"transactionId":"txn-3","accountId":"acc-3","typee":"debit","amount":45.5,"currency":"EUR","timestamp":"2024-01-03T12:00:00Z","description":"cafe"}
+---SAMPLE---
+text {'transactionId':'txn-4','accountId':'acc-4','type':'debit','amount':0,'currency':'USD','timestamp':'2024-01-04T13:00:00Z','description':'refund'}
+---SAMPLE---
+{"transactionId":"txn-5","accountId":"acc-5","type":"credit","amount":15.75,"currency":"GBP","timestamp":"2024-01-05T14:00:00Z","description":"rebate"}
+// comment inside
+---SAMPLE---
+{"transactionId":"txn-6","accountId":"acc-6","type":"debit","amount":99.99,"currency":"USD","timestamp":"2024-01-06T15:00:00Z","description":"fuel"}
+---SAMPLE---
+{"transactionId":"txn-7","accountId":"acc-7","type":"debit","amount":210.0,"currency":"USD","timestamp":"2024-01-07T16:00:00Z","description":"hotel",}
+---SAMPLE---
+{"transactionId":"txn-8","accountId":"acc-8","type":"credit","amount":12.0,"currency":"USD","timestamp":"2024-01-08T17:00:00Z","description":"cashback"}
+---SAMPLE---
+{"transactionId":"txn-9","accountId":"acc-9","type":"debit","amount":320.44,"currency":"CAD","timestamp":"2024-01-09T18:00:00Z","description":"electronics"
+---SAMPLE---
+{"transactionId":"txn-10","accountId":"acc-10","type":"debit","amount":75.25,"currency":"USD","timestamp":"2024-01-10T19:00:00Z","description":"dining"}
+---SAMPLE---
+Partial {"transactionId":"txn-11","accountId":"acc-11",
+---SAMPLE---
+{"transactionId":"txn-12","accountId":"acc-12","type":"credit","amount":8.99,"currency":"EUR","timestamp":"2024-01-12T21:00:00Z","description":"gift","oops":}
+---SAMPLE---
+{"transactionId":"txn-13","accountId":"acc-13","type":"debit","amount":44.0,"currency":"USD","timestamp":"2024-01-13T22:00:00Z","description":"taxi"}
+---SAMPLE---
+```json
+{"transactionId":"txn-14","accountId":"acc-14","type":"debit","amount":66.6,"currency":"USD","timestamp":"2024-01-14T23:00:00Z","description":"ride"}
+```
+---SAMPLE---
+{"transactionId":"txn-15","accountId":"acc-15","type":"credit","amount":17.5,"currency":"USD","timestamp":"2024-01-15T09:00:00Z","description":"bonus"}
+---SAMPLE---
+{"transactionId":"txn-16","accountId":"acc-16","type":"debit","amount":199.0,"currency":"USD","timestamp":"2024-01-16T10:00:00Z","description":"rent"}
+---SAMPLE---
+{"transactionId":"txn-17","accountId":"acc-17","type":"credit","amount":45.0,"currency":"USD","timestamp":"2024-01-17T11:00:00Z","description":"reversal"],}
+---SAMPLE---
+{"transactionId":"txn-18","accountId":"acc-18","type":"debit","amount":60.0,"currency":"USD","timestamp":"2024-01-18T12:00:00Z","description":"books"}
+---SAMPLE---
+{"transactionId":"txn-19","accountId":"acc-19","type":"debit","amount":88.8,"currency":"USD","timestamp":"2024-01-19T13:00:00Z","description":"groceries"}
+---SAMPLE---
+{"transactionId":"txn-20","accountId":"acc-20","type":"credit","amount":33.3,"currency":"USD","timestamp":"2024-01-20T14:00:00Z","description":"points"}
+---SAMPLE---
+{"transactionId":"txn-21","accountId":"acc-21","type":"debit","amount":14.0,"currency":"USD","timestamp":"2024-01-21T15:00:00Z","description":"snacks"}
+---SAMPLE---
+{"transactionId":"txn-22","accountId":"acc-22","type":"credit","amount":21.0,"currency":"EUR","timestamp":"2024-01-22T16:00:00Z","description":"refund"}
+---SAMPLE---
+{"transactionId":"txn-23","accountId":"acc-23","type":"debit","amount":19.5,"currency":"USD","timestamp":"2024-01-23T17:00:00Z","description":"metro"}
+---SAMPLE---
+{"transactionId":"txn-24","accountId":"acc-24","type":"debit","amount":400.0,"currency":"USD","timestamp":"2024-01-24T18:00:00Z","description":"furniture","desc2":"chair""}
+---SAMPLE---
+{"transactionId":"txn-25","accountId":"acc-25","type":"debit","amount":52.2,"currency":"USD","timestamp":"2024-01-25T19:00:00Z","description":"utilities"}
+---SAMPLE---
+{"transactionId":"txn-26","accountId":"acc-26","type":"credit","amount":75.5,"currency":"USD","timestamp":"2024-01-26T20:00:00Z","description":"adjustment"}
+---SAMPLE---
+{"transactionId":"txn-27","accountId":"acc-27","type":"debit","amount":93.0,"currency":"USD","timestamp":"2024-01-27T21:00:00Z","description":"gas"}
+---SAMPLE---
+{"transactionId":"txn-28","accountId":"acc-28","type":"credit","amount":12.4,"currency":"USD","timestamp":"2024-01-28T22:00:00Z","description":"rebate"}
+---SAMPLE---
+{"transactionId":"txn-29","accountId":"acc-29","type":"debit","amount":8.8,"currency":"USD","timestamp":"2024-01-29T23:00:00Z","description":"coffee",,
+---SAMPLE---
+text before {'transactionId':'txn-30','accountId':'acc-30','type':'debit','amount':55.0,'currency':'USD','timestamp':'2024-01-30T08:00:00Z','description':'parking'}

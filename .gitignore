@@ -1,0 +1,39 @@
+# sbt
+target/
+project/target/
+project/project/
+.bsp/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.metals/
+.bloop/
+metals.sbt
+
+# Scala
+*.class
+*.log
+*.cache
+*.tasty
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+*.env
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*~

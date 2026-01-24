@@ -1,0 +1,63 @@
+Plan info: {"planId":"plan-1","name":"Basic","price":9.99;"currency":"USD","billingCycle":"monthly","features":["email"],"active":true}
+---SAMPLE---
+{"planId":"plan-2","name":"Pro","price":[29.99],"currency":"USD","billingCycle":"monthly","features":["email","support"],"active":true}
+---SAMPLE---
+{"planId":"plan-3","name":"Enterprise","price":199.0,"currency":"USD","billingCycle":"annual","features":["sso","sla"]}
+---SAMPLE---
+text {'planId':'plan-4','name':'Trial','price':0,'currency':'USD','billingCycle':'monthly','features':['limited'],'active':true}
+---SAMPLE---
+{"planId":"plan-5","name":"Student","price":4.99,"currency":"USD","billingCycle":"monthly","features":["email"],"active":true,"billingCycle":["monthly"]}
+---SAMPLE---
+// inline comment
+---SAMPLE---
+{"planId":"plan-6","name":"Legacy","price":14.99,"currency":"USD","billingCycle":"monthly","features":["email"],"active":"false"}
+---SAMPLE---
+{"planId":"plan-7","name":"Starter","price":"7.0","currency":"EUR","billingCycle":"monthly","features":["support"],"active":true}
+---SAMPLE---
+{"planId":"plan-8","name":"Plus","price":12.0,"currency":"GBP","billingCycle":"monthly","features":["reports"],"active":true;
+---SAMPLE---
+Partial {"planId":"plan-9","name":"Family",
+---SAMPLE---
+{"planId":"plan-10","name":"Business","price":49.0,"currency":"USD","billingCycle":"annual","features":{"tier":"multiuser"},"active":true}
+---SAMPLE---
+```json
+{"planId":"plan-11","name":"Growth","price":79.0,"currency":"USD","billingCycle":"annual","features":["support","api"],"active":true}
+```
+---SAMPLE---
+{"planId":"plan-12","name":"Scale","price":129.0,"currency":"USD","billingCycle":"annual","features":["sso","audit"],"active":true}
+---SAMPLE---
+{"planId":"plan-13","name":"Seasonal","price":19.0,"currency":"USD","billingCycle":"monthly","features":["pause"],"active":true}
+---SAMPLE---
+{"planId":"plan-14","name":"Beta","price":5.0,"currency":"USD","billingCycle":"monthly","features":["labs"],"active":false,}
+---SAMPLE---
+lead {'planId':'plan-15','name':'Creator','price':15.0,'currency':'USD','billingCycle':'monthly','features':['stream'],'active':true} text
+---SAMPLE---
+{"planId":"plan-16","name":"NGO","price":3.0,"currency":"USD","billingCycle":"monthly","features":["discount"],"active":true,"planId":["plan-16"]}
+---SAMPLE---
+{"planId":"plan-17","name":"VIP","price":299.0,"currency":"USD","billingCycle":"annual","features":["concierge"],"active":true}
+---SAMPLE---
+{"planId":"plan-18","name":"Lite","price":2.5,"currency":"USD","billingCycle":"monthly","features":["email"],"active":true}
+---SAMPLE---
+{"planId":"plan-19","name":"Team","price":24.0,"currency":"USD","billingCycle":"monthly","features":["seats"],"active":true}
+---SAMPLE---
+{"planId":"plan-20","name":"Analytics","price":39.0,"currency":"USD","billingCycle":"monthly","features":["dash"]}
+---SAMPLE---
+{"planId":"plan-21","name":"Data","price":59.0,"currency":"USD","billingCycle":"monthly","features":["export"],"active":true}
+---SAMPLE---
+{"planId":"plan-22","name":"Compute","price":89.0,"currency":"USD","billingCycle":"monthly","features":["gpu"],"active":true,"active":null}
+---SAMPLE---
+{"planId":"plan-23","name":"Storage","price":12.5,"currency":"USD","billingCycle":"monthly","features":["1TB"],"active":true}
+---SAMPLE---
+{"planId":"plan-24","name":"Edge","price":44.0,"currency":"USD","billingCycle":"monthly","features":"cdn","active":true}
+---SAMPLE---
+{"planId":"plan-25","name":"Security","price":33.0,"currency":"USD","billingCycle":"monthly","features":["mfa"],"active":true,"price":}
+---SAMPLE---
+{"planId":"plan-26","name":"Support","price":19.0,"currency":"USD","billingCycle":"monthly","features":["chat"],"active":true}
+---SAMPLE---
+{"planId":"plan-27","name":"Ops","price":"27.0","currency":"USD","billingCycle":"monthly","features":["oncall"],"active":true}
+---SAMPLE---
+{"planId":"plan-28","name":"Research","price":21.0,"currency":"USD","billingCycle":"monthly","features":["lab"],"active":true}
+---SAMPLE---
+{"planId":"plan-29","name":"Beta2","price":6.0,"currency":"USD","billingCycle":"monthly","features":["experiments"],"active":false,"features":{}}
+---SAMPLE---
+text before {'planId':'plan-30','name':'Custom','price':0,'currency':'USD','billingCycle':'annual','features':['negotiated'],'active':true}

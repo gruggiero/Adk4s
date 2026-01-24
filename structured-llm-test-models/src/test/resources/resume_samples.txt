@@ -1,0 +1,63 @@
+Candidate: {"name":"Ada Lovelace","email":"ada@math.org","skills":["analysis","math"],"education":[{"school":"Byron","degree":"Math","year":1835}],"seniority":"SENIOR"}
+---SAMPLE---
+{"name":"Grace Hopper","email":"grace@navy.mil","skills":["cobol","compiler"],"education":[{"school":"Yale","degree":"Math","year":1930}],"seniority":"STAFF"}
+---SAMPLE---
+{"name":"Alan Turing","email":"alan@bletchley.uk","skills":["crypto","logic"],"education":[{"school":"Cambridge","degree":"Math","year":1934}],"seniority":"MID"}
+---SAMPLE---
+text {'name':'Katherine Johnson','email':'kj@nasa.gov','skills':['orbital'],'education':[{'school':'WVU','degree':'Math','year':1937}],'seniority':'STAFF'}
+---SAMPLE---
+{"name":"Tim Berners-Lee","email":"tim@cern.ch","skills":["web"],"education":[{"school":"Oxford","degree":"Physics","year":1976}],"seniority":"SENIOR"}
+---SAMPLE---
+// inline comment
+---SAMPLE---
+{"name":"Barbara Liskov","email":"bl@mit.edu","skills":["oop","lsp"],"education":[{"school":"Stanford","degree":"CS","year":1961}],"seniority":"STAFF"}
+---SAMPLE---
+{"name":"Edsger Dijkstra","email":"ed@utwente.nl","skills":["graph","proof"],"education":[{"school":"Leiden","degree":"Math","year":1956}],"seniority":"STAFF"}
+---SAMPLE---
+{"name":"Donald Knuth","email":"dk@stanford.edu","skills":["algorithms","tex"],"education":[{"school":"Caltech","degree":"Math","year":1960}],"seniority":"STAFF"}
+---SAMPLE---
+Partial {"name":"Linus Torvalds",
+---SAMPLE---
+{"name":"Margaret Hamilton","email":"mh@nasa.gov","skills":["software","apollo"],"education":[{"school":"Earlham","degree":"Math","year":1958}],"seniority":"STAFF"}
+---SAMPLE---
+```json
+{"name":"Guido van Rossum","email":"gvr@python.org","skills":["python"],"education":[{"school":"Amsterdam","degree":"Math","year":1982}],"seniority":"SENIOR"}
+```
+---SAMPLE---
+{"name":"Bjarne Stroustrup","email":"bs@cpp.com","skills":["c++"],"education":[{"school":"Aarhus","degree":"CS","year":1975}],"seniority":"STAFF"}
+---SAMPLE---
+{"name":"James Gosling","email":"jg@java.com","skills":["java"],"education":[{"school":"Calgary","degree":"CS","year":1977}],"seniority":"STAFF"}
+---SAMPLE---
+{"name":"Ken Thompson","email":"kt@unix.com","skills":["unix"],"education":[{"school":"UC Berkeley","degree":"EE","year":1965}],"seniority":"STAFF"}
+---SAMPLE---
+lead {'name':'Dennis Ritchie','email':'dr@c.com','skills':['c'],'education':[{'school':'Harvard','degree':'Physics','year':1963}],'seniority':'STAFF'} text
+---SAMPLE---
+{"name":"Brendan Eich","email":"be@js.com","skills":["js"],"education":[{"school":"Illinois","degree":"Math","year":1986}],"seniority":"SENIOR"}
+---SAMPLE---
+{"name":"Yukihiro Matsumoto","email":"ym@ruby.com","skills":["ruby"],"education":[{"school":"TS","degree":"CS","year":1990}],"seniority":"SENIOR"}
+---SAMPLE---
+{"name":"John McCarthy","email":"jm@lisp.com","skills":["lisp"],"education":[{"school":"Princeton","degree":"Math","year":1951}],"seniority":"STAFF"}
+---SAMPLE---
+{"name":"Niklaus Wirth","email":"nw@pascal.com","skills":["pascal"],"education":[{"school":"ETH","degree":"EE","year":1960}],"seniority":"STAFF"}
+---SAMPLE---
+{"name":"Ada Lovelace","email":"ada@math.org","skills":["analysis"],"education":[{"school":"Home","degree":"Math","year":1834}],"seniority":"MID"}
+---SAMPLE---
+{"name":"Eve","email":"eve@example.com","skills":["security"],"education":[{"school":"MIT","degree":"CS","year":2010}],"seniority":"MID"}
+---SAMPLE---
+{"name":"Mallory","email":"mal@example.com","skills":["pentest"],"education":[{"school":"CMU","degree":"CS","year":2011}],"seniority":"SENIOR"}
+---SAMPLE---
+{"name":"Oscar","email":"oscar@example.com","skills":["infra"],"education":[{"school":"UCLA","degree":"CS","year":2009}],"seniority":"MID"}
+---SAMPLE---
+{"name":"Peggy","email":"peggy@example.com","skills":["qa"],"education":[{"school":"UW","degree":"CS","year":2012}],"seniority":"JUNIOR"}
+---SAMPLE---
+{"name":"Sybil","email":"sybil@example.com","skills":["ml"],"education":[{"school":"Stanford","degree":"AI","year":2015}],"seniority":"MID"}
+---SAMPLE---
+{"name":"Trudy","email":"trudy@example.com","skills":["ops"],"education":[{"school":"UCB","degree":"CS","year":2013}],"seniority":"MID"}
+---SAMPLE---
+{"name":"Victor","email":"victor@example.com","skills":["devops"],"education":[{"school":"UT","degree":"CS","year":2014}],"seniority":"MID"}
+---SAMPLE---
+{"name":"Walter","email":"walter@example.com","skills":["data"],"education":[{"school":"UM","degree":"Stats","year":2011}],"seniority":"MID"}
+---SAMPLE---
+{"name":"Xavier","email":"xavier@example.com","skills":["ai"],"education":[{"school":"MIT","degree":"AI","year":2016}],"seniority":"SENIOR"}
+---SAMPLE---
+text before {'name':'Yvonne','email':'yvonne@example.com','skills':['pm'],'education':[{'school':'NYU','degree':'MBA','year':2018}],'seniority':'MID'}

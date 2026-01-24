@@ -1,0 +1,63 @@
+Resume snippet -> {"candidateId":"cand-1","name":"Ada Lovelace","email":"ada@math.org";"phone":"+1-555-1111","skills":["math","eng"],"experienceYears":5,"desiredSalary":120000}
+---SAMPLE---
+{"candidateId":"cand-2","name":"Grace Hopper","email":["grace@navy.mil"],"phone":"+1-555-2222","skills":["cobol","compiler"],"experienceYears":15,"desiredSalary":150000}
+---SAMPLE---
+{"candidateId":"cand-3","name":"Alan Turing","email":"alan@bletchley.uk","phone":"+44-555-3333","skills":{"primary":"crypto"},"experienceYears":8,"desiredSalary":130000}
+---SAMPLE---
+text {'candidateId':'cand-4','name':'Katherine Johnson','email':'kj@nasa.gov','phone':'+1-555-4444','skills':['orbital'],'experienceYears':12,'desiredSalary':140000}
+---SAMPLE---
+{"candidateId":"cand-5","name":"Tim Berners-Lee","email":"tim@cern.ch","phone":"+41-555-5555","skills":["web"],"experienceYears":10,"desiredSalary":}
+---SAMPLE---
+// comment line
+---SAMPLE---
+{"candidateId":"cand-6","name":"Barbara Liskov","email":"bl@mit.edu","phone":"+1-555-6666","skills":["oop","lsp"],"experienceYears":"20","desiredSalary":170000,"extra":"?"}
+---SAMPLE---
+{"candidateId":"cand-7","name":"Edsger Dijkstra","email":"ed@utwente.nl","phone":"+31-555-7777","skills":["graph","proof"],"experienceYears":22,"desiredSalary":180000}
+---SAMPLE---
+{"candidateId":"cand-8","name":"Donald Knuth","email":"dk@stanford.edu","phone":"+1-555-8888","skills":["algorithms","tex"],"experienceYears":25,"desiredSalary":190000}
+---SAMPLE---
+Partial {"candidateId":"cand-9","name":"Linus Torvalds",
+---SAMPLE---
+{"candidateId":"cand-10","name":"Margaret Hamilton","email":"mh@nasa.gov","phone":"+1-555-9999","skills":["software","apollo"],"experienceYears":18,"desiredSalary":175000}
+---SAMPLE---
+```json
+{"candidateId":"cand-11","name":"Guido van Rossum","email":"gvr@python.org","phone":"+1-555-1010","skills":["python"],"experienceYears":12,"desiredSalary":155000}
+```
+---SAMPLE---
+{"candidateId":"cand-12","name":"Bjarne Stroustrup","email":"bs@cpp.com","phone":"+1-555-1112","skills":["c++"],"experienceYears":20,"desiredSalary":185000}
+---SAMPLE---
+{"candidateId":"cand-13","name":"James Gosling","email":"jg@java.com","phone":"+1-555-1313","skills":["java"],"experienceYears":21,"desiredSalary":180000}
+---SAMPLE---
+{"candidateId":"cand-14","name":"Ken Thompson","email":"kt@unix.com","phone":"+1-555-1414","skills":["unix"],"experienceYears":23,"desiredSalary":160000}
+---SAMPLE---
+lead {'candidateId':'cand-15','name':'Dennis Ritchie','email':'dr@c.com','phone':'+1-555-1515','skills':['c'],'experienceYears':24,'desiredSalary':165000} text
+---SAMPLE---
+{"candidateId":"cand-16","name":"Brendan Eich","email":"be@js.com","phone":"+1-555-1616","skills":["js"],"experienceYears":14,"desiredSalary":150000}
+---SAMPLE---
+{"candidateId":"cand-17","name":"Yukihiro Matsumoto","email":"ym@ruby.com","phone":"+1-555-1717","skills":["ruby"],"experienceYears":16,"desiredSalary":155000}
+---SAMPLE---
+{"candidateId":"cand-18","name":"John McCarthy","email":"jm@lisp.com",/*comment*/"phone":"+1-555-1818","skills":["lisp"],"experienceYears":28,"desiredSalary":170000}
+---SAMPLE---
+{"candidateId":"cand-19","name":"Niklaus Wirth","email":"nw@pascal.com","phone":"+1-555-1919","skills":["pascal"],"experienceYears":26,"desiredSalary":165000}
+---SAMPLE---
+{"candidateId":"cand-20","name":"Ada Lovelace","email":"ada@math.org","phone":"+1-555-2020","skills":["analysis"],"experienceYears":6,"desiredSalary":125000}
+---SAMPLE---
+{"candidateId":"cand-21","name":"Eve","email":"eve@example.com","phone":"+1-555-2121","skills":["security"],"experienceYears":7,"desiredSalary":140000}
+---SAMPLE---
+{"candidateId":"cand-22","name":"Mallory","email":"mal@example.com","phone":"+1-555-2223","skills":["pentest"],"experienceYears":9,"desiredSalary":150000}
+---SAMPLE---
+{"candidateId":"cand-23","name":"Oscar","email":"oscar@example.com","phone":"+1-555-2323","skills":["infra"],"experienceYears":11,"desiredSalary":145000}
+---SAMPLE---
+{"candidateId":"cand-24","name":"Peggy","email":"peggy@example.com","phone":"+1-555-2424","skills":["qa"],"experienceYears":5,"desiredSalary":110000}
+---SAMPLE---
+{"candidateId":"cand-25","name":"Sybil","email":"sybil@example.com","phone":"+1-555-2525","skills":["ml"],"experienceYears":4,"desiredSalary":105000}
+---SAMPLE---
+{"candidateId":"cand-26","name":"Trudy","email":"trudy@example.com","phone":"+1-555-2626","skills":["ops"],"experienceYears":6,"desiredSalary":115000}
+---SAMPLE---
+{"candidateId":"cand-27","name":"Victor","email":"victor@example.com","phone":"+1-555-2727","skills":["devops"],"experienceYears":8,"desiredSalary":125000}
+---SAMPLE---
+{"candidateId":"cand-28","name":"Walter","email":"walter@example.com","phone":"+1-555-2828","skills":["data"],"experienceYears":10,"desiredSalary":135000}
+---SAMPLE---
+{"candidateId":"cand-29","name":"Xavier","email":"xavier@example.com","phone":"+1-555-2929","skills":["ai"],"experienceYears":12,"desiredSalary":145000}
+---SAMPLE---
+text before {'candidateId':'cand-30','name':'Yvonne','email':'yvonne@example.com','phone':'+1-555-3030','skills':['pm'],'experienceYears':9,'desiredSalary':140000}

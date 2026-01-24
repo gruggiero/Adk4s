@@ -1,0 +1,62 @@
+Registration dump: {"registrationId":"reg-1","eventId":"evt-1","attendee":{"name":"Alice","email":"alice@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":250.0,"currency":"USD""extra":"x"}
+---SAMPLE---
+{"registrationId":"reg-2","eventId":"evt-2","attendee":{"name":"Bob","email":"bob@ex.com","ticketType":"GA"},"status":"PENDING","paid":false,"price":99.0,"currency":"USD"} trailing note
+---SAMPLE---
+{"registrationId":"reg-3","eventId":"evt-3","attendee":{"name":"Cara","email":"cara@ex.com","ticketType":"STUDENT"},"statuss":"CHECKIN","paid":true,"price":49.0,"currency":"USD"}
+---SAMPLE---
+text {'registrationId':'reg-4','eventId':'evt-4','attendee':{'name':'Dan','email':'dan@ex.com','ticketType':'VIP'},'status':'CONFIRMED','paid':true,'price':199.0,'currency':'EUR'}
+---SAMPLE---
+{"registrationId":"reg-5","eventId":"evt-5","attendee":{"name":"Eve","email":"eve@ex.com","ticketType":"GA"},"status":"CANCELLED","paid":false,"price":0,"currency":"USD"}
+---SAMPLE---
+// inline comment
+{"registrationId":"reg-6","eventId":"evt-6","attendee":{"name":"Finn","email":"finn@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":300.0,"currency":"USD","paid?":tru}
+---SAMPLE---
+{"registrationId":"reg-7","eventId":"evt-7","attendee":{"name":"Gina","email":"gina@ex.com","ticketType":"GA"},"status":"WAITLIST","paid":false,"price":120.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-8","eventId":"evt-8","attendee":{"name":"Hank","email":"hank@ex.com","ticketType":"GA"},"status":"CONFIRMED","paid":true,"price":110.0,"currency":"USD"}
+---SAMPLE---
+Partial {"registrationId":"reg-9","event":"evt-9",
+---SAMPLE---
+{"registrationId":"reg-10","eventId":"evt-10","attendee":{"name":"Jack","email":"jack@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":400.0,"currency":"USD"}
+---SAMPLE---
+```json
+{"registrationId":"reg-11","eventId":"evt-11","attendee":{"name":"Kim","email":"kim@ex.com","ticketType":"GA"},"status":"CONFIRMED","paid":true,"price":130.0,"currency":"USD"}
+```
+---SAMPLE---
+{"registrationId":"reg-12","eventId":"evt-12","attendee":{"name":"Leo","email":"leo@ex.com","ticketType":"STUDENT"},"status":"PENDING","paid":false,"price":40.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-13","eventId":"evt-13","attendee":{"name":"Mia","email":"mia@ex.com","ticketType":"GA"},"status":"CONFIRMED","paid":true,"price":95.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-14","eventId":"evt-14","attendee":{"name":"Ned","email":"ned@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":500.0,"currency":"USD"}
+---SAMPLE---
+lead {"registrationId":"reg-15","eventId":"evt-15","attendee":{"name":"Olga","email":"olga@ex.com","ticketType":"GA"},"status":"CHECKIN","paid":true,"price":85.0,"currency":"USD"} text
+---SAMPLE---
+{"registrationId":"reg-16","eventId":"evt-16","attendee":{"name":"Pia","email":"pia@ex.com","ticketType":"GA"},"status":"CONFIRMED","paid":true,"price":105.0,"currency":"USD","attendee":{"name":"dup"}}
+---SAMPLE---
+{"registrationId":"reg-17","eventId":"evt-17","attendee":{"name":"Quinn","email":"quinn@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":320.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-18","eventId":"evt-18","attendee":{"name":"Raj","email":"raj@ex.com","ticketType":"GA"},"status":"WAITLIST","paid":false,"price":90.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-19","eventId":"evt-19","attendee":{"name":"Sue","email":"sue@ex.com","ticketType":"GA"},"status":"CONFIRMED","paid":true,"price":70.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-20","eventId":"evt-20","attendee":{"name":"Tom","email":"tom@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":220.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-21","eventId":"evt-21","attendee":{"name":"Uma","email":"uma@ex.com","ticketType":"GA"},"status":"PENDING","paid":false,"price":60.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-22","eventId":"evt-22","attendee":{"name":"Vic","email":"vic@ex.com","ticketType":"GA"},"status":"CONFIRMED","paid":true,"price":100.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-23","eventId":"evt-23","attendee":{"name":"Will","email":"will@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":280.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-24","eventId":"evt-24","attendee":{"name":"Xena","email":"xena@ex.com","ticketType":"GA"},"status":"CONFIRMED","paid":true,"price":95.0,"currency":"USD",,
+---SAMPLE---
+{"registrationId":"reg-25","eventId":"evt-25","attendee":{"name":"Yara","email":"yara@ex.com","ticketType":"GA"},"status":"CHECKIN","paid":true,"price":90.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-26","eventId":"evt-26","attendee":{"name":"Zed","email":"zed@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":310.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-27","eventId":"evt-27","attendee":{"name":"Ava","email":"ava@ex.com","ticketType":"VIP"},"status":"CONFIRMED","paid":true,"price":330.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-28","eventId":"evt-28","attendee":{"name":"Ben","email":"ben@ex.com","ticketType":"GA"},"status":"CONFIRMED","paid":true,"price":88.0,"currency":"USD"}
+---SAMPLE---
+{"registrationId":"reg-29","eventId":"evt-29","attendee":{"name":"Cleo","email":"cleo@ex.com","ticketType":"GA"},"status":"PENDING","paid":false,"price":70.0,"currency":"USD","paid":false "dup":true}
+---SAMPLE---
+text before {'registrationId':'reg-30','eventId':'evt-30','attendee':{'name':'Duke','email':'duke@ex.com','ticketType':'VIP'},'status':'CONFIRMED','paid':true,'price':350.0,'currency':'USD'}

@@ -1,0 +1,59 @@
+{"id":"o-1","customerId":"c-1","status":"NEW""total":120.5,"currency":"USD","items":["sku-1","sku-2"],"createdAt":"2024-01-01"}
+---SAMPLE---
+text order id=o-2 {"id":"o-2","customerId":"c-2","status":"PAID","total":80.0,"currency":"EUR","items":["sku-3"],"createdAt":"2024-01-02"}
+---SAMPLE---
+{"id":"o-3","customerId":"c-3","statuz":"SHIPPED","total":45.5,"currency":"USD","items":["sku-4","sku-5"],"createdAt":"2024-01-03"}
+---SAMPLE---
+{"id":"o-4","customerId":"c-4","status":"CANCELLED","total":0,"currency":"USD","items":[],"createdAt":"2024-01-04"}
+---SAMPLE---
+{"id":"o-5","customerId":"c-5","status":"NEW","total":15.75,"currency":"GBP""items":["sku-6"],"createdAt":"2024-01-05"}
+---SAMPLE---
+// stray comment {"id":"o-6","customerId":"c-6","status":"PAID","total":99.99,"currency":"USD","items":["sku-7"],"createdAt":"2024-01-06"}
+---SAMPLE---
+{"id":"o-7","customerId":"c-7","status":"NEW","total":210.0,"currency":"USD","items":["sku-8","sku-9"]
+---SAMPLE---
+{"id":"o-8","customerId":"c-8","status":"PAID","total":12.0,"currency":"USD","items":["sku-10"],"createdAt":"2024-01-08"}
+---SAMPLE---
+{"id":"o-9","customerId":"c-9","status":"SHIPPED","total":320.44,"currency":"CAD","items":["sku-11","sku-12"],"createdAt":"2024-01-09",}
+---SAMPLE---
+{"id":"o-10","customerId":"c-10","status":"DELIVERED","total":"75.25","currency":"USD","items":["sku-13"],"createdAt":"2024-01-10"}
+---SAMPLE---
+{"id":"o-11","customerId":"c-11","status":"NEW","total":5.0,"currency":"USD","items":["sku-14"],"createdAt":"2024-01-11"}
+---SAMPLE---
+{"id":"o-12","customerId":"c-12","status":"PAID","total":8.99,"currency":"EUR","items":["sku-15","sku-16"],"createdAt":"2024-01-12"} trailing words
+---SAMPLE---
+{"id":"o-13","customerId":"c-13","status":"PROCESSING","total":44.0,"currency":"USD","items":["sku-17"],"createdAt":"2024-01-13"}
+---SAMPLE---
+{"id":"o-14","customerId":"c-14","status":"SHIPPED","total":66.6,"currency":"USD","items":["sku-18"],"createdAt":"2024-01-14"}
+---SAMPLE---
+{"id":"o-15","customerId":"c-15","status":"NEW","total":17.5,"currency":"USD","items":["sku-19"],"createdAt":"2024-01-15"
+---SAMPLE---
+{"id":"o-16","customerId":"c-16","status":"PAID","total":199.0,"currency":"USD","items":["sku-20","sku-21"],"createdAt":"2024-01-16"}
+---SAMPLE---
+{"id":"o-17","customerId":"c-17","status":"PROCESSING","total":45.0,"currency":"USD","items":["sku-22"],"createdAt":"2024-01-17"}
+---SAMPLE---
+{"id":"o-18","customerId":"c-18","status":"SHIPPED","total":60.0,"currency":"USD","items":["sku-23","sku-24"],"createdAt":"2024-01-18"}
+---SAMPLE---
+{"id":"o-19","customerId":"c-19","status":"DELIVERED","total":88.8,"currency":"USD","items":["sku-25"],"createdAt":"2024-01-19"}
+---SAMPLE---
+{"id":"o-20","customerId":"c-20","status":"PAID","total":33.3,"currency":"USD","items":["sku-26"],"createdAt":"2024-01-20"
+---SAMPLE---
+{"id":"o-21","customerId":"c-21","status":"SHIPPED","total":14.0,"currency":"USD","items":["sku-27"],"createdAt":"2024-01-21"}
+---SAMPLE---
+{"id":"o-22","customerId":"c-22","status":"NEW","total":21.0,"currency":"EUR","items":["sku-28"],"createdAt":"2024-01-22","unknown":"???"}
+---SAMPLE---
+{"id":"o-23","customerId":"c-23","status":"PAID","total":19.5,"currency":"USD","items":["sku-29","sku-30"],"createdAt":"2024-01-23"}
+---SAMPLE---
+{"id":"o-24","customerId":"c-24","status":"NEW","total":400.0,"currency":"USD","items":["sku-31","sku-32"],"createdAt":"2024-01-24","note":"inline text" garbage
+---SAMPLE---
+{"id":"o-25","customerId":"c-25","status":"PROCESSING","total":52.2,"currency":"USD","items":["sku-33"],"createdAt":"2024-01-25"}
+---SAMPLE---
+{'id':'o-26','customerId':'c-26','status':'PAID','total':75.5,'currency':'USD','items':['sku-34'],'createdAt':'2024-01-26'}
+---SAMPLE---
+{"id":"o-27","customerId":"c-27","status":,"total":93.0,"currency":"USD","items":["sku-35","sku-36"],"createdAt":"2024-01-27"}
+---SAMPLE---
+{"id":"o-28","customerId":"c-28","status":"DELIVERED","total":12.4,"currency":"USD","items":["sku-37"],"createdAt":"2024-01-28"}
+---SAMPLE---
+{"id":"o-29","customerId":"c-29","status":"NEW","total":8.8,"currency":"USD","items":["sku-38"],"createdAt":"2024-01-29"}
+---SAMPLE---
+text before {"id":"o-30","customerId":"c-30","status":"PAID","total":55.0,"currency":"USD","items":["sku-39"],"createdAt":"2024-01-30"}}

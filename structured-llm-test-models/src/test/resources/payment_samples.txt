@@ -1,0 +1,62 @@
+Payment processed: {"paymentId":"p-1","orderId":"o-1","method":"card","amount":120.5,"currency":"USD","status":"SETTLED","processedAt":"2024-02-01T10:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-2","orderId":"o-2","method":"paypal","amount":80.0,"currency":"EUR","status":"PENDING","processedAt":"2024-02-02T11:00:00Z"
+---SAMPLE---
+{"paymentId":"p-3","orderId":"o-3","method":"bank","amount":45.5,"currency":"USD","status":"FAILED","processedAt":"2024-02-03T12:00:00Z"}
+---SAMPLE---
+inline text {"paymentId":"p-4","orderId":"o-4","method":"card","amount":0,"currency":"USD","status":"CANCELLED","processedAt":"2024-02-04T13:00:00Z"}} extra
+---SAMPLE---
+{"paymentId":"p-5","orderId":"o-5","method":"card","amount":15.75,"currency":"GBP","status":"SETTLED","processedAt":"2024-02-05T14:00:00Z","note":"oops"
+---SAMPLE---
+// weird comment
+{"paymentId":"p-6","orderId":"o-6","method":"apple_pay","amount":99.99,"currency":"USD","status":"SETTLED","processedAt":"2024-02-06T15:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-7","orderId":"o-7","method":"card","amount":210.0,"currency":"USD","status":"SETTLED","processedAt":"2024-02-07T16:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-8","orderId":"o-8","method":"card","amount":12.0,"currency":"USD","status":"PENDING","processedAt":"2024-02-08T17:00:00Z"
+---SAMPLE---
+{"paymentId":"p-9","orderId":"o-9","method":"bank","amount":320.44,"currency":"CAD","status":"SETTLED","processedAt":"2024-02-09T18:00:00Z"}, trailing
+---SAMPLE---
+{"paymentId":"p-10","orderId":"o-10","method":"card","amount":75.25,"currency":"USD","status":"SETTLED","processedAt":"2024-02-10T19:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-11","orderId":"o-11","method":"cash","amount":5.0,"currency":"USD","status":"SETTLED","processedAt":"2024-02-11T20:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-12","orderId":"o-12","method":"paypal","amount":8.99,"currency":"EUR","status":"PENDING","processedAt":"2024-02-12T21:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-13","orderId":"o-13","method":"card","amount":44.0,"currency":"USD","status":"DECLINED","processedAt":"2024-02-13T22:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-14","orderId":"o-14","method":"card","amount":66.6,"currency":"USD","status":"SETTLED","processedAt":"2024-02-14T23:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-15","orderId":"o-15","method":"card","amount":17.5,"currency":"USD","status":"PENDING","processedAt":"2024-02-15T09:00:00Z"}
+---SAMPLE---
+Partial: {"paymentId":"p-16","orderId":"o-16","method":"bank","amount":199.0,
+---SAMPLE---
+{"paymentId":"p-17","orderId":"o-17","method":"card","amount":45.0,"currency":"USD","status":"SETTLED","processedAt":"2024-02-17T10:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-18","orderId":"o-18","method":"bank","amount":60.0,"currency":"USD","status":"SETTLED","processedAt":"2024-02-18T11:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-19","orderId":"o-19","method":"card","amount":88.8,"currency":"USD","status":"REFUNDED","processedAt":"2024-02-19T12:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-20","orderId":"o-20","method":"card","amount":33.3,"currency":"USD","status":"SETTLED","processedAt":"2024-02-20T13:00:00Z"}
+---SAMPLE---
+Note ```json
+{"paymentId":"p-21","orderId":"o-21","method":"card","amount":14.0,"currency":"USD","status":"SETTLED","processedAt":"2024-02-21T14:00:00Z"}
+```
+---SAMPLE---
+{"paymentId":"p-22","orderId":"o-22","method":"paypal","amount":21.0,"currency":"EUR","status":"PENDING","processedAt":"2024-02-22T15:00:00Z" "extra":"yes"}
+---SAMPLE---
+{"paymentId":"p-23","orderId":"o-23","method":"card","amount":19.5,"currency":"USD","status":"SETTLED","processedAt":"2024-02-23T16:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-24","orderId":"o-24","method":"card","amount":400.0,"currency":"USD","status":"SETTLED","processedAt":"2024-02-24T17:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-25","orderId":"o-25","method":"bank","amount":52.2,"currency":"USD","status":"PENDING","processedAt":"2024-02-25T18:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-26","orderId":"o-26","method":"card","amount":75.5,"currency":"USD","status":"SETTLED","processedAt":"2024-02-26T19:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-27","orderId":"o-27","method":"apple_pay","amount":93.0,"currency":"USD","status":"SETTLED","processedAt":"2024-02-27T20:00:00Z" missing_brace
+---SAMPLE---
+{"paymentId":"p-28","orderId":"o-28","method":"card","amount":12.4,"currency":"USD","status":"SETTLED","processedAt":"2024-02-28T21:00:00Z"}
+---SAMPLE---
+{"paymentId":"p-29","orderId":"o-29","method":"cash","amount":8.8,"currency":"USD","status":"SETTLED","processedAt":"2024-03-01T22:00:00Z",,
+---SAMPLE---
+Text before {'paymentId':'p-30','orderId':'o-30','method':'card','amount':55.0,'currency':'USD','status':'SETTLED','processedAt':'2024-03-02T23:00:00Z'

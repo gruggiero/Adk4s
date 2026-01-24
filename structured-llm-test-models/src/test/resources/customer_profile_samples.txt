@@ -1,0 +1,59 @@
+{"id":"c-1","name":"Ada Lovelace""email":"ada@math.org","age":36,"active":true,"tags":["vip","math"]}
+---SAMPLE---
+{"id":"c-2","name":"Grace Hopper","active":false,"tags":["navy"],"agge":45}
+---SAMPLE---
+{"id":"c-3","name":"Alan Turing","email":"alan@bletchley.uk","age":41,"active":true,"tags":[}
+---SAMPLE---
+{"id":"c-4","name":"Katherine Johnson","active":true,"age":49,"tags":["nasa","orbital"],"note":"trailing",,}
+---SAMPLE---
+text {"id":"c-5","name":"Tim Berners-Lee","email":"tim@cern.ch","age":38,"active":true"
+---SAMPLE---
+{"id":"c-6","name":"Barbara Liskov","age":52,"active":false,"tags":["oop"]}
+---SAMPLE---
+{"id":"c-7","name":"Edsger Dijkstra","age":"55","active":false,"tags":["algorithms","proofs"],"extra":}
+---SAMPLE---
+{"id":"c-8","name":"Donald Knuth","email":"knuth@stanford.edu","age":50,"active":true,"tags":["tex"],"actve":ture}
+---SAMPLE---
+{'id':'c-9','name':'Linus Torvalds','age':33,'active':true,'tags':['linux']}
+---SAMPLE---
+{"id":"c-10","name":"Margaret Hamilton","email":"margaret@nasa.gov","age":40,"active":true,"tags":["apollo"]}
+---SAMPLE---
+{"id":"c-11","name":"Ada Lovelace","age":36,"active":true,"tags":["vip"],"email":"ada@math.org" trailing}
+---SAMPLE---
+{"id":"c-12","name":"Grace Hopper","age":44,"active":false,"tags":[],"email":"grace@navy.mil",}
+---SAMPLE---
+{"id":"c-13","name":"Alan Turing","age":40,"active":true,"tags":["crypto"],"email":"alan@bletchley.uk"}
+---SAMPLE---
+{"id":"c-14","name":"Katherine Johnson","age":50,"active":true,"tags":["nasa","traj"]}
+---SAMPLE---
+{"id":"c-15","name":"Tim Berners-Lee","age":39,"active":true,"tags":["www"]}
+---SAMPLE---
+{"id":"c-16","name":"Barbara Liskov","age":53,"active":false,"tags":["oop","lsp"]}
+---SAMPLE---
+{"id":"c-17","name":"Edsger Dijkstra","age":56,"active":false,"tags":["graph"]}
+---SAMPLE---
+{"id":"c-18","name":"Donald Knuth","age":51,"active":true,"tags":["tao"]}
+---SAMPLE---
+{"id":"c-19","name":"Linus Torvalds","age":34,"active":true,"tags":["kernel"]}
+---SAMPLE---
+{"id":"c-20","name":"Margaret Hamilton","age":41,"active":true,"tags":["apollo","software"]}
+---SAMPLE---
+{"id":"c-21","name":"Guido van Rossum","age":45,"active":true,"tags":["python"]}
+---SAMPLE---
+{"id":"c-22","name":"Bjarne Stroustrup","age":48,"active":true,"tags":["c++"]}
+---SAMPLE---
+{"id":"c-23","name":"James Gosling","age":47,"active":true,"tags":["java"]}
+---SAMPLE---
+{"id":"c-24","name":"Ken Thompson","age":55,"active":false,"tags":["unix"]}
+---SAMPLE---
+{"id":"c-25","name":"Dennis Ritchie","age":58,"active":false,"tags":["c"]}
+---SAMPLE---
+{"id":"c-26","name":"Brendan Eich","age":40,"active":true,"tags":["js"]}
+---SAMPLE---
+{"id":"c-27","name":"Yukihiro Matsumoto","age":42,"active":true,"tags":["ruby"]}
+---SAMPLE---
+{"id":"c-28","name":"James Clark","age":46,"active":true,"tags":["xml"]}
+---SAMPLE---
+{"id":"c-29","name":"John McCarthy","age":60,"active":false,"tags":["lisp"]}
+---SAMPLE---
+{"id":"c-30","name":"Niklaus Wirth","age":59,"active":false,"tags":["pascal"],"email":"nw@ethz.ch"}

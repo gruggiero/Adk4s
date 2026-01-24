@@ -1,0 +1,63 @@
+Stock line: {"sku":"inv-1","name":"Bolt","quantity":100,"location":"A1","reorderLevel":20,"price":0.10;"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-2","name":"Nut","quantity":200,"location":"A2","reorderLevel":30,"price":0.08,"currency":"USD","location":["A2"]}
+---SAMPLE---
+{"sku":"inv-3","name":"Washer","quantity":50,"location":"A3","reorderLevel":15,"price":0.05,"currency":"USD",}
+---SAMPLE---
+text {'sku':'inv-4','name':'Screw','quantity':500,'location':'B1','reorderLevel':50,'price':0.12,'currency':'USD'}
+---SAMPLE---
+{"sku":"inv-5","name":"Bracket","quantity":10,"location":"B2","reorderLevel":5,"price":1.50,"currency":"USD","sku":"inv-5"}
+---SAMPLE---
+// inline comment
+---SAMPLE---
+{"sku":"inv-6","name":"Clamp","quantity":0,"location":"B3","reorderLevel":10,"price":2.00,"currency":"USD","name":["Clamp"]}
+---SAMPLE---
+{"sku":"inv-7","name":"Pipe","quantity":75,"location":"C1","reorderLevel":20,"price":5.00,"currency":"USD";}
+---SAMPLE---
+{"sku":"inv-8","name":"Valve","quantity":12,"location":"C2","reorderLevel":8,"price":9.99,"currency":"USD","reorderLevel":"8"}
+---SAMPLE---
+Partial {"sku":"inv-9","name":"Filter",
+---SAMPLE---
+{"sku":"inv-10","name":"Hose","quantity":40,"location":"C3","reorderLevel":12,"price":3.50,"currency":"USD"}
+---SAMPLE---
+```json
+{"sku":"inv-11","name":"Cable","quantity":300,"location":"D1","reorderLevel":60,"price":0.80,"currency":"USD"}
+```
+---SAMPLE---
+{"sku":"inv-12","name":"Connector","quantity":500,"location":"D2","reorderLevel":100,"price":0.25,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-13","name":"Adapter","quantity":20,"location":"D3","reorderLevel":10,"price":1.20,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-14","name":"Sensor","quantity":6,"location":"E1","reorderLevel":5,"price":14.00,"currency":"USD"}
+---SAMPLE---
+lead {'sku':'inv-15','name':'Relay','quantity':18,'location':'E2','reorderLevel':7,'price':6.50,'currency':'USD'} text
+---SAMPLE---
+{"sku":"inv-16","name":"Fuse","quantity":150,"location":"E3","reorderLevel":40,"price":0.15,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-17","name":"Switch","quantity":33,"location":"F1","reorderLevel":10,"price":2.75,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-18","name":"Plug","quantity":44,"location":"F2","reorderLevel":12,"price":1.10,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-19","name":"Socket","quantity":55,"location":"F3","reorderLevel":15,"price":1.30,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-20","name":"Tape","quantity":90,"location":"G1","reorderLevel":20,"price":0.90,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-21","name":"Seal","quantity":23,"location":"G2","reorderLevel":8,"price":0.70,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-22","name":"Gasket","quantity":11,"location":"G3","reorderLevel":5,"price":1.80,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-23","name":"Spring","quantity":250,"location":"H1","reorderLevel":50,"price":0.20,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-24","name":"Bearing","quantity":14,"location":"H2","reorderLevel":6,"price":4.40,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-25","name":"Belt","quantity":9,"location":"H3","reorderLevel":4,"price":7.00,"currency":"USD"}
+---SAMPLE---
+/* multi */ {"sku":"inv-26","name":"Gear","quantity":5,"location":"I1","reorderLevel":3,"price":12.00,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-27","name":"Chain","quantity":16,"location":"I2","reorderLevel":5,"price":5.60,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-28","name":"Rod","quantity":65,"location":"I3","reorderLevel":18,"price":1.90,"currency":"USD"}
+---SAMPLE---
+{"sku":"inv-29","name":"Plate","quantity":7,"location":"J1","reorderLevel":3,"price":9.00,"currency":"USD"}
+---SAMPLE---
+text before {'sku':'inv-30','name':'Ring','quantity':34,'location':'J2','reorderLevel':9,'price':0.50,'currency':'USD'}

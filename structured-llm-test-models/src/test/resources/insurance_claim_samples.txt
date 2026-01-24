@@ -1,0 +1,63 @@
+Claim text: {"claimId":"cl-1","policyId":"pol-1","claimantName":"Alice","incidentDate":"2024-01-01","claimAmount":1200.5;"currency":"USD","status":"OPEN","description":"water leak"}
+---SAMPLE---
+{"claimId":"cl-2","policyId":"pol-2","claimantName":"Bob","incidentDate":"2024-01-02","claimAmount":5000,"currency":"USD","status":"PENDING","description":["hail damage"]}
+---SAMPLE---
+{"claimId":"cl-3","policyId":"pol-3","claimantName":"Cara","incidentDate":"2024-01-03","claimAmount":300,"currency":"EUR","status":"DENIED","description":"lost bag",}
+---SAMPLE---
+text {'claimId':'cl-4','policyId':'pol-4','claimantName':'Dan','incidentDate':'2024-01-04','claimAmount':0,'currency':'USD','status':'OPEN','description':'attempt'}
+---SAMPLE---
+{"claimId":"cl-5","policyId":"pol-5","claimantName":"Eve","incidentDate":"2024-01-05","claimAmount":15000,"currency":"USD","status":"APPROVED","description":"fire","unknown":true}
+---SAMPLE---
+// comment inline
+---SAMPLE---
+{"claimId":"cl-6","policyId":"pol-6","claimantName":"Finn","incidentDate":"2024-01-06","claimAmount":99.99,"currency":"USD","status":"PENDING","description":null}
+---SAMPLE---
+{"claimId":"cl-7","policyId":"pol-7","claimantName":"Gina","incidentDate":"2024-01-07","claimAmount":210.0,"currency":"USD","status":"OPEN","description":{"txt":"stolen bike"}}
+---SAMPLE---
+{"claimId":"cl-8","policyId":"pol-8","claimantName":"Hank","incidentDate":"2024-01-08","claimAmount":12.0,"currency":"USD","status":"APPROVED","description":"glasses","claimAmount":12.0}
+---SAMPLE---
+Partial {"claimId":"cl-9","policyId":"pol-9",
+---SAMPLE---
+{"claimId":"cl-10","policyId":"pol-10","claimantName":"Jack","incidentDate":"2024-01-10","claimAmount":75.25,"currency":"USD","status":"OPEN","description":"dent"}
+---SAMPLE---
+```json
+{"claimId":"cl-11","policyId":"pol-11","claimantName":"Kim","incidentDate":"2024-01-11","claimAmount":5.0,"currency":"USD","status":"APPROVED","description":"scratch"}
+```
+---SAMPLE---
+{"claimId":"cl-12","policyId":"pol-12","claimantName":"Leo","incidentDate":"2024-01-12","claimAmount":8.99,"currency":"EUR","status":"PENDING","description":"wallet" "extra":"x"}
+---SAMPLE---
+{"claimId":"cl-13","policyId":"pol-13","claimantName":"Mia","incidentDate":"2024-01-13","claimAmount":44.0,"currency":"USD","status":"DENIED"}
+---SAMPLE---
+{"claimId":"cl-14","policyId":"pol-14","claimantName":"Ned","incidentDate":"2024-01-14","claimAmount":66.6,"currency":"USD","status":"OPEN","description":"wind"}
+---SAMPLE---
+lead {'claimId':'cl-15','policyId':'pol-15','claimantName':'Olga','incidentDate':'2024-01-15','claimAmount':17.5,'currency':'USD','status':'PENDING','description':'spill'} text
+---SAMPLE---
+{"claimId":"cl-16","policyId":"pol-16","claimantName":"Pia","incidentDate":"2024-01-16","claimAmount":199.0,"currency":"USD","status":"APPROVED","description":"roof","claimantName":["Pia"]}
+---SAMPLE---
+{"claimId":"cl-17","policyId":"pol-17","claimantName":"Quinn","incidentDate":"2024-01-17","claimAmount":45.0,"currency":"USD","status":"OPEN","description":"lost keys",}
+---SAMPLE---
+{"claimId":"cl-18","policyId":"pol-18","claimantName":"Raj","incidentDate":"2024-01-18","claimAmount":60.0,"currency":"USD","status":"OPEN","description":"dog bite","policyId":null}
+---SAMPLE---
+{"claimId":"cl-19","policyId":"pol-19","claimantName":"Sue","incidentDate":"2024-01-19","claimAmount":88.8,"currency":"USD","status":"APPROVED","description":"cracked screen"}
+---SAMPLE---
+{"claimId":"cl-20","policyId":"pol-20","claimantName":"Tom","incidentDate":"2024-01-20","claimAmount":33.3,"currency":"USD","status":"OPEN","description":"bike tire"}
+---SAMPLE---
+{"claimId":"cl-21","policyId":"pol-21","claimantName":"Uma","incidentDate":"2024-01-21","claimAmount":14.0,"currency":"USD","status":"PENDING","description":["broken vase"]}
+---SAMPLE---
+{"claimId":"cl-22","policyId":"pol-22","claimantName":"Vic","incidentDate":"2024-01-22","claimAmount":21.0,"currency":"EUR","status":"DENIED","description":"late report"}
+---SAMPLE---
+{"claimId":"cl-23","policyId":"pol-23","claimantName":"Will","incidentDate":"2024-01-23","claimAmount":19.5,"currency":"USD","status":"OPEN","description":"door"}
+---SAMPLE---
+{"claimId":"cl-24","policyId":"pol-24","claimantName":"Xena","incidentDate":"2024-01-24","claimAmount":400.0,"currency":"USD","status":"APPROVED","description":"flood","currency":"USD"}
+---SAMPLE---
+{"claimId":"cl-25","policyId":"pol-25","claimantName":"Yara","incidentDate":"2024-01-25","claimAmount":52.2,"currency":"USD","status":"OPEN","description":"heater"}
+---SAMPLE---
+{"claimId":"cl-26","policyId":"pol-26","claimantName":"Zed","incidentDate":"2024-01-26","claimAmount":75.5,"currency":"USD","status":"OPEN"}
+---SAMPLE---
+{"claimId":"cl-27","policyId":"pol-27","claimantName":"Ava","incidentDate":"2024-01-27","claimAmount":93.0,"currency":"USD","status":"PENDING","description":"fence"}
+---SAMPLE---
+{"claimId":"cl-28","policyId":"pol-28","claimantName":"Ben","incidentDate":"2024-01-28","claimAmount":12.4,"currency":"USD","status":"OPEN","description":"mirror";}
+---SAMPLE---
+{"claimId":"cl-29","policyId":"pol-29","claimantName":"Cleo","incidentDate":"2024-01-29","claimAmount":8.8,"currency":"USD","status":"DENIED","description":"wear","incidentDate":["2024-01-29"]}
+---SAMPLE---
+text before {'claimId':'cl-30','policyId':'pol-30','claimantName':'Duke','incidentDate':'2024-01-30','claimAmount':55.0,'currency':'USD','status':'OPEN','description':'scratch'}

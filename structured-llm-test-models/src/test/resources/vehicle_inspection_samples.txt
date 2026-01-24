@@ -1,0 +1,63 @@
+Inspection note: {"inspectionId":"vi-1","vin":"VIN123","date":"2024-01-01","mileage":12000,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-2","vin":"VIN124","date":"2024-01-02","mileage":22000,"issuesFound":"brake pads worn","status":"FAILED"}
+---SAMPLE---
+{"inspectionId":"vi-3","vin":"VIN125","date":"2024-01-03","mileage":5000,"issuesFound":"","status":"PENDING"}
+---SAMPLE---
+text {'inspectionId':'vi-4','vin':'VIN126','date':'2024-01-04','mileage':30000,'issuesFound':'oil leak','status':'FAILED'}
+---SAMPLE---
+{"inspectionId":"vi-5","vin":"VIN127","date":"2024-01-05","mileage":45000,"issuesFound":"rust","status":"CONDITIONAL"}
+---SAMPLE---
+// inline
+---SAMPLE---
+{"inspectionId":"vi-6","vin":"VIN128","date":"2024-01-06","mileage":15000,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-7","vin":"VIN129","date":"2024-01-07","mileage":8000,"issuesFound":"light out","status":"FAILED"}
+---SAMPLE---
+Partial {"inspectionId":"vi-8","vin":"VIN130",
+---SAMPLE---
+{"inspectionId":"vi-9","vin":"VIN131","date":"2024-01-09","mileage":1200,"issuesFound":"","status":"PENDING"}
+---SAMPLE---
+```json
+{"inspectionId":"vi-10","vin":"VIN132","date":"2024-01-10","mileage":64000,"issuesFound":"tire wear","status":"FAILED"}
+```
+---SAMPLE---
+{"inspectionId":"vi-11","vin":"VIN133","date":"2024-01-11","mileage":23000,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-12","vin":"VIN134","date":"2024-01-12","mileage":51000,"issuesFound":"suspension noise","status":"FAILED"}
+---SAMPLE---
+{"inspectionId":"vi-13","vin":"VIN135","date":"2024-01-13","mileage":17000,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+lead {'inspectionId':'vi-14','vin':'VIN136','date':'2024-01-14','mileage':27000,'issuesFound':'minor dent','status':'CONDITIONAL'} text
+---SAMPLE---
+{"inspectionId":"vi-15","vin":"VIN137","date":"2024-01-15","mileage":9000,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-16","vin":"VIN138","date":"2024-01-16","mileage":18000,"issuesFound":"exhaust leak","status":"FAILED"}
+---SAMPLE---
+{"inspectionId":"vi-17","vin":"VIN139","date":"2024-01-17","mileage":34000,"issuesFound":"","status":"PENDING"}
+---SAMPLE---
+{"inspectionId":"vi-18","vin":"VIN140","date":"2024-01-18","mileage":41000,"issuesFound":"brake fluid low","status":"FAILED"}
+---SAMPLE---
+{"inspectionId":"vi-19","vin":"VIN141","date":"2024-01-19","mileage":26000,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-20","vin":"VIN142","date":"2024-01-20","mileage":60000,"issuesFound":"check engine light","status":"FAILED"}
+---SAMPLE---
+{"inspectionId":"vi-21","vin":"VIN143","date":"2024-01-21","mileage":2000,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-22","vin":"VIN144","date":"2024-01-22","mileage":72000,"issuesFound":"frame rust","status":"FAILED"}
+---SAMPLE---
+{"inspectionId":"vi-23","vin":"VIN145","date":"2024-01-23","mileage":33000,"issuesFound":"","status":"PENDING"}
+---SAMPLE---
+/* multi */ {"inspectionId":"vi-24","vin":"VIN146","date":"2024-01-24","mileage":14000,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-25","vin":"VIN147","date":"2024-01-25","mileage":5100,"issuesFound":"window crack","status":"CONDITIONAL"}
+---SAMPLE---
+{"inspectionId":"vi-26","vin":"VIN148","date":"2024-01-26","mileage":8700,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-27","vin":"VIN149","date":"2024-01-27","mileage":19000,"issuesFound":"oil leak","status":"FAILED"}
+---SAMPLE---
+{"inspectionId":"vi-28","vin":"VIN150","date":"2024-01-28","mileage":4500,"issuesFound":"none","status":"PASSED"}
+---SAMPLE---
+{"inspectionId":"vi-29","vin":"VIN151","date":"2024-01-29","mileage":37000,"issuesFound":"brake pads","status":"FAILED"}
+---SAMPLE---
+text before {'inspectionId':'vi-30','vin':'VIN152','date':'2024-01-30','mileage':28000,'issuesFound':'alignment','status':'CONDITIONAL'}

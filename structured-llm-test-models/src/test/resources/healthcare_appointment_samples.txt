@@ -1,0 +1,63 @@
+Appt note: {"appointmentId":"appt-1","patient":{"name":"Alice","dob":"1980-01-01","email":"alice@ex.com"},"doctorName":"Dr. Who","department";"Cardiology","scheduledAt":"2024-02-01T10:00:00Z","status":"SCHEDULED","notes":"bring reports"}
+---SAMPLE---
+{"appointmentId":"appt-2","patient":{"name":"Bob","dob":"1975-05-05","email":"bob@ex.com"},"doctorName":"Dr. House","department":"Diagnostics","scheduledAt":"2024-02-02T11:00:00Z","status":"CONFIRMED","notes":""}
+---SAMPLE---
+{"appointmentId":"appt-3","patient":{"name":"Cara","dob":"1990-03-03","email":"cara@ex.com"},"doctorName":"Dr. Gray","department":"Oncology","scheduledAt":"2024-02-03T12:00:00Z","status":"CANCELLED","notes":["patient request"]}
+---SAMPLE---
+text {'appointmentId':'appt-4','patient':{'name':'Dan','dob':'1988-08-08','email':'dan@ex.com'},'doctorName':'Dr. Cox','department':'ER','scheduledAt':'2024-02-04T09:00:00Z','status':'SCHEDULED','notes':'fasting'}
+---SAMPLE---
+{"appointmentId":"appt-5","patient":{"name":"Eve","dob":"1970-07-07","email":"eve@ex.com"},"doctorName":"Dr. Smith","department":"Pediatrics","scheduledAt":"2024-02-05T15:00:00Z","status":"CONFIRMED";"notes":"bring child"}
+---SAMPLE---
+// inline comment
+---SAMPLE---
+{"appointmentId":"appt-6","patient":{"name":"Finn","dob":"1995-09-09","email":"finn@ex.com"},"doctorName":"Dr. Lee","department":"Derm","scheduledAt":"2024-02-06T08:30:00Z","status":"PENDING","notes":{"txt":"rash"}}
+---SAMPLE---
+{"appointmentId":"appt-7","patient":{"name":"Gina","dob":"1982-02-02","email":"gina@ex.com"},"doctorName":"Dr. Fox","department":"ENT","scheduledAt":"2024-02-07T14:00:00Z","status":"CONFIRMED","notes":"hearing test",}
+---SAMPLE---
+{"appointmentId":"appt-8","patient":{"name":"Hank","dob":"1965-04-04","email":"hank@ex.com"},"doctorName":"Dr. Ray","department":"Neuro","scheduledAt":"2024-02-08T13:00:00Z","status":"RESCHEDULED","notes":"migraine"} trailing
+---SAMPLE---
+Partial {"appointmentId":"appt-9","patient":{"name":"Ivy",
+---SAMPLE---
+{"appointmentId":"appt-10","patient":{"name":"Jack","dob":"1979-11-11","email":"jack@ex.com"},"doctorName":"Dr. Blue","department":"Ortho","scheduledAt":"2024-02-10T16:00:00Z","status":"SCHEDULED","notes":"knee pain","patient":["Jack"]}
+---SAMPLE---
+```json
+{"appointmentId":"appt-11","patient":{"name":"Kim","dob":"1992-12-12","email":"kim@ex.com"},"doctorName":"Dr. White","department":"GI","scheduledAt":"2024-02-11T10:30:00Z","status":"CONFIRMED","notes":"fast 8h"}
+```
+---SAMPLE---
+{"appointmentId":"appt-12","patient":{"name":"Leo","dob":"1987-06-06","email":"leo@ex.com"},"doctorName":"Dr. Green","department":"Pulmonary","scheduledAt":"2024-02-12T09:15:00Z","status":"CHECKIN","notes":"asthma"}
+---SAMPLE---
+{"appointmentId":"appt-13","patient":{"name":"Mia","dob":"1991-10-10","email":"mia@ex.com"},"doctorName":"Dr. Brown","department":"OBGYN","scheduledAt":"2024-02-13T11:45:00Z","status":"CONFIRMED","notes":"12w"}
+---SAMPLE---
+{"appointmentId":"appt-14","patient":{"name":"Ned","dob":"1960-01-15","email":"ned@ex.com"},"doctorName":"Dr. Black","department":"Urology","scheduledAt":"2024-02-14T12:00:00Z","status":"CONFIRMED","notes":"PSA"}
+---SAMPLE---
+lead {'appointmentId':'appt-15','patient':{'name':'Olga','dob':'1984-04-14','email':'olga@ex.com'},'doctorName':'Dr. Yang','department':'Endo','scheduledAt':'2024-02-15T07:45:00Z','status':'PENDING','notes':'thyroid'} text
+---SAMPLE---
+{"appointmentId":"appt-16","patient":{"name":"Pia","dob":"1993-03-23","email":"pia@ex.com"},"doctorName":"Dr. Zee","department":"Allergy","scheduledAt":"2024-02-16T17:00:00Z","status":"CONFIRMED","notes":"pollen"}
+---SAMPLE---
+{"appointmentId":"appt-17","patient":{"name":"Quinn","dob":"1989-09-19","email":"quinn@ex.com"},"doctorName":"Dr. Air","department":"Resp","scheduledAt":"2024-02-17T18:00:00Z","status":"RESCHEDULED","notes":"cough"}
+---SAMPLE---
+{"appointmentId":"appt-18","patient":{"name":"Raj","dob":"1978-08-28","email":"raj@ex.com"},"doctorName":"Dr. Sun","department":"Derm","scheduledAt":"2024-02-18T19:00:00Z","status":"CONFIRMED","notes":"eczema"}
+---SAMPLE---
+{"appointmentId":"appt-19","patient":{"name":"Sue","dob":"1986-06-26","email":"sue@ex.com"},"doctorName":"Dr. Moon","department":"Psych","scheduledAt":"2024-02-19T20:00:00Z","status":"CONFIRMED","notes":"anxiety"}
+---SAMPLE---
+{"appointmentId":"appt-20","patient":{"name":"Tom","dob":"1990-05-05","email":"tom@ex.com"},"doctorName":"Dr. Star","department":"Neuro","scheduledAt":"2024-02-20T21:00:00Z","status":"CANCELLED","notes":"travel"}
+---SAMPLE---
+{"appointmentId":"appt-21","patient":{"name":"Uma","dob":"1985-02-18","email":"uma@ex.com"},"doctorName":"Dr. Wave","department":"Cardio","scheduledAt":"2024-02-21T22:00:00Z","status":"SCHEDULED","notes":"ekg"}
+---SAMPLE---
+{"appointmentId":"appt-22","patient":{"name":"Vic","dob":"1977-07-07","email":"vic@ex.com"},"doctorName":"Dr. Ridge","department":"Oncology","scheduledAt":"2024-02-22T08:00:00Z","status":"CONFIRMED","notes":"chemo"}
+---SAMPLE---
+{"appointmentId":"appt-23","patient":{"name":"Will","dob":"1968-03-30","email":"will@ex.com"},"doctorName":"Dr. Snow","department":"Endo","scheduledAt":"2024-02-23T09:00:00Z","status":"PENDING","notes":"A1C"}
+---SAMPLE---
+{"appointmentId":"appt-24","patient":{"name":"Xena","dob":"1994-11-11","email":"xena@ex.com"},"doctorName":"Dr. Lake","department":"Rheum","scheduledAt":"2024-02-24T10:00:00Z","status":"CONFIRMED","notes":"joint pain"}
+---SAMPLE---
+{"appointmentId":"appt-25","patient":{"name":"Yara","dob":"1996-12-12","email":"yara@ex.com"},"doctorName":"Dr. Cliff","department":"GI","scheduledAt":"2024-02-25T11:00:00Z","status":"CONFIRMED","notes":"celiac"}
+---SAMPLE---
+{"appointmentId":"appt-26","patient":{"name":"Zed","dob":"1983-04-04","email":"zed@ex.com"},"doctorName":"Dr. Gale","department":"Pulm","scheduledAt":"2024-02-26T12:00:00Z","status":"CONFIRMED","notes":"sleep study"}
+---SAMPLE---
+/* multi */ {"appointmentId":"appt-27","patient":{"name":"Ana","dob":"1998-08-08","email":"ana@ex.com"},"doctorName":"Dr. Peak","department":"Nephro","scheduledAt":"2024-02-27T13:00:00Z","status":"CONFIRMED","notes":"kidney"}
+---SAMPLE---
+{"appointmentId":"appt-28","patient":{"name":"Ben","dob":"1974-01-21","email":"ben@ex.com"},"doctorName":"Dr. Creek","department":"Ortho","scheduledAt":"2024-02-28T14:00:00Z","status":"PENDING","notes":"shoulder"}
+---SAMPLE---
+{"appointmentId":"appt-29","patient":{"name":"Cleo","dob":"1971-09-09","email":"cleo@ex.com"},"doctorName":"Dr. Vale","department":"Derm","scheduledAt":"2024-03-01T15:00:00Z","status":"CONFIRMED","notes":"check mole"}
+---SAMPLE---
+text before {'appointmentId':'appt-30','patient':{'name':'Duke','dob':'1981-02-02','email':'duke@ex.com'},'doctorName':'Dr. Cloud','department':'Cardio','scheduledAt':'2024-03-02T16:00:00Z','status':'SCHEDULED','notes':'bp followup'}

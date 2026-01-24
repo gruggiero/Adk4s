@@ -1,0 +1,63 @@
+Task line: {"taskId":"task-1","title":"Design schema","assignee":"alice","status":"OPEN","priority":"HIGH","dueDate":"2024-02-01","tags":["backend","schema"]}
+---SAMPLE---
+{"taskId":"task-2","title":"Implement parser","assignee":"bob","status":"IN_PROGRESS","priority":"HIGH","dueDate":"2024-02-05","tags":["parser"]}
+---SAMPLE---
+{"taskId":"task-3","title":"Write docs","assignee":"cara","status":"OPEN","priority":"MEDIUM","dueDate":"2024-02-10","tags":[]}
+---SAMPLE---
+text {'taskId':'task-4','title':'Add metrics','assignee':'dan','status':'OPEN','priority':'LOW','dueDate':'2024-02-12','tags':['ops']}
+---SAMPLE---
+{"taskId":"task-5","title":"Refactor","assignee":"eve","status":"BLOCKED","priority":"HIGH","dueDate":"2024-02-15","tags":["techdebt"]}
+---SAMPLE---
+// inline comment
+---SAMPLE---
+{"taskId":"task-6","title":"QA tests","assignee":"finn","status":"OPEN","priority":"MEDIUM","dueDate":"2024-02-18","tags":["qa"]}
+---SAMPLE---
+{"taskId":"task-7","title":"UI polish","assignee":"gina","status":"IN_PROGRESS","priority":"LOW","dueDate":"2024-02-20","tags":["ui"]}
+---SAMPLE---
+{"taskId":"task-8","title":"API contract","assignee":"hank","status":"OPEN","priority":"HIGH","dueDate":"2024-02-22","tags":["api"]}
+---SAMPLE---
+Partial {"taskId":"task-9","title":"Load test",
+---SAMPLE---
+{"taskId":"task-10","title":"Prod deploy","assignee":"jack","status":"OPEN","priority":"HIGH","dueDate":"2024-02-25","tags":["release"]}
+---SAMPLE---
+```json
+{"taskId":"task-11","title":"Incident retro","assignee":"kim","status":"OPEN","priority":"MEDIUM","dueDate":"2024-02-27","tags":["postmortem"]}
+```
+---SAMPLE---
+{"taskId":"task-12","title":"Accessibility","assignee":"leo","status":"OPEN","priority":"MEDIUM","dueDate":"2024-03-01","tags":["a11y"]}
+---SAMPLE---
+{"taskId":"task-13","title":"Security review","assignee":"mia","status":"OPEN","priority":"HIGH","dueDate":"2024-03-02","tags":["security"]}
+---SAMPLE---
+{"taskId":"task-14","title":"Analytics","assignee":"ned","status":"IN_PROGRESS","priority":"MEDIUM","dueDate":"2024-03-03","tags":["data"]}
+---SAMPLE---
+lead {'taskId':'task-15','title':'Changelog','assignee':'olga','status':'OPEN','priority':'LOW','dueDate':'2024-03-04','tags':['docs']} text
+---SAMPLE---
+{"taskId":"task-16","title":"Backup plan","assignee":"pia","status":"OPEN","priority":"HIGH","dueDate":"2024-03-05","tags":["ops"]}
+---SAMPLE---
+{"taskId":"task-17","title":"Perf audit","assignee":"quinn","status":"OPEN","priority":"HIGH","dueDate":"2024-03-06","tags":["perf"]}
+---SAMPLE---
+{"taskId":"task-18","title":"Legal check","assignee":"raj","status":"OPEN","priority":"MEDIUM","dueDate":"2024-03-07","tags":["legal"]}
+---SAMPLE---
+{"taskId":"task-19","title":"Content update","assignee":"sue","status":"OPEN","priority":"LOW","dueDate":"2024-03-08","tags":["content"]}
+---SAMPLE---
+{"taskId":"task-20","title":"Feature flag","assignee":"tom","status":"IN_PROGRESS","priority":"MEDIUM","dueDate":"2024-03-09","tags":["feature"]}
+---SAMPLE---
+{"taskId":"task-21","title":"Data export","assignee":"uma","status":"OPEN","priority":"MEDIUM","dueDate":"2024-03-10","tags":["data"]}
+---SAMPLE---
+{"taskId":"task-22","title":"Cache tune","assignee":"vic","status":"OPEN","priority":"HIGH","dueDate":"2024-03-11","tags":["cache"]}
+---SAMPLE---
+{"taskId":"task-23","title":"Search relevance","assignee":"will","status":"OPEN","priority":"HIGH","dueDate":"2024-03-12","tags":["search"]}
+---SAMPLE---
+{"taskId":"task-24","title":"On-call prep","assignee":"xena","status":"OPEN","priority":"LOW","dueDate":"2024-03-13","tags":["oncall"]}
+---SAMPLE---
+{"taskId":"task-25","title":"Release notes","assignee":"yara","status":"OPEN","priority":"MEDIUM","dueDate":"2024-03-14","tags":["release"]}
+---SAMPLE---
+{"taskId":"task-26","title":"LLM evals","assignee":"zed","status":"OPEN","priority":"HIGH","dueDate":"2024-03-15","tags":["llm"]}
+---SAMPLE---
+{"taskId":"task-27","title":"Prompt tune","assignee":"ada","status":"OPEN","priority":"HIGH","dueDate":"2024-03-16","tags":["prompt"]}
+---SAMPLE---
+{"taskId":"task-28","title":"Data contract","assignee":"bert","status":"OPEN","priority":"MEDIUM","dueDate":"2024-03-17","tags":["contract"]}
+---SAMPLE---
+{"taskId":"task-29","title":"Playbook","assignee":"clio","status":"OPEN","priority":"LOW","dueDate":"2024-03-18","tags":["ops"]}
+---SAMPLE---
+text before {'taskId':'task-30','title':'Perf test','assignee':'drew','status':'OPEN','priority':'HIGH','dueDate':'2024-03-19','tags':['perf','load']}

@@ -1,0 +1,63 @@
+Member data: {"memberId":"m-1","programName":"Stars","points":1200;"tier":"Gold","benefits":["shipping","support"],"expiresAt":"2024-12-31"}
+---SAMPLE---
+{"memberId":"m-2","programName":"Miles","points":5000,"tier":"Platinum","benefits":["lounge","upgrade"],"expiresAt":"2025-03-01","programName":["Miles"]}
+---SAMPLE---
+{"memberId":"m-3","programName":"Rewards","points":200,"tier":"Bronze","benefits":[],"expiresAt":"2024-04-01",}
+---SAMPLE---
+text {'memberId':'m-4','programName':'VIP','points':900,'tier':'Silver','benefits':['support'],'expiresAt':'2024-06-30'}
+---SAMPLE---
+{"memberId":"m-5","programName":"Club","points":1500,"tier":"Gold","benefits":["priority"],"expiresAt":"2024-09-15","tier":null}
+---SAMPLE---
+// comment here
+---SAMPLE---
+{"memberId":"m-6","programName":"Stars","points":50,"tier":"Basic","benefits":[],"expiresAt":"2024-02-28","points":"50"}
+---SAMPLE---
+{"memberId":"m-7","programName":"Miles","points":7000,"tier":"Platinum","benefits":["lounge","bag"],"expiresAt":"2025-05-01";}
+---SAMPLE---
+{"memberId":"m-8","programName":"Rewards","points":0,"tier":"Basic","benefits":[],"expiresAt":"2024-01-31"}
+---SAMPLE---
+Partial {"memberId":"m-9","programName":"VIP","points":333,
+---SAMPLE---
+{"memberId":"m-10","programName":"Club","points":120,"tier":"Basic","benefits":["birthday"],"expiresAt":"2024-07-07"}
+---SAMPLE---
+```json
+{"memberId":"m-11","programName":"Stars","points":2222,"tier":"Gold","benefits":["shipping"],"expiresAt":"2025-01-01"}
+```
+---SAMPLE---
+{"memberId":"m-12","programName":"Miles","points":8080,"tier":"Platinum","benefits":["seat"],"expiresAt":"2025-08-08"}
+---SAMPLE---
+{"memberId":"m-13","programName":"Rewards","points":640,"tier":"Silver","benefits":["gift"],"expiresAt":"2024-10-10"}
+---SAMPLE---
+{"memberId":"m-14","programName":"VIP","points":150,"tier":"Bronze","benefits":[],"expiresAt":"2024-03-03"}
+---SAMPLE---
+lead {'memberId':'m-15','programName':'Club','points':888,'tier':'Gold','benefits':['priority'],'expiresAt':'2024-11-11'} text
+---SAMPLE---
+{"memberId":"m-16","programName":"Stars","points":10,"tier":"Basic","benefits":[],"expiresAt":"2024-02-02"}
+---SAMPLE---
+{"memberId":"m-17","programName":"Miles","points":2500,"tier":"Gold","benefits":["bag"],"expiresAt":"2024-08-01"}
+---SAMPLE---
+{"memberId":"m-18","programName":"Rewards","points":430,"tier":"Silver","benefits":["coupon"],"expiresAt":"2024-05-05"}
+---SAMPLE---
+{"memberId":"m-19","programName":"VIP","points":999,"tier":"Gold","benefits":["concierge"],"expiresAt":"2024-12-01"}
+---SAMPLE---
+{"memberId":"m-20","programName":"Club","points":77,"tier":"Basic","benefits":[],"expiresAt":"2024-04-15"}
+---SAMPLE---
+{"memberId":"m-21","programName":"Stars","points":321,"tier":"Silver","benefits":["support"],"expiresAt":"2024-06-01"}
+---SAMPLE---
+{"memberId":"m-22","programName":"Miles","points":4400,"tier":"Gold","benefits":["upgrade"],"expiresAt":"2025-02-02"}
+---SAMPLE---
+{"memberId":"m-23","programName":"Rewards","points":123,"tier":"Bronze","benefits":[],"expiresAt":"2024-03-12"}
+---SAMPLE---
+{"memberId":"m-24","programName":"VIP","points":222,"tier":"Silver","benefits":["support"],"expiresAt":"2024-07-20"}
+---SAMPLE---
+/* multi */ {"memberId":"m-25","programName":"Club","points":555,"tier":"Gold","benefits":["priority"],"expiresAt":"2024-09-09"}
+---SAMPLE---
+{"memberId":"m-26","programName":"Stars","points":42,"tier":"Basic","benefits":[],"expiresAt":"2024-01-20"}
+---SAMPLE---
+{"memberId":"m-27","programName":"Miles","points":3600,"tier":"Gold","benefits":["bag","seat"],"expiresAt":"2024-11-30"}
+---SAMPLE---
+{"memberId":"m-28","programName":"Rewards","points":87,"tier":"Bronze","benefits":[],"expiresAt":"2024-02-18"}
+---SAMPLE---
+{"memberId":"m-29","programName":"VIP","points":1337,"tier":"Gold","benefits":["concierge","gift"],"expiresAt":"2025-01-15"}
+---SAMPLE---
+text before {'memberId':'m-30','programName':'Club','points':900,'tier':'Gold','benefits':['priority','upgrade'],'expiresAt':'2024-12-12'}

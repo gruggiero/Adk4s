@@ -1,0 +1,63 @@
+Trip info: {"bookingId":"b-1","traveler":{"name":"Alice","email":"alice@example.com"},"destination":"Rome","departureDate":"2024-05-01","returnDate":"2024-05-10","price":1200.5;"currency":"EUR","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-2","traveler":{"name":"Bob","email":"bob@example.com"},"destination":"NYC","departureDate":"2024-06-01","returnDate":"2024-06-07","price":900.0,"currency":"USD","status":"PENDING","traveler":["Bob"]}
+---SAMPLE---
+{"bookingId":"b-3","traveler":{"name":"Cara","email":"cara@example.com"},"destination":"Tokyo","departureDate":"2024-04-15","returnDate":"2024-04-25","price":"2000.0","currency":"USD","status":"TICKETED"}
+---SAMPLE---
+lead {'bookingId':'b-4','traveler':{'name':'Dan','email':'dan@example.com'},'destination':'Paris','departureDate':'2024-03-01','returnDate':'2024-03-08','price':750.0,'currency':'EUR','status':'PENDING'} text
+---SAMPLE---
+{"bookingId":"b-5","traveler":{"name":"Eve","email":"eve@example.com"},"destination":"London","departureDate":"2024-07-01","returnDate":"2024-07-10","price":1100.0,"currency":"GBP","status":"CONFIRMED"}
+---SAMPLE---
+// comment inline
+---SAMPLE---
+{"bookingId":"b-6","traveler":{"name":"Fred","email":"fred@example.com"},"destination":"Sydney","departureDate":"2024-08-01","returnDate":"2024-08-15","price":2500.0,"currency":"AUD","status":"CANCELLED","destination":{}}
+---SAMPLE---
+{"bookingId":"b-7","traveler":{"name":"Gina","email":"gina@example.com"},"destination":"LA","departureDate":"2024-09-01","returnDate":"2024-09-05","price":650.0,"currency":"USD","status":}
+---SAMPLE---
+{"bookingId":"b-8","traveler":{"name":"Hank","email":"hank@example.com"},"destination":"Berlin","departureDate":"2024-05-20","returnDate":"2024-05-27","price":880.0,"currency":"EUR","status":"PENDING"}
+---SAMPLE---
+Partial {"bookingId":"b-9","traveler":{"name":"Ivy"},
+---SAMPLE---
+{"bookingId":"b-10","traveler":{"name":"Jack","email":"jack@example.com"},"destination":"Lisbon","departureDate":"2024-06-10","returnDate":"2024-06-17","price":720.0,"currency":"EUR","status":"CONFIRMED"}
+---SAMPLE---
+```json
+{"bookingId":"b-11","traveler":{"name":"Kim","email":"kim@example.com"},"destination":"Seoul","departureDate":"2024-10-01","returnDate":"2024-10-12","price":1900.0,"currency":"USD","status":"CONFIRMED"}
+```
+---SAMPLE---
+{"bookingId":"b-12","traveler":{"name":"Leo","email":"leo@example.com"},"destination":"Madrid","departureDate":"2024-05-05","returnDate":"2024-05-12","price":800.0,"currency":"EUR","status":"PENDING"}
+---SAMPLE---
+{"bookingId":"b-13","traveler":{"name":"Mia","email":"mia@example.com"},"destination":"Dublin","departureDate":"2024-04-02","returnDate":"2024-04-09","price":560.0,"currency":"EUR","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-14","traveler":{"name":"Ned","email":"ned@example.com"},"destination":"Athens","departureDate":"2024-07-15","returnDate":"2024-07-22","price":950.0,"currency":"EUR","status":"CONFIRMED"}
+---SAMPLE---
+text before {'bookingId':'b-15','traveler':{'name':'Olga'},'destination':'Vienna','departureDate':'2024-05-18','returnDate':'2024-05-24','price':670.0,'currency':'EUR','status':'PENDING'}
+---SAMPLE---
+{"bookingId":"b-16","traveler":{"name":"Pia","email":"pia@example.com"},"destination":"Prague","departureDate":"2024-03-11","returnDate":"2024-03-18","price":540.0,"currency":"EUR","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-17","traveler":{"name":"Quinn","email":"quinn@example.com"},"destination":"Oslo","departureDate":"2024-09-09","returnDate":"2024-09-16","price":1050.0,"currency":"USD","status":"TICKETED"}
+---SAMPLE---
+{"bookingId":"b-18","traveler":{"name":"Raj","email":"raj@example.com"},"destination":"Helsinki","departureDate":"2024-02-20","returnDate":"2024-02-27","price":820.0,"currency":"EUR","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-19","traveler":{"name":"Sue","email":"sue@example.com"},"destination":"Chicago","departureDate":"2024-11-01","returnDate":"2024-11-05","price":710.0,"currency":"USD","status":"PENDING"}
+---SAMPLE---
+{"bookingId":"b-20","traveler":{"name":"Tom","email":"tom@example.com"},"destination":"Reykjavik","departureDate":"2024-12-01","returnDate":"2024-12-08","price":1800.0,"currency":"USD","status":"PENDING"}
+---SAMPLE---
+{"bookingId":"b-21","traveler":{"name":"Uma","email":"uma@example.com"},"destination":"Vancouver","departureDate":"2024-08-12","returnDate":"2024-08-19","price":1300.0,"currency":"CAD","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-22","traveler":{"name":"Vic","email":"vic@example.com"},"destination":"Melbourne","departureDate":"2024-06-20","returnDate":"2024-07-02","price":2400.0,"currency":"AUD","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-23","traveler":{"name":"Will","email":"will@example.com"},"destination":"Bangkok","departureDate":"2024-03-23","returnDate":"2024-03-31","price":980.0,"currency":"USD","status":"PENDING"}
+---SAMPLE---
+{"bookingId":"b-24","traveler":{"name":"Xena","email":"xena@example.com"},"destination":"Cape Town","departureDate":"2024-05-27","returnDate":"2024-06-06","price":2100.0,"currency":"USD","status":"TICKETED"}
+---SAMPLE---
+{"bookingId":"b-25","traveler":{"name":"Yara","email":"yara@example.com"},"destination":"Hanoi","departureDate":"2024-04-14","returnDate":"2024-04-22","price":1150.0,"currency":"USD","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-26","traveler":{"name":"Zed","email":"zed@example.com"},"destination":"Dubai","departureDate":"2024-01-18","returnDate":"2024-01-25","price":1750.0,"currency":"USD","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-27","traveler":{"name":"Ava","email":"ava@example.com"},"destination":"Hong Kong","departureDate":"2024-10-10","returnDate":"2024-10-18","price":1950.0,"currency":"USD","status":"TICKETED"}
+---SAMPLE---
+{"bookingId":"b-28","traveler":{"name":"Ben","email":"ben@example.com"},"destination":"Toronto","departureDate":"2024-02-05","returnDate":"2024-02-12","price":890.0,"currency":"CAD","status":"CONFIRMED"}
+---SAMPLE---
+{"bookingId":"b-29","traveler":{"name":"Cleo","email":"cleo@example.com"},"destination":"Mexico City","departureDate":"2024-06-14","returnDate":"2024-06-21","price":720.0,"currency":"USD","status":"CONFIRMED"}
+---SAMPLE---
+text before {'bookingId':'b-30','traveler':{'name':'Duke'},'destination':'Istanbul','departureDate':'2024-09-01','returnDate':'2024-09-09','price':1111.0,'currency':'USD','status':'PENDING'}
