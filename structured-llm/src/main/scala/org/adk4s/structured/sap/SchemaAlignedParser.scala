@@ -23,13 +23,13 @@ import smithy4s.json.Json
  */
 object SchemaAlignedParser:
 
-  private final case class Candidate(json: String, warnings: List[String])
+  final private case class Candidate(json: String, warnings: List[String])
 
   /**
    * Parse an LLM response into the expected type.
    */
   def parse[A: Schema](response: String): ParseResult[A] =
-    val schema: Schema[A] = Schema[A]
+    val schema: Schema[A]           = Schema[A]
     val candidates: List[Candidate] = buildCandidates(response)
     attemptCandidates[A](candidates, schema.smithySchema)
 
@@ -41,11 +41,9 @@ object SchemaAlignedParser:
     config: ParserConfig
   ): ParseResult[A] =
     val schema: Schema[A] = Schema[A]
-    val trimmed: String = response.trim
-    if config.strictMode then
-      tryParseWithSmithy[A](trimmed, schema.smithySchema, List.empty)
-    else
-      parse[A](response)
+    val trimmed: String   = response.trim
+    if config.strictMode then tryParseWithSmithy[A](trimmed, schema.smithySchema, List.empty)
+    else parse[A](response)
 
   /**
    * Configuration for the parser.
@@ -64,10 +62,12 @@ object SchemaAlignedParser:
       case head :: tail =>
         tryParseWithSmithy[A](head.json, smithySchema, head.warnings) match
           case success @ ParseResult.Success(_, _) => success
-          case ParseResult.Failure(_) => attemptCandidates[A](tail, smithySchema)
+          case ParseResult.Failure(_)              => attemptCandidates[A](tail, smithySchema)
       case Nil =>
         ParseResult.Failure(
-          List(ParseError.JsonSyntaxError("Failed to parse JSON after recovery attempts", None, recoveryAttempted = true))
+          List(
+            ParseError.JsonSyntaxError("Failed to parse JSON after recovery attempts", None, recoveryAttempted = true)
+          )
         )
 
   /**
@@ -94,10 +94,9 @@ object SchemaAlignedParser:
     val aggregatedSegments: List[Candidate] =
       if jsonSegments.lengthCompare(1) > 0 then
         val aggregatedJson: String = s"[${jsonSegments.mkString(",")}]"
-        val message: String = "Aggregated multiple JSON blocks into an array candidate"
+        val message: String        = "Aggregated multiple JSON blocks into an array candidate"
         List(Candidate(aggregatedJson, List(message)))
-      else
-        List.empty
+      else List.empty
 
     val wholeResponseCandidate: List[Candidate] =
       if trimmed.nonEmpty then List(Candidate(trimmed, List.empty)) else List.empty
@@ -105,10 +104,9 @@ object SchemaAlignedParser:
     val asStringCandidate: List[Candidate] =
       if trimmed.nonEmpty && !startsWithJsonDelimiter(trimmed) then
         val jsonString: String = encodeAsJsonString(trimmed)
-        val message: String = "Treated response as JSON string value"
+        val message: String    = "Treated response as JSON string value"
         List(Candidate(jsonString, List(message)))
-      else
-        List.empty
+      else List.empty
 
     val rawCandidates: List[Candidate] =
       fenceCandidates ++ segmentCandidates ++ aggregatedSegments ++ wholeResponseCandidate ++ asStringCandidate
@@ -122,16 +120,15 @@ object SchemaAlignedParser:
     val initial: (List[Candidate], Set[String]) = (List.empty, Set.empty)
     val deduped: (List[Candidate], Set[String]) =
       candidates.foldLeft[(List[Candidate], Set[String])](initial) { case ((acc, seen), cand) =>
-        if seen.contains(cand.json) then
-          (acc, seen)
-        else
-          (acc :+ cand, seen + cand.json)
+        if seen.contains(cand.json) then (acc, seen)
+        else (acc :+ cand, seen + cand.json)
       }
     deduped._1
 
   private def startsWithJsonDelimiter(text: String): Boolean =
     val trimmed: String = text.trim
-    trimmed.nonEmpty && (trimmed.headOption.contains('{') || trimmed.headOption.contains('[') || trimmed.headOption.contains('"'))
+    trimmed.nonEmpty && (trimmed.headOption.contains('{') || trimmed.headOption.contains('[') || trimmed.headOption
+      .contains('"'))
 
   private def encodeAsJsonString(text: String): String =
     val escaped: String = text
@@ -145,7 +142,7 @@ object SchemaAlignedParser:
     s""""$escaped""""
 
   private def cleanAndRecoverCandidate(candidate: Candidate): List[Candidate] =
-    val cleaned: Candidate = applyCleaning(candidate)
+    val cleaned: Candidate              = applyCleaning(candidate)
     val recoveredOpt: Option[Candidate] = recoverStructuralIssues(cleaned)
     recoveredOpt match
       case Some(recovered) => List(cleaned, recovered)
@@ -153,26 +150,26 @@ object SchemaAlignedParser:
 
   private def applyCleaning(candidate: Candidate): Candidate =
     val fencesResult: (String, Boolean) = removeMarkdownFences(candidate.json)
-    val noFences: String = fencesResult._1
-    val fenceRemoved: Boolean = fencesResult._2
+    val noFences: String                = fencesResult._1
+    val fenceRemoved: Boolean           = fencesResult._2
     val warningsAfterFences: List[String] =
       candidate.warnings ++ (if fenceRemoved then List("Removed markdown code fences") else List.empty)
 
     val commentsResult: (String, Boolean) = removeComments(noFences)
-    val noComments: String = commentsResult._1
-    val commentsRemoved: Boolean = commentsResult._2
+    val noComments: String                = commentsResult._1
+    val commentsRemoved: Boolean          = commentsResult._2
     val warningsAfterComments: List[String] =
       warningsAfterFences ++ (if commentsRemoved then List("Removed comments from JSON") else List.empty)
 
     val fixedQuotesResult: (String, Boolean) = fixQuotes(fixLeadingCommas(noComments))
-    val fixedQuotes: String = fixedQuotesResult._1
-    val quotesFixed: Boolean = fixedQuotesResult._2
+    val fixedQuotes: String                  = fixedQuotesResult._1
+    val quotesFixed: Boolean                 = fixedQuotesResult._2
     val warningsAfterQuotes: List[String] =
       warningsAfterComments ++ (if quotesFixed then List("Fixed quote or key issues") else List.empty)
 
     val trailingResult: (String, Boolean) = removeTrailingCommas(fixedQuotes)
-    val noTrailingCommas: String = trailingResult._1
-    val trailingRemoved: Boolean = trailingResult._2
+    val noTrailingCommas: String          = trailingResult._1
+    val trailingRemoved: Boolean          = trailingResult._2
     val warningsAfterTrailing: List[String] =
       warningsAfterQuotes ++ (if trailingRemoved then List("Removed trailing commas") else List.empty)
 
@@ -188,24 +185,24 @@ object SchemaAlignedParser:
     }
 
   private def extractMarkdownCodeBlocks(text: String): List[String] =
-    val fencePattern: Regex = """```(?:json|JSON|smithy|SMITHY)?\s*\n?([\s\S]*?)\n?\s*```""".r
+    val fencePattern: Regex        = """```(?:json|JSON|smithy|SMITHY)?\s*\n?([\s\S]*?)\n?\s*```""".r
     val matches: List[Regex.Match] = fencePattern.findAllMatchIn(text).toList
-    val contents: List[String] = matches.map(_.group(1).trim)
+    val contents: List[String]     = matches.map(_.group(1).trim)
     contents.filter(_.nonEmpty)
 
   private def findJsonSegments(text: String): List[String] =
     val indexed: List[(Char, Int)] = text.zipWithIndex.toList
-    val starts: List[Int] = indexed.collect { case (c, idx) if c == '{' || c == '[' => idx }
+    val starts: List[Int]          = indexed.collect { case (c, idx) if c == '{' || c == '[' => idx }
     starts.flatMap(idx => balancedJsonAt(text, idx))
 
   private def balancedJsonAt(text: String, start: Int): Option[String] =
     if start < 0 || start >= text.length then None
     else
-      val open: Char = text.charAt(start)
-      val close: Char = if open == '{' then '}' else ']'
+      val open: Char                       = text.charAt(start)
+      val close: Char                      = if open == '{' then '}' else ']'
       val maybeBalance: Option[(Int, Int)] = scanForBalance(text, start, open, close)
       maybeBalance.map { case (endIndex, depthAtEnd) =>
-        val base: String = text.substring(start, endIndex + 1)
+        val base: String   = text.substring(start, endIndex + 1)
         val suffix: String = close.toString.repeat(depthAtEnd)
         if depthAtEnd > 0 then base + suffix else base
       }
@@ -230,9 +227,9 @@ object SchemaAlignedParser:
           else (inString, false, depth, false)
 
         val nextInString: Boolean = transition._1
-        val nextEscaped: Boolean = transition._2
-        val nextDepth: Int = transition._3
-        val done: Boolean = transition._4
+        val nextEscaped: Boolean  = transition._2
+        val nextDepth: Int        = transition._3
+        val done: Boolean         = transition._4
 
         if done then Some((index, nextDepth))
         else loop(index + 1, nextDepth, nextInString, nextEscaped)
@@ -247,12 +244,12 @@ object SchemaAlignedParser:
 
   private def removeComments(text: String): (String, Boolean) =
     val singleLinePattern: Regex = """(?<!:)//[^\n]*""".r
-    val strippedSingle: String = singleLinePattern.replaceAllIn(text, "")
-    val singleChanged: Boolean = strippedSingle != text
+    val strippedSingle: String   = singleLinePattern.replaceAllIn(text, "")
+    val singleChanged: Boolean   = strippedSingle != text
 
     val multiLinePattern: Regex = """/\*[\s\S]*?\*/""".r
-    val strippedMulti: String = multiLinePattern.replaceAllIn(strippedSingle, "")
-    val multiChanged: Boolean = strippedMulti != strippedSingle
+    val strippedMulti: String   = multiLinePattern.replaceAllIn(strippedSingle, "")
+    val multiChanged: Boolean   = strippedMulti != strippedSingle
 
     (strippedMulti, singleChanged || multiChanged)
 
@@ -267,17 +264,16 @@ object SchemaAlignedParser:
    */
   private def fixQuotes(text: String): (String, Boolean) =
     val singleQuotePattern: Regex = """'([^']*)'""".r
-    val replacedSingle: String = singleQuotePattern.replaceAllIn(text, "\"$1\"")
-    val singleChanged: Boolean = replacedSingle != text
+    val replacedSingle: String    = singleQuotePattern.replaceAllIn(text, "\"$1\"")
+    val singleChanged: Boolean    = replacedSingle != text
 
     val unquotedKeyPattern: Regex = """(?m)^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:""".r
-    val quotedKeyCheck: Regex = """"[^"]+"\s*:""".r
-    val shouldQuoteKeys: Boolean = unquotedKeyPattern.findFirstIn(replacedSingle).isDefined && !quotedKeyCheck.findFirstIn(replacedSingle).isDefined
+    val quotedKeyCheck: Regex     = """"[^"]+"\s*:""".r
+    val shouldQuoteKeys: Boolean =
+      unquotedKeyPattern.findFirstIn(replacedSingle).isDefined && !quotedKeyCheck.findFirstIn(replacedSingle).isDefined
     val withQuotedKeys: String =
-      if shouldQuoteKeys then
-        unquotedKeyPattern.replaceAllIn(replacedSingle, m => s""""${m.group(1)}":""")
-      else
-        replacedSingle
+      if shouldQuoteKeys then unquotedKeyPattern.replaceAllIn(replacedSingle, m => s""""${m.group(1)}":""")
+      else replacedSingle
     val keyChanged: Boolean = withQuotedKeys != replacedSingle
 
     (withQuotedKeys, singleChanged || keyChanged)
@@ -286,7 +282,7 @@ object SchemaAlignedParser:
    * Remove trailing commas before ] and }.
    */
   private def removeTrailingCommas(text: String): (String, Boolean) =
-    val pattern: Regex = """,(\s*[}\]])""".r
+    val pattern: Regex  = """,(\s*[}\]])""".r
     val newText: String = pattern.replaceAllIn(text, "$1")
     (newText, newText != text)
 
@@ -301,7 +297,8 @@ object SchemaAlignedParser:
         applyInsertMissingCommas,
         applyFillMissingValues,
         applyCoerceNumericStrings,
-        applyTrimTrailingGarbage
+        applyTrimTrailingGarbage,
+        applyUnwrapSmithyMember
       )
 
     val aggregated: (String, Boolean, List[String]) =
@@ -313,16 +310,16 @@ object SchemaAlignedParser:
           (nextJson, changedAcc || changed, updatedWarnings)
       }
 
-    val finalJson: String = aggregated._1
-    val finalChanged: Boolean = aggregated._2
+    val finalJson: String           = aggregated._1
+    val finalChanged: Boolean       = aggregated._2
     val finalWarnings: List[String] = aggregated._3
 
     if finalChanged then Some((finalJson, finalWarnings)) else None
 
   private def applyCloseUnbalanced(json: String): (String, Boolean, String) =
-    val braceDiff: Int = json.count(_ == '{') - json.count(_ == '}')
+    val braceDiff: Int   = json.count(_ == '{') - json.count(_ == '}')
     val bracketDiff: Int = json.count(_ == '[') - json.count(_ == ']')
-    val quoteCount: Int = json.count(_ == '"')
+    val quoteCount: Int  = json.count(_ == '"')
 
     val closedBraces: String =
       if braceDiff > 0 then json + "}".repeat(braceDiff) else json
@@ -335,19 +332,19 @@ object SchemaAlignedParser:
     (closedQuotes, changed, "Recovered truncated or unbalanced JSON")
 
   private def applyInsertMissingCommas(json: String): (String, Boolean, String) =
-    val pattern: Regex = """((?:"[^"]*"|-?\d+(?:\.\d+)?|true|false|null|\}|\]))\s*(")""".r
+    val pattern: Regex   = """((?:"[^"]*"|-?\d+(?:\.\d+)?|true|false|null|\}|\]))\s*(")""".r
     val replaced: String = pattern.replaceAllIn(json, m => s"${m.group(1)},${m.group(2)}")
     val changed: Boolean = replaced != json
     (replaced, changed, "Inserted missing commas between object fields")
 
   private def applyFillMissingValues(json: String): (String, Boolean, String) =
-    val pattern: Regex = """("[^"]+"\s*:)\s*(,|\}|\])""".r
+    val pattern: Regex   = """("[^"]+"\s*:)\s*(,|\}|\])""".r
     val replaced: String = pattern.replaceAllIn(json, m => s"${m.group(1)} null${m.group(2)}")
     val changed: Boolean = replaced != json
     (replaced, changed, "Filled missing values with null")
 
   private def applyCoerceNumericStrings(json: String): (String, Boolean, String) =
-    val pattern: Regex = """("[^"]+"\s*:\s*)"(-?\d+(?:\.\d+)?)""".r
+    val pattern: Regex   = """("[^"]+"\s*:\s*)"(-?\d+(?:\.\d+)?)""".r
     val replaced: String = pattern.replaceAllIn(json, m => s"${m.group(1)}${m.group(2)}")
     val changed: Boolean = replaced != json
     (replaced, changed, "Coerced numeric-looking strings to numbers")
@@ -359,10 +356,23 @@ object SchemaAlignedParser:
           case Some(len) if len < json.length =>
             json.substring(0, len)
           case _ => json
-      else
-        json
+      else json
     val changed: Boolean = trimmed != json
     (trimmed, changed, "Trimmed trailing non-JSON content after balanced value")
+
+  /**
+   * Unwrap Smithy `member` wrapping from JSON.
+   *
+   * LLMs sometimes produce `{"field": {"member": [...]}}` instead of
+   * `{"field": [...]}` when the Smithy IDL contains `list Foo { member: Bar }`.
+   * The `member` keyword is a Smithy syntax detail for defining list element types
+   * and should not appear in JSON output. This recovery step detects and unwraps it.
+   */
+  private def applyUnwrapSmithyMember(json: String): (String, Boolean, String) =
+    val memberPattern: Regex = """("[\w]+"\s*:\s*)\{\s*"member"\s*:\s*(\[[\s\S]*?\])\s*\}""".r
+    val replaced: String = memberPattern.replaceAllIn(json, m => s"${m.group(1)}${m.group(2)}")
+    val changed: Boolean = replaced != json
+    (replaced, changed, "Unwrapped Smithy 'member' list wrapper from JSON values")
 
   /**
    * Decode JSON with smithy4s, collecting warnings.

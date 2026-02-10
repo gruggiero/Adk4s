@@ -21,11 +21,11 @@ import org.llm4s.llmconnect.model.SystemMessage
 import org.llm4s.llmconnect.model.UserMessage
 import org.llm4s.types.Result
 import smithy4s.schema.Schema as Smithy4sSchema
-import smithy4s.{ShapeId, Hints}
+import smithy4s.{ ShapeId, Hints }
 
 /**
  * Example demonstrating the BAML-inspired structured LLM wrapper.
- * 
+ *
  * This shows:
  * 1. Defining output types with Smithy schemas
  * 2. Creating prompt templates
@@ -37,7 +37,7 @@ object StructuredLLMExample extends IOApp.Simple:
   // ============================================================
   // 1. DEFINE OUTPUT TYPES
   // ============================================================
-  
+
   /**
    * Simple resume data structure.
    */
@@ -48,16 +48,16 @@ object StructuredLLMExample extends IOApp.Simple:
     education: Option[List[Education]],
     seniority: SeniorityLevel
   )
-  
+
   case class Education(
     school: String,
     degree: String,
     year: Option[Int]
   )
-  
+
   enum SeniorityLevel:
     case Junior, Mid, Senior, Staff
-  
+
   // Simple string-based schema for demonstration
   // In practice, you would use proper smithy4s generated schemas
   given Smithy4sSchema[Resume] = Smithy4sSchema.constant(Resume("", None, Nil, None, SeniorityLevel.Junior))
@@ -109,23 +109,24 @@ object StructuredLLMExample extends IOApp.Simple:
       |  STAFF
       |}""".stripMargin
   )(using summon[Smithy4sSchema[Resume]])
-  
+
   // ============================================================
   // 2. CREATE PROMPT TEMPLATES
   // ============================================================
-  
+
   /**
    * Input for resume extraction.
    */
   case class ResumeInput(resumeText: String, context: Option[String] = None)
-  
+
   /**
    * Template for extracting structured resume data.
    */
   val extractResumeTemplate: PromptTemplate[ResumeInput] =
     new PromptTemplate[ResumeInput]:
       def render(input: ResumeInput): Prompt =
-        val content = s"""You are an expert resume parser. Extract information accurately and preserve the exact wording.
+        val content =
+          s"""You are an expert resume parser. Extract information accurately and preserve the exact wording.
                          |
                          |Please extract the following information from this resume:
                          |${input.resumeText}
@@ -136,14 +137,14 @@ object StructuredLLMExample extends IOApp.Simple:
                          |- Technical and soft skills
                          |- Educational background
                          |- Overall seniority level based on experience""".stripMargin
-        
+
         Prompt(Vector(org.adk4s.structured.core.Message(org.adk4s.structured.core.Role.System, content)))
     .expecting[Resume]
-  
+
   // ============================================================
   // 3. BASIC USAGE EXAMPLES
   // ============================================================
-  
+
   /**
    * Example 1: Simple extraction
    */
@@ -162,60 +163,60 @@ object StructuredLLMExample extends IOApp.Simple:
       |- Software Engineer at TechCorp (2020-2022)
       |- Senior Engineer at StartupXYZ (2022-present)
       |""".stripMargin
-    
+
     for
       prompt <- IO.pure(extractResumeTemplate.render(ResumeInput(resumeText)))
-      _ <- IO.println(s"\nPrompt being sent:\n${prompt.messages.map(_.content).mkString("\n")}\n")
+      _      <- IO.println(s"\nPrompt being sent:\n${prompt.messages.map(_.content).mkString("\n")}\n")
       result <- structured.complete[Resume](prompt)
     yield result
-  
+
   /**
    * Example 2: Using the output format directly
    */
   def showOutputFormat(structured: StructuredLLM[IO]): IO[Unit] =
     IO.println(Schema[Resume].outputFormatBlock) *>
-    IO.println("\n---\n")
-  
+      IO.println("\n---\n")
+
   // ============================================================
   // 4. MAIN PROGRAM
   // ============================================================
-  
+
   /**
    * Run the example.
    */
   def run: IO[Unit] =
-    val mockClient: LLMClient = new MockLLMClient
+    val mockClient: LLMClient         = new MockLLMClient
     val structured: StructuredLLM[IO] = StructuredLLM.fromClient(mockClient)
-    
+
     for
       _ <- IO.println("=== Structured LLM Resume Extraction Example ===")
-      
+
       // Show the output format that will be sent to the LLM
       _ <- showOutputFormat(structured)
-      
+
       // Extract resume data
       resume <- extractResumeExample(structured)
-      
+
       _ <- IO.println("\nExtracted Resume:")
       _ <- IO.println(s"Name: ${resume.name}")
       _ <- IO.println(s"Email: ${resume.email.getOrElse("Not provided")}")
       _ <- IO.println(s"Skills: ${resume.skills.mkString(", ")}")
       _ <- IO.println(s"Seniority: ${resume.seniority}")
-      
+
       _ <- IO.println("\nDone!")
     yield ()
-  
+
   // ============================================================
   // 5. MOCK LLM CLIENT
   // ============================================================
-  
+
   /**
    * Mock LLM client for demonstration.
    * In practice, this would connect to a real LLM service.
    */
   class MockLLMClient extends LLMClient:
     def complete(
-      conversation: Conversation, 
+      conversation: Conversation,
       options: CompletionOptions
     ): Result[Completion] =
       val jsonResponse: String =
@@ -249,7 +250,7 @@ object StructuredLLMExample extends IOApp.Simple:
       )
       println(s"\n[MockLLM] Returning JSON:\n$jsonResponse\n")
       Right(completion)
-    
+
     override def streamComplete(
       conversation: Conversation,
       options: CompletionOptions,
@@ -265,7 +266,7 @@ object StructuredLLMExample extends IOApp.Simple:
       )
       onChunk(chunk)
       complete(conversation, options)
-    
+
     override def getContextWindow(): Int = 8192
-    
+
     override def getReserveCompletion(): Int = 512

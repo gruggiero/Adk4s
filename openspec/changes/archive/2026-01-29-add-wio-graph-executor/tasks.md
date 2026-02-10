@@ -1,0 +1,32 @@
+## 1. Implementation
+- [x] 1.1 Introduce NodeExecutable and update GraphNode variants to expose WIO-capable execution.
+  - NodeExecutable trait provides `invoke: I => IO[O]` for IO-based execution
+  - All GraphNode variants (LambdaNode, ChatModelNode, ToolsNode, StructuredModelNode, StructuredToolNode, SubGraphNode, MergeNode) expose executable
+- [x] 1.2 Add MergeNode to GraphNode and builder APIs, with explicit fan-in support.
+  - MergeNode[A, B, C] takes (A, B) input tuple and outputs C via combine function
+  - Graph.addMergeNode[A, B, C] builder method added
+- [x] 1.3 Preserve typed edge/branch relationships in Graph state and enforce branch targets match outgoing edges.
+  - Graph.addEdge uses NodeRef[A, B] for type-safe edge connections
+  - GraphValidation.validateBranchTargetsMatchEdges ensures branch targets are declared outgoing edges
+- [x] 1.4 Update GraphValidation to reject fan-in except when the target node is a MergeNode.
+  - validateNoFanInExceptMerge checks for multiple incoming edges
+  - MergeNode targets are exempt from fan-in rejection
+  - FanInError added to AdkError for invalid fan-in
+- [x] 1.5 Implement WIOExecutor.execute with graph traversal, branch evaluation, and sub-graph support.
+  - executeGraph traverses DAG from entry node to end nodes
+  - evaluateBranch evaluates InvokeBranch and StreamBranch conditions
+  - SubGraphNode execution via recursive WIOExecutor.execute call
+  - MergeNode execution via NodeExecutable
+- [~] 1.6 WIOExecutor.toWIO provides constrained WIO compilation.
+  - toWIO requires output type O to be WCState[Ctx] due to workflows4s type constraints
+  - Full step-by-step WIO composition deferred due to workflows4s state type requirements
+  - execute method provides full IO-based graph execution
+- [x] 1.7 Add unit tests for DAG compilation, branching, merge nodes, and validation rules.
+  - WIOExecutorTest: linear graphs, sub-graphs, merge nodes, binary branches
+  - GraphTest: merge node creation, fan-in validation
+
+## Implementation Notes
+- NodeExecutable no longer exposes toWIO due to workflows4s WIO type constraints (Out must be WCState[Ctx])
+- Graph execution via WIOExecutor.execute traverses the DAG using node executables and IO
+- WIOExecutor.toWIO creates a placeholder WIO that throws at runtime; actual execution uses execute()
+- Pattern matching on GraphNode variants in executeNode uses asInstanceOf for type recovery (unavoidable due to type erasure in Map[NodeKey, GraphNode[?, ?]])

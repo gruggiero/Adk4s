@@ -21,9 +21,10 @@ import org.llm4s.llmconnect.model.UserMessage
 import org.llm4s.types.Result
 import org.llm4s.error.LLMError
 
-/** Minimal runnable example showing how to call Structured LLM using the generated
-  * smithy4s Resume model from this module.
-  */
+/**
+ * Minimal runnable example showing how to call Structured LLM using the generated
+ * smithy4s Resume model from this module.
+ */
 object StructuredLlmTestApp extends IOApp.Simple:
 
   private val smithyFilePath: String =
@@ -89,7 +90,7 @@ object StructuredLlmTestApp extends IOApp.Simple:
           thinking = None
         )
         Right(completion)
-      
+
       override def streamComplete(
         conversation: Conversation,
         options: CompletionOptions,
@@ -104,9 +105,9 @@ object StructuredLlmTestApp extends IOApp.Simple:
         )
         onChunk(chunk)
         complete(conversation, options)
-      
+
       override def getContextWindow(): Int = 8192
-      
+
       override def getReserveCompletion(): Int = 512
 
   private def resumeTemplate(using schema: Schema[Resume]): PromptTemplate[String] =
@@ -125,13 +126,13 @@ object StructuredLlmTestApp extends IOApp.Simple:
     IO.println(summary)
 
   private def runExample(using schema: Schema[Resume]): IO[Unit] =
-    val structured: StructuredLLM[IO] = StructuredLLM.fromClient[IO](mockClient)
+    val structured: StructuredLLM[IO]    = StructuredLLM.fromClient[IO](mockClient)
     val template: PromptTemplate[String] = resumeTemplate(using schema)
     val parsedResume: IO[Resume] =
       structured.completeTemplate[String, Resume](template, sampleResumeText)
 
     val outputFormat: IO[Unit] = IO.println(Schema[Resume].outputFormatBlock)
-    val execution: IO[Unit] = parsedResume.flatMap(logResult)
+    val execution: IO[Unit]    = parsedResume.flatMap(logResult)
 
     outputFormat *> execution
 
@@ -140,7 +141,7 @@ object StructuredLlmTestApp extends IOApp.Simple:
       loadDefinition(smithyFilePath).flatMap { (definition: String) =>
         given Schema[Resume] = mkSchema[Resume](definition)(using Resume.schema)
         val header: IO[Unit] = IO.println("=== Structured LLM resume extraction example ===")
-        val body: IO[Unit] = runExample(using summon[Schema[Resume]])
+        val body: IO[Unit]   = runExample(using summon[Schema[Resume]])
         header *> body
       }
 

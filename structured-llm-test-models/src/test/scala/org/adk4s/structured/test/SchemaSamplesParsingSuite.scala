@@ -39,7 +39,7 @@ final class SchemaSamplesParsingSuite extends FunSuite:
     definition
 
   private val sampleSeparator: String = "---SAMPLE---"
-  private val smithyRoot: String = "structured-llm-test-models/src/main/smithy/"
+  private val smithyRoot: String      = "structured-llm-test-models/src/main/smithy/"
 
   private def loadSamples(resourceName: String): List[String] =
     val content: String = Using.resource(Source.fromResource(resourceName))(_.mkString)
@@ -71,8 +71,8 @@ final class SchemaSamplesParsingSuite extends FunSuite:
     val recoveredWithWarnings: List[(String, List[String])] = parsed.collect {
       case (sample, ParseResult.Success(_, warnings)) if warnings.nonEmpty => sample -> warnings
     }
-    val failures: List[(String, List[String])] = parsed.collect {
-      case (sample, ParseResult.Failure(errors)) => sample -> errors.map(_.message)
+    val failures: List[(String, List[String])] = parsed.collect { case (sample, ParseResult.Failure(errors)) =>
+      sample -> errors.map(_.message)
     }
     SampleReport(cleanParsed, recoveredParsed, recoveredWithWarnings, failures)
 
@@ -81,20 +81,22 @@ final class SchemaSamplesParsingSuite extends FunSuite:
     Files.createDirectories(directory)
     val recoveredReport: String =
       if report.recoveredWithWarnings.isEmpty then "none"
-      else report.recoveredWithWarnings
-        .map { case (sample, warnings) =>
-          val preview: String = sample.replaceAll("\\s+", " ").take(120)
-          s"- $preview | warnings: ${warnings.mkString("; ")}"
-        }
-        .mkString("\n")
+      else
+        report.recoveredWithWarnings
+          .map { case (sample, warnings) =>
+            val preview: String = sample.replaceAll("\\s+", " ").take(120)
+            s"- $preview | warnings: ${warnings.mkString("; ")}"
+          }
+          .mkString("\n")
     val failureReport: String =
       if report.failures.isEmpty then "none"
-      else report.failures
-        .map { case (sample, errors) =>
-          val preview: String = sample.replaceAll("\\s+", " ").take(120)
-          s"- $preview | errors: ${errors.mkString("; ")}"
-        }
-        .mkString("\n")
+      else
+        report.failures
+          .map { case (sample, errors) =>
+            val preview: String = sample.replaceAll("\\s+", " ").take(120)
+            s"- $preview | errors: ${errors.mkString("; ")}"
+          }
+          .mkString("\n")
     val content: String =
       s"""[$label] cleanParsed=${report.cleanParsed}, recoveredParsed=${report.recoveredParsed}, remainingFailures=${report.failures.size}
          |Recovered with warnings:
@@ -122,8 +124,8 @@ final class SchemaSamplesParsingSuite extends FunSuite:
       fail(message)
 
   private def runSampleTest[A](label: String)(using smithy4sSchema: Smithy4sSchema[A]): Unit =
-    val definition: String = loadDefinition(s"${smithyRoot}${label}.smithy")
-    given Schema[A] = Schema.instance[A](definition)(using smithy4sSchema)
+    val definition: String    = loadDefinition(s"${smithyRoot}${label}.smithy")
+    given Schema[A]           = Schema.instance[A](definition)(using smithy4sSchema)
     val samples: List[String] = loadSamples(s"${label}_samples.txt")
     assertAnyParsed[A](samples, summon[Schema[A]], label)
 

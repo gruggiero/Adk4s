@@ -2,7 +2,7 @@ package org.adk4s.structured.test
 
 import cats.effect.IO
 import munit.CatsEffectSuite
-import org.adk4s.structured.core.{Message as CoreMessage, Prompt, PromptTemplate, Role, Schema, StructuredLLM}
+import org.adk4s.structured.core.{ Message as CoreMessage, Prompt, PromptTemplate, Role, Schema, StructuredLLM }
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.AssistantMessage
@@ -47,7 +47,7 @@ class ResumeSchemaTest extends CatsEffectSuite:
             thinking = None
           )
           Right(completion)
-        
+
         override def streamComplete(
           conversation: Conversation,
           options: CompletionOptions,
@@ -62,9 +62,9 @@ class ResumeSchemaTest extends CatsEffectSuite:
           )
           onChunk(chunk)
           complete(conversation, options)
-        
+
         override def getContextWindow(): Int = 8192
-        
+
         override def getReserveCompletion(): Int = 512
 
     val structured: StructuredLLM[IO] = StructuredLLM.fromClient[IO](mockClient)
@@ -94,8 +94,7 @@ class ResumeSchemaTest extends CatsEffectSuite:
         )
         basePrompt.withOutputFormat[Resume]
 
-    for
-      result <- structured.complete[Resume](extractResume.render("Test resume"))
+    for result <- structured.complete[Resume](extractResume.render("Test resume"))
     yield
       assertEquals(result.name, "Jane Smith")
       assertEquals(result.email, Some("jane.smith@example.com"))

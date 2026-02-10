@@ -62,7 +62,7 @@ package object structured:
   export core.Role
 
   // Main client
-  export core.StructuredLLM 
+  export core.StructuredLLM
   export core.StructuredLLMError
 
   // Smithy integration
@@ -98,4 +98,4 @@ package object structured:
  */
 package object templates:
   export structured.template.syntax.*
-  export structured.template.dsl.{systemMessage, userMessage, template}
+  export structured.template.dsl.{ systemMessage, userMessage, template }

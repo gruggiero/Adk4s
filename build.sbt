@@ -3,6 +3,11 @@ ThisBuild / organization := "org.adk4s"
 ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / scalacOptions += "-Wconf:src=target/.*:s"
 
+// --- scalafix ---
+ThisBuild / scalafixDependencies += "ch.epfl.scala" %% "scalafix-rules" % "0.12.1"
+ThisBuild / scalafixOnCompile := false  // Disabled for now
+Test / scalafix / unmanagedSources := Seq.empty
+
 lazy val `structured-llm` = (project in file("structured-llm"))
   .dependsOn(
     ProjectRef(file("../../business4s/workflows4s"), "workflows4s-core"),
@@ -47,6 +52,108 @@ lazy val `structured-llm-test-models` = (project in file("structured-llm-test-mo
       // Testing dependencies
       "org.scalameta" %% "munit" % "1.0.3" % Test,
       "org.typelevel" %% "munit-cats-effect" % "2.0.0" % Test
-    )
+    ),
+    // Disable scalafix for this test/example module
+    Compile / scalafix / unmanagedSources := Seq.empty
   )
   .enablePlugins(Smithy4sCodegenPlugin)
+
+lazy val `adk4s-core` = (project in file("adk4s-core"))
+  .dependsOn(
+    `structured-llm`,
+    ProjectRef(file("../../llm4s/llm4s"), "core")
+  )
+  .settings(
+    name := "adk4s-core",
+    libraryDependencies ++= Seq(
+      // Cats Effect for IO
+      "org.typelevel" %% "cats-effect" % "3.6.3",
+
+      // fs2 for streaming
+      "co.fs2" %% "fs2-core" % "3.9.4",
+      "co.fs2" %% "fs2-io" % "3.9.4",
+
+      // Testing
+      "org.scalameta" %% "munit" % "1.0.3" % Test,
+      "org.typelevel" %% "munit-cats-effect" % "2.0.0" % Test
+    ),
+
+    // Scala 3 settings
+    scalacOptions ++= Seq(
+      "-deprecation",
+      "-feature",
+      "-unchecked",
+      "-Xkind-projector:underscores",
+      "-source:future"
+    )
+  )
+
+
+
+lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
+  .dependsOn(
+    `adk4s-core`,
+    `structured-llm`,
+    ProjectRef(file("../../business4s/workflows4s"), "workflows4s-core")
+  )
+  .settings(
+    name := "adk4s-orchestration",
+    libraryDependencies ++= Seq(
+      // Cats Effect for IO
+      "org.typelevel" %% "cats-effect" % "3.6.3",
+
+      // fs2 for streaming
+      "co.fs2" %% "fs2-core" % "3.9.4",
+      "co.fs2" %% "fs2-io" % "3.9.4",
+
+      // Testing
+      "org.scalameta" %% "munit" % "1.0.3" % Test,
+      "org.typelevel" %% "munit-cats-effect" % "2.0.0" % Test
+    ),
+
+    // Scala 3 settings
+    scalacOptions ++= Seq(
+      "-deprecation",
+      "-feature",
+      "-unchecked",
+      "-Xkind-projector:underscores",
+      "-source:future"
+    )
+  )
+
+lazy val `adk4s-examples` = (project in file("adk4s-examples"))
+  .dependsOn(
+    `adk4s-core`,
+    `adk4s-orchestration`,
+    `structured-llm`,
+    `structured-llm-test-models`,
+    ProjectRef(file("../../llm4s/llm4s"), "core"),
+    ProjectRef(file("../../business4s/workflows4s"), "workflows4s-bpmn")
+  )
+  .settings(
+    name := "adk4s-examples",
+    libraryDependencies ++= Seq(
+      // Cats Effect for IO
+      "org.typelevel" %% "cats-effect" % "3.6.3",
+
+      // fs2 for streaming
+      "co.fs2" %% "fs2-core" % "3.9.4",
+      "co.fs2" %% "fs2-io" % "3.9.4",
+
+      // Logging
+      "ch.qos.logback" % "logback-classic" % "1.4.14",
+
+      // Testing
+      "org.scalameta" %% "munit" % "1.0.3" % Test,
+      "org.typelevel" %% "munit-cats-effect" % "2.0.0" % Test
+    ),
+
+    // Scala 3 settings
+    scalacOptions ++= Seq(
+      "-deprecation",
+      "-feature",
+      "-unchecked",
+      "-Xkind-projector:underscores",
+      "-source:future"
+    )
+  )

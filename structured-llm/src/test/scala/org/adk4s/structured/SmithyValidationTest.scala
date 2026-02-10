@@ -13,13 +13,13 @@ class SmithyValidationTest extends FunSuite:
 
   test("smithy file contains required structures") {
     val smithyFile = new java.io.File("structured-llm-test-models/src/main/smithy/resume.smithy")
-    val content = Source.fromFile(smithyFile).mkString
-    
+    val content    = Source.fromFile(smithyFile).mkString
+
     // Check for required structures
     assert(content.contains("structure Resume"), "Should contain Resume structure")
     assert(content.contains("structure Education"), "Should contain Education structure")
     assert(content.contains("enum SeniorityLevel"), "Should contain SeniorityLevel enum")
-    
+
     // Check for required fields
     assert(content.contains("@required"), "Should have required fields marked")
     assert(content.contains("name: String"), "Should have name field")

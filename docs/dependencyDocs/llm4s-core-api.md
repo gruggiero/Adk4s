@@ -19,9 +19,52 @@ org.llm4s/
 │   ├── provider/       # Provider implementations (OpenAI, Anthropic, Azure, OpenRouter)
 │   ├── config/         # Configuration management
 │   └── extractors/     # Text extraction utilities
-├── types/              # Type aliases and newtypes (package.scala)
-├── error/              # Comprehensive error hierarchy
-└── config/             # Environment configuration
+├── agent/               # Agent system
+│   ├── Agent.scala     # Core agent with step-by-step and automatic execution
+│   ├── AgentState.scala # Immutable agent state
+│   ├── Handoff.scala   # LLM-driven agent delegation (see llm4s-orchestration.md)
+│   ├── guardrails/     # Input/output validation (see llm4s-guardrails.md)
+│   │   ├── Guardrail.scala          # Base trait
+│   │   ├── builtin/                 # PII, injection, profanity, length, regex, tone
+│   │   └── rag/                     # Grounding, context relevance, source attribution
+│   ├── memory/         # Agent memory system (see llm4s-memory-system.md)
+│   │   ├── Memory.scala             # Memory data type with typed MemoryType
+│   │   ├── MemoryStore.scala        # Storage trait (InMemory, SQLite, Vector)
+│   │   ├── MemoryManager.scala      # High-level memory management
+│   │   └── MemoryFilter.scala       # Composable filter DSL
+│   └── orchestration/  # Multi-agent orchestration (see llm4s-orchestration.md)
+│       ├── DAG.scala                # Typed DAG (Node, Edge, Plan)
+│       ├── PlanRunner.scala         # Topological parallel execution
+│       ├── TypedAgent.scala         # Typed agent abstraction
+│       ├── Policies.scala           # Retry, timeout, fallback
+│       └── CancellationToken.scala  # Cooperative cancellation
+├── rag/                 # RAG pipeline (see llm4s-rag-pipeline.md)
+│   ├── RAG.scala       # High-level pipeline (ingest, query, queryWithAnswer)
+│   ├── RAGConfig.scala # Pipeline configuration
+│   ├── loader/         # Document loaders (File, Directory, URL, WebCrawler)
+│   ├── extract/        # Document extraction (PDF, DOCX, HTML, etc.)
+│   └── permissions/    # Permission-aware search and ingestion
+├── chunking/            # Document chunking strategies
+│   ├── SimpleChunker, SentenceChunker, MarkdownChunker, SemanticChunker
+│   └── ChunkerFactory
+├── vectorstore/         # Vector storage backends
+│   ├── VectorStore.scala            # Trait (upsert, search, delete, filter)
+│   ├── SQLiteVectorStore, PgVectorStore, QdrantVectorStore
+│   ├── KeywordIndex.scala           # Keyword search trait
+│   └── HybridSearcher.scala         # Vector + keyword fusion
+├── reranker/            # Cross-encoder reranking
+│   ├── Reranker.scala               # Trait
+│   ├── CohereReranker, LLMReranker
+│   └── RerankerFactory
+├── toolapi/             # Tool calling system (see llm4s-tool-system.md)
+├── types/               # Type aliases and newtypes (package.scala)
+├── error/               # Comprehensive error hierarchy
+├── trace/               # Tracing infrastructure
+├── mcp/                 # Model Context Protocol support
+├── speech/              # Speech-to-text / text-to-speech
+├── imagegeneration/     # Image generation
+├── imageprocessing/     # Image processing / vision
+└── config/              # Environment configuration
 ```
 
 ### Design Philosophy
@@ -757,5 +800,9 @@ object QuickStart extends App {
 
 - **Tool System**: See `llm4s-tool-system.md` for structured tool calling
 - **Agent Patterns**: See `llm4s-agent-patterns.md` for multi-step reasoning
+- **RAG Pipeline**: See `llm4s-rag-pipeline.md` for document ingestion, chunking, hybrid search, and answer generation
+- **Memory System**: See `llm4s-memory-system.md` for agent memory (conversation, entity, knowledge, semantic search)
+- **Orchestration**: See `llm4s-orchestration.md` for multi-agent DAG execution, handoffs, and policies
+- **Guardrails**: See `llm4s-guardrails.md` for input/output validation, PII detection, and RAG guardrails
 - **Examples**: See `llm4s-usage-examples.md` for real-world code
 - **Best Practices**: See `llm4s-best-practices.md` for gotchas and patterns

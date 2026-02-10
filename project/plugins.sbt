@@ -1,6 +1,6 @@
 addSbtPlugin("ch.epfl.scala"  % "sbt-scalafix"   % "0.14.3")
 // Formatting
-addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.5.6")
+addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.5.4")
 
 // Code coverage
 addSbtPlugin("org.scoverage" % "sbt-scoverage" % "2.2.2")

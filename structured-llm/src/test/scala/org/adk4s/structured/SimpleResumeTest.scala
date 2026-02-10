@@ -47,7 +47,7 @@ class SimpleResumeTest extends CatsEffectSuite:
   test("extract resume using smithy4s decoder") {
     val mockClient = new LLMClient:
       override def complete(
-        conversation: Conversation, 
+        conversation: Conversation,
         options: CompletionOptions
       ): Result[Completion] =
         val json: String =
@@ -68,7 +68,7 @@ class SimpleResumeTest extends CatsEffectSuite:
           thinking = None
         )
         Right(completion)
-      
+
       override def streamComplete(
         conversation: Conversation,
         options: CompletionOptions,
@@ -83,13 +83,13 @@ class SimpleResumeTest extends CatsEffectSuite:
         )
         onChunk(chunk)
         complete(conversation, options)
-      
+
       override def getContextWindow(): Int = 8192
-      
+
       override def getReserveCompletion(): Int = 512
-    
+
     val structured = StructuredLLM.fromClient[IO](mockClient)
-    
+
     // Create a prompt template that expects TestResume output
     val extractResume = new PromptTemplate[String]:
       def render(input: String): Prompt =
@@ -99,10 +99,9 @@ class SimpleResumeTest extends CatsEffectSuite:
         )
         // Add output format to the last message
         basePrompt.withOutputFormat[TestResume]
-    
-    for
-      result <- structured.complete[TestResume](extractResume.render("Test resume"))
-    yield 
+
+    for result <- structured.complete[TestResume](extractResume.render("Test resume"))
+    yield
       assertEquals(result.name, "John Doe")
       assertEquals(result.email, Some("john.doe@example.com"))
       assertEquals(result.skills, List("Python", "Machine Learning", "React"))

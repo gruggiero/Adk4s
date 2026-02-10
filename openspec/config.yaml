@@ -1,0 +1,55 @@
+schema: spec-driven
+
+# Project context
+context: |
+  # adk4s - Agent Development Kit for Scala
+  
+  ## Current Scope
+  Early development - currently includes only the LLM integration layer (structured-llm).
+  Provides type-safe, composable structured outputs from LLMs using Smithy-based schema definitions.
+  Schema-Aligned Parsing (SAP) ensures type-safe parsing with automatic recovery from common LLM JSON errors.
+  
+  ## Tech Stack
+  - Scala 3.7.3, sbt 1.11.7
+  - Cats Effect 3.6.3 (IO monad and effects)
+  - Smithy4s 0.18.45 (schema definitions, code generation)
+  - llm4s (LLM client abstraction, local dependency: ../../llm4s/llm4s)
+  - workflows4s (workflow orchestration, local dependency: ../../business4s/workflows4s)
+  - MUnit 1.0.3 + MUnit Cats Effect 2.0.0 (testing)
+  
+  ## Code Conventions
+  - Style: Functional programming, pure functions, IO effects via Cats Effect
+  - Types: Opaque types for abstractions, typeclasses for extensibility
+  - Architecture: Modular separation (structured-llm/{core,template,sap,smithy})
+  - Error Handling: Sealed trait hierarchies for ADT errors
+  - Testing: MUnit with CatsEffectSuite, mock LLM clients, high coverage on parsing logic
+  - Run tests: sbt test
+  
+  ## Key Domain Concepts
+  - Schema[A]: Typeclass with Smithy IDL definition and JSON decoder
+  - StructuredLLM[F]: Main wrapper providing Prompt => F[A] abstraction
+  - Prompt: Immutable conversation with system/user messages
+  - PromptTemplate[I]: Reusable template, input I => Prompt
+  - SAP: Lenient JSON parser (handles markdown fences, trailing commas, quotes, comments, truncation)
+  - Smithy: Output types defined in .smithy files, Smithy4s generates Scala code
+  
+  ## Constraints
+  - Scala 3 only with modern language features
+  - All LLM outputs must be parsed into typed case classes
+  - All LLM calls must return IO[A] for referential transparency
+  - Never commit API keys or credentials (use environment variables)
+  - Local dependencies: llm4s and workflows4s referenced in parent directories
+  
+  ## Vision (Planned)
+  Expand to full agent framework: multi-agent orchestration, tool calling, memory management,
+  state persistence, event-driven communication, workflow composition, observability.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours

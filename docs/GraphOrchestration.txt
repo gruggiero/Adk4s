@@ -1,0 +1,162 @@
+ADK4S Orchestration Graph and WIO Execution Flow
+Created January 17, 2026 at 10:00 AM
+ADK4S Orchestration system covering graph compilation, WIO conversion, and execution flows across Graph, WIOExecutor, and Chain components. Key flows include graph validation at [1d], WIO execution at [2a], branch routing at [3c], and chain composition at [4d].
+
+
+WIOExecutor.execute()
+2b
+Graph compilation
+WIOExecutor.scala:14
+graph.compile(GraphConfig()).fold(
+GraphValidation.validateGraph()
+Graph.buildRunnable()
+2c
+Error handling
+WIOExecutor.scala:15
+errors => IO.raiseError(new Exception(s"Graph compilation failed: ${errors.toNonEmptyList.toList.map(_.message).mkString(", ")}")),
+IO.raiseError() on failure
+2d
+Runnable execution
+WIOExecutor.scala:16
+runnableIO => runnableIO.flatMap(_.invoke(input))
+compiled runnable execution
+2e
+WIO conversion
+WIOExecutor.scala:8
+def toWIO[I, O, Ctx <: WorkflowContext](graph: Graph[I, O, ?]): WIO[I, Nothing, WorkflowContext.State[Ctx], Ctx] =
+graph parameter conversion
+WIO.End() placeholder
+Workflows4s integration point
+
+AI generated guide
+Motivation
+ADK4S needs to handle conditional routing in orchestration graphs - deciding which node to execute next based on runtime data. Without branches, graphs would be limited to linear flows. The system provides two levels: low-level Branch for graph routing [3b] and high-level WIOBranch for Workflows4s integration [3d].
+
+Details
+Graph-level branching starts with Graph.addBranch() [3a] which attaches a Branch to a node. The most common is Branch.binary() [3b] which creates an InvokeBranch that evaluates a predicate and routes to either ifTrue or ifFalse nodes [3c].
+
+WIO-level branching provides Workflows4s integration through WIOBranch.fork() [3d]. This creates a WIO workflow using WIO.build().fork() [3e] with matchCondition() routing that executes either the onTrue or onFalse workflow based on the condition.
+
+The key difference is that Branch operates at the graph compilation level (routing between graph nodes), while WIOBranch operates at the workflow execution level (routing within WIO workflows). Both solve the same conditional routing problem but at different abstraction layers.
+
+Branch Creation and Conditional Routing
+3a
+Branch addition to graph
+Graph.scala:30
+def addBranch[A](from: String, branch: Branch[A]): ValidatedNec[AdkError, Graph[I, O, S]] =
+3b
+Binary branch creation
+Branch.scala:30
+def binary[I](predicate: I => IO[Boolean], ifTrue: NodeKey, ifFalse: NodeKey): Branch[I] =
+3c
+Branch condition evaluation
+Branch.scala:35
+InvokeBranch(i => predicate(i).map(if _ then ifTrue else ifFalse), Set(ifTrue, ifFalse))
+predicate(i).map() routing
+3d
+WIO fork creation
+WIOBranch.scala:8
+def fork[I, Out <: WCState[Ctx], Ctx <: WorkflowContext](condition: I => Boolean, ifTrue: WIO[I, Nothing, Out, Ctx], ifFalse: WIO[I, Nothing, Out, Ctx]): WIO[I, Nothing, Out, Ctx] =
+3e
+WIO fork implementation
+WIOBranch.scala:13
+WIO.build[Ctx].fork[I].matchCondition(condition)(onTrue = ifTrue, onFalse = ifFalse)
+matchCondition() routing
+onTrue/onFalse execution
+
+ADK4S Orchestration Graph and WIO Execution Flow
+Created January 17, 2026 at 10:00 AM
+ADK4S Orchestration system covering graph compilation, WIO conversion, and execution flows across Graph, WIOExecutor, and Chain components. Key flows include graph validation at [1d], WIO execution at [2a], branch routing at [3c], and chain composition at [4d].
+
+
+WIOExecutor.execute()
+2b
+Graph compilation
+WIOExecutor.scala:14
+graph.compile(GraphConfig()).fold(
+GraphValidation.validateGraph()
+Graph.buildRunnable()
+2c
+Error handling
+WIOExecutor.scala:15
+errors => IO.raiseError(new Exception(s"Graph compilation failed: ${errors.toNonEmptyList.toList.map(_.message).mkString(", ")}")),
+IO.raiseError() on failure
+2d
+Runnable execution
+WIOExecutor.scala:16
+runnableIO => runnableIO.flatMap(_.invoke(input))
+compiled runnable execution
+2e
+WIO conversion
+WIOExecutor.scala:8
+def toWIO[I, O, Ctx <: WorkflowContext](graph: Graph[I, O, ?]): WIO[I, Nothing, WorkflowContext.State[Ctx], Ctx] =
+graph parameter conversion
+WIO.End() placeholder
+Workflows4s integration point
+
+AI generated guide
+Motivation
+ADK4S needs to handle conditional routing in orchestration graphs - deciding which node to execute next based on runtime data. Without branches, graphs would be limited to linear flows. The system provides two levels: low-level Branch for graph routing [3b] and high-level WIOBranch for Workflows4s integration [3d].
+
+Details
+Graph-level branching starts with Graph.addBranch() [3a] which attaches a Branch to a node. The most common is Branch.binary() [3b] which creates an InvokeBranch that evaluates a predicate and routes to either ifTrue or ifFalse nodes [3c].
+
+WIO-level branching provides Workflows4s integration through WIOBranch.fork() [3d]. This creates a WIO workflow using WIO.build().fork() [3e] with matchCondition() routing that executes either the onTrue or onFalse workflow based on the condition.
+
+The key difference is that Branch operates at the graph compilation level (routing between graph nodes), while WIOBranch operates at the workflow execution level (routing within WIO workflows). Both solve the same conditional routing problem but at different abstraction layers.
+
+Branch Creation and Conditional Routing
+3a
+Branch addition to graph
+Graph.scala:30
+def addBranch[A](from: String, branch: Branch[A]): ValidatedNec[AdkError, Graph[I, O, S]] =
+3b
+Binary branch creation
+Branch.scala:30
+def binary[I](predicate: I => IO[Boolean], ifTrue: NodeKey, ifFalse: NodeKey): Branch[I] =
+3c
+Branch condition evaluation
+Branch.scala:35
+InvokeBranch(i => predicate(i).map(if _ then ifTrue else ifFalse), Set(ifTrue, ifFalse))
+predicate(i).map() routing
+3d
+WIO fork creation
+WIOBranch.scala:8
+def fork[I, Out <: WCState[Ctx], Ctx <: WorkflowContext](condition: I => Boolean, ifTrue: WIO[I, Nothing, Out, Ctx], ifFalse: WIO[I, Nothing, Out, Ctx]): WIO[I, Nothing, Out, Ctx] =
+3e
+WIO fork implementation
+WIOBranch.scala:13
+WIO.build[Ctx].fork[I].matchCondition(condition)(onTrue = ifTrue, onFalse = ifFalse)
+matchCondition() routing
+onTrue/onFalse execution
+
+Chain Compilation Flow
+4a
+Chain compilation entry
+Chain.scala:23
+def compile: IO[Runnable[I, O]] = IO.delay {
+IO.delay { compilation logic }
+4b
+Empty chain handling
+Chain.scala:24
+if steps.isEmpty then Runnable.fromInvoke[I, O]((input: I) => IO.pure(input.asInstanceOf[O]))
+Return identity runnable
+4c
+Step compilation
+Chain.scala:27
+compileSteps[I, O](steps)
+4d
+Step folding
+Chain.scala:31
+stepList.foldLeft[Runnable[?, ?]](Runnable.fromInvoke[Object, Object]((x: Object) => IO.pure(x))) { (acc, step) =>
+stepToRunnable() conversion
+4e
+Runnable composition
+Chain.scala:37
+a.andThen(b)
+Return composed Runnable
+IO[Runnable[I, O]] result
+Chain step types
+LambdaStep -> Lambda.toRunnable
+ChatModelStep -> Model runnable
+BranchStep -> Branch.toRunnable
