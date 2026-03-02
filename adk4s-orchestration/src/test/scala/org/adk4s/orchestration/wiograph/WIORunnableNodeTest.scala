@@ -1,6 +1,5 @@
 package org.adk4s.orchestration.wiograph
 
-import cats.data.Ior
 import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
@@ -29,11 +28,10 @@ class WIORunnableNodeTest extends FunSuite:
     val wakeup: workflows4s.wio.internal.WakeupResult[WCEvent[TestContext.Ctx]] =
       workflow.proceed(java.time.Instant.EPOCH)
     val eventOpt: Option[WCEvent[TestContext.Ctx]] =
-      wakeup.toRaw.flatMap((io: IO[Ior[java.time.Instant, WCEvent[TestContext.Ctx]]]) =>
+      wakeup.toRaw.flatMap((io: IO[Either[java.time.Instant, WCEvent[TestContext.Ctx]]]) =>
         io.unsafeRunSync() match
-          case Ior.Right(event) => Some(event)
-          case Ior.Left(_) => None
-          case Ior.Both(_, event) => Some(event)
+          case Right(event) => Some(event)
+          case Left(_) => None
       )
     val finalWorkflow: ActiveWorkflow[TestContext.Ctx] =
       eventOpt match

@@ -351,14 +351,13 @@ final case class WIOHandleSignalNode[Ctx <: WorkflowContext, I, Err, O <: WCStat
   operationName: Option[String]
 )(using evtCt: ClassTag[Evt]) extends WIONode[Ctx, I, Err, O]:
   def toWIO(using errorMeta: ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
-    import WIONode.given
-    
-    summon[AllBuilders[Ctx]].handleSignal(signalDef)
-      .using[I]
-      .withSideEffects(signalHandler)
-      .handleEventWithError((input: I, evt: Evt) => eventHandler(input, evt))
-      .produceResponse((input: I, evt: Evt, req: Req) => responseHandler(input, evt))
-      .named(operationName.getOrElse("HandleSignal"))
+    val sigHandler: SignalHandler[Req, Evt, I] = SignalHandler[Req, Evt, I](signalHandler)
+    val combined: (I, Evt) => (Either[Err, O], Resp) =
+      (input: I, evt: Evt) => (eventHandler(input, evt), responseHandler(input, evt))
+    val evtHandler: EventHandler[I, (Either[Err, O], Resp), WCEvent[Ctx], Evt] =
+      EventHandler[WCEvent[Ctx], I, (Either[Err, O], Resp), Evt](evtCt.unapply, (evt: Evt) => evt, combined)
+    val meta: WIO.HandleSignal.Meta = WIO.HandleSignal.Meta(errorMeta, signalDef.name, operationName)
+    WIO.HandleSignal[Ctx, I, O, Err, Req, Resp, Evt](signalDef, sigHandler, evtHandler, meta)
 
 final case class WIOParallelNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx], InterimState <: WCState[Ctx]](
   elements: List[WIOParallelNode.Element[Ctx, I, Err, InterimState, ? <: WCState[Ctx]]],

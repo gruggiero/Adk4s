@@ -10,7 +10,6 @@ Test / scalafix / unmanagedSources := Seq.empty
 
 lazy val `structured-llm` = (project in file("structured-llm"))
   .dependsOn(
-    ProjectRef(file("../../business4s/workflows4s"), "workflows4s-core"),
     ProjectRef(file("../../llm4s/llm4s"), "core")
   )
   .settings(
@@ -21,6 +20,9 @@ lazy val `structured-llm` = (project in file("structured-llm"))
 
       // Typesafe Config for configuration
       "com.typesafe" % "config" % "1.4.3",
+
+      // Workflows4s
+      "org.business4s" %% "workflows4s-core" % "0.4.2",
 
       // Smithy4s for schema definitions
       "com.disneystreaming.smithy4s" %% "smithy4s-core" % smithy4sVersion.value,
@@ -93,14 +95,16 @@ lazy val `adk4s-core` = (project in file("adk4s-core"))
 lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
   .dependsOn(
     `adk4s-core`,
-    `structured-llm`,
-    ProjectRef(file("../../business4s/workflows4s"), "workflows4s-core")
+    `structured-llm`
   )
   .settings(
     name := "adk4s-orchestration",
     libraryDependencies ++= Seq(
       // Cats Effect for IO
       "org.typelevel" %% "cats-effect" % "3.6.3",
+
+      // Workflows4s
+      "org.business4s" %% "workflows4s-core" % "0.4.2",
 
       // fs2 for streaming
       "co.fs2" %% "fs2-core" % "3.9.4",
@@ -127,14 +131,17 @@ lazy val `adk4s-examples` = (project in file("adk4s-examples"))
     `adk4s-orchestration`,
     `structured-llm`,
     `structured-llm-test-models`,
-    ProjectRef(file("../../llm4s/llm4s"), "core"),
-    ProjectRef(file("../../business4s/workflows4s"), "workflows4s-bpmn")
+    ProjectRef(file("../../llm4s/llm4s"), "core")
   )
   .settings(
     name := "adk4s-examples",
     libraryDependencies ++= Seq(
       // Cats Effect for IO
       "org.typelevel" %% "cats-effect" % "3.6.3",
+
+      // Workflows4s
+      "org.business4s" %% "workflows4s-core" % "0.4.2",
+      "org.business4s" %% "workflows4s-bpmn" % "0.4.2",
 
       // fs2 for streaming
       "co.fs2" %% "fs2-core" % "3.9.4",

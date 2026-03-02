@@ -31,9 +31,7 @@ final case class RetryModifier[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]
   onError: (Throwable, WCState[Ctx], Instant) => IO[Option[Instant]]
 ) extends WIONodeModifier[Ctx, I, Err, O]:
   def apply(base: WIO[I, Err, O, Ctx])(using ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
-    base.retry.statelessly.wakeupAt { case (input, error, state) => 
-      onError(error, state, java.time.Instant.now())
-    }
+    base.retry(onError)
 
 final case class InterruptionModifier[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]](
   interruption: WIO.Interruption[Ctx, Err, O]
