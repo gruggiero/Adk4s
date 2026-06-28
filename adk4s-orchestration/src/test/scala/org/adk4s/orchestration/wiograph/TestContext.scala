@@ -1,5 +1,6 @@
 package org.adk4s.orchestration.wiograph
 
+import cats.effect.IO
 import workflows4s.wio.WorkflowContext
 
 object TestContext extends WorkflowContext:
@@ -16,3 +17,4 @@ object TestContext extends WorkflowContext:
 
   override type State = TestStateBase
   override type Event = TestEvent
+  override type Effect[T] = IO[T]

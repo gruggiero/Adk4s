@@ -37,3 +37,6 @@ logs/
 *.tmp
 *.swp
 *~
+stainless/
+.stainless-cache/
+project/lib/sbt-stainless.jar

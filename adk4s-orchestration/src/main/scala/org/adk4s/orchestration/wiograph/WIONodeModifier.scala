@@ -1,7 +1,8 @@
 package org.adk4s.orchestration.wiograph
 
+import cats.Applicative
 import cats.effect.IO
-import workflows4s.wio.{ErrorMeta, WCEvent, WCState, WIO, WorkflowContext}
+import workflows4s.wio.{ErrorMeta, WCEffect, WCEvent, WCState, WIO, WIOContext, WorkflowContext}
 import workflows4s.wio.internal.EventHandler
 
 import java.time.Instant
@@ -25,13 +26,16 @@ final case class CheckpointModifier[Ctx <: WorkflowContext, I, Err, O <: WCState
         convert0 = convertEvent,
         handle0 = handleDetected
       )
-    WIO.Checkpoint[Ctx, I, Err, O, Evt](base, genEventIO, eventHandler)
+    WIO.Checkpoint[Ctx, I, Err, O, Evt](base, _ => (in: I, out: O) => genEventIO(in, out).asInstanceOf[WCEffect[Ctx][Evt]], eventHandler)
 
 final case class RetryModifier[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]](
   onError: (Throwable, WCState[Ctx], Instant) => IO[Option[Instant]]
 ) extends WIONodeModifier[Ctx, I, Err, O]:
   def apply(base: WIO[I, Err, O, Ctx])(using ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
-    base.retry(onError)
+    given Applicative[WCEffect[Ctx]] = cats.Applicative[IO].asInstanceOf[Applicative[WCEffect[Ctx]]]
+    base.retry.statelessly.wakeupAt { (in, err, state) =>
+      onError(err, state, Instant.EPOCH).asInstanceOf[WCEffect[Ctx][Option[Instant]]]
+    }
 
 final case class InterruptionModifier[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]](
   interruption: WIO.Interruption[Ctx, Err, O]

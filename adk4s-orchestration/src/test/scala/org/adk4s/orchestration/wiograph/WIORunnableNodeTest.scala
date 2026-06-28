@@ -8,7 +8,8 @@ import munit.FunSuite
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
 import workflows4s.runtime.WorkflowInstanceId
-import workflows4s.wio.{ActiveWorkflow, ErrorMeta, WCEvent, WCState, WIO}
+import workflows4s.wio.{ActiveWorkflow, ErrorMeta, WCEffect, WCEffectLift, WCEvent, WCState, WIO}
+import workflows4s.wio.internal.WakeupResult
 
 import scala.reflect.ClassTag
 
@@ -23,16 +24,19 @@ class WIORunnableNodeTest extends FunSuite:
     input: In,
     initialState: TestStateBase
   ): TestStateBase =
+    val liftEffect: WCEffectLift[TestContext.Ctx, IO] = [A] => (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
     val workflow: ActiveWorkflow[TestContext.Ctx] =
       ActiveWorkflow[TestContext.Ctx](workflowInstanceId, wio.provideInput(input), initialState)
-    val wakeup: workflows4s.wio.internal.WakeupResult[WCEvent[TestContext.Ctx]] =
-      workflow.proceed(java.time.Instant.EPOCH)
+    val wakeup: WakeupResult[IO, WCEvent[TestContext.Ctx]] =
+      workflow.proceed(java.time.Instant.EPOCH, liftEffect)
     val eventOpt: Option[WCEvent[TestContext.Ctx]] =
-      wakeup.toRaw.flatMap((io: IO[Either[java.time.Instant, WCEvent[TestContext.Ctx]]]) =>
-        io.unsafeRunSync() match
-          case Right(event) => Some(event)
-          case Left(_) => None
-      )
+      wakeup match
+        case WakeupResult.Noop() => None
+        case WakeupResult.Processed(io) =>
+          io.asInstanceOf[IO[WakeupResult.ProcessingResult[WCEvent[TestContext.Ctx]]]].unsafeRunSync() match
+            case WakeupResult.ProcessingResult.Proceeded(event) => Some(event)
+            case WakeupResult.ProcessingResult.Failed(_, Some(event)) => Some(event)
+            case WakeupResult.ProcessingResult.Failed(_, None) => None
     val finalWorkflow: ActiveWorkflow[TestContext.Ctx] =
       eventOpt match
         case Some(event) =>

@@ -5,8 +5,8 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import munit.FunSuite
 import workflows4s.runtime.WorkflowInstanceId
-import workflows4s.wio.{ActiveWorkflow, ErrorMeta, SignalDef, SignalRouter, WCEvent, WCState, WIO}
-import workflows4s.wio.internal.WorkflowEmbedding
+import workflows4s.wio.{ActiveWorkflow, ErrorMeta, SignalDef, SignalRouter, WCEffect, WCEffectLift, WCEvent, WCState, WIO, WIOContext}
+import workflows4s.wio.internal.{WakeupResult, WorkflowEmbedding}
 
 import java.time.Instant
 import scala.reflect.ClassTag
@@ -24,16 +24,19 @@ class WIONodeModifierTest extends FunSuite:
     input: In,
     initialState: TestStateBase
   ): TestStateBase =
+    val liftEffect: WCEffectLift[TestContext.Ctx, IO] = [A] => (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
     val workflow: ActiveWorkflow[TestContext.Ctx] =
       ActiveWorkflow[TestContext.Ctx](workflowInstanceId, wio.provideInput(input), initialState)
-    val wakeup: workflows4s.wio.internal.WakeupResult[WCEvent[TestContext.Ctx]] =
-      workflow.proceed(Instant.EPOCH)
+    val wakeup: WakeupResult[IO, WCEvent[TestContext.Ctx]] =
+      workflow.proceed(Instant.EPOCH, liftEffect)
     val eventOpt: Option[WCEvent[TestContext.Ctx]] =
-      wakeup.toRaw.flatMap((io: IO[Either[Instant, WCEvent[TestContext.Ctx]]]) =>
-        io.unsafeRunSync() match
-          case Right(event) => Some(event)
-          case Left(_) => None
-      )
+      wakeup match
+        case WakeupResult.Noop() => None
+        case WakeupResult.Processed(io) =>
+          io.asInstanceOf[IO[WakeupResult.ProcessingResult[WCEvent[TestContext.Ctx]]]].unsafeRunSync() match
+            case WakeupResult.ProcessingResult.Proceeded(event) => Some(event)
+            case WakeupResult.ProcessingResult.Failed(_, Some(event)) => Some(event)
+            case WakeupResult.ProcessingResult.Failed(_, None) => None
     val finalWorkflow: ActiveWorkflow[TestContext.Ctx] =
       eventOpt match
         case Some(event) =>
@@ -237,7 +240,7 @@ class WIONodeModifierTest extends FunSuite:
 
     val interruptionHandler: WIO[TestStateBase, Nothing, TestState, TestContext.Ctx] =
       WIO.Pure[TestContext.Ctx, TestStateBase, Nothing, TestState](
-        (_: TestStateBase) => Right(TestState(999)),
+        (_: WIOContext[WCState[TestContext.Ctx]]) => (in: TestStateBase) => Right(TestState(999)),
         WIO.Pure.Meta(ErrorMeta.noError, None)
       )
 

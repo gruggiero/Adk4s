@@ -4,6 +4,7 @@ import cats.effect.IO
 import org.adk4s.core.component.ChatModel
 import org.llm4s.config.Llm4sConfig
 import org.llm4s.llmconnect.LLMConnect
+import org.llm4s.llmconnect.config.ContextWindowResolver
 import org.llm4s.llmconnect.config.OpenAIConfig
 import org.llm4s.llmconnect.model.AssistantMessage
 import org.llm4s.llmconnect.model.Completion
@@ -11,6 +12,7 @@ import org.llm4s.llmconnect.model.Conversation
 import org.llm4s.llmconnect.model.StreamedChunk
 import org.llm4s.llmconnect.model.SystemMessage
 import org.llm4s.llmconnect.model.UserMessage
+import org.llm4s.model.ModelRegistryService
 
 import java.util.UUID
 
@@ -35,14 +37,22 @@ object ExampleUtils:
       case Some(key) =>
         val model: String = Option(System.getenv("LLM_MODEL")).filter(_.nonEmpty).getOrElse("gpt-4o-mini")
         val baseUrl: String = Option(System.getenv("OPENAI_BASE_URL")).filter(_.nonEmpty).getOrElse("https://api.openai.com/v1")
-        val config: OpenAIConfig = OpenAIConfig.fromValues(model, key, None, baseUrl)
         IO.println(s"[Using real LLM: $model]") *>
           IO.fromEither(
-            LLMConnect
-              .getClient(config)
+            ModelRegistryService
+              .default()
               .left
-              .map(err => new RuntimeException(s"Failed to create LLM client: ${err.message}"))
-          )
+              .map(err => new RuntimeException(s"Failed to load model registry: ${err.message}"))
+          ).flatMap { (registry: ModelRegistryService) =>
+            given ContextWindowResolver = ContextWindowResolver(registry)
+            val config: OpenAIConfig = OpenAIConfig.fromValues(model, key, None, baseUrl)
+            IO.fromEither(
+              LLMConnect
+                .getClient(config)(using registry)
+                .left
+                .map(err => new RuntimeException(s"Failed to create LLM client: ${err.message}"))
+            )
+          }
       case None =>
         IO.println("[Using MockLLMClient — set OPENAI_API_KEY for real LLM]") *>
           IO.raiseError(new UnsupportedOperationException(
@@ -55,14 +65,22 @@ object ExampleUtils:
       case Some(key) =>
         val model: String = Option(System.getenv("LLM_MODEL")).filter(_.nonEmpty).getOrElse("gpt-4o-mini")
         val baseUrl: String = Option(System.getenv("OPENAI_BASE_URL")).filter(_.nonEmpty).getOrElse("https://api.openai.com/v1")
-        val config: OpenAIConfig = OpenAIConfig.fromValues(model, key, None, baseUrl)
         IO.println(s"[Using real LLM: $model via $baseUrl]") *>
           IO.fromEither(
-            LLMConnect
-              .getClient(config)
+            ModelRegistryService
+              .default()
               .left
-              .map(err => new RuntimeException(s"Failed to create LLM client: ${err.message}"))
-          ).map((client: org.llm4s.llmconnect.LLMClient) => ChatModel.fromLlm4s[IO](client))
+              .map(err => new RuntimeException(s"Failed to load model registry: ${err.message}"))
+          ).flatMap { (registry: ModelRegistryService) =>
+            given ContextWindowResolver = ContextWindowResolver(registry)
+            val config: OpenAIConfig = OpenAIConfig.fromValues(model, key, None, baseUrl)
+            IO.fromEither(
+              LLMConnect
+                .getClient(config)(using registry)
+                .left
+                .map(err => new RuntimeException(s"Failed to create LLM client: ${err.message}"))
+            ).map((client: org.llm4s.llmconnect.LLMClient) => ChatModel.fromLlm4s[IO](client))
+          }
       case None =>
         IO.println("[Using MockChatModel — set OPENAI_API_KEY for real LLM]") *>
           IO.pure(new MockChatModel())

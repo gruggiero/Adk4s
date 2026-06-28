@@ -7,11 +7,12 @@ import workflows4s.wio.{WIO, WorkflowContext, WCState}
 object TestContext extends WorkflowContext:
   override type State = String
   override type Event = Unit
+  override type Effect[T] = IO[T]
 
 class WIOBranchTest extends CatsEffectSuite:
 
   test("WIOBranch.fork routes to ifTrue when condition is true") {
-    val workflow = WIOBranch.fork(
+    val workflow = WIOBranch.fork[Int, String, TestContext.type](
       condition = (i: Int) => i > 10,
       ifTrue = WIO.build[TestContext.type].pure.makeFrom[Int].value(i => s"greater: $i").done,
       ifFalse = WIO.build[TestContext.type].pure.makeFrom[Int].value(i => s"lesser: $i").done
@@ -23,7 +24,7 @@ class WIOBranchTest extends CatsEffectSuite:
   }
 
   test("WIOBranch.branch creates multi-way branch") {
-    val workflow = WIOBranch.branch(
+    val workflow = WIOBranch.branch[Int, String, Int, TestContext.type](
       selector = (i: Int) => i % 2,
       branches = Map(
         0 -> WIO.build[TestContext.type].pure.makeFrom[Int].value(i => s"even: $i").done,
@@ -38,7 +39,7 @@ class WIOBranchTest extends CatsEffectSuite:
   }
 
   test("WIOBranch.endIf returns endValue when condition is true") {
-    val workflow = WIOBranch.endIf(
+    val workflow = WIOBranch.endIf[Int, String, TestContext.type](
       condition = (i: Int) => i > 100,
       continueWith = WIO.build[TestContext.type].pure.makeFrom[Int].value(i => s"continue: $i").done,
       endValue = "ended"

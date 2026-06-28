@@ -5,7 +5,7 @@ import cats.effect.IO
 import fs2.Stream
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
-import workflows4s.wio.{ErrorMeta, WCEvent, WCState, WIO, WorkflowContext}
+import workflows4s.wio.{ErrorMeta, WCEffect, WCEffectLift, WCEvent, WCState, WIO, WorkflowContext}
 import org.adk4s.core.types.NodeKey
 
 import java.time.Instant
@@ -235,11 +235,12 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx]
     ): IO[(ActiveWorkflow[Ctx], Boolean)] =
-      val wakeup: WakeupResult[WCEvent[Ctx]] = workflow.proceed(java.time.Instant.EPOCH)
-      wakeup.toRaw match
-        case None => IO.pure((workflow, false))
-        case Some(io: IO[Ior[java.time.Instant, WCEvent[Ctx]]]) =>
-          io.map { (result: Ior[java.time.Instant, WCEvent[Ctx]]) =>
+      val liftEffect: WCEffectLift[Ctx, IO] = [A] => (fa: WCEffect[Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val wakeup: WakeupResult[IO, WCEvent[Ctx]] = workflow.proceed(java.time.Instant.EPOCH, liftEffect)
+      wakeup match
+        case WakeupResult.Noop() => IO.pure((workflow, false))
+        case WakeupResult.Processed(io) =>
+          io.asInstanceOf[IO[Ior[java.time.Instant, WCEvent[Ctx]]]].map { (result: Ior[java.time.Instant, WCEvent[Ctx]]) =>
             val eventOpt: Option[WCEvent[Ctx]] = result match
               case Ior.Right(event) => Some(event)
               case Ior.Both(_, event) => Some(event)

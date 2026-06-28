@@ -9,6 +9,7 @@ import workflows4s.wio.{WIO, WorkflowContext, WCState}
 object OrderProcessingContext extends WorkflowContext:
   override type State = OrderState
   override type Event = OrderEvent
+  override type Effect[T] = IO[T]
 
 case class OrderState(
   orderId: String,
@@ -174,14 +175,14 @@ class BranchingIntegrationTest extends CatsEffectSuite:
 
   test("WIOBranch creates complex order processing workflow") {
     // Create a workflow that processes orders based on amount and payment method
-    val orderWorkflow = WIOBranch.branch(
+    val orderWorkflow = WIOBranch.branch[OrderState, OrderState, String, OrderProcessingContext.type](
       selector = (order: OrderState) => order.amount match {
         case amount if amount > 1000 => "high_value"
         case amount if amount > 0 => "standard"
         case _ => "invalid"
       },
       branches = Map(
-        "high_value" -> WIOBranch.fork(
+        "high_value" -> WIOBranch.fork[OrderState, OrderState, OrderProcessingContext.type](
           condition = (order: OrderState) => order.paymentMethod.isDefined,
           ifTrue = WIO.build[OrderProcessingContext.type]
             .pure.makeFrom[OrderState]

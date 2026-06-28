@@ -1,0 +1,780 @@
+name: verified-scala3
+version: 2
+description: >
+  Depth-first verified Scala 3 workflow for functional, type-safe codebases.
+  Correctness-first: every spec flows through
+  spec → typed contract → proof obligations → test oracle → implementation → verification.
+  Types and tests are designed BEFORE implementation so they act as an oracle
+  derived from the specification, not a mirror of the generated code.
+  Each spec is fully implemented and verified through all applicable rings
+  (compile → lint → architecture → property tests → compatibility → mutation →
+  formal/model → adversarial review → telemetry) before the next spec begins.
+  Shared domain concepts accumulate incrementally via a concept inventory that
+  prevents duplicate type creation. The actual project stack (test framework,
+  actor/HTTP/persistence libraries, verification tools) is DETECTED, not assumed.
+
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Intent, scope, verification strategy, correctness risk, and affected capabilities
+    template: proposal.md
+    instruction: |
+      Write a clear proposal for the change. Beyond the standard scope and motivation,
+      you MUST include:
+
+      1. A VERIFICATION STRATEGY section with checkboxes for which rings apply to this
+         change. Ring 0 (compile) and Ring 1 (lint) always apply.
+
+         Ring 3 (property/scenario tests) is MANDATORY for every code-changing spec —
+         including refactors, thread-safety changes, and internal restructurings
+         (which need regression or property tests proving behavior preservation).
+         The ONLY allowed Ring 3 waivers, which must be stated explicitly with
+         rationale, are: docs-only, formatting-only, build-metadata-only, and
+         test-only changes where the implementation is unaffected.
+
+         Ring 4 (wire/persistence compatibility) applies to any change touching
+         serialization, persisted events/snapshots, wire formats (JSON, protobuf,
+         Smithy), or message payloads.
+         Ring 5 (mutation) applies to changed production logic where the mutation
+         tool is available (see capability-profile.md).
+         Ring 6 (formal) applies to pure computation modules.
+         Ring 7 (model checking) optionally applies to distributed/event-driven
+         invariants (event ordering, idempotency, replay, response guarantees).
+         Ring 8 (adversarial spec-compliance review) is MANDATORY for every
+         code-changing spec.
+         Ring 9 (telemetry) applies when the change affects API operations or
+         event sequences AND the telemetry stack is present per capability-profile.md.
+
+      2. A CORRECTNESS RISK LEVEL (low / medium / high) with one-line justification.
+         High-risk examples: evaluators, typecheckers, desugarers, mappers, money
+         arithmetic, persistence schema changes, anything with fallback/default paths.
+
+      3. An EXISTING CONCEPTS section that references types, traits, enums, and wire
+         models already present in the project that this change will reuse. To populate
+         this, scan the project source tree for `opaque type`, `sealed trait`, `enum`,
+         service trait declarations, and IDL files (.smithy, .proto).
+
+      4. A NEW CONCEPTS section previewing any new domain types, service methods, error
+         variants, or wire operations this change will introduce.
+
+      5. A TYPED CONTRACT DECISION table. The typed contract phase (formerly
+         "pseudocode") is MANDATORY for every code-changing spec:
+         - Full contract: new domain types, ADT/GADT variants, service methods,
+           actor commands/events/state, IDL operations, evaluator/typechecker logic,
+           public API signature changes, error algebra changes,
+           persistence/serialization changes, event-sourcing/messaging wiring.
+         - Minimal contract (signatures of touched code only): pure internal refactor.
+         - Explicit human-approved waiver: docs-only, formatting-only, test-only.
+    requires: []
+
+  - id: capability-profile
+    generates: capability-profile.md
+    description: >
+      Detected project capabilities: Scala version, build modules, test and
+      property frameworks, actor/HTTP/persistence/streaming stacks, IDL/codegen
+      setup, mutation/formal/telemetry tooling, active static-analysis rules.
+      All later artifacts and the apply phase MUST generate code and tests for
+      the DETECTED stack, never an assumed one.
+    template: capability-profile.md
+    instruction: |
+      Detect the project's ACTUAL capabilities by inspecting build files and source.
+      Do NOT assume a stack. Do NOT copy values from this schema's examples.
+
+      PROCEDURE — inspect these sources and record findings in the template tables:
+      1. `build.sbt`, `project/*.sbt`, `project/*.scala`, `project/plugins.sbt`:
+         - Scala version(s), sbt version, modules/subprojects and their names
+         - scalacOptions (note whether -Werror / fatal warnings are active)
+      2. Library dependencies — classify what is ACTUALLY present:
+         - Test framework: ScalaTest? munit? weaver? (record the exact one)
+         - Property testing: ScalaCheck? scalatestplus-scalacheck? munit-scalacheck?
+         - Effect system: cats-effect? ZIO? plain Future? none?
+         - Actor framework: Pekko/Akka (typed? cluster? sharding? persistence)?
+         - HTTP: http4s? Pekko HTTP? tapir?
+         - Persistence: DynamoDB? PostgreSQL (skunk/doobie)? event-sourcing journal?
+         - Streaming/messaging: Kafka (which client)? fs2?
+         - Serialization/IDL: circe? protobuf/scalapb? Smithy/smithy4s? Avro?
+         - Refined types: Iron? refined? neither?
+         - Telemetry: otel4s? raw OpenTelemetry? Daut or other monitor lib? none?
+      3. Verification tooling:
+         - Mutation: sbt-stryker4s plugin present? `stryker4s.conf` present?
+           If the conf has a fixed `mutate` list, record it — Ring 5 must
+           dynamically retarget it per spec (see apply phase).
+         - Formal: Stainless available on PATH or via plugin?
+         - Test kits: ActorTestKit / BehaviorTestKit / PersistenceTestKit on the
+           test classpath?
+      4. Static analysis:
+         - `.scalafix.conf`: which rules are ACTIVE (DisableSyntax flags,
+           OrganizeImports, custom architecture rules)?
+         - WartRemover: enabled warts (note any commented-out)?
+         - scalafmt: config present? is scalafmtCheck enforced?
+      5. Compile commands that genuinely compile code in this project:
+         - Record the exact commands for main and test compilation per module,
+           e.g. `sbt <module>/compile`, `sbt <module>/Test/compile`.
+         - Record where typed-contract files must live to be part of the real
+           sbt source graph (test sources of the owning module).
+
+      CONSEQUENCES — record these as explicit rules in the profile:
+      - Tests are generated for the DETECTED test framework (e.g. ScalaTest +
+        ScalaTestPlus ScalaCheck → `AnyFunSuite`/`AnyFlatSpec` with
+        `ScalaCheckPropertyChecks`, NOT munit).
+      - If an actor framework is detected, actor specs use its test kits.
+      - If a telemetry stack is absent, Ring 9 is either skipped with a stated
+        correctness impact, or explicit setup tasks are added to the change.
+      - If mutation tooling is absent, Ring 5 is skipped with a stated impact.
+      - Domain purity rules for Ring 2 (which packages must not import the
+        detected infrastructure libraries).
+    requires:
+      - proposal
+
+  - id: concept-inventory
+    generates: concept-inventory.md
+    description: >
+      Living catalogue of all domain concepts (opaque types, sealed traits, enums,
+      service traits, IDL models, ScalaCheck generators) in the project.
+      Prevents duplicate creation and enables concept reuse across specs.
+    template: concept-inventory.md
+    instruction: |
+      Create a comprehensive inventory of existing Scala 3 domain concepts in the
+      project. This is NOT a new design — it is a SCAN of what already exists.
+
+      PROCEDURE:
+      1. Prefer the SEMANTIC scanner when available (scala-cli + Scalameta based
+         script under `openspec/schemas/verified-scala3/scanner/`), because regex
+         scanning misses Scala 3 constructs: multiline type aliases, nested objects,
+         parameterised enum cases, givens, extension methods, nested packages,
+         generated IDL types outside expected paths, typeclass instances, overloads.
+         Fall back to a manual/regex scan only if the scanner cannot run, and say so.
+      2. Scan main sources (all modules, per capability-profile.md) for:
+         - `opaque type` declarations → type name, underlying type, constraint, package
+         - `sealed trait` / `enum` declarations → name, variants, package
+         - Service traits (tagless final or otherwise) → name, methods, package
+         - Case classes in domain packages → name, fields, package
+         - `given` instances and extension methods on domain types
+      3. Scan IDL sources (`*.smithy`, `*.proto`) for services, operations, structures.
+      4. Scan test sources for `Gen[_]` declarations and `Arbitrary[_]` instances.
+      5. Record each concept in the tabular format defined in the template.
+
+      CONSISTENCY CHECK — run after scanning and record the result in the inventory:
+      - every recorded package path is importable (matches a real `package` clause)
+      - every recorded constraint matches the source expression
+      - every recorded generator compiles (exists in test sources as recorded)
+      Report any discrepancy explicitly rather than silently recording it.
+
+      IMPORTANT: If the project is new or empty, create the inventory with empty tables
+      and header rows only. The inventory will be populated as specs are implemented.
+
+      This artifact is a LIVING DOCUMENT. It is updated after each spec's implementation
+      during the apply phase. Do not treat it as frozen after initial creation.
+    requires:
+      - proposal
+      - capability-profile
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: >
+      Delta specs — one per capability. Each spec declares which domain concepts
+      it uses (from the inventory) and which it introduces (new). Includes
+      requirements, acceptance scenarios, ScalaCheck properties with generator
+      strategies, temporal properties, formal contracts, and a proof-obligations
+      table mapping every requirement to an enforcement mechanism.
+    template: spec.md
+    instruction: |
+      Create one spec file per capability under `specs/<capability-name>/spec.md`.
+
+      CRITICAL RULES:
+      1. Each spec MUST have a "Concepts Used" table referencing entries from
+         concept-inventory.md by name, kind, and package. Do NOT invent types —
+         if the concept exists in the inventory, reference it exactly.
+      2. Each spec MUST have a "Concepts Introduced" table listing ANY new types,
+         enums, traits, or IDL operations this spec will create. These are
+         commitments — the implementation must create exactly these concepts.
+      3. Requirements use Given/When/Then format. Every requirement MUST open
+         with a single normative statement containing SHALL or MUST, placed
+         between the `### Requirement:` header and the first `**Given**` clause —
+         this is REQUIRED by `openspec validate --strict` (which rejects any
+         requirement body lacking SHALL/MUST). The Given/When/Then clauses then
+         refine that normative statement into observable, testable form.
+         Every `Then` must be observable and every scenario testable. Every error
+         path must be specified. Avoid vague words ("valid", "fast", "reasonable",
+         "correct") — state the concrete constraint instead.
+      4. Every spec MUST include a "Properties (Ring 3)" section with ScalaCheck
+         properties expressed as English descriptions AND `forAll` pseudocode.
+         Properties describe invariants, not examples. Good: "deposit increases
+         balance by exact amount for all positive amounts and all valid accounts."
+         Bad: "depositing 100 into account ABC gives balance 200."
+         EVERY property MUST declare its generator strategy (which Gen, whether it
+         is constructive or filtered, which edge cases it covers). Prefer
+         constructive generators over `suchThat` filtering.
+      5. Where relevant to the detected stack, include MODEL-BASED properties:
+         - event sourcing: replaying persisted events == live command handling
+         - messaging ingestion: malformed payloads → explicit errors; commit only
+           after successful processing; duplicate/out-of-order behavior specified
+         - DSL/evaluator logic: desugaring laws, typechecker totality, semantics
+           agreement with the reference model
+         - serialization: round-trip laws per wire format, old-fixture decoding
+      6. If the proposal's verification strategy includes Ring 6, include a
+         "Formal Contracts" section with require/ensuring pseudocode.
+      7. If the proposal's verification strategy includes Ring 9, include a
+         "Temporal Properties" section with EARS natural language patterns.
+         Every temporal property must name its trigger event and response event.
+      8. Every spec MUST include a "Proof Obligations" table mapping EVERY
+         requirement, scenario, invariant, and type constraint to its enforcement
+         mechanism (type system / smart constructor / property test / scenario
+         test / compile-negative test / static rule / adversarial review / manual
+         review). A manually-reviewed obligation is allowed but must say so
+         explicitly. No spec may enter implementation with an obligation that has
+         no declared enforcement mechanism.
+      9. Any claim that an invalid state is "unreachable" must cite a type-level
+         proof (and a compile-negative test obligation) or an explicit runtime
+         check. If a spec extends an enum/GADT, it must state how all existing
+         pattern matches over that type should behave for the new variants.
+      10. Specs are DELTA specs. Use `## ADDED Requirements` headers for new
+          requirements and `## MODIFIED Requirements` for changes to existing ones.
+    requires:
+      - proposal
+      - capability-profile
+      - concept-inventory
+
+  - id: spec-lint
+    generates: spec-lint.md
+    description: >
+      Lint report over all specs: ambiguity, testability, concept resolution,
+      generator strategies, proof-obligation completeness. Fails fast if any
+      spec is too ambiguous to implement safely.
+    template: spec-lint.md
+    instruction: |
+      Lint EVERY spec file under `specs/` against these checks and record one
+      row per check per spec in the report:
+
+      1. Every requirement has concrete Given/When/Then clauses.
+      1b. Every requirement opens with a normative statement containing SHALL or
+         MUST before its `**Given**` clause (FAIL otherwise — `openspec validate
+         --strict` rejects requirements without SHALL/MUST).
+      2. Every `Then` is observable (a return value, persisted event, emitted
+         message, error value — not an internal intention).
+      3. Every scenario is testable with the detected stack (capability-profile.md).
+      4. Every error path is specified (no requirement leaves failure behavior open).
+      5. Every new public concept appears in "Concepts Introduced".
+      6. Every reused concept exists in concept-inventory.md.
+      7. Every property has a declared generator strategy.
+      8. Every temporal property has a trigger event and a response event.
+      9. No vague words ("valid", "fast", "reasonable", "correct", "appropriate")
+         without a concrete definition next to them.
+      10. Every "unreachable"/"cannot happen" claim has a type-level proof
+          obligation or an explicit runtime check.
+      11. Every enum/GADT extension states how existing pattern matches behave.
+      12. The Proof Obligations table covers every requirement, scenario,
+          invariant, and introduced type constraint, each with a declared
+          enforcement mechanism.
+
+      VERDICT: each spec gets PASS / FAIL. A FAIL lists the exact offending
+      headings and what is missing. Do NOT proceed to implementation-order while
+      any spec is FAIL — fix the specs first, then refresh this report.
+    requires:
+      - specs
+
+  - id: design
+    generates: design.md
+    description: >
+      Technical design covering architecture decisions, package structure,
+      effect boundaries, type-driven invalid-state prevention, refined-type
+      strategy, IDL model layout, compatibility story, and verification
+      approach per module.
+    template: design.md
+    instruction: |
+      Write a technical design document for this change. The design must cover:
+
+      1. PACKAGE STRUCTURE: Which packages will contain domain types, service traits,
+         infrastructure, and test code. Specify layer dependency rules that the
+         architecture rules (Ring 2) will enforce, made PROJECT-SPECIFIC from
+         capability-profile.md — e.g. pure domain packages must not import the
+         detected actor framework, protobuf runtime, HTTP, messaging, or database
+         client libraries; actor/runtime layers may; endpoint layers may import
+         HTTP and generated API models; generated code is excluded from some checks.
+
+      2. EFFECT BOUNDARIES: Which code is pure (candidates for Ring 6 formal
+         verification) and which is effectful. Actor/state-transition logic should
+         delegate to pure functions wherever possible.
+
+      3. TYPE STRATEGY — INVALID-STATE PREVENTION: For every invariant, place it on
+         this hierarchy and justify the placement:
+           Best:  invalid state is impossible to express (narrow enums/ADTs,
+                  indexed ADTs/GADTs, separate raw vs typed ASTs)
+           Good:  invalid state is rejected by smart constructor
+           Okay:  invalid state is rejected by validator
+           Risky: invalid state reaches the evaluator and returns a fallback
+           Bad:   invalid state silently maps to valid behavior  ◄ FORBIDDEN
+         Prefer splitting broad enums into narrower algebras over validating a
+         broad enum downstream. For DSL code prefer a raw → typecheck → typed
+         pipeline where only the typechecker can produce the typed AST.
+         When something must not be constructible, add a compile-negative test
+         obligation (e.g. `assertDoesNotCompile`).
+
+      4. REFINED TYPE STRATEGY: Which domain values get constrained opaque types
+         (Iron or the detected refined-type library) vs. plain case classes.
+         Rule of thumb: any value that crosses an API boundary or is persisted
+         should have a constrained opaque type.
+
+      5. IDL MODEL LAYOUT: If the change involves API operations, describe the
+         Smithy/protobuf service/operation structure per the detected IDL stack.
+
+      6. ERROR STRATEGY: How errors are modeled (sealed enum per service), how they
+         flow through the system, and how they are exposed at boundaries. No
+         swallowed errors; no default branches returning valid domain values.
+
+      7. COMPATIBILITY STORY (Ring 4): If the change touches persisted or wire
+         data, state how compatibility is preserved and tested: old-fixture
+         decoding, snapshot compatibility, round-trip laws per format, unknown/
+         missing-field behavior, schema evolution checks.
+
+      8. VERIFICATION MAP: For each module/package, state which rings apply and why.
+         This feeds directly into the implementation-order artifact.
+
+      Reference concept-inventory.md for existing patterns. Extend existing
+      approaches rather than inventing parallel ones.
+    requires:
+      - proposal
+      - capability-profile
+      - concept-inventory
+      - spec-lint
+
+  - id: implementation-order
+    generates: implementation-order.md
+    description: >
+      Ordered list of specs with dependency analysis, determining the
+      depth-first implementation sequence. Each spec entry lists concepts
+      introduced, concepts consumed, applicable rings, complexity, and the
+      typed-contract requirement (full / minimal / waiver).
+    template: implementation-order.md
+    instruction: |
+      Analyze all specs and produce a dependency-ordered implementation sequence.
+
+      PROCEDURE:
+      1. For each spec file in `specs/`, extract:
+         - Concepts Introduced (from the spec's table)
+         - Concepts Used (from the spec's table)
+         - Applicable Rings (from the proposal's verification strategy + spec's sections)
+         - Complexity: simple (no new types, ≤1 new method), medium (new types OR
+           complex logic), high (new types AND complex logic AND Ring 6/7/9)
+
+      2. Build a dependency graph: spec A depends on spec B if A uses a concept
+         that B introduces.
+
+      3. Topologically sort the specs. If two specs are independent, order the
+         simpler one first (faster feedback, builds confidence).
+
+      4. For each spec, record the TYPED CONTRACT requirement from the proposal's
+         decision table: full / minimal / waiver. The typed contract is MANDATORY
+         for every code-changing spec — "waiver" requires explicit human approval
+         and applies only to docs/formatting/test-only specs.
+
+      5. For each spec, record which production files are expected to change —
+         this drives Ring 5 dynamic mutation targeting.
+
+      6. Create a checkbox list for tracking implementation progress. This list
+         is the `tracks` target for the apply phase — progress is measured by
+         checkbox completion.
+
+      IMPORTANT: The order determined here is the EXACT order the apply phase will
+      follow. Each spec is fully implemented and verified before the next begins.
+    requires:
+      - specs
+      - spec-lint
+      - design
+
+  - id: tasks
+    generates: tasks.md
+    description: >
+      Stock OpenSpec task checklist for the change, derived from
+      implementation-order.md. Makes `openspec list` / task tooling report
+      progress. This is the OpenSpec-native companion to the schema's richer
+      implementation-progress.md tracker.
+    template: tasks.md
+    instruction: |
+      Generate a `tasks.md` checklist in the change root from the sequence in
+      implementation-order.md. This file exists so the stock OpenSpec CLI
+      (`openspec list`, task counts, `openspec validate`) can track progress;
+      the apply phase still tracks its detailed state in implementation-progress.md.
+
+      PROCEDURE:
+      1. Emit one `## <n>. <spec-name>` section per spec, in the EXACT order of
+         implementation-order.md's Implementation Sequence.
+      2. Under each section, emit `- [ ]` checkbox tasks covering the schema's
+         per-spec cycle: typed contract (human gate), test oracle (human gate),
+         implementation, the applicable rings for THAT spec (from the Ring
+         Applicability table — do not list rings marked `—`), and the
+         concept-delta + inventory update + checkpoint.
+      3. If a spec carries prerequisite work (e.g. build restructure, new
+         dependencies, static-analysis config), add those as the first checkboxes
+         of its section.
+      4. Keep every task observable and specific to the detected stack — never a
+         generic "implement the spec".
+
+      Keep tasks.md and implementation-progress.md consistent: both are seeded
+      unchecked, and the apply phase checks boxes in both as each spec completes.
+    requires:
+      - implementation-order
+
+apply:
+  requires:
+    - implementation-order
+  tracks: implementation-progress.md
+  instruction: |
+    ███████████████████████████████████████████████████████████████████████████
+    ONE SPEC AT A TIME — MANDATORY HUMAN GATE BETWEEN EVERY SPEC
+    ███████████████████████████████████████████████████████████████████████████
+
+    This schema implements a STRICT one-spec-at-a-time discipline with
+    verification moved EARLIER: types and tests are designed before the
+    implementation, so they act as an oracle derived from the specification,
+    not a mirror of the generated code.
+
+    The cycle is: implement ONE spec → checkpoint → WAIT → human approves → next spec.
+
+    BEFORE YOU WRITE A SINGLE LINE OF CODE, read and internalize this rule:
+
+      After completing ALL steps for a spec (Steps 0–13), you MUST stop,
+      present the checkpoint summary, and WAIT for the human to explicitly
+      say "continue", "next", "proceed", or similar.
+
+      Moving to the next spec without explicit human approval is a schema
+      violation. It defeats the purpose of the verified workflow.
+
+      "I'll just do the next one since it's simple" is NOT acceptable.
+      "The user said continue earlier, so I'll keep going" is NOT acceptable.
+      Each spec requires its own approval. No exceptions.
+
+    There are also TWO human gates INSIDE each spec: after the typed contract
+    (Step 1) and after the test oracle (Step 2). Do not implement until both
+    have been approved.
+
+    ███████████████████████████████████████████████████████████████████████████
+
+    Read capability-profile.md FIRST — every command, framework choice, and
+    test style below must match the DETECTED stack, not an assumed one.
+    Read implementation-order.md to determine the sequence.
+    Then implement ONE spec — the first pending one — following Steps 0–13 below.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 0 — CONCEPT CHECK
+    ═══════════════════════════════════════════════════════════════════════════
+    Read concept-inventory.md. For every type, trait, enum, or IDL model
+    that this spec's "Concepts Used" table references:
+    - Verify the concept exists in the project source code
+    - Import it — do NOT recreate it
+    If the spec extends an existing concept (adds an enum variant, a new method
+    to a service trait), modify the existing source file rather than creating a
+    parallel version.
+
+    Also verify the spec's Proof Obligations table is complete: every
+    requirement, scenario, invariant, and type constraint has a declared
+    enforcement mechanism. If not, STOP — the spec must be fixed first.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 1 — TYPED CONTRACT ◄ MANDATORY — GENUINELY COMPILED
+    ═══════════════════════════════════════════════════════════════════════════
+    Read the typed-contract requirement for this spec from implementation-order.md
+    (full / minimal / waiver). A waiver requires explicit human approval.
+
+    1. Generate a compile-only typed contract containing:
+       - Import statements for reused concepts (exact packages from inventory)
+       - New domain types: opaque/refined declarations, ADTs/enums/GADTs
+       - Public method signatures and service/actor command signatures (`???` bodies)
+       - The error algebra (sealed error types, new variants on existing ones)
+       - Smart constructors for constrained types
+       - Compile-negative examples as comments or `assertDoesNotCompile` stubs
+         where the spec says something must not be constructible
+       - Property and generator obligations as structured comments
+       - Formal contract sketches and temporal monitor sketches where relevant
+
+    2. PLACEMENT — the file MUST be part of the real sbt source graph so that
+       compiling it gives genuine type-level evidence. Files under
+       `openspec/changes/...` are NOT compiled by sbt and give FALSE confidence.
+       Place the contract under the owning module's TEST sources, e.g.
+       `<module>/src/test/scala/<pkg>/typecontract/<SpecName>TypeContract.scala`
+       (or a dedicated type-contracts module if the project has one — see
+       capability-profile.md).
+
+    3. Compile it with the real project classpath:
+       `sbt <module>/Test/compile`
+       Fix until it genuinely compiles.
+
+    4. STOP. Present the typed contract for human review (new types, signatures,
+       error algebra, properties). Wait for explicit approval.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 2 — TEST ORACLE ◄ TESTS BEFORE IMPLEMENTATION
+    ═══════════════════════════════════════════════════════════════════════════
+    Generate the tests, properties, and model tests for this spec NOW — from the
+    SPEC and the approved typed contract ONLY, before any implementation exists.
+    Tests written after the implementation tend to mirror it; tests written from
+    the spec are an independent oracle.
+
+    Use the `openspec-property-tests` skill (it detects the test framework from
+    capability-profile.md — e.g. ScalaTest + ScalaCheckPropertyChecks, or munit —
+    and reads implementation-order.md/implementation-progress.md, NOT tasks.md).
+
+    Requirements (also enforced by the skill):
+    - One test per Scenario, named after the scenario heading
+    - One property per "Properties (Ring 3)" invariant, with the generator
+      strategy declared in the spec; prefer constructive generators; use
+      ScalaCheck `classify`/`collect` so coverage of important cases is visible
+    - Model-based tests where the spec declares them (event-sourcing replay,
+      messaging ingestion, DSL semantics, serialization round-trips)
+    - Actor scenarios use the detected test kits (ActorTestKit, BehaviorTestKit,
+      PersistenceTestKit, TestProbe) — never deferred to "integration testing"
+    - Every test cites its source: `// spec: <spec-name> — Scenario: <heading>`
+    - Compile-negative obligations become `assertDoesNotCompile` tests
+    - The tests must COMPILE against the typed contract (`sbt <module>/Test/compile`).
+      They are EXPECTED TO FAIL at runtime until Step 3 — that is the point.
+
+    Produce the coverage cross-reference tables (they will be re-verified in
+    Step 6):
+
+      A) Requirement/Scenario ↔ Test:
+        | Spec Heading | Test Name | Status |
+
+      B) Concept coverage — every concept in "Concepts Used" and "Concepts
+         Introduced" must appear in executable test code (import, type
+         annotation, constructor, pattern match, or generator type — comments
+         do NOT count):
+        | Concept | Source | Test Reference | Status |
+
+      C) Proof obligations — every obligation whose mechanism is a test must
+         name the test that enforces it:
+        | Obligation | Enforcement | Test/Artifact | Status |
+
+    STOP. Present the test oracle (property inventory + tables) for human
+    review. Wait for explicit approval before implementing.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 3 — RING 0: IMPLEMENTATION + COMPILATION
+    ═══════════════════════════════════════════════════════════════════════════
+    Generate the full Scala 3 implementation to satisfy the approved typed
+    contract and test oracle.
+    - Keep all approved type declarations and signatures exactly as approved
+    - Import reused concepts from the inventory — do NOT recreate them
+    - Implement all method bodies; promote contract declarations from the
+      typed-contract file into their real main-source locations (the contract
+      file keeps only what remains test-side, e.g. compile-negative checks)
+    - Ensure all pattern matches are exhaustive (sealed types); NO `case _`
+      fallbacks in domain logic that map invalid input to valid behavior
+    Run main AND test compilation (commands from capability-profile.md):
+      `sbt <module>/compile <module>/Test/compile`
+    If compilation fails, read the errors, fix them, and re-compile.
+    Maximum 3 iterations. If still failing, STOP and present errors to human.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 4 — RING 1: LINT + STATIC CORRECTNESS RULES
+    ═══════════════════════════════════════════════════════════════════════════
+    Run: `sbt "scalafix --check"` (plus `scalafmtCheckAll` / WartRemover if
+    active per capability-profile.md).
+    Fix any DisableSyntax violations (var, null, throw, return, while).
+    Fix any RemoveUnused violations.
+
+    Additionally grep the diff for dangerous correctness patterns and remove or
+    justify each occurrence:
+    - `.get` on Option/Either/Try; unsafe `head`/`tail`/`last`
+    - `case _` in critical ADT/evaluator/typechecker matches
+    - `@unchecked`, unchecked casts, `asInstanceOf`
+    - `Await`, `Thread.sleep`, swallowed `NonFatal`
+    - comments claiming "unreachable" without a type-level proof
+    - `scalafix:off` without justification
+    Re-run until clean. Maximum 2 iterations.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 5 — RING 2: ARCHITECTURE
+    ═══════════════════════════════════════════════════════════════════════════
+    Run the architecture rules configured for the project (see design.md and
+    capability-profile.md), e.g.:
+    - LayerDependencies: pure domain must not import the detected actor
+      framework, protobuf runtime, HTTP, messaging, or database client libraries
+    - SealedDomainTypes: domain traits/abstract classes must be sealed
+    - EffectDiscipline: service methods return the project's effect type
+    - RawPrimitivesInDomain: no raw String/Int/Long in domain public APIs
+    - ErrorHandlingDiscipline: no Try, sealed error types, no swallowed errors
+    Generated code is excluded where the design says so.
+    Fix violations. Re-run until clean.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 6 — RING 3: RUN THE TEST ORACLE ◄ MANDATORY — NO EXCEPTIONS
+    ═══════════════════════════════════════════════════════════════════════════
+    Ring 3 is MANDATORY for every code-changing spec. The only waivers (stated
+    in the proposal, human-approved) are docs-only, formatting-only,
+    build-metadata-only, and test-only changes. Refactorings still require
+    regression/property tests proving behavior preservation.
+
+    The tests were written in Step 2. Now run them:
+      `sbt <module>/test`
+
+    If a property is falsified, read the counterexample, fix the IMPLEMENTATION
+    (NOT the property — the property is the spec), and re-run.
+    If a test itself is wrong against the spec, fixing it requires re-approval
+    of the test oracle by the human (it was an approved artifact).
+    Maximum 3 iterations; then STOP and present the counterexample.
+
+    Re-verify the three cross-reference tables from Step 2 (Requirement/Scenario,
+    Concept coverage, Proof obligations). Zero ❌ rows may remain.
+
+    SPEC UPDATE — mandatory documentation output at end of Ring 3:
+    1. Update the current spec markdown file and create (or refresh) a
+       `## Requirement ↔ Test Cross-Reference` table, placed after
+       `## Properties (Ring 3)` content and before `## Verification Rings`.
+    2. One row per Requirement/Scenario with | Requirement | Test Name | Status |,
+       in spec declaration order, all ✅.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 7 — RING 4: WIRE/PERSISTENCE COMPATIBILITY (if applicable)
+    ═══════════════════════════════════════════════════════════════════════════
+    Applies if the spec touches serialization, persisted events/snapshots, wire
+    formats, or message payloads. Verify and test:
+    - round-trip per format: JSON, protobuf, Smithy codec — encode→decode == id
+    - old persisted fixtures still decode to the expected domain values
+      (old fixture bytes/json → decode → expected event/state)
+    - snapshot compatibility
+    - unknown/missing-field behavior on inbound payloads matches the spec
+    If fixtures don't exist yet, create them from current encodings so future
+    changes have a compatibility baseline.
+    If not applicable: skip, noting why.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 8 — RING 5: MUTATION TESTING — DYNAMICALLY TARGETED (if available)
+    ═══════════════════════════════════════════════════════════════════════════
+    If the mutation tool is available (capability-profile.md):
+    1. Compute the production files changed by THIS spec (git diff).
+    2. Generate/override the Stryker `mutate` list to target exactly those
+       files. NEVER rely on a fixed `mutate` list in `stryker4s.conf` — a fixed
+       list lets changes outside it pass Ring 5 without being mutated.
+       Restore the original config afterwards.
+    3. Thresholds by module criticality:
+       - pure domain / evaluator / typechecker / mapper logic: 90–95%
+       - effectful adapters: 80–90%
+       - generated or thin wiring code: lower or explicitly skipped
+    4. For EVERY surviving mutant, one of (record which):
+       - killed by a new targeted test (cite it in the cross-reference table
+         with `// spec: <spec-name> — Requirement: <description>`)
+       - marked equivalent with an explanation
+       - explicitly excluded with rationale
+    Maximum 2 iterations. If not available: skip, noting the correctness impact.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 9 — RING 6: FORMAL VERIFICATION / RING 7: MODEL CHECKING (if applicable)
+    ═══════════════════════════════════════════════════════════════════════════
+    Ring 6 — only for specs whose "Formal Contracts" section is non-empty AND
+    whose implementation is pure (PureScala subset). Good candidates: truth
+    tables, interval/count semantics, desugaring on small ASTs, totality of
+    pure validators, pure state transitions, money arithmetic, monotonicity/
+    conservation laws.
+    Run: `stainless <relevant pure files>` and fix the implementation to
+    satisfy contracts (not the other way around).
+
+    Ring 7 (optional) — for distributed/event-driven invariants that unit
+    tests cannot establish (event ordering, at-least-once, idempotency, replay
+    == live state, response emitted only after persistence): if the change's
+    design declares such invariants, write or update the TLA+/Apalache model
+    and run the checker. If no model checker is available, record the invariant
+    as a manually-reviewed proof obligation.
+
+    If neither applies: skip, noting why.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 10 — RING 8: ADVERSARIAL SPEC-COMPLIANCE REVIEW ◄ MANDATORY
+    ═══════════════════════════════════════════════════════════════════════════
+    Tests can pass while the implementation still violates the English spec
+    (e.g. a private helper silently maps an invalid operator to a valid one).
+    This ring hunts for exactly that. Use the `openspec-adversarial-review`
+    skill, or perform manually:
+
+    1. Compare EVERY requirement against the implementation diff, requirement
+       by requirement — including private helpers, not only public behavior.
+    2. Search the diff for dangerous patterns:
+       fallback/default mappings; `case _` in critical domain logic; comments
+       saying "unreachable"; partial functions; `.get`; unchecked casts;
+       `@unchecked`; swallowed errors; default branches returning valid domain
+       values.
+    3. Ask: can public APIs construct invalid states? Exercise direct
+       construction paths, not just the happy pipeline.
+    4. Ask: could the code pass the current tests while violating the spec?
+       If yes, add the missing test or type-level prevention.
+    5. Check negative paths directly.
+
+    OUTPUT — a compliance report, one verdict per requirement:
+      - Requirement A: PASS
+      - Requirement B: PARTIAL — <public behavior passes, helper violates ...>
+      - Requirement C: FAIL — <direct construction path missing>
+
+    NO checkpoint may be presented as complete while any requirement is FAIL,
+    or PARTIAL without explicit human approval. Fix and re-run affected rings.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 11 — RING 9: TELEMETRY / RUNTIME VERIFICATION (if applicable)
+    ═══════════════════════════════════════════════════════════════════════════
+    Only for specs whose "Temporal Properties" section is non-empty AND the
+    telemetry stack exists per capability-profile.md. If the stack is absent,
+    either add explicit setup tasks (human decision) or skip with a stated
+    correctness impact.
+
+    For every temporal property:
+    1. Add span/event instrumentation with domain-specific attributes
+    2. Generate a runtime monitor from the EARS pattern
+    3. Add an offline/integration test feeding the monitor VALID and INVALID
+       traces and asserting its verdicts
+    4. Wire the feedback loop: a production violation should yield a captured
+       trace fixture → a regression test → a candidate OpenSpec change.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 12 — CONCEPT DELTA CHECK + UPDATE INVENTORY
+    ═══════════════════════════════════════════════════════════════════════════
+    CONCEPT DELTA CHECK — verify the public concept surface changed EXACTLY as
+    committed:
+      new public surface = previous inventory + Concepts Introduced + approved extensions
+    Scan the diff for public types, enum variants, methods, IDL models, actor
+    commands, and error variants. If anything extra was introduced, either:
+    1. update the spec and get human approval; or
+    2. remove the extra concept.
+    This prevents scope creep.
+
+    Then append the verified NEW concepts to concept-inventory.md:
+    - New opaque types with their constraints
+    - New enum variants added to existing enums (modify existing rows)
+    - New methods added to existing service traits (modify existing rows)
+    - New IDL operations
+    - New ScalaCheck generators
+    Use ACTUAL source details (package, constraint), not planned ones.
+
+    ███████████████████████████████████████████████████████████████████████████
+    STEP 13 — MANDATORY CHECKPOINT ◄ YOU MUST STOP HERE
+    ███████████████████████████████████████████████████████████████████████████
+
+    Mark the spec's checkbox in implementation-progress.md (- [ ] → - [x]),
+    and check off that spec's completed tasks in tasks.md so the stock
+    OpenSpec CLI (`openspec list`) reflects the same progress.
+
+    Then present this exact structure to the human and STOP:
+
+      ## ✓ Spec N/M complete: <spec-name>
+
+      **Files changed:** <list>
+      **Rings:** <list with ✅/⏭️ per ring, including 4, 7, 8>
+      **Adversarial review:** <PASS | PARTIAL/FAIL items with human decision needed>
+      **Proof obligations:** <all enforced / list of manually-reviewed ones>
+      **Concepts added to inventory:** <list or "none">
+      **Concept delta:** <exactly as committed | deviations + resolution>
+      **Cross-reference table updates:** Ring 3: +<added>/~<updated>, Ring 5: +<added>/~<updated>
+      **Design decisions made:** <any deviation from the spec or notable choices>
+
+      ---
+      ⏸️  Waiting for your review before starting spec <N+1>: <next-spec-name>
+      Reply "continue" (or describe changes you want) to proceed.
+
+    DO NOT start Step 0 of the next spec until the human replies.
+    DO NOT say "I'll go ahead and start the next one."
+    DO NOT assume that approval of a previous spec carries forward.
+
+    If the human requests changes: re-run only the affected rings, then
+    re-present this checkpoint.
+
+    ███████████████████████████████████████████████████████████████████████████
+
+    After ALL specs are approved and their checkboxes marked, present a final
+    summary with total ring results and the updated concept inventory.

@@ -4,7 +4,7 @@ import cats.effect.IO
 import fs2.Stream
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
-import workflows4s.wio.{ErrorMeta, SignalDef, SignalRouter, WCEvent, WCState, WIO, WorkflowContext}
+import workflows4s.wio.{ErrorMeta, SignalDef, SignalRouter, WCEffect, WCEvent, WCState, WIO, WIOContext, WorkflowContext}
 import workflows4s.wio.internal.{EventHandler, SignalHandler, WorkflowEmbedding}
 import workflows4s.wio.model.WIOMeta
 import workflows4s.wio.builders.AllBuilders
@@ -184,7 +184,7 @@ final case class WIOPureNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]](
   transform: I => Either[Err, O]
 ) extends WIONode[Ctx, I, Err, O]:
   def toWIO(using errorMeta: ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
-    WIO.Pure[Ctx, I, Err, O](transform, WIO.Pure.Meta(errorMeta, None))
+    WIO.Pure[Ctx, I, Err, O](_ => transform, WIO.Pure.Meta(errorMeta, None))
 
 final case class WIORunIONode[Ctx <: WorkflowContext, I, Err, Evt <: WCEvent[Ctx], O <: WCState[Ctx]](
   runIO: I => IO[Evt],
@@ -209,7 +209,7 @@ final case class WIORunIONode[Ctx <: WorkflowContext, I, Err, Evt <: WCEvent[Ctx
         convert0 = convertEvent,
         handle0 = handleDetected
       )
-    WIO.RunIO[Ctx, I, Err, O, Evt](runIO, eventHandler, WIO.RunIO.Meta(errorMeta, None, None))
+    WIO.RunIO[Ctx, I, Err, O, Evt](_ => (in: I) => runIO(in).asInstanceOf[WCEffect[Ctx][Evt]], eventHandler, WIO.RunIO.Meta(errorMeta, None, None))
 
 final case class WIOForkNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]](
   branches: List[WIOForkNode.Branch[Ctx, I, Err, O]],
@@ -351,13 +351,13 @@ final case class WIOHandleSignalNode[Ctx <: WorkflowContext, I, Err, O <: WCStat
   operationName: Option[String]
 )(using evtCt: ClassTag[Evt]) extends WIONode[Ctx, I, Err, O]:
   def toWIO(using errorMeta: ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
-    val sigHandler: SignalHandler[Req, Evt, I] = SignalHandler[Req, Evt, I](signalHandler)
-    val combined: (I, Evt) => (Either[Err, O], Resp) =
-      (input: I, evt: Evt) => (eventHandler(input, evt), responseHandler(input, evt))
-    val evtHandler: EventHandler[I, (Either[Err, O], Resp), WCEvent[Ctx], Evt] =
-      EventHandler[WCEvent[Ctx], I, (Either[Err, O], Resp), Evt](evtCt.unapply, (evt: Evt) => evt, combined)
+    val sigHandler: SignalHandler[WCEffect[Ctx], Req, Evt, I, WCState[Ctx]] =
+      SignalHandler[WCEffect[Ctx], Req, Evt, I, WCState[Ctx]](_ => (in: I, req: Req) => signalHandler(in, req).asInstanceOf[WCEffect[Ctx][Evt]])
+    val evtHandler: EventHandler[I, Either[Err, O], WCEvent[Ctx], Evt] =
+      EventHandler[WCEvent[Ctx], I, Either[Err, O], Evt](evtCt.unapply, (evt: Evt) => evt, eventHandler)
+    val responseProducer: (I, Evt, Req) => Resp = (in: I, evt: Evt, _: Req) => responseHandler(in, evt)
     val meta: WIO.HandleSignal.Meta = WIO.HandleSignal.Meta(errorMeta, signalDef.name, operationName)
-    WIO.HandleSignal[Ctx, I, O, Err, Req, Resp, Evt](signalDef, sigHandler, evtHandler, meta)
+    WIO.HandleSignal[Ctx, I, O, Err, Req, Resp, Evt](signalDef, sigHandler, evtHandler, responseProducer, meta)
 
 final case class WIOParallelNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx], InterimState <: WCState[Ctx]](
   elements: List[WIOParallelNode.Element[Ctx, I, Err, InterimState, ? <: WCState[Ctx]]],
@@ -412,7 +412,7 @@ final case class WIORunnableNode[Ctx <: WorkflowContext, I, Err, Evt <: WCEvent[
         convert0 = convertEvent,
         handle0 = handleDetected
       )
-    WIO.RunIO[Ctx, I, Err, O, Evt](runIOFn, eventHandler, WIO.RunIO.Meta(errorMeta, None, None))
+    WIO.RunIO[Ctx, I, Err, O, Evt](_ => (in: I) => runIOFn(in).asInstanceOf[WCEffect[Ctx][Evt]], eventHandler, WIO.RunIO.Meta(errorMeta, None, None))
 
 final case class WIOForEachNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx], Elem, InnerCtx <: WorkflowContext, ElemOut <: WCState[InnerCtx], InterimState <: WCState[Ctx]](
   getElements: I => Set[Elem],
@@ -435,5 +435,6 @@ final case class WIOForEachNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx
       buildOutput,
       None,
       signalRouter,
-      meta
+      meta,
+      [A] => (fa: WCEffect[InnerCtx][A]) => fa.asInstanceOf[WCEffect[Ctx][A]]
     )

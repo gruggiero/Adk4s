@@ -18,6 +18,8 @@ import workflows4s.wio.WCEvent
 import workflows4s.wio.WCState
 import workflows4s.wio.WIO
 import workflows4s.wio.WorkflowContext
+import workflows4s.wio.WCEffect
+import workflows4s.wio.WCEffectLift
 import workflows4s.wio.internal.WakeupResult
 
 import java.time.Instant
@@ -126,11 +128,12 @@ object SimpleWorkflowExample extends IOApp.Simple:
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx.Ctx]
     ): IO[(ActiveWorkflow[Ctx.Ctx], Boolean)] =
-      val wakeup: WakeupResult[WCEvent[Ctx.Ctx]] = workflow.proceed(Instant.EPOCH)
-      wakeup.toRaw match
-        case None => IO.pure((workflow, false))
-        case Some(io: IO[Ior[Instant, WCEvent[Ctx.Ctx]]]) =>
-          io.map { (result: Ior[Instant, WCEvent[Ctx.Ctx]]) =>
+      val liftEffect: WCEffectLift[Ctx.Ctx, IO] = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val wakeup: WakeupResult[IO, WCEvent[Ctx.Ctx]] = workflow.proceed(Instant.EPOCH, liftEffect)
+      wakeup match
+        case WakeupResult.Noop() => IO.pure((workflow, false))
+        case WakeupResult.Processed(io) =>
+          io.asInstanceOf[IO[Ior[Instant, WCEvent[Ctx.Ctx]]]].map { (result: Ior[Instant, WCEvent[Ctx.Ctx]]) =>
             val eventOpt: Option[WCEvent[Ctx.Ctx]] = result match
               case Ior.Right(event) => Some(event)
               case Ior.Both(_, event) => Some(event)

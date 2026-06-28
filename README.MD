@@ -438,4 +438,4 @@ sbt assembly                   # build fat JAR
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+[MIT](LICENSE)

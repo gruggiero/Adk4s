@@ -9,6 +9,7 @@ import org.llm4s.config.Llm4sConfig
 import org.llm4s.llmconnect.config._
 import org.llm4s.llmconnect.LLMConnect
 import org.llm4s.llmconnect.model._
+import org.llm4s.model.ModelRegistryService
 import org.llm4s.error.LLMError
 import org.adk4s.structured.core.Prompt
 import org.adk4s.structured.core.PromptTemplate
@@ -62,9 +63,15 @@ object RealLlmExample extends IOApp.Simple {
       _ <- IO.println(s"Resume text loaded (${resumeText.length} chars)")
 
       _ <- IO.println("Creating LLM client...")
+      registry <- IO.fromEither(
+        ModelRegistryService
+          .default()
+          .left
+          .map(err => new RuntimeException(s"Failed to load model registry: ${err.message}"))
+      )
       client <- IO.fromEither(
         LLMConnect
-          .getClient(config.providerConfig)
+          .getClient(config.providerConfig)(using registry)
           .left
           .map(err => new RuntimeException(s"Failed to create LLM client: ${err.message}"))
       )
@@ -216,7 +223,7 @@ object RealLlmExample extends IOApp.Simple {
     }
 
     val providerConfig = Llm4sConfig
-      .provider()
+      .defaultProvider()
       .getOrElse(throw new RuntimeException("Failed to load provider config"))
 
     val completionOptions = loadCompletionOptions(config)
