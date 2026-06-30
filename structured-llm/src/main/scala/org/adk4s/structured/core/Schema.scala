@@ -17,7 +17,8 @@ object Schema:
   final case class SchemaData[A](
     smithyDefinition: String,
     description: Option[String],
-    smithySchema: SmithySchema[A]
+    smithySchema: SmithySchema[A],
+    constraints: Vector[Constraint[A]] = Vector.empty[Constraint[A]]
   )
 
   private inline def asData[A](schema: Schema[A]): SchemaData[A] =
@@ -68,6 +69,42 @@ object Schema:
     def smithySchema: SmithySchema[A] =
       val data: SchemaData[A] = asData[A](schema)
       data.smithySchema
+
+    /**
+     * Constraints attached to this schema.
+     * Evaluated after parsing to validate the result.
+     */
+    def constraints: Vector[Constraint[A]] =
+      val data: SchemaData[A] = asData[A](schema)
+      data.constraints
+
+    /**
+     * Attach a non-failing check constraint to this schema.
+     * Failed checks are collected as warnings but do not fail the parse.
+     */
+    def withCheck(label: String)(predicate: A => Boolean): Schema[A] =
+      val data: SchemaData[A] = asData[A](schema)
+      val constraint: Constraint[A] = Constraint.check(label)(predicate)
+      SchemaData[A](
+        data.smithyDefinition,
+        data.description,
+        data.smithySchema,
+        data.constraints :+ constraint
+      )
+
+    /**
+     * Attach a strict assert constraint to this schema.
+     * Failed asserts raise ValidationFailed.
+     */
+    def withAssert(label: String)(predicate: A => Boolean): Schema[A] =
+      val data: SchemaData[A] = asData[A](schema)
+      val constraint: Constraint[A] = Constraint.assert(label)(predicate)
+      SchemaData[A](
+        data.smithyDefinition,
+        data.description,
+        data.smithySchema,
+        data.constraints :+ constraint
+      )
 
     /**
      * Generate the full output format block to inject into prompts.

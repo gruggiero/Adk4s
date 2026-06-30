@@ -1,6 +1,7 @@
 package org.adk4s.structured.core
 
 import cats.effect.Async
+import cats.effect.Temporal
 import cats.syntax.all.*
 import cats.syntax.either.*
 import fs2.Stream
@@ -18,6 +19,7 @@ import org.llm4s.llmconnect.model.{
   ToolMessage,
   UserMessage
 }
+import scala.concurrent.duration.Duration
 
 /**
  * A structured LLM client that wraps llm4s and provides type-safe completions.
@@ -93,6 +95,26 @@ trait StructuredLLM[F[_]]:
    */
   def streamWithResultRaw[A: Schema](prompt: Prompt): F[(fs2.Stream[F, String], F[A])]
 
+  /**
+   * Complete a prompt and parse the response, returning the parsed value
+   * along with all constraint check results.
+   *
+   * @check constraints are evaluated and their results are included in
+   * ValidationResult.checks. @assert constraints are evaluated and
+   * raise ValidationFailed if any fail.
+   */
+  def completeValidated[A: Schema](prompt: Prompt): F[ValidationResult[A]]
+
+  /**
+   * Stream a prompt and emit partial structured values during streaming.
+   *
+   * Returns a stream of StreamState values, with the final emission being
+   * a Complete state containing the fully parsed value.
+   *
+   * The output format schema is automatically injected into the prompt.
+   */
+  def streamPartial[A: Schema](prompt: Prompt): fs2.Stream[F, org.adk4s.structured.sap.StreamState[A]]
+
 /**
  * Errors that can occur during structured completion.
  */
@@ -120,6 +142,25 @@ object StructuredLLMError:
   ) extends StructuredLLMError:
     def message: String = "LLM returned empty response"
 
+  case class ValidationFailed(
+    failedAsserts: Vector[String]
+  ) extends StructuredLLMError:
+    def message: String = s"Validation failed: ${failedAsserts.mkString(", ")}"
+
+  /**
+   * Enriched error — wraps an underlying error with context about
+   * all attempts made (client name, error, raw response, timestamp).
+   */
+  case class Enriched(
+    underlying: StructuredLLMError,
+    attempts: Vector[AttemptRecord]
+  ) extends StructuredLLMError:
+    def message: String =
+      val attemptDetails: String = attempts.zipWithIndex.map { case (record, idx) =>
+        s"  Attempt ${idx + 1} (${record.client}): ${record.error.message}"
+      }.mkString("\n")
+      s"${underlying.message}\nAttempts:\n$attemptDetails"
+
 object StructuredLLM:
 
   /**
@@ -145,6 +186,29 @@ object StructuredLLM:
     client: LLMClient
   ): CompletionOptions => StructuredLLM[F] =
     options => new StructuredLLMImpl[F](client, options, logRawResponse = false)
+
+  /**
+   * Create a StructuredLLM that retries on parse failures (not just LLM errors).
+   *
+   * llm4s's ReliableClient only retries on LLMError. This factory wraps the
+   * StructuredLLM to also retry when parsing fails, using the given trigger
+   * to control which failure types trigger retries.
+   *
+   * @param client The underlying LLM client
+   * @param maxAttempts Maximum number of attempts (including the first)
+   * @param delay Delay between retry attempts
+   * @param trigger Which failure types trigger retries
+   * @param defaultOptions Completion options to use
+   */
+  def fromClientWithRetry[F[_]: Async](
+    client: LLMClient,
+    maxAttempts: Int,
+    delay: Duration,
+    trigger: RetryTrigger,
+    defaultOptions: CompletionOptions = CompletionOptions()
+  ): StructuredLLM[F] =
+    val underlying: StructuredLLM[F] = new StructuredLLMImpl[F](client, defaultOptions, logRawResponse = false)
+    new RetryStructuredLLM[F](underlying, maxAttempts, delay, trigger)
 
 /**
  * Implementation of StructuredLLM.
@@ -231,6 +295,26 @@ private class StructuredLLMImpl[F[_]: Async](
       (tokenStream, resultF)
     }
 
+  override def completeValidated[A: Schema](prompt: Prompt): F[ValidationResult[A]] =
+    val promptWithSchema: Prompt = prompt.withOutputFormat[A]
+    for
+      conversation <- Async[F].pure(toConversation(promptWithSchema))
+      completion   <- callLLM(conversation, promptWithSchema)
+      response     <- extractContent(completion, promptWithSchema)
+      _            <- logRawResponseIfEnabled(response)
+      value        <- parseResponse[A](response)
+      result       <- evaluateConstraints[A](value, Schema[A].constraints, response)
+    yield result
+
+  override def streamPartial[A: Schema](prompt: Prompt): fs2.Stream[F, org.adk4s.structured.sap.StreamState[A]] =
+    import org.adk4s.structured.sap.StreamState
+    import org.adk4s.structured.sap.CompletionState
+    // For now, stream the final result as a single Complete emission.
+    // Full incremental streaming will be added in a future iteration.
+    fs2.Stream.eval(
+      complete[A](prompt).map(value => StreamState.complete(value))
+    )
+
   /**
    * Convert our Prompt to llm4s Conversation.
    */
@@ -271,6 +355,24 @@ private class StructuredLLMImpl[F[_]: Async](
         Async[F].raiseError(StructuredLLMError.ParseFailed(errors, response))
 
   /**
+   * Evaluate constraints on a parsed value.
+   * @check constraints are collected into ValidationResult.checks.
+   * @assert constraints raise ValidationFailed if any fail.
+   */
+  private def evaluateConstraints[A](
+    value: A,
+    constraints: Vector[Constraint[A]],
+    rawResponse: String
+  ): F[ValidationResult[A]] =
+    if constraints.isEmpty then Async[F].pure(ValidationResult(value, Vector.empty))
+    else
+      Constraint.evaluateStrictAll(value, constraints) match
+        case Right(_) =>
+          Async[F].pure(Constraint.evaluateAll(value, constraints))
+        case Left(failure) =>
+          Async[F].raiseError(failure)
+
+  /**
    * Log raw response if logging is enabled.
    */
   private def logRawResponseIfEnabled(response: String): F[Unit] =
@@ -284,3 +386,39 @@ private class StructuredLLMImpl[F[_]: Async](
       }
     else Async[F].unit
 }
+
+/**
+ * Wrapper that retries structured LLM operations on parse failures.
+ */
+private class RetryStructuredLLM[F[_]: Async](
+  underlying: StructuredLLM[F],
+  maxAttempts: Int,
+  delay: Duration,
+  trigger: RetryTrigger
+) extends StructuredLLM[F]:
+
+  override def complete[A: Schema](prompt: Prompt): F[A] =
+    Retry.withRetry[F, A](maxAttempts, delay, trigger)(underlying.complete[A](prompt))
+
+  override def completeRaw[A: Schema](prompt: Prompt): F[A] =
+    Retry.withRetry[F, A](maxAttempts, delay, trigger)(underlying.completeRaw[A](prompt))
+
+  override def streamWithResult[A: Schema](prompt: Prompt): F[(Stream[F, String], F[A])] =
+    underlying.streamWithResult[A](prompt)
+
+  override def streamWithResultRaw[A: Schema](prompt: Prompt): F[(Stream[F, String], F[A])] =
+    underlying.streamWithResultRaw[A](prompt)
+
+  override def completeValidated[A: Schema](prompt: Prompt): F[ValidationResult[A]] =
+    Retry.withRetry[F, ValidationResult[A]](maxAttempts, delay, trigger)(
+      underlying.completeValidated[A](prompt)
+    )
+
+  override def function[I, A: Schema](template: PromptTemplate[I]): I => F[A] =
+    input => Retry.withRetry[F, A](maxAttempts, delay, trigger)(underlying.complete[A](template.render(input)))
+
+  override def extractor[A: Schema](systemPrompt: String): String => F[A] =
+    underlying.extractor[A](systemPrompt)
+
+  override def streamPartial[A: Schema](prompt: Prompt): fs2.Stream[F, org.adk4s.structured.sap.StreamState[A]] =
+    underlying.streamPartial[A](prompt)

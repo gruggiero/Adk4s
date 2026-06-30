@@ -161,11 +161,16 @@ object SchemaAlignedParser:
     val warningsAfterComments: List[String] =
       warningsAfterFences ++ (if commentsRemoved then List("Removed comments from JSON") else List.empty)
 
-    val fixedQuotesResult: (String, Boolean) = fixQuotes(fixLeadingCommas(noComments))
+    val unicodeNormalized: String = UnicodeQuoteNormalizer.normalize(noComments)
+    val unicodeChanged: Boolean   = unicodeNormalized != noComments
+    val warningsAfterUnicode: List[String] =
+      warningsAfterComments ++ (if unicodeChanged then List("Normalized Unicode smart quotes") else List.empty)
+
+    val fixedQuotesResult: (String, Boolean) = fixQuotes(fixLeadingCommas(unicodeNormalized))
     val fixedQuotes: String                  = fixedQuotesResult._1
     val quotesFixed: Boolean                 = fixedQuotesResult._2
     val warningsAfterQuotes: List[String] =
-      warningsAfterComments ++ (if quotesFixed then List("Fixed quote or key issues") else List.empty)
+      warningsAfterUnicode ++ (if quotesFixed then List("Fixed quote or key issues") else List.empty)
 
     val trailingResult: (String, Boolean) = removeTrailingCommas(fixedQuotes)
     val noTrailingCommas: String          = trailingResult._1
