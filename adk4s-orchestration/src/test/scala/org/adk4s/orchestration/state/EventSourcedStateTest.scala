@@ -21,7 +21,7 @@ class EventSourcedStateTest extends CatsEffectSuite:
     val newState = AgentStateContext.applyEvent(initialState, event)
 
     assertEquals(newState.messages.length, 1)
-    assertEquals(newState.messages.head, message)
+    assertEquals(newState.messages.headOption.getOrElse(fail("expected non-empty list")), message)
     assertEquals(newState.stepCount, 0)
     assertEquals(newState.toolCallCount, 0)
   }

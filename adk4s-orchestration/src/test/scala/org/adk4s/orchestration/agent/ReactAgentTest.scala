@@ -161,7 +161,7 @@ class ReactAgentTest extends CatsEffectSuite:
     agent.generate(List(UserMessage("Hi")), 5).map { (_: AssistantMessage) =>
       val captured: Conversation = capturedConversations.poll()
       assert(captured != null)
-      val firstMsg: Message = captured.messages.head
+      val firstMsg: Message = captured.messages.headOption.getOrElse(fail("expected non-empty list"))
       firstMsg match
         case sm: org.llm4s.llmconnect.model.SystemMessage =>
           assertEquals(sm.content, "You are helpful.")

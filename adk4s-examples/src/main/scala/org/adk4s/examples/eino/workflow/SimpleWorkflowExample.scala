@@ -55,11 +55,14 @@ object SimpleWorkflowExample extends IOApp.Simple:
     for
       _ <- ExampleUtils.printSection("Simple Workflow Example (Eino: workflow/1_simple)")
 
-      graph = buildGraph()
-      wio <- graph.toWIO match
-        case Right(wio) => IO.pure(wio)
-        case Left(errors: NonEmptyChain[WIOGraphError]) =>
-          IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
+      wio <- buildGraph() match
+        case Left(err: WIOGraphError) =>
+          IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+        case Right(graph: WIOGraph[Ctx.Ctx, InputState, Nothing, WfState]) =>
+          graph.toWIO match
+            case Right(wio) => IO.pure(wio)
+            case Left(errors: NonEmptyChain[WIOGraphError]) =>
+              IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
 
       // Run with input value 5
       input = InputState(5)
@@ -88,7 +91,7 @@ object SimpleWorkflowExample extends IOApp.Simple:
       _ <- IO.println("\nSimple workflow example completed.")
     yield ()
 
-  private def buildGraph(): WIOGraph[Ctx.Ctx, InputState, Nothing, WfState] =
+  private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, WfState]] =
     val doubleRef: WIONodeRef[Ctx.Ctx, InputState, DoubledState] =
       WIONodeRef[Ctx.Ctx, InputState, DoubledState](NodeKey.unsafeApply("double"))
     val formatRef: WIONodeRef[Ctx.Ctx, DoubledState, OutputState] =
@@ -110,13 +113,15 @@ object SimpleWorkflowExample extends IOApp.Simple:
         )
       )
 
-    WIOGraph[Ctx.Ctx, InputState, WfState]
-      .addNode("double", doubleNode)
-      .addNode("format", formatNode)
-      .addEdge(doubleRef, formatRef)
-      .setEntry(doubleRef)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, InputState, WfState].addNode("double", doubleNode)
+      g2 <- g1.addNode("format", formatNode)
+      g3 <- g2.addEdge(doubleRef, formatRef)
+      g4 <- g3.setEntry(doubleRef)
+      g5 <- g4.addEndNode(endRef)
+    yield g5
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio(
     wio: WIO[InputState, Nothing, WfState, Ctx.Ctx],
     input: InputState

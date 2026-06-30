@@ -102,9 +102,9 @@ class ResumeSchemaTest extends CatsEffectSuite:
       assertEquals(result.seniority, SeniorityLevel.SENIOR)
       assertEquals(result.education.map(_.size), Some(1))
       result.education.foreach { eduList =>
-        assertEquals(eduList.head.school, "MIT")
-        assertEquals(eduList.head.degree, "BS Computer Science")
-        assertEquals(eduList.head.year, Some(2015))
+        assertEquals(eduList.headOption.getOrElse(fail("expected non-empty list")).school, "MIT")
+        assertEquals(eduList.headOption.getOrElse(fail("expected non-empty list")).degree, "BS Computer Science")
+        assertEquals(eduList.headOption.getOrElse(fail("expected non-empty list")).year, Some(2015))
       }
   }
 

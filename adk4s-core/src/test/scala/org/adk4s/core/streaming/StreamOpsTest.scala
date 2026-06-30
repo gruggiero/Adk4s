@@ -2,6 +2,7 @@ package org.adk4s.core.streaming
 
 import munit.CatsEffectSuite
 import cats.effect.IO
+import cats.effect.Ref
 import fs2.Stream
 import scala.concurrent.duration.*
 
@@ -23,26 +24,30 @@ class StreamOpsTest extends CatsEffectSuite:
   }
 
   test("Retry stream on error with exponential backoff") {
-    var attempts = 0
-    val stream: Stream[IO, Int] = Stream.eval(IO {
-      attempts += 1
-      if attempts < 3 then throw new RuntimeException("Retry me") else attempts
-    })
-    val resultStream = StreamOps.withRetry[Int](maxRetries = 5)(stream)
-    val result = resultStream.compile.toList
-    assertIO(result.map(_.size), 1)
-    assertIO(result.map(_.head), 3)
+    for
+      attempts <- Ref.of[IO, Int](0)
+      stream: Stream[IO, Int] = Stream.eval(
+        attempts.update(_ + 1) *> attempts.get.flatMap { a =>
+          if a < 3 then IO.raiseError(new RuntimeException("Retry me")) else IO.pure(a)
+        }
+      )
+      resultStream = StreamOps.withRetry[Int](maxRetries = 5)(stream)
+      result <- resultStream.compile.toList
+    yield
+      assertEquals(result.size, 1)
+      assertEquals(result.headOption.getOrElse(fail("expected element")), 3)
   }
 
   test("Retry fails after max retries exhausted") {
-    var attempts = 0
-    val stream: Stream[IO, Int] = Stream.eval(IO {
-      attempts += 1
-      throw new RuntimeException("Always fails")
-    })
-    val resultStream = StreamOps.withRetry[Int](maxRetries = 2, initialDelay = 10.millis)(stream)
-    val result = resultStream.compile.toList.attempt
-    assertIO(result.map(_.isLeft), true)
+    for
+      attempts <- Ref.of[IO, Int](0)
+      stream: Stream[IO, Int] = Stream.eval(
+        attempts.update(_ + 1) *> IO.raiseError(new RuntimeException("Always fails"))
+      )
+      resultStream = StreamOps.withRetry[Int](maxRetries = 2, initialDelay = 10.millis)(stream)
+      result <- resultStream.compile.toList.attempt
+    yield
+      assert(result.isLeft)
   }
 
   test("Buffer stream elements with capacity") {

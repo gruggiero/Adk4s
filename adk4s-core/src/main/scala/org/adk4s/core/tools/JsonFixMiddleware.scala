@@ -70,35 +70,47 @@ object JsonFixMiddleware:
       acc.replace(artifact, "")
     }.trim
 
-  private def applyHeuristicFixes(s: String): String =
-    var result: String = s
+  /** Package-private for test access. */
+  private[tools] def applyHeuristicFixes(s: String): String =
+    import scala.annotation.tailrec
 
-    // Fix trailing commas: ,} → } and ,] → ]
-    result = result.replaceAll(",\\s*}", "}").replaceAll(",\\s*]", "]")
+    def applyOnce(input: String): String =
+      // Fix trailing commas: ,} → } and ,] → ]
+      val step1: String = input.replaceAll(",\\s*}", "}").replaceAll(",\\s*]", "]")
 
-    // Fix single-quoted strings → double-quoted
-    result = replaceSingleQuotes(result)
+      // Fix single-quoted strings → double-quoted
+      val step2: String = replaceSingleQuotes(step1)
 
-    // Add missing braces
-    if !result.startsWith("{") && result.endsWith("}") then
-      result = "{" + result
-    else if result.startsWith("{") && !result.endsWith("}") then
-      result = result + "}"
+      // Add missing braces
+      val step3: String =
+        if !step2.startsWith("{") && step2.endsWith("}") then "{" + step2
+        else if step2.startsWith("{") && !step2.endsWith("}") then step2 + "}"
+        else step2
 
-    result
+      step3
 
-  private def replaceSingleQuotes(s: String): String =
-    val sb: StringBuilder = new StringBuilder(s.length)
-    var inDoubleQuote: Boolean = false
-    var i: Int = 0
-    while i < s.length do
-      val c: Char = s.charAt(i)
-      if c == '"' && (i == 0 || s.charAt(i - 1) != '\\') then
-        inDoubleQuote = !inDoubleQuote
-        sb.append(c)
-      else if c == '\'' && !inDoubleQuote then
-        sb.append('"')
+    @tailrec
+    def loop(current: String): String =
+      val next: String = applyOnce(current)
+      if next == current then next
+      else loop(next)
+
+    loop(s)
+
+  /** Package-private for test access. */
+  private[tools] def replaceSingleQuotes(s: String): String =
+    import scala.annotation.tailrec
+
+    @tailrec
+    def loop(i: Int, inDoubleQuote: Boolean, acc: StringBuilder): String =
+      if i >= s.length then acc.toString
       else
-        sb.append(c)
-      i = i + 1
-    sb.toString
+        val c: Char = s.charAt(i)
+        if c == '"' && (i == 0 || s.charAt(i - 1) != '\\') then
+          loop(i + 1, !inDoubleQuote, acc.append(c))
+        else if c == '\'' && !inDoubleQuote then
+          loop(i + 1, inDoubleQuote, acc.append('"'))
+        else
+          loop(i + 1, inDoubleQuote, acc.append(c))
+
+    loop(0, false, new StringBuilder(s.length))

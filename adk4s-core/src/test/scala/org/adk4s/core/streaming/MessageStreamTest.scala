@@ -14,7 +14,7 @@ class MessageStreamTest extends CatsEffectSuite:
     val stream = MessageStream.box(message)
     val result = stream.compile.toList
     assertIO(result.map(_.size), 1)
-    assertIO(result.map(_.head), message)
+    assertIO(result.map(_.headOption.getOrElse(fail("expected element"))), message)
   }
 
   test("Convert multiple messages to stream") {
@@ -32,8 +32,8 @@ class MessageStreamTest extends CatsEffectSuite:
     val resultStream = stream.through(MessageStream.concatenate(Role.Assistant))
     val result = resultStream.compile.toList
     assertIO(result.map(_.size), 1)
-    assertIO(result.map(_.head.content), "Hello World")
-    assertIO(result.map(_.head.role), Role.Assistant)
+    assertIO(result.map(_.headOption.getOrElse(fail("expected element")).content), "Hello World")
+    assertIO(result.map(_.headOption.getOrElse(fail("expected element")).role), Role.Assistant)
   }
 
   test("Concatenate empty content stream") {
@@ -41,7 +41,7 @@ class MessageStreamTest extends CatsEffectSuite:
     val resultStream = stream.through(MessageStream.concatenate(Role.User))
     val resultIO = resultStream.compile.toList
     assertIO(resultIO.map(_.size), 1)
-    assertIO(resultIO.map(_.head.content), "")
+    assertIO(resultIO.map(_.headOption.getOrElse(fail("expected element")).content), "")
   }
 
   test("Concatenate single element content stream") {
@@ -49,7 +49,7 @@ class MessageStreamTest extends CatsEffectSuite:
     val resultStream = stream.through(MessageStream.concatenate(Role.System))
     val result = resultStream.compile.toList
     assertIO(result.map(_.size), 1)
-    assertIO(result.map(_.head.content), "Hello")
+    assertIO(result.map(_.headOption.getOrElse(fail("expected element")).content), "Hello")
   }
 
   test("Merge multiple message streams into one") {
@@ -88,7 +88,7 @@ class MessageStreamTest extends CatsEffectSuite:
     val stream = message.toStream
     val resultIO = stream.compile.toList
     assertIO(resultIO.map(_.size), 1)
-    assertIO(resultIO.map(_.head), message)
+    assertIO(resultIO.map(_.headOption.getOrElse(fail("expected element"))), message)
   }
 
   test("Use toStreamIO extension on message sequence") {

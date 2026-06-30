@@ -15,7 +15,7 @@ class StreamConverterTest extends CatsEffectSuite:
     val stream = StreamConverter.fromIterator(iterator)
     val resultIO = stream.compile.toList
     assertIO(resultIO.map(_.size), 2)
-    assertIO(resultIO.map(_.head.content), Some("Hello"))
+    assertIO(resultIO.map(_.headOption.getOrElse(fail("expected element")).content), Some("Hello"))
   }
 
   test("Convert error Either to error Stream") {

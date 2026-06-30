@@ -213,11 +213,11 @@ object dsl:
       PromptBuilder(messages :+ Message.assistant(content))
 
     def outputFormat[A: Schema]: PromptBuilder =
-      if messages.isEmpty then this
-      else
-        val last    = messages.last
-        val updated = last.append("\n\n" + Schema[A].outputFormatBlock)
-        PromptBuilder(messages.init :+ updated)
+      messages.lastOption match
+        case Some(last) =>
+          val updated = last.append("\n\n" + Schema[A].outputFormatBlock)
+          PromptBuilder(messages.dropRight(1) :+ updated)
+        case None => this
 
     def build: Prompt = Prompt(messages)
 

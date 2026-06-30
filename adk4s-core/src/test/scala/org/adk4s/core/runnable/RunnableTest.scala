@@ -137,7 +137,7 @@ class RunnableTest extends CatsEffectSuite:
   test("full creates Runnable with all explicit paradigms") {
     val invokeFn: String => IO[Int] = s => IO(s.toInt)
     val streamFn: String => Stream[IO, Int] = s => Stream.emit(s.toInt)
-    val collectFn: Stream[IO, String] => IO[Int] = stream => stream.compile.last.map(_.get.toInt)
+    val collectFn: Stream[IO, String] => IO[Int] = stream => stream.compile.last.map(_.getOrElse(fail("expected last element")).toInt)
     val transformFn: Stream[IO, String] => Stream[IO, Int] = stream => stream.evalMap(s => IO(s.toInt))
 
     val runnable = Runnable.full(invokeFn, streamFn, collectFn, transformFn)

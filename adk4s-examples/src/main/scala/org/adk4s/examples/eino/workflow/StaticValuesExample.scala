@@ -56,11 +56,14 @@ object StaticValuesExample extends IOApp.Simple:
     for
       _ <- ExampleUtils.printSection("Static Values Example (Eino: workflow/5_static_values)")
 
-      graph = buildGraph()
-      wio <- graph.toWIO match
-        case Right(wio) => IO.pure(wio)
-        case Left(errors: NonEmptyChain[WIOGraphError]) =>
-          IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
+      wio <- buildGraph() match
+        case Left(err: WIOGraphError) =>
+          IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+        case Right(graph: WIOGraph[Ctx.Ctx, InputState, Nothing, SvState]) =>
+          graph.toWIO match
+            case Right(wio) => IO.pure(wio)
+            case Left(errors: NonEmptyChain[WIOGraphError]) =>
+              IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
 
       _ <- ExampleUtils.printSubSection("1. With name 'Alice'")
       result1 <- executeWio(wio, InputState("Alice"))
@@ -77,7 +80,7 @@ object StaticValuesExample extends IOApp.Simple:
       _ <- IO.println("\nStatic values example completed.")
     yield ()
 
-  private def buildGraph(): WIOGraph[Ctx.Ctx, InputState, Nothing, SvState] =
+  private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, SvState]] =
     val enrichRef: WIONodeRef[Ctx.Ctx, InputState, EnrichedState] =
       WIONodeRef[Ctx.Ctx, InputState, EnrichedState](NodeKey.unsafeApply("enrich"))
     val formatRef: WIONodeRef[Ctx.Ctx, EnrichedState, OutputState] =
@@ -103,13 +106,15 @@ object StaticValuesExample extends IOApp.Simple:
         )
       )
 
-    WIOGraph[Ctx.Ctx, InputState, SvState]
-      .addNode("enrich", enrichNode)
-      .addNode("format", formatNode)
-      .addEdge(enrichRef, formatRef)
-      .setEntry(enrichRef)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, InputState, SvState].addNode("enrich", enrichNode)
+      g2 <- g1.addNode("format", formatNode)
+      g3 <- g2.addEdge(enrichRef, formatRef)
+      g4 <- g3.setEntry(enrichRef)
+      g5 <- g4.addEndNode(endRef)
+    yield g5
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio(
     wio: WIO[InputState, Nothing, SvState, Ctx.Ctx],
     input: InputState

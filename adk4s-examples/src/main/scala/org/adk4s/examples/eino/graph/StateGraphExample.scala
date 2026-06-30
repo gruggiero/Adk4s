@@ -8,6 +8,7 @@ import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.types.NodeKey
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
+import org.adk4s.orchestration.wiograph.WIOGraphError
 import org.adk4s.orchestration.wiograph.WIOGraphStreamExecutor
 import org.adk4s.orchestration.wiograph.WIONode
 import org.adk4s.orchestration.wiograph.WIONodeRef
@@ -51,11 +52,10 @@ object StateGraphExample extends IOApp.Simple:
     for
       _ <- ExampleUtils.printSection("State Graph Example (Eino: graph/state)")
 
-      graph = buildGraph()
+      runnable <- compileRunnable(buildGraph())
 
       // 1. Invoke mode
       _ <- ExampleUtils.printSubSection("1. Invoke Mode")
-      runnable <- compileRunnable(graph)
       invokeResult <- runnable.invoke(TextState("how are you"))
       _ <- invokeResult match
         case result: TextState =>
@@ -89,7 +89,7 @@ object StateGraphExample extends IOApp.Simple:
       _ <- IO.println("\nState graph example completed.")
     yield ()
 
-  private def buildGraph(): WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState] =
+  private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]] =
     // Node 1: InvokableLambda — prepends "InvokableLambda: "
     val invokableRunnable: Runnable[TextState, String] =
       Runnable.fromInvoke[TextState, String]((input: TextState) =>
@@ -150,21 +150,26 @@ object StateGraphExample extends IOApp.Simple:
         toState = (_: TextState, evt: TextProcessed) => TextState(evt.text)
       )
 
-    WIOGraph[Ctx.Ctx, TextState, GraphState]
-      .addNode("invokable", node1)
-      .addNode("streamable", node2)
-      .addNode("transformable", node3)
-      .addEdge(node1Ref, node2Ref)
-      .addEdge(node2Ref, node3Ref)
-      .setEntry(node1Ref)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, TextState, GraphState].addNode("invokable", node1)
+      g2 <- g1.addNode("streamable", node2)
+      g3 <- g2.addNode("transformable", node3)
+      g4 <- g3.addEdge(node1Ref, node2Ref)
+      g5 <- g4.addEdge(node2Ref, node3Ref)
+      g6 <- g5.setEntry(node1Ref)
+      g7 <- g6.addEndNode(endRef)
+    yield g7
 
   private def compileRunnable(
-    graph: WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]
+    graphEither: Either[WIOGraphError, WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]]
   ): IO[Runnable[TextState, GraphState]] =
-    graph.toRunnable match
-      case Right(runnable) => IO.pure(runnable)
-      case Left(errors) =>
-        IO.raiseError(new IllegalStateException(
-          s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-        ))
+    graphEither match
+      case Left(err: WIOGraphError) =>
+        IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+      case Right(graph: WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]) =>
+        graph.toRunnable match
+          case Right(runnable) => IO.pure(runnable)
+          case Left(errors) =>
+            IO.raiseError(new IllegalStateException(
+              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+            ))

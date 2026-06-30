@@ -86,11 +86,14 @@ object ToolCallAgentExample extends IOApp.Simple:
       _ <- ExampleUtils.printSection("Tool Call Agent Example (Eino: graph/tool_call_agent)")
       chatModel <- ExampleUtils.createChatModel
 
-      graph = buildGraph(chatModel)
-      wio <- graph.toWIO match
-        case Right(wio) => IO.pure(wio)
-        case Left(errors: NonEmptyChain[WIOGraphError]) =>
-          IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
+      wio <- buildGraph(chatModel) match
+        case Left(err: WIOGraphError) =>
+          IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+        case Right(graph: WIOGraph[Ctx.Ctx, QueryState, Nothing, AgentState]) =>
+          graph.toWIO match
+            case Right(wio) => IO.pure(wio)
+            case Left(errors: NonEmptyChain[WIOGraphError]) =>
+              IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
 
       input = QueryState("What is 6 * 7?")
       result <- executeWio(wio, input)
@@ -106,7 +109,7 @@ object ToolCallAgentExample extends IOApp.Simple:
       _ <- IO.println("\nTool call agent example completed.")
     yield ()
 
-  private def buildGraph(chatModel: ChatModel[IO]): WIOGraph[Ctx.Ctx, QueryState, Nothing, AgentState] =
+  private def buildGraph(chatModel: ChatModel[IO]): Either[WIOGraphError, WIOGraph[Ctx.Ctx, QueryState, Nothing, AgentState]] =
     val templateRef: WIONodeRef[Ctx.Ctx, QueryState, ConversationState] =
       WIONodeRef[Ctx.Ctx, QueryState, ConversationState](NodeKey.unsafeApply("template"))
     val chatRef: WIONodeRef[Ctx.Ctx, ConversationState, CompletionState] =
@@ -146,15 +149,17 @@ object ToolCallAgentExample extends IOApp.Simple:
           )
       )
 
-    WIOGraph[Ctx.Ctx, QueryState, AgentState]
-      .addNode("template", templateNode)
-      .addNode("chat", chatNode)
-      .addNode("tool", toolNode)
-      .addEdge(templateRef, chatRef)
-      .addEdge(chatRef, toolRef)
-      .setEntry(templateRef)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, QueryState, AgentState].addNode("template", templateNode)
+      g2 <- g1.addNode("chat", chatNode)
+      g3 <- g2.addNode("tool", toolNode)
+      g4 <- g3.addEdge(templateRef, chatRef)
+      g5 <- g4.addEdge(chatRef, toolRef)
+      g6 <- g5.setEntry(templateRef)
+      g7 <- g6.addEndNode(endRef)
+    yield g7
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio(
     wio: WIO[QueryState, Nothing, AgentState, Ctx.Ctx],
     input: QueryState

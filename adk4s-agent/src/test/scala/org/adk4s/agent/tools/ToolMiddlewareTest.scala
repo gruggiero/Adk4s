@@ -2,11 +2,11 @@ package org.adk4s.agent.tools
 
 import munit.CatsEffectSuite
 import cats.effect.IO
+import cats.effect.Ref
 import cats.effect.unsafe.implicits.global
 import cats.data.Kleisli
 import cats.implicits.*
 import scala.concurrent.duration.*
-import scala.collection.mutable.ListBuffer
 import org.adk4s.core.tools.{ToolEndpoint, ToolOutput, ToolMiddleware, ToolInput}
 
 class ToolMiddlewareTest extends CatsEffectSuite:
@@ -23,10 +23,9 @@ class ToolMiddlewareTest extends CatsEffectSuite:
   }
 
   test("timing middleware records execution time") {
-    var recordedTime: Option[(String, Long)] = None
-    val timingFn: (String, Long) => IO[Unit] = (name, ms) => IO {
-      recordedTime = Some((name, ms))
-    }
+    val recordedTime: Ref[IO, Option[(String, Long)]] = Ref.of[IO, Option[(String, Long)]](None).unsafeRunSync()
+    val timingFn: (String, Long) => IO[Unit] = (name, ms) =>
+      recordedTime.update(_ => Some((name, ms)))
 
     val endpoint: ToolEndpoint = Kleisli(input =>
       IO.sleep(10.millis) *> IO.pure(ToolOutput(input.name, "result", "call_1"))
@@ -35,9 +34,10 @@ class ToolMiddlewareTest extends CatsEffectSuite:
     val wrapped = ToolMiddleware.timing(timingFn)(endpoint)
     val result = wrapped.run(ToolInput("test", "{}", "call_1")).unsafeRunSync()
 
+    val rt = recordedTime.get.unsafeRunSync()
     assertEquals(result.result, "result")
-    assertEquals(recordedTime.map(_._1), Some("test"))
-    assert(recordedTime.exists(_._2 >= 10))
+    assertEquals(rt.map(_._1), Some("test"))
+    assert(rt.exists(_._2 >= 10))
   }
 
   test("validation middleware passes valid input") {
@@ -69,20 +69,21 @@ class ToolMiddlewareTest extends CatsEffectSuite:
   }
 
   test("retry middleware retries on failure") {
-    var attempts = 0
+    val attempts: Ref[IO, Int] = Ref.of[IO, Int](0).unsafeRunSync()
     val endpoint: ToolEndpoint = Kleisli { input =>
-      attempts += 1
-      if attempts < 3 then
-        IO.raiseError(new RuntimeException("temporary error"))
-      else
-        IO.pure(ToolOutput(input.name, "result", "call_1"))
+      attempts.update(_ + 1) *> attempts.get.flatMap { a =>
+        if a < 3 then
+          IO.raiseError(new RuntimeException("temporary error"))
+        else
+          IO.pure(ToolOutput(input.name, "result", "call_1"))
+      }
     }
 
     val wrapped = ToolMiddleware.retry(3, 10.millis)(endpoint)
     val result = wrapped.run(ToolInput("test", "{}", "call_1")).unsafeRunSync()
 
     assertEquals(result.result, "result")
-    assertEquals(attempts, 3)
+    assertEquals(attempts.get.unsafeRunSync(), 3)
   }
 
   test("retry middleware exhausts retries") {
@@ -97,18 +98,19 @@ class ToolMiddlewareTest extends CatsEffectSuite:
   }
 
   test("middleware composition applies in order") {
-    var order = ListBuffer.empty[String]
-    val log = (s: String) => IO { order += s; () }
-    val timing = (_: String, _: Long) => IO { order += "timing"; () }
+    val order: Ref[IO, List[String]] = Ref.of[IO, List[String]](Nil).unsafeRunSync()
+    val log = (s: String) => order.update(_ :+ s)
+    val timing = (_: String, _: Long) => order.update(_ :+ "timing")
 
     val endpoint: ToolEndpoint = Kleisli(input =>
-      IO { order += "endpoint"; () } *> IO.pure(ToolOutput(input.name, "result", "call_1"))
+      order.update(_ :+ "endpoint") *> IO.pure(ToolOutput(input.name, "result", "call_1"))
     )
 
     val wrapped = ToolMiddleware.logging(log)(ToolMiddleware.timing(timing)(endpoint))
     wrapped.run(ToolInput("test", "{}", "call_1")).unsafeRunSync()
 
-    assert(order.exists(_.contains("Tool call:")), "Should contain logging")
-    assert(order.contains("timing"), "Should contain timing")
-    assert(order.contains("endpoint"), "Should contain endpoint")
+    val o = order.get.unsafeRunSync()
+    assert(o.exists(_.contains("Tool call:")), "Should contain logging")
+    assert(o.contains("timing"), "Should contain timing")
+    assert(o.contains("endpoint"), "Should contain endpoint")
   }

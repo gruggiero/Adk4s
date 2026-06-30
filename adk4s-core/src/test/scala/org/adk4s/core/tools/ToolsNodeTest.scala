@@ -35,7 +35,7 @@ class ToolsNodeTest extends CatsEffectSuite:
 
     node.executeFromToolCalls(calls).map { (result: ToolExecutionResult) =>
       assertEquals(result.outputs.length, 1)
-      assertEquals(result.outputs.head.result, "echo result")
+      assertEquals(result.outputs.headOption.getOrElse(fail("expected non-empty list")).result, "echo result")
       assert(result.allSucceeded, "All tools should succeed")
     }
   }
@@ -67,7 +67,7 @@ class ToolsNodeTest extends CatsEffectSuite:
 
   test("tool execution error is caught") {
     val tool: InvokableTool[IO] = Tool.invokable[IO]("failing_tool", "Failing tool", (_: Value) =>
-      throw new RuntimeException("execution failed")
+      Left("execution failed")
     )
 
     val node: ToolsNode = ToolsNode.fromAdkTools(List(tool))

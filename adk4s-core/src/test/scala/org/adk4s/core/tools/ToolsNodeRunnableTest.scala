@@ -19,7 +19,7 @@ class ToolsNodeRunnableTest extends CatsEffectSuite:
 
     ToolsNodeRunnable.fromToolCalls(node).invoke(calls).map { (result: List[ToolMessage]) =>
       assertEquals(result.length, 1)
-      assertEquals(result.head.toolCallId, "call_1")
+      assertEquals(result.headOption.getOrElse(fail("expected non-empty list")).toolCallId, "call_1")
     }
   }
 
@@ -36,7 +36,7 @@ class ToolsNodeRunnableTest extends CatsEffectSuite:
 
     runnable.invoke(message).map { (result: List[ToolMessage]) =>
       assertEquals(result.length, 1)
-      assertEquals(result.head.toolCallId, "call_1")
+      assertEquals(result.headOption.getOrElse(fail("expected non-empty list")).toolCallId, "call_1")
     }
   }
 
@@ -86,6 +86,6 @@ class ToolsNodeRunnableTest extends CatsEffectSuite:
 
     runnable.stream(calls).compile.toList.map { (results: List[ToolMessage]) =>
       assertEquals(results.length, 1)
-      assertEquals(results.head.content, "result")
+      assertEquals(results.headOption.getOrElse(fail("expected non-empty list")).content, "result")
     }
   }

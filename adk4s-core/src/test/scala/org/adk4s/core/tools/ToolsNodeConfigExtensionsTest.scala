@@ -28,7 +28,7 @@ class ToolsNodeConfigExtensionsTest extends CatsEffectSuite:
 
     val registry: ToolRegistry = config.toToolRegistry
     assertEquals(registry.tools.length, 1)
-    assertEquals(registry.tools.head.name, "echo")
+    assertEquals(registry.tools.headOption.getOrElse(fail("expected non-empty list")).name, "echo")
   }
 
   test("adkTools extracts only ADK4S tools") {
@@ -39,7 +39,7 @@ class ToolsNodeConfigExtensionsTest extends CatsEffectSuite:
 
     val tools: List[InvokableTool[IO]] = config.adkTools
     assertEquals(tools.length, 1)
-    assertEquals(tools.head.info.name, "greet")
+    assertEquals(tools.headOption.getOrElse(fail("expected non-empty list")).info.name, "greet")
   }
 
   test("toToolRegistry with only ADK tools returns empty registry") {

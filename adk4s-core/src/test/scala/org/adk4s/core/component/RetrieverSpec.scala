@@ -18,7 +18,7 @@ class RetrieverSpec extends CatsEffectSuite:
     val result = retriever.retrieve("test query").unsafeRunSync()
 
     assertEquals(result.length, 2, "Should retrieve 2 documents")
-    assert(result.head.content.contains("test query"), "Should contain query in content")
+    assert(result.headOption.getOrElse(fail("expected non-empty list")).content.contains("test query"), "Should contain query in content")
   }
 
   test("Retrieve documents as stream") {
@@ -47,38 +47,35 @@ class RetrieverSpec extends CatsEffectSuite:
   }
 
   test("Apply custom configuration") {
-    var receivedConfig: Option[RetrieverConfig] = None
+    val receivedConfig: Ref[IO, Option[RetrieverConfig]] = Ref.of[IO, Option[RetrieverConfig]](None).unsafeRunSync()
     val retriever = Retriever.fromFunction[IO]((query: String, config: RetrieverConfig) =>
-      IO.delay {
-        receivedConfig = Some(config)
-        List(Document("1", s"Result with topK=${config.topK}"))
-      }
+      receivedConfig.update(_ => Some(config)).as(List(Document("1", s"Result with topK=${config.topK}")))
     )
 
     val customConfig = RetrieverConfig(topK = 10, minScore = 0.8)
     retriever.retrieve("test", customConfig).unsafeRunSync()
 
-    assert(receivedConfig.isDefined, "Should receive config")
-    assertEquals(receivedConfig.get.topK, 10, "Should use custom topK")
-    assertEquals(receivedConfig.get.minScore, 0.8, "Should use custom minScore")
+    val rc = receivedConfig.get.unsafeRunSync()
+    assert(rc.isDefined, "Should receive config")
+    val config = rc.getOrElse(fail("expected config"))
+    assertEquals(config.topK, 10, "Should use custom topK")
+    assertEquals(config.minScore, 0.8, "Should use custom minScore")
   }
 
   test("Create Retriever from function") {
-    var calledWithQuery: Option[String] = None
-    var calledWithConfig: Option[RetrieverConfig] = None
+    val calledWithQuery: Ref[IO, Option[String]] = Ref.of[IO, Option[String]](None).unsafeRunSync()
+    val calledWithConfig: Ref[IO, Option[RetrieverConfig]] = Ref.of[IO, Option[RetrieverConfig]](None).unsafeRunSync()
     val retriever = Retriever.fromFunction[IO]((query: String, config: RetrieverConfig) =>
-      IO.delay {
-        calledWithQuery = Some(query)
-        calledWithConfig = Some(config)
-        List(Document("1", "Result"))
-      }
+      calledWithQuery.update(_ => Some(query)) *> calledWithConfig.update(_ => Some(config)).as(List(Document("1", "Result")))
     )
 
     retriever.retrieve("test query").unsafeRunSync()
 
-    assert(calledWithQuery.isDefined, "Should call function with query")
-    assertEquals(calledWithQuery.get, "test query", "Should pass correct query")
-    assert(calledWithConfig.isDefined, "Should call function with config")
+    val q = calledWithQuery.get.unsafeRunSync()
+    val c = calledWithConfig.get.unsafeRunSync()
+    assert(q.isDefined, "Should call function with query")
+    assertEquals(q.getOrElse(fail("expected query")), "test query", "Should pass correct query")
+    assert(c.isDefined, "Should call function with config")
   }
 
   test("Document with metadata") {

@@ -41,17 +41,17 @@ object StreamFieldMapExample extends IOApp.Simple:
   // --- Word counter (per-chunk, same as Eino's wordCounter) ---
 
   private def countOccurrences(fullStr: String, subStr: String): Int =
+    import scala.annotation.tailrec
     if subStr.isEmpty then 0
     else
-      var count: Int = 0
-      var idx: Int = 0
-      while idx <= fullStr.length - subStr.length do
-        if fullStr.substring(idx, idx + subStr.length) == subStr then
-          count = count + 1
-          idx = idx + subStr.length
+      @tailrec
+      def loop(idx: Int, count: Int): Int =
+        if idx > fullStr.length - subStr.length then count
+        else if fullStr.substring(idx, idx + subStr.length) == subStr then
+          loop(idx + subStr.length, count + 1)
         else
-          idx = idx + 1
-      count
+          loop(idx + 1, count)
+      loop(0, 0)
 
   // --- Main ---
 

@@ -15,6 +15,7 @@ final case class CheckpointModifier[Ctx <: WorkflowContext, I, Err, O <: WCState
   genEvent: (I, O) => Evt,
   handleEvent: (I, Evt) => O
 )(using evtCt: ClassTag[Evt]) extends WIONodeModifier[Ctx, I, Err, O]:
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def apply(base: WIO[I, Err, O, Ctx])(using ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
     val genEventIO: (I, O) => IO[Evt] = (in: I, out: O) => IO.pure(genEvent(in, out))
     val detectEvent: WCEvent[Ctx] => Option[Evt] = (evt: WCEvent[Ctx]) => evtCt.unapply(evt)
@@ -31,6 +32,7 @@ final case class CheckpointModifier[Ctx <: WorkflowContext, I, Err, O <: WCState
 final case class RetryModifier[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]](
   onError: (Throwable, WCState[Ctx], Instant) => IO[Option[Instant]]
 ) extends WIONodeModifier[Ctx, I, Err, O]:
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def apply(base: WIO[I, Err, O, Ctx])(using ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
     given Applicative[WCEffect[Ctx]] = cats.Applicative[IO].asInstanceOf[Applicative[WCEffect[Ctx]]]
     base.retry.statelessly.wakeupAt { (in, err, state) =>

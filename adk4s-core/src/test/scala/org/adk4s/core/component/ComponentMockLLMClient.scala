@@ -3,9 +3,10 @@ package org.adk4s.core.component
 import org.llm4s.llmconnect.*
 import org.llm4s.llmconnect.model.*
 import org.llm4s.types.*
+import java.util.concurrent.atomic.AtomicReference
 
 class ComponentMockLLMClient extends LLMClient:
-  var lastOptions: Option[CompletionOptions] = None
+  val lastOptions: AtomicReference[Option[CompletionOptions]] = new AtomicReference(None)
 
   def getContextWindow(): Int = 4096
 
@@ -15,7 +16,7 @@ class ComponentMockLLMClient extends LLMClient:
     conversation: Conversation,
     options: CompletionOptions
   ): Result[Completion] =
-    lastOptions = Some(options)
+    lastOptions.set(Some(options))
     Right(Completion(
       id = "mock-id",
       content = "Mock completion",
@@ -29,7 +30,7 @@ class ComponentMockLLMClient extends LLMClient:
     options: CompletionOptions,
     onChunk: StreamedChunk => Unit
   ): Result[Completion] =
-    lastOptions = Some(options)
+    lastOptions.set(Some(options))
     val chunk = StreamedChunk(
       id = "mock-id",
       content = Some("Mock chunk1"),

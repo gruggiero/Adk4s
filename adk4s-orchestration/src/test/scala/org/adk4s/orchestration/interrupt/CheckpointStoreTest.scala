@@ -20,7 +20,7 @@ class CheckpointStoreTest extends CatsEffectSuite:
       result <- store.get("key1")
     yield {
       assert(result.isDefined)
-      assertEquals(new String(result.get), "hello")
+      assertEquals(new String(result.getOrElse(fail("expected checkpoint to be defined"))), "hello")
     }
   }
 
@@ -30,7 +30,7 @@ class CheckpointStoreTest extends CatsEffectSuite:
       _ <- store.set("key1", "first".getBytes)
       _ <- store.set("key1", "second".getBytes)
       result <- store.get("key1")
-    yield assertEquals(new String(result.get), "second")
+    yield assertEquals(new String(result.getOrElse(fail("expected checkpoint to be defined"))), "second")
   }
 
   test("delete removes a key") {

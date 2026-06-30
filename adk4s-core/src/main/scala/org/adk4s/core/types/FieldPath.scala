@@ -19,7 +19,7 @@ object FieldPath:
     def isEmpty: Boolean                = path.isEmpty
     def nonEmpty: Boolean               = path.nonEmpty
     def head: Option[String]            = path.headOption
-    def tail: FieldPath                 = if path.isEmpty then Root else path.tail
+    def tail: FieldPath                 = if path.isEmpty then Root else path.drop(1)
     def :+(segment: String): FieldPath  = path :+ segment
     def ++(other: FieldPath): FieldPath = path ++ other
     def render: String                  = path.mkString(".")

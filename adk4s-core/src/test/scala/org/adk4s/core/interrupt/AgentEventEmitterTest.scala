@@ -14,7 +14,7 @@ class AgentEventEmitterTest extends CatsEffectSuite:
       events <- emitter.subscribe.compile.toList
     yield
       assertEquals(events.length, 1)
-      events.head match
+      events.headOption.getOrElse(fail("expected non-empty list")) match
         case msg: AgentEvent.MessageOutput =>
           assertEquals(msg.message, "hello")
         case other =>
@@ -31,7 +31,7 @@ class AgentEventEmitterTest extends CatsEffectSuite:
       events <- emitter.subscribe.compile.toList
     yield
       assertEquals(events.length, 1)
-      val resultPath: String = events.head.runPath.show
+      val resultPath: String = events.headOption.getOrElse(fail("expected non-empty list")).runPath.show
       assertEquals(resultPath, "parent > child")
   }
 

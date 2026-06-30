@@ -21,7 +21,7 @@ class ToolsNodeRunnableTest extends CatsEffectSuite:
     val result = ToolsNodeRunnable.fromToolCalls(node).invoke(calls).unsafeRunSync()
 
     assertEquals(result.length, 1)
-    assertEquals(result.head.toolCallId, "call_1")
+    assertEquals(result.headOption.getOrElse(fail("expected non-empty list")).toolCallId, "call_1")
   }
 
   test("fromAssistantMessage creates Runnable") {
@@ -37,7 +37,7 @@ class ToolsNodeRunnableTest extends CatsEffectSuite:
     val result = runnable.invoke(message).unsafeRunSync()
 
     assertEquals(result.length, 1)
-    assertEquals(result.head.toolCallId, "call_1")
+    assertEquals(result.headOption.getOrElse(fail("expected non-empty list")).toolCallId, "call_1")
   }
 
   test("fromToolCalls creates Runnable") {
@@ -86,5 +86,5 @@ class ToolsNodeRunnableTest extends CatsEffectSuite:
     val results = stream.compile.toList.unsafeRunSync()
 
     assertEquals(results.length, 1)
-    assertEquals(results.head.content, "result")
+    assertEquals(results.headOption.getOrElse(fail("expected non-empty list")).content, "result")
   }

@@ -19,6 +19,7 @@ class WIORunnableNodeTest extends FunSuite:
 
   private val workflowInstanceId: WorkflowInstanceId = WorkflowInstanceId("test", "test")
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio[In, Out <: WCState[TestContext.Ctx]](
     wio: WIO[In, Nothing, Out, TestContext.Ctx],
     input: In,
@@ -42,7 +43,7 @@ class WIORunnableNodeTest extends FunSuite:
         case Some(event) =>
           workflow.handleEvent(event) match
             case Some(updated) => updated
-            case None => throw new AssertionError("Expected workflow to handle event")
+            case None => fail("Expected workflow to handle event")
         case None => workflow
     finalWorkflow.liveState
 
@@ -145,20 +146,23 @@ class WIORunnableNodeTest extends FunSuite:
     val node2: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 10))
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", node1)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", node1)
-        .addNode("node2", node2)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val runnableResult: Either[NonEmptyChain[WIOGraphError], Runnable[Int, TestState]] =
       builtGraph.toRunnable
     assert(runnableResult.isRight, "expected Right Runnable")
 
     val runnable: Runnable[Int, TestState] =
-      runnableResult.getOrElse(throw new AssertionError("Should have Runnable"))
+      runnableResult.getOrElse(fail("Should have Runnable"))
     val result: TestState = runnable.invoke(5).unsafeRunSync()
 
     assertEquals(result, TestState(15))
@@ -184,16 +188,19 @@ class WIORunnableNodeTest extends FunSuite:
     val pureNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 100))
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", runnableNode)
+      g2 <- g1.addNode("node2", pureNode)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", runnableNode)
-        .addNode("node2", pureNode)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val runnable: Runnable[Int, TestState] =
-      builtGraph.toRunnable.getOrElse(throw new AssertionError("Should compile"))
+      builtGraph.toRunnable.getOrElse(fail("Should compile"))
     val result: TestState = runnable.invoke(7).unsafeRunSync()
 
     assertEquals(result, TestState(114)) // 7*2=14, 14+100=114
@@ -221,16 +228,19 @@ class WIORunnableNodeTest extends FunSuite:
     val identityNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", runnableNode)
+      g2 <- g1.addNode("node2", identityNode)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", runnableNode)
-        .addNode("node2", identityNode)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val runnable: Runnable[Int, TestState] =
-      builtGraph.toRunnable.getOrElse(throw new AssertionError("Should compile"))
+      builtGraph.toRunnable.getOrElse(fail("Should compile"))
 
     // Stream mode — chained through identity, so invoke-based chaining gives single result
     val result: TestState = runnable.invoke(5).unsafeRunSync()
@@ -244,12 +254,15 @@ class WIORunnableNodeTest extends FunSuite:
     val node: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
 
-    val graphWithNode: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
+    val graphWithNode: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] =
       graph.addNode("node1", node)
+
+    val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
+      graphWithNode.getOrElse(fail("Should build graph"))
 
     // No entry set — should fail validation
     val result: Either[NonEmptyChain[WIOGraphError], Runnable[Int, TestState]] =
-      graphWithNode.toRunnable
+      builtGraph.toRunnable
     assert(result.isLeft, "expected Left errors")
   }
 
@@ -269,13 +282,16 @@ class WIORunnableNodeTest extends FunSuite:
     val node2: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", node1)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", node1)
-        .addNode("node2", node2)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val result: TestState =
       WIOGraphStreamExecutor.invoke(builtGraph, 4).unsafeRunSync()
@@ -304,13 +320,16 @@ class WIORunnableNodeTest extends FunSuite:
     val identityNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", runnableNode)
+      g2 <- g1.addNode("node2", identityNode)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", runnableNode)
-        .addNode("node2", identityNode)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     // Stream mode chains through identity via stream->stream
     val results: List[TestState] =
@@ -338,13 +357,16 @@ class WIORunnableNodeTest extends FunSuite:
     val identityNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", runnableNode)
+      g2 <- g1.addNode("node2", identityNode)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", runnableNode)
-        .addNode("node2", identityNode)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val inputStream: Stream[IO, Int] = Stream.emits(List(1, 2, 3))
     val results: List[TestState] =
@@ -366,21 +388,24 @@ class WIORunnableNodeTest extends FunSuite:
     val identityNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addRunnableNode[Int, RunnableResult, Int, TestState](
+        "node1",
+        runnableImpl,
+        (raw: Int) => RunnableResult(raw),
+        (_: Int, evt: RunnableResult) => Right(TestState(evt.value))
+      )
+      g2 <- g1.addNode("node2", identityNode)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val finalGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addRunnableNode[Int, RunnableResult, Int, TestState](
-          "node1",
-          runnableImpl,
-          (raw: Int) => RunnableResult(raw),
-          (_: Int, evt: RunnableResult) => Right(TestState(evt.value))
-        )
-        .addNode("node2", identityNode)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val runnable: Runnable[Int, TestState] =
-      finalGraph.toRunnable.getOrElse(throw new AssertionError("Should compile"))
+      finalGraph.toRunnable.getOrElse(fail("Should compile"))
     val result: TestState = runnable.invoke(3).unsafeRunSync()
 
     assertEquals(result, TestState(8))
@@ -400,21 +425,24 @@ class WIORunnableNodeTest extends FunSuite:
     val identityNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addLambdaNode[Int, RunnableResult, Int, TestState](
+        "node1",
+        lambda,
+        (raw: Int) => RunnableResult(raw),
+        (_: Int, evt: RunnableResult) => Right(TestState(evt.value))
+      )
+      g2 <- g1.addNode("node2", identityNode)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val finalGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addLambdaNode[Int, RunnableResult, Int, TestState](
-          "node1",
-          lambda,
-          (raw: Int) => RunnableResult(raw),
-          (_: Int, evt: RunnableResult) => Right(TestState(evt.value))
-        )
-        .addNode("node2", identityNode)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val runnable: Runnable[Int, TestState] =
-      finalGraph.toRunnable.getOrElse(throw new AssertionError("Should compile"))
+      finalGraph.toRunnable.getOrElse(fail("Should compile"))
     val result: TestState = runnable.invoke(4).unsafeRunSync()
 
     assertEquals(result, TestState(12))
@@ -438,18 +466,21 @@ class WIORunnableNodeTest extends FunSuite:
     val node3: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value * 2))
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", node1)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addNode("node3", node3)
+      g4 <- g3.addEdge(node1Ref, node2Ref)
+      g5 <- g4.addEdge(node2Ref, node3Ref)
+      g6 <- g5.setEntry(node1Ref)
+      g7 <- g6.addEndNode(node3Ref)
+    yield g7
+
     val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", node1)
-        .addNode("node2", node2)
-        .addNode("node3", node3)
-        .addEdge(node1Ref, node2Ref)
-        .addEdge(node2Ref, node3Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node3Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val runnable: Runnable[Int, TestState] =
-      builtGraph.toRunnable.getOrElse(throw new AssertionError("Should compile"))
+      builtGraph.toRunnable.getOrElse(fail("Should compile"))
     val result: TestState = runnable.invoke(5).unsafeRunSync()
 
     // 5 -> TestState(5) -> TestState(15) -> TestState(30)
@@ -476,16 +507,19 @@ class WIORunnableNodeTest extends FunSuite:
     val pureNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 1))
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("runnable", runnableNode)
+      g2 <- g1.addNode("pure", pureNode)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
+
     val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("runnable", runnableNode)
-        .addNode("pure", pureNode)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val runnable: Runnable[Int, TestState] =
-      builtGraph.toRunnable.getOrElse(throw new AssertionError("Should compile"))
+      builtGraph.toRunnable.getOrElse(fail("Should compile"))
     val result: TestState = runnable.invoke(10).unsafeRunSync()
 
     // 10*2=20, 20+1=21

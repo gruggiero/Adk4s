@@ -70,5 +70,5 @@ class AgentToolEnhancedTest extends CatsEffectSuite:
       val schema: ujson.Value = tool.info.parameters
       assertEquals(schema("type").str, "object")
       assert(schema("properties").obj.contains("request"))
-      assertEquals(schema("required").arr.head.str, "request")
+      assertEquals(schema("required").arr.headOption.getOrElse(fail("expected non-empty list")).str, "request")
   }

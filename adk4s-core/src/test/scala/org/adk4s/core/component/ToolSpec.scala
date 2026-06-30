@@ -25,7 +25,7 @@ class ToolSpec extends CatsEffectSuite:
     val args = ujson.Obj("a" -> 2, "b" -> 3)
     val result = tool.run(args).attempt.unsafeRunSync()
     assert(result.isRight, "Should run successfully")
-    assertEquals(result.toOption.get.str, "5", "Should return correct sum")
+    assertEquals(result.toOption.getOrElse(fail("expected Right")).str, "5", "Should return correct sum")
   }
 
   test("Create StreamableTool from function") {

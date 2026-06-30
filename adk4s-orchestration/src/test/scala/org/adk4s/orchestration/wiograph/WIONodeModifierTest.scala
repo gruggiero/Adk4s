@@ -19,6 +19,7 @@ class WIONodeModifierTest extends FunSuite:
 
   private val workflowInstanceId: WorkflowInstanceId = WorkflowInstanceId("test", "test")
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio[In, Out <: WCState[TestContext.Ctx]](
     wio: WIO[In, Nothing, Out, TestContext.Ctx],
     input: In,
@@ -42,7 +43,7 @@ class WIONodeModifierTest extends FunSuite:
         case Some(event) =>
           workflow.handleEvent(event) match
             case Some(updated) => updated
-            case None => throw new AssertionError("Expected workflow to handle event")
+            case None => fail("Expected workflow to handle event")
         case None => workflow
     finalWorkflow.liveState
 
@@ -132,25 +133,28 @@ class WIONodeModifierTest extends FunSuite:
     val node2: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", node1)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+      g6 <- g5.withCheckpoint[Int, TestState, ValueAdded](
+        node1Ref,
+        genEvent = (_: Int, out: TestState) => ValueAdded(out.value),
+        handleEvent = (_: Int, evt: ValueAdded) => TestState(evt.delta)
+      )
+    yield g6
+
     val graphWithModifier: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", node1)
-        .addNode("node2", node2)
-        .addEdge(node1Ref, node2Ref)
-        .setEntry(node1Ref)
-        .addEndNode(node2Ref)
-        .withCheckpoint[Int, TestState, ValueAdded](
-          node1Ref,
-          genEvent = (_: Int, out: TestState) => ValueAdded(out.value),
-          handleEvent = (_: Int, evt: ValueAdded) => TestState(evt.delta)
-        )
+      graphResult.getOrElse(fail("Should build graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], WIO[Int, Nothing, TestState, TestContext.Ctx]] =
       graphWithModifier.toWIO
     assert(wioResult.isRight, s"expected Right WIO, got $wioResult")
 
     val wio: WIO[Int, Nothing, TestState, TestContext.Ctx] =
-      wioResult.getOrElse(throw new AssertionError("Should have WIO"))
+      wioResult.getOrElse(fail("Should have WIO"))
     val result: TestStateBase = executeWio[Int, TestState](wio, 5, TestState(0))
 
     assertEquals(result, TestState(15))
@@ -212,20 +216,23 @@ class WIONodeModifierTest extends FunSuite:
     val afterHighNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 7))
 
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("fork", forkNode)
+      g2 <- g1.addNode("afterHigh", afterHighNode)
+      g3 <- g2.addEdge(forkRef, afterHighRef)
+      g4 <- g3.setEntry(forkRef)
+      g5 <- g4.addEndNode(afterHighRef)
+    yield g5
+
     val graphWithFork: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("fork", forkNode)
-        .addNode("afterHigh", afterHighNode)
-        .addEdge(forkRef, afterHighRef)
-        .setEntry(forkRef)
-        .addEndNode(afterHighRef)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], WIO[Int, Nothing, TestState, TestContext.Ctx]] =
       graphWithFork.toWIO
     assert(wioResult.isRight, s"expected Right WIO, got $wioResult")
 
     val wio: WIO[Int, Nothing, TestState, TestContext.Ctx] =
-      wioResult.getOrElse(throw new AssertionError("Should have WIO"))
+      wioResult.getOrElse(fail("Should have WIO"))
 
     val resultHigh: TestStateBase = executeWio[Int, TestState](wio, 200, TestState(0))
     assertEquals(resultHigh, TestState(1207))

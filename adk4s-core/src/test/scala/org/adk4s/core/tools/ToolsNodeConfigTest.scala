@@ -13,8 +13,8 @@ class ToolsNodeConfigTest extends CatsEffectSuite:
     val config: ToolsNodeConfig = ToolsNodeConfig.fromAdkTools(List(tool))
 
     assertEquals(config.tools.length, 1)
-    assert(config.tools.head.isRight)
-    assertEquals(config.tools.head.map(_.info.name), Right("test_tool"))
+    assert(config.tools.headOption.getOrElse(fail("expected non-empty list")).isRight)
+    assertEquals(config.tools.headOption.getOrElse(fail("expected non-empty list")).map(_.info.name), Right("test_tool"))
   }
 
   test("builder adds ADK4S tool") {
@@ -24,7 +24,7 @@ class ToolsNodeConfigTest extends CatsEffectSuite:
       .build
 
     assertEquals(config.tools.length, 1)
-    assert(config.tools.head.isRight)
+    assert(config.tools.headOption.getOrElse(fail("expected non-empty list")).isRight)
   }
 
   test("builder sets sequential execution") {

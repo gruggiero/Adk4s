@@ -65,8 +65,9 @@ class ToolSchemaDeriveTest extends FunSuite:
     val decoded: Either[ToolSchemaError, SimpleRecord] = schema.decoder(json)
 
     assert(decoded.isRight)
-    assertEquals(decoded.toOption.get.name, "test")
-    assertEquals(decoded.toOption.get.count, 42)
+    val result: SimpleRecord = decoded.toOption.getOrElse(fail("expected Right"))
+    assertEquals(result.name, "test")
+    assertEquals(result.count, 42)
   }
 
   test("derive supports all basic types") {
@@ -94,7 +95,7 @@ class ToolSchemaDeriveTest extends FunSuite:
     // Test decoding
     val decoded: Either[ToolSchemaError, AllTypesRecord] = schema.decoder(encoded)
     assert(decoded.isRight)
-    val result: AllTypesRecord = decoded.toOption.get
+    val result: AllTypesRecord = decoded.toOption.getOrElse(fail("expected Right"))
     assertEquals(result.stringField, "hello")
     assertEquals(result.intField, 10)
     assertEquals(result.longField, 100L)
@@ -137,7 +138,7 @@ class ToolSchemaDeriveTest extends FunSuite:
     val decoded: Either[ToolSchemaError, OptionalFieldsRecord] = schema.decoder(json)
 
     assert(decoded.isRight)
-    val result: OptionalFieldsRecord = decoded.toOption.get
+    val result: OptionalFieldsRecord = decoded.toOption.getOrElse(fail("expected Right"))
     assertEquals(result.required, "test")
     assertEquals(result.optionalString, None)
     assertEquals(result.optionalInt, None)
@@ -161,7 +162,7 @@ class ToolSchemaDeriveTest extends FunSuite:
     val decoded: Either[ToolSchemaError, AllTypesRecord] = schema.decoder(encoded)
 
     assert(decoded.isRight)
-    val result: AllTypesRecord = decoded.toOption.get
+    val result: AllTypesRecord = decoded.toOption.getOrElse(fail("expected Right"))
     assertEquals(result, original)
   }
 

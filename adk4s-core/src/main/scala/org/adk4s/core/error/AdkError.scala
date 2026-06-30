@@ -71,6 +71,9 @@ case class CheckpointNotFoundError(checkpointId: String) extends AdkError:
 
 case class GenericError(message: String) extends AdkError
 
+case class NodeKeyError(invalidKey: String) extends AdkError:
+  def message: String = s"Invalid node key: '$invalidKey'"
+
 object AdkError:
   given Show[AdkError] = Show.show(_.message)
 

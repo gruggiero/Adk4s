@@ -7,6 +7,7 @@ import org.adk4s.core.tools.{StructuredToolCall, ToolSchema, TypedTool}
 import org.adk4s.core.types.NodeKey
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
+import org.adk4s.orchestration.wiograph.WIOGraphError
 import org.adk4s.orchestration.wiograph.WIONode
 import org.adk4s.orchestration.wiograph.WIONodeRef
 import org.adk4s.orchestration.wiograph.WIORunnableNode
@@ -116,10 +117,8 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
       processingTool = createProcessingTool
       formattingTool = createFormattingTool
 
-      graph = buildGraph(validationTool, processingTool, formattingTool)
-
       _ <- ExampleUtils.printSubSection("Execute Tool Graph Workflow")
-      runnable <- compileRunnable(graph)
+      runnable <- compileRunnable(buildGraph(validationTool, processingTool, formattingTool))
 
       // Execute the workflow
       input: String = "hello world"
@@ -141,7 +140,7 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
     validationTool: TypedTool[IO, ValidationInput, ValidationResult],
     processingTool: TypedTool[IO, ProcessingInput, ProcessingResult],
     formattingTool: TypedTool[IO, FormattingInput, FormattingResult]
-  ): WIOGraph[Ctx.Ctx, ToolWorkState, Nothing, GraphState] =
+  ): Either[WIOGraphError, WIOGraph[Ctx.Ctx, ToolWorkState, Nothing, GraphState]] =
 
     // Node 1: Validate input using typed tool
     val validateRunnable: Runnable[ToolWorkState, ValidationResult] =
@@ -199,21 +198,26 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
         toState = (state: ToolWorkState, evt: ResultFormatted) => state.copy(formatted = Some(evt.output))
       )
 
-    WIOGraph[Ctx.Ctx, ToolWorkState, GraphState]
-      .addNode("validate_input", node1)
-      .addNode("execute_tool", node2)
-      .addNode("format_result", node3)
-      .addEdge(node1Ref, node2Ref)
-      .addEdge(node2Ref, node3Ref)
-      .setEntry(node1Ref)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, ToolWorkState, GraphState].addNode("validate_input", node1)
+      g2 <- g1.addNode("execute_tool", node2)
+      g3 <- g2.addNode("format_result", node3)
+      g4 <- g3.addEdge(node1Ref, node2Ref)
+      g5 <- g4.addEdge(node2Ref, node3Ref)
+      g6 <- g5.setEntry(node1Ref)
+      g7 <- g6.addEndNode(endRef)
+    yield g7
 
   private def compileRunnable(
-    graph: WIOGraph[Ctx.Ctx, ToolWorkState, Nothing, GraphState]
+    graphEither: Either[WIOGraphError, WIOGraph[Ctx.Ctx, ToolWorkState, Nothing, GraphState]]
   ): IO[Runnable[ToolWorkState, GraphState]] =
-    graph.toRunnable match
-      case Right(runnable) => IO.pure(runnable)
-      case Left(errors) =>
-        IO.raiseError(new IllegalStateException(
-          s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-        ))
+    graphEither match
+      case Left(err: WIOGraphError) =>
+        IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+      case Right(graph: WIOGraph[Ctx.Ctx, ToolWorkState, Nothing, GraphState]) =>
+        graph.toRunnable match
+          case Right(runnable) => IO.pure(runnable)
+          case Left(errors) =>
+            IO.raiseError(new IllegalStateException(
+              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+            ))

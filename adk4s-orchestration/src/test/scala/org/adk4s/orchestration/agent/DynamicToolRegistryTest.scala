@@ -57,7 +57,7 @@ class DynamicToolRegistryTest extends CatsEffectSuite:
       bTool = tools.find(_.info.name == "b")
     yield {
       assert(bTool.isDefined)
-      assertEquals(bTool.get.info.description, "Replaced tool b")
+      assertEquals(bTool.getOrElse(fail("expected tool to be defined")).info.description, "Replaced tool b")
     }
   }
 
@@ -86,8 +86,8 @@ class DynamicToolRegistryTest extends CatsEffectSuite:
   test("concurrent add/remove is safe") {
     for
       registry <- DynamicToolRegistry.create(List.empty)
-      _ <- (1 to 100).toList.map((i: Int) => registry.addTool(makeTool(s"t$i"))).reduce(_ *> _)
-      _ <- (1 to 50).toList.map((i: Int) => registry.removeTool(s"t$i")).reduce(_ *> _)
+      _ <- (1 to 100).toList.map((i: Int) => registry.addTool(makeTool(s"t$i"))).foldLeft(IO.unit)(_ *> _)
+      _ <- (1 to 50).toList.map((i: Int) => registry.removeTool(s"t$i")).foldLeft(IO.unit)(_ *> _)
       names <- registry.toolNames
     yield assertEquals(names.length, 50)
   }

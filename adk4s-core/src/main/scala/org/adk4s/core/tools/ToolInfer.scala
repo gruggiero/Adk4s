@@ -88,6 +88,7 @@ object ToolInfer:
       "required" -> ujson.Arr(requiredFields.map(ujson.Str.apply)*)
     )
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline def getFieldNames[T <: Tuple]: List[String] =
     inline erasedValue[T] match
       case _: EmptyTuple => Nil
@@ -127,6 +128,7 @@ object ToolInfer:
 
   // --- Decoding ---
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline def decodeProduct[I <: Product](json: ujson.Value)(using m: Mirror.ProductOf[I]): Either[String, I] =
     val fieldNames: List[String] = getFieldNames[m.MirroredElemLabels]
     try
@@ -139,10 +141,13 @@ object ToolInfer:
     inline erasedValue[T] match
       case _: EmptyTuple => EmptyTuple
       case _: (head *: tail) =>
-        val name: String = names.head
-        val value: head = decodeField[head](json, name)
-        value *: decodeFields[tail](json, names.tail)
+        names match
+          case name :: rest =>
+            val value: head = decodeField[head](json, name)
+            value *: decodeFields[tail](json, rest)
+          case Nil => EmptyTuple
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline def decodeField[T](json: ujson.Value, name: String): T =
     inline erasedValue[T] match
       case _: String  => json(name).str.asInstanceOf[T]

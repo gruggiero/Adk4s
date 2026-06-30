@@ -3,6 +3,7 @@ package org.adk4s.core.streaming
 import munit.CatsEffectSuite
 import fs2.Stream
 import cats.effect.IO
+import cats.effect.Ref
 import org.adk4s.structured.core.Message
 import scala.concurrent.duration.*
 
@@ -70,13 +71,17 @@ class PackageExportsTest extends CatsEffectSuite:
   }
 
   test("Stream retryWithBackoff extension works") {
-    var attempts = 0
-    val stream: Stream[IO, Int] = Stream.eval(IO {
-      attempts += 1
-      if attempts < 3 then throw new RuntimeException("Retry me") else attempts
-    })
-    val resultIO = stream.retryWithBackoff(5).compile.toList
-    assertIO(resultIO, List(3))
+    for
+      attempts <- Ref.of[IO, Int](0)
+      stream: Stream[IO, Int] = Stream.eval(
+        attempts.update(_ + 1) *> attempts.get.flatMap { a =>
+          if a < 3 then IO.raiseError(new RuntimeException("Retry me")) else IO.pure(a)
+        }
+      )
+      resultIO = stream.retryWithBackoff(5).compile.toList
+      result <- resultIO
+    yield
+      assertEquals(result, List(3))
   }
 
   test("Stream rateLimited extension works") {

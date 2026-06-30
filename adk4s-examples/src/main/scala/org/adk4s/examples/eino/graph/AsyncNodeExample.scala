@@ -7,6 +7,7 @@ import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.types.NodeKey
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
+import org.adk4s.orchestration.wiograph.WIOGraphError
 import org.adk4s.orchestration.wiograph.WIONode
 import org.adk4s.orchestration.wiograph.WIONodeRef
 import org.adk4s.orchestration.wiograph.WIORunnableNode
@@ -50,8 +51,7 @@ object AsyncNodeExample extends IOApp.Simple:
     for
       _ <- ExampleUtils.printSection("Async Node Example (Eino: graph/async_node)")
 
-      graph = buildGraph()
-      runnable <- compileRunnable(graph)
+      runnable <- compileRunnable(buildGraph())
 
       // Scenario 1: Invoke mode — background report generation
       _ <- ExampleUtils.printSubSection("1. Invoke Mode (Background Report)")
@@ -78,7 +78,7 @@ object AsyncNodeExample extends IOApp.Simple:
       _ <- IO.println("\nAsync node example completed.")
     yield ()
 
-  private def buildGraph(): WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState] =
+  private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]] =
     // Node 1: async_invokable — simulates background report generation
     // Waits briefly then produces a URL based on the input
     val asyncInvokableRunnable: Runnable[TextState, String] =
@@ -141,19 +141,24 @@ object AsyncNodeExample extends IOApp.Simple:
         toState = (_: TextState, evt: TextProduced) => TextState(evt.text)
       )
 
-    WIOGraph[Ctx.Ctx, TextState, GraphState]
-      .addNode("async_invokable", node1)
-      .addNode("async_streamable", node2)
-      .addEdge(node1Ref, node2Ref)
-      .setEntry(node1Ref)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, TextState, GraphState].addNode("async_invokable", node1)
+      g2 <- g1.addNode("async_streamable", node2)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(endRef)
+    yield g5
 
   private def compileRunnable(
-    graph: WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]
+    graphEither: Either[WIOGraphError, WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]]
   ): IO[Runnable[TextState, GraphState]] =
-    graph.toRunnable match
-      case Right(runnable) => IO.pure(runnable)
-      case Left(errors) =>
-        IO.raiseError(new IllegalStateException(
-          s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-        ))
+    graphEither match
+      case Left(err: WIOGraphError) =>
+        IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+      case Right(graph: WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]) =>
+        graph.toRunnable match
+          case Right(runnable) => IO.pure(runnable)
+          case Left(errors) =>
+            IO.raiseError(new IllegalStateException(
+              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+            ))

@@ -34,10 +34,10 @@ class ToolsNodeInterruptTest extends CatsEffectSuite:
     node.executeTools(inputs).map { (result: ToolExecutionResult) =>
       // First tool should have succeeded
       assertEquals(result.outputs.length, 1)
-      assertEquals(result.outputs.head.name, "normal")
+      assertEquals(result.outputs.headOption.getOrElse(fail("expected non-empty list")).name, "normal")
       // Interrupt signal should be captured
       assert(result.interruptSignal.isDefined)
-      assertEquals(result.interruptSignal.get.info, "Approve?")
+      assertEquals(result.interruptSignal.getOrElse(fail("expected interrupt signal")).info, "Approve?")
     }
   }
 

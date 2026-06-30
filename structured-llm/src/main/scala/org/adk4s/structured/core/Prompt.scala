@@ -64,8 +64,9 @@ final case class Prompt(messages: Vector[Message]):
    * Append content to the last message, or add a new user message if empty.
    */
   def appendToLast(content: String): Prompt =
-    if messages.isEmpty then addUserMessage(content)
-    else Prompt(messages.init :+ messages.last.append(content))
+    messages.lastOption match
+      case Some(last) => Prompt(messages.dropRight(1) :+ last.append(content))
+      case None       => addUserMessage(content)
 
   /**
    * Inject the output format schema into the last user message.

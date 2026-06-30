@@ -22,6 +22,11 @@ class WIOGraphTest extends FunSuite:
 
   private val workflowInstanceId: WorkflowInstanceId = WorkflowInstanceId("test", "test")
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+  private def ioLiftEffect: WCEffectLift[TestContext.Ctx, IO] =
+    [A] => (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
+
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio[In, Out <: WCState[TestContext.Ctx]](
     wio: WIO[In, Nothing, Out, TestContext.Ctx],
     input: In,
@@ -45,7 +50,7 @@ class WIOGraphTest extends FunSuite:
         case Some(event) =>
           workflow.handleEvent(event) match
             case Some(updated) => updated
-            case None => throw new AssertionError("Expected workflow to handle event")
+            case None => fail("Expected workflow to handle event")
         case None => workflow
     finalWorkflow.liveState
 
@@ -108,24 +113,23 @@ class WIOGraphTest extends FunSuite:
     val node2: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 10))
 
-    val graphWithNodes: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", node1)
-        .addNode("node2", node2)
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", node1)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(node2Ref)
+    yield g5
 
-    val graphWithEdge: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithNodes.addEdge(node1Ref, node2Ref)
-    val graphWithEntry: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEdge.setEntry(node1Ref)
     val graphWithEnd: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEntry.addEndNode(node2Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx]] =
       graphWithEnd.toWIO
     assert(wioResult.isRight, "expected Right WIO")
 
     val wio: workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx] =
-      wioResult.getOrElse(throw new AssertionError("Should have WIO"))
+      wioResult.getOrElse(fail("Should have WIO"))
     val result: TestStateBase = executeWio[Int, TestState](wio, 5, TestState(0))
 
     assertEquals(result, TestState(15))
@@ -138,11 +142,12 @@ class WIOGraphTest extends FunSuite:
     val node: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
 
-    val graphWithNode: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] = graph.addNode("node1", node)
+    val graphWithNode: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] =
+      graph.addNode("node1", node)
 
-    intercept[IllegalArgumentException] {
-      graphWithNode.addNode("node1", node)
-    }
+    val duplicateResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] =
+      graphWithNode.flatMap(_.addNode("node1", node))
+    assert(duplicateResult.isLeft, "expected Left for duplicate key")
   }
 
   test("6.6 Test eager validation (missing edge targets)") {
@@ -157,11 +162,12 @@ class WIOGraphTest extends FunSuite:
     val node: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
 
-    val graphWithNode: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] = graph.addNode("node1", node)
+    val graphWithNode: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] =
+      graph.addNode("node1", node)
 
-    intercept[IllegalArgumentException] {
-      graphWithNode.addEdge(node1Ref, missingRef)
-    }
+    val edgeResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] =
+      graphWithNode.flatMap(_.addEdge(node1Ref, missingRef))
+    assert(edgeResult.isLeft, "expected Left for missing edge target")
   }
 
   test("6.7 Test lazy validation (cycles)") {
@@ -178,18 +184,16 @@ class WIOGraphTest extends FunSuite:
     val node2: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 10))
 
-    val graphWithNodes: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", node1)
-        .addNode("node2", node2)
-
-    val graphWithEdges: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithNodes
-        .addEdge(node1Ref, node2Ref)
-        .addEdge(node2Ref, node2Ref)
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", node1)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.addEdge(node2Ref, node2Ref)
+      g5 <- g4.setEntry(node1Ref)
+    yield g5
 
     val graphWithEntry: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEdges.setEntry(node1Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx]] =
       graphWithEntry.toWIO
@@ -202,7 +206,7 @@ class WIOGraphTest extends FunSuite:
           case _ => false
         }, "expected cycle error")
       case None =>
-        throw new AssertionError("Should have cycle error")
+        fail("Should have cycle error")
   }
 
   test("6.7 Test lazy validation (missing entry node)") {
@@ -215,10 +219,14 @@ class WIOGraphTest extends FunSuite:
     val node: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
 
-    val graphWithNode: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] = graph.addNode("node1", node)
+    val graphWithNode: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] =
+      graph.addNode("node1", node)
+
+    val builtGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
+      graphWithNode.getOrElse(fail("Should build graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx]] =
-      graphWithNode.toWIO
+      builtGraph.toWIO
     assert(wioResult.isLeft, "expected Left errors")
 
     wioResult.left.toOption match
@@ -228,7 +236,7 @@ class WIOGraphTest extends FunSuite:
           case _ => false
         }, "expected missing entry error")
       case None =>
-        throw new AssertionError("Should have missing entry error")
+        fail("Should have missing entry error")
   }
 
   test("6.7 Test lazy validation (unreachable end nodes)") {
@@ -249,19 +257,17 @@ class WIOGraphTest extends FunSuite:
     val node3: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 20))
 
-    val graphWithNodes: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", node1)
-        .addNode("node2", node2)
-        .addNode("node3", node3)
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", node1)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addNode("node3", node3)
+      g4 <- g3.addEdge(node1Ref, node2Ref)
+      g5 <- g4.setEntry(node1Ref)
+      g6 <- g5.addEndNode(node3Ref)
+    yield g6
 
-    val graphWithEdges: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithNodes.addEdge(node1Ref, node2Ref)
-
-    val graphWithEntry: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEdges.setEntry(node1Ref)
     val graphWithEnd: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEntry.addEndNode(node3Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx]] =
       graphWithEnd.toWIO
@@ -274,7 +280,7 @@ class WIOGraphTest extends FunSuite:
           case _ => false
         }, "expected unreachable end error")
       case None =>
-        throw new AssertionError("Should have unreachable end error")
+        fail("Should have unreachable end error")
   }
 
   test("6.8 Test linear graph compilation (A -> B -> C)") {
@@ -295,28 +301,25 @@ class WIOGraphTest extends FunSuite:
     val node3: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value * 2))
 
-    val graphWithNodes: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", node1)
-        .addNode("node2", node2)
-        .addNode("node3", node3)
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", node1)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addNode("node3", node3)
+      g4 <- g3.addEdge(node1Ref, node2Ref)
+      g5 <- g4.addEdge(node2Ref, node3Ref)
+      g6 <- g5.setEntry(node1Ref)
+      g7 <- g6.addEndNode(node3Ref)
+    yield g7
 
-    val graphWithEdges: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithNodes
-        .addEdge(node1Ref, node2Ref)
-        .addEdge(node2Ref, node3Ref)
-
-    val graphWithEntry: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEdges.setEntry(node1Ref)
     val graphWithEnd: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEntry.addEndNode(node3Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx]] =
       graphWithEnd.toWIO
     assert(wioResult.isRight, "expected Right WIO")
 
     val wio: workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx] =
-      wioResult.getOrElse(throw new AssertionError("Should have WIO"))
+      wioResult.getOrElse(fail("Should have WIO"))
     val result: TestStateBase = executeWio[Int, TestState](wio, 5, TestState(0))
 
     assertEquals(result, TestState(30))
@@ -350,27 +353,26 @@ class WIOGraphTest extends FunSuite:
     val node3: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 20))
 
-    val graphWithNodes: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graph
-        .addNode("node1", forkNode)
-        .addNode("node2", node2)
-        .addNode("node3", node3)
+    val graphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      g1 <- graph.addNode("node1", forkNode)
+      g2 <- g1.addNode("node2", node2)
+      g3 <- g2.addNode("node3", node3)
+      g4 <- g3.addEdge(node1Ref, node2Ref)
+      g5 <- g4.addEdge(node1Ref, node3Ref)
+      g6 <- g5.setEntry(node1Ref)
+      g7 <- g6.addEndNode(node2Ref)
+      g8 <- g7.addEndNode(node3Ref)
+    yield g8
 
-    val graphWithEdges: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithNodes.addEdge(node1Ref, node2Ref)
-      .addEdge(node1Ref, node3Ref)
-
-    val graphWithEntry: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEdges.setEntry(node1Ref)
     val graphWithEnds: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      graphWithEntry.addEndNode(node2Ref).addEndNode(node3Ref)
+      graphResult.getOrElse(fail("Should build graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx]] =
       graphWithEnds.toWIO
     assert(wioResult.isRight, "expected Right WIO")
 
     val wio: workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx] =
-      wioResult.getOrElse(throw new AssertionError("Should have WIO"))
+      wioResult.getOrElse(fail("Should have WIO"))
     val result: TestStateBase = executeWio[Int, TestState](wio, 60, TestState(0))
 
     assertEquals(result, TestState(170))
@@ -390,18 +392,16 @@ class WIOGraphTest extends FunSuite:
     val subNode2: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 5))
 
-    val subGraphWithNodes: WIOGraph[TestContext.Ctx, TestState, Nothing, TestState] =
-      subGraph
-        .addNode("sub_node1", subNode1)
-        .addNode("sub_node2", subNode2)
+    val subGraphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, TestState, Nothing, TestState]] = for
+      sg1 <- subGraph.addNode("sub_node1", subNode1)
+      sg2 <- sg1.addNode("sub_node2", subNode2)
+      sg3 <- sg2.addEdge(subNode1Ref, subNode2Ref)
+      sg4 <- sg3.setEntry(subNode1Ref)
+      sg5 <- sg4.addEndNode(subNode2Ref)
+    yield sg5
 
-    val subGraphWithEdges: WIOGraph[TestContext.Ctx, TestState, Nothing, TestState] =
-      subGraphWithNodes.addEdge(subNode1Ref, subNode2Ref)
-
-    val subGraphWithEntry: WIOGraph[TestContext.Ctx, TestState, Nothing, TestState] =
-      subGraphWithEdges.setEntry(subNode1Ref)
     val subGraphWithEnd: WIOGraph[TestContext.Ctx, TestState, Nothing, TestState] =
-      subGraphWithEntry.addEndNode(subNode2Ref)
+      subGraphResult.getOrElse(fail("Should build sub-graph"))
 
     val parentGraph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
       WIOGraph[TestContext.Ctx, Int, TestState]
@@ -420,28 +420,25 @@ class WIOGraphTest extends FunSuite:
     val parentEndNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => TestState(s.value + 100))
 
-    val parentGraphWithNodes: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      parentGraph
-        .addNode("parent_node1", parentNode1)
-        .addNode("parent_sub", parentSubNode)
-        .addNode("parent_end", parentEndNode)
+    val parentGraphResult: Either[WIOGraphError, WIOGraph[TestContext.Ctx, Int, Nothing, TestState]] = for
+      pg1 <- parentGraph.addNode("parent_node1", parentNode1)
+      pg2 <- pg1.addNode("parent_sub", parentSubNode)
+      pg3 <- pg2.addNode("parent_end", parentEndNode)
+      pg4 <- pg3.addEdge(parentNode1Ref, parentSubRef)
+      pg5 <- pg4.addEdge(parentSubRef, parentEndRef)
+      pg6 <- pg5.setEntry(parentNode1Ref)
+      pg7 <- pg6.addEndNode(parentEndRef)
+    yield pg7
 
-    val parentGraphWithEdges: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      parentGraphWithNodes
-        .addEdge(parentNode1Ref, parentSubRef)
-        .addEdge(parentSubRef, parentEndRef)
-
-    val parentGraphWithEntry: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      parentGraphWithEdges.setEntry(parentNode1Ref)
     val parentGraphWithEnd: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
-      parentGraphWithEntry.addEndNode(parentEndRef)
+      parentGraphResult.getOrElse(fail("Should build parent graph"))
 
     val wioResult: Either[NonEmptyChain[WIOGraphError], workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx]] =
       parentGraphWithEnd.toWIO
     assert(wioResult.isRight, "expected Right WIO")
 
     val wio: workflows4s.wio.WIO[Int, Nothing, TestState, TestContext.Ctx] =
-      wioResult.getOrElse(throw new AssertionError("Should have WIO"))
+      wioResult.getOrElse(fail("Should have WIO"))
     val result: TestStateBase = executeWio[Int, TestState](wio, 10, TestState(0))
 
     assertEquals(result, TestState(125))
@@ -466,7 +463,7 @@ class WIOGraphTest extends FunSuite:
 
     val signal: MySignal = IncrementSignal(5)
 
-    val liftEffect: WCEffectLift[TestContext.Ctx, IO] = [A] => (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
+    val liftEffect: WCEffectLift[TestContext.Ctx, IO] = ioLiftEffect
     val signalResult: SignalResult[IO, WCEvent[TestContext.Ctx], Unit] = 
       workflow.handleSignal(IncrementSignalDef, signal, liftEffect)
 
@@ -476,8 +473,8 @@ class WIOGraphTest extends FunSuite:
       case SignalResult.Processed(resultIO) =>
         val processingResult: SignalResult.ProcessingResult[WCEvent[TestContext.Ctx], Unit] = resultIO.unsafeRunSync()
         assertEquals(processingResult.event, SignalReceived(5))
-      case _ => 
-        throw new AssertionError("Expected Processed signal result")
+      case _ =>
+        fail("Expected Processed signal result")
     }
   }
 
@@ -500,7 +497,7 @@ class WIOGraphTest extends FunSuite:
 
     val signal: MySignal = IncrementSignal(50)
 
-    val liftEffect2: WCEffectLift[TestContext.Ctx, IO] = [A] => (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
+    val liftEffect2: WCEffectLift[TestContext.Ctx, IO] = ioLiftEffect
     val signalResult2: SignalResult[IO, WCEvent[TestContext.Ctx], Unit] = 
       workflow.handleSignal(IncrementSignalDef, signal, liftEffect2)
 
@@ -510,7 +507,7 @@ class WIOGraphTest extends FunSuite:
       case SignalResult.Processed(resultIO) =>
         val processingResult: SignalResult.ProcessingResult[WCEvent[TestContext.Ctx], Unit] = resultIO.unsafeRunSync()
         assertEquals(processingResult.event, SignalReceived(60))
-      case _ => 
-        throw new AssertionError("Expected Processed signal result")
+      case _ =>
+        fail("Expected Processed signal result")
     }
   }

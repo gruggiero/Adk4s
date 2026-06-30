@@ -2,6 +2,7 @@ package org.adk4s.orchestration.execution
 
 import cats.effect.IO
 import cats.syntax.all.*
+import org.adk4s.core.error.GenericError
 import org.adk4s.core.types.NodeKey
 import org.adk4s.orchestration.fork.ForkSpec
 import org.adk4s.orchestration.graph.{GCtx, Graph, GraphConfig, GraphNode}
@@ -142,7 +143,7 @@ object GraphExecutor:
 
           // Linear path - single outgoing edge
           case (false, _, None) if outgoingEdges.size == 1 =>
-            val nextNodeKey: NodeKey = outgoingEdges.head
+            val nextNodeKey: NodeKey = outgoingEdges.headOption.getOrElse(throw new IllegalStateException("outgoingEdges unexpectedly empty despite size == 1"))
             val nextWIO: WIO[Any, Err, Any, Ctx] =
               compileFromNodeUnsafe[Ctx, Err](nextNodeKey, nodes, edges, forks, endNodes, visited + nodeKey)
             WIO.AndThen[Ctx, Any, Err, Any, Any](nodeWIO, nextWIO)
@@ -223,16 +224,19 @@ object GraphExecutor:
         
         // Single outgoing edge
         case (false, _) if outgoingEdges.size == 1 =>
-          val nextNodeKey = outgoingEdges.head
-          traverseGraph[O, Err, O](nextNodeKey, output, nodes, edges, endNodes, visited + currentNodeKey)
-        
+          outgoingEdges.headOption.fold(
+            IO.raiseError(GenericError("outgoingEdges unexpectedly empty despite size == 1")): IO[Either[Err, O]]
+          )(nextNodeKey =>
+            traverseGraph[O, Err, O](nextNodeKey, output, nodes, edges, endNodes, visited + currentNodeKey)
+          )
+
         // No outgoing edges but not marked as end
         case (true, false) =>
-          throw new IllegalStateException(s"Node ${currentNodeKey.value} has no outgoing edges and is not marked as an end node")
-        
+          IO.raiseError(GenericError(s"Node ${currentNodeKey.value} has no outgoing edges and is not marked as an end node"))
+
         // Multiple outgoing edges (not supported in simple execution)
         case (false, _) =>
-          throw new IllegalStateException(s"Node ${currentNodeKey.value} has multiple outgoing edges - not supported in simple execution")
+          IO.raiseError(GenericError(s"Node ${currentNodeKey.value} has multiple outgoing edges - not supported in simple execution"))
     }
 
   /** Execute a graph with parallel DAG execution. */
@@ -277,29 +281,27 @@ object GraphExecutor:
           currentLevels: Map[NodeKey, Int],
           queue: List[NodeKey]
         ): Map[NodeKey, Int] =
-          if queue.isEmpty then
-            currentLevels
-          else
-            val currentNode = queue.head
-            val remainingQueue = queue.tail
-            val outgoing = edges.getOrElse(currentNode, Set.empty).toList
+          queue match
+            case Nil => currentLevels
+            case currentNode :: remainingQueue =>
+              val outgoing = edges.getOrElse(currentNode, Set.empty).toList
 
-            val (updatedLevels, newQueue) = outgoing.foldLeft((currentLevels, remainingQueue)) { case ((levels, q), target) =>
-              val dependencies = incomingEdges.getOrElse(target, Nil)
+              val (updatedLevels, newQueue) = outgoing.foldLeft((currentLevels, remainingQueue)) { case ((levels, q), target) =>
+                val dependencies = incomingEdges.getOrElse(target, Nil)
 
-              if dependencies.forall(levels.contains) then
-                val maxDepLevel = dependencies.map(levels).maxOption.getOrElse(-1)
-                val targetLevel = maxDepLevel + 1
+                if dependencies.forall(levels.contains) then
+                  val maxDepLevel = dependencies.map(levels).maxOption.getOrElse(-1)
+                  val targetLevel = maxDepLevel + 1
 
-                if !levels.contains(target) then
-                  (levels + (target -> targetLevel), if !q.contains(target) then q :+ target else q)
+                  if !levels.contains(target) then
+                    (levels + (target -> targetLevel), if !q.contains(target) then q :+ target else q)
+                  else
+                    (levels, q)
                 else
                   (levels, q)
-              else
-                (levels, q)
-            }
+              }
 
-            calculateLevels(updatedLevels, newQueue)
+              calculateLevels(updatedLevels, newQueue)
 
         val levels = calculateLevels(Map(entryNode -> 0), List(entryNode))
 
@@ -363,19 +365,24 @@ object GraphExecutor:
               case Some(value) => 
                 value match
                   case out: Out => IO.pure(Right(out))
-                  case _ => IO.raiseError(new Exception(s"Type mismatch at end node: " + value.getClass))
+                  case _ => IO.raiseError(new Exception(s"Type mismatch at end node: ${value.getClass}"))
               case None => IO.pure(Left("End node not found in results"))
         case layer :: tail =>
           executeLayer(layer, currentResults).flatMap { newResults =>
             executeLayersSequentially(tail, newResults)
           }
 
-    executeLayersSequentially(layers, Map(graph.entry.get -> input)).flatMap {
-      case Right(value) => IO.pure(value)
-      case Left(error) => IO.raiseError(new Exception(error))
-    }
+    graph.entry.fold(
+      IO.raiseError(GenericError("Graph has no entry node")): IO[Out]
+    )(entryKey =>
+      executeLayersSequentially(layers, Map(entryKey -> input)).flatMap {
+        case Right(value) => IO.pure(value)
+        case Left(error) => IO.raiseError(new Exception(error))
+      }
+    )
 
   /** Execute a single node in parallel context. */
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeNodeParallel(
     nodeKey: NodeKey,
     results: Map[NodeKey, Any],
@@ -390,17 +397,18 @@ object GraphExecutor:
         val nodeExecutable: NodeExecutable[Any, Any] = node.executable.asInstanceOf[NodeExecutable[Any, Any]]
         val incomingEdges: Set[NodeKey] = edges.filter { case (_, tos) => tos.contains(nodeKey) }.keySet
 
-        val input: Any =
+        val inputIO: IO[Any] =
           if incomingEdges.isEmpty then
-            results.getOrElse(nodeKey, throw new Exception(s"No input for entry node ${nodeKey.value}"))
+            results.get(nodeKey).fold(IO.raiseError(GenericError(s"No input for entry node ${nodeKey.value}")): IO[Any])(IO.pure)
           else
             incomingEdges.headOption match
-              case Some(sourceKey) => results.getOrElse(sourceKey, throw new Exception(s"No input for node ${nodeKey.value}"))
-              case None => throw new Exception(s"No incoming edges for node ${nodeKey.value}")
+              case Some(sourceKey) => results.get(sourceKey).fold(IO.raiseError(GenericError(s"No input for node ${nodeKey.value}")): IO[Any])(IO.pure)
+              case None => IO.raiseError(GenericError(s"No incoming edges for node ${nodeKey.value}"))
 
         for
           _ <- callback.onNodeStart(nodeKey.value)
           start <- IO.monotonic
+          input <- inputIO
           result <- nodeExecutable.invoke(input).attempt
           end <- IO.monotonic
           duration = end - start

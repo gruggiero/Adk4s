@@ -17,29 +17,17 @@ ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
 
 // --- WartRemover (Ring 1) ---
 // Warts.unsafe minus TripleQuestionMark (??? allowed for stubs).
-// The following warts are temporarily excluded — the codebase predates WartRemover
-// and needs targeted refactoring to pass them. Re-enable each as code is cleaned up:
+// The following warts are permanently excluded:
 //   - Any: triggered by s"..." string interpolation (known Scala 3 WartRemover
-//     false positive); fix by switching to + concatenation per accordant4s pattern
-//   - DefaultArguments: many case classes use default args; fix by making defaults
-//     explicit or using factory methods
-//   - IterableOps: .init/.last used in a few places; fix by using dropRight(1)/lastOption
-//   - AsInstanceOf: Tool.scala, ToolInfer.scala, ToolSchema.scala use asInstanceOf
-//     for runtime type dispatch on erased types; fix with type-safe approach
-//   - Throw: Tool.scala uses throw for error cases; fix by returning F[Either[...]]
-//   - Var: JsonFixMiddleware.scala uses var for mutable parsing state; fix with
-//     recursive or fold-based approach
-//   - OptionPartial: .get on Option in test-models; fix with .getOrElse or pattern match
+//     false positive — StringContext.s takes Any*); not fixable without abandoning
+//     string interpolation entirely (919 sites)
+//   - DefaultArguments: default args are a valid Scala API design feature used in
+//     config case classes (47 sites across 15 files); removing them would require
+//     100+ call-site changes for no behavioral benefit
 ThisBuild / wartremoverErrors ++= Warts.unsafe.filterNot(w =>
   w == Wart.TripleQuestionMark ||
   w == Wart.Any ||
-  w == Wart.DefaultArguments ||
-  w == Wart.IterableOps ||
-  w == Wart.AsInstanceOf ||
-  w == Wart.Throw ||
-  w == Wart.Var ||
-  w == Wart.OptionPartial ||
-  w == Wart.StringPlusAny
+  w == Wart.DefaultArguments
 )
 ThisBuild / testFrameworks += new TestFramework("munit.Framework")
 
@@ -117,14 +105,8 @@ lazy val `adk4s-examples` = (project in file("adk4s-examples"))
     wartremoverErrors := Warts.unsafe
       .filterNot(w =>
         w == Wart.TripleQuestionMark ||
-        w == Wart.AsInstanceOf ||
         w == Wart.Any ||
-        w == Wart.DefaultArguments ||
-        w == Wart.IterableOps ||
-        w == Wart.Throw ||
-        w == Wart.Var ||
-        w == Wart.OptionPartial ||
-        w == Wart.StringPlusAny
+        w == Wart.DefaultArguments
       ),
     libraryDependencies ++= Seq(
       llm4s,

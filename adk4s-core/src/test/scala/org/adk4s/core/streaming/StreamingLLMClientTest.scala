@@ -59,7 +59,7 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val conv = ConversationConverter.toConversation(prompt)
     val result = streaming.stream(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 2)
-    assertIO(result.map(_.head.content), Some("Hello"))
+    assertIO(result.map(_.headOption.getOrElse(fail("expected element")).content), Some("Hello"))
   }
 
   test("Stream content with real-time output") {
@@ -117,7 +117,7 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val conv = ConversationConverter.toConversation(prompt)
     val result = streaming.stream(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 1)
-    assertIO(result.map(_.head.content), Some("Response"))
+    assertIO(result.map(_.headOption.getOrElse(fail("expected element")).content), Some("Response"))
   }
 
   test("Use non-streaming API for fallback - streamContent") {
@@ -178,5 +178,5 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val conv = ConversationConverter.toConversation(prompt)
     val result = streaming.stream(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 1)
-    assertIO(result.map(_.head.toolCall), Some(tool))
+    assertIO(result.map(_.headOption.getOrElse(fail("expected element")).toolCall), Some(tool))
   }

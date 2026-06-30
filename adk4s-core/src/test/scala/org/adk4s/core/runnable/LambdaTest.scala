@@ -53,7 +53,7 @@ class LambdaTest extends CatsEffectSuite:
     val lambda: Lambda[String, Int] = Lambda.full(
       (s: String) => IO(s.toInt),
       (s: String) => Stream.emit(s.toInt),
-      (stream: Stream[IO, String]) => stream.compile.last.map(_.get.toInt),
+      (stream: Stream[IO, String]) => stream.compile.last.map(_.getOrElse(fail("expected last element")).toInt),
       (stream: Stream[IO, String]) => stream.evalMap(s => IO(s.toInt))
     )
     val runnable: Runnable[String, Int] = lambda.toRunnable

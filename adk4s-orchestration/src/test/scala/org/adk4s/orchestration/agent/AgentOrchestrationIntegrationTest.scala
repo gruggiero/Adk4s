@@ -61,7 +61,7 @@ class AgentOrchestrationIntegrationTest extends CatsEffectSuite:
               assertEquals(composite.address, List(AddressSegment.Agent("database-agent")))
               // Child signal has the original Tool address
               assertEquals(composite.children.length, 1)
-              val child: InterruptSignal = composite.children.head
+              val child: InterruptSignal = composite.children.headOption.getOrElse(fail("expected non-empty list"))
               assertEquals(child.address, List(AddressSegment.Tool("query")))
             case other =>
               fail(s"Expected Composite interrupt, got $other")

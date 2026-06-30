@@ -119,15 +119,18 @@ object ToolCallOnceExample extends IOApp.Simple:
     yield ()
 
   private def executeGraph(chatModel: ChatModel[IO], query: String): IO[GraphState] =
-    val graph: WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState] = buildGraph(chatModel)
-    graph.toRunnable match
-      case Right(runnable) => runnable.invoke(InputState(query))
-      case Left(errors) =>
-        IO.raiseError(new IllegalStateException(
-          s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-        ))
+    buildGraph(chatModel) match
+      case Left(err: WIOGraphError) =>
+        IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+      case Right(graph: WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState]) =>
+        graph.toRunnable match
+          case Right(runnable) => runnable.invoke(InputState(query))
+          case Left(errors) =>
+            IO.raiseError(new IllegalStateException(
+              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+            ))
 
-  private def buildGraph(chatModel: ChatModel[IO]): WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState] =
+  private def buildGraph(chatModel: ChatModel[IO]): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState]] =
     val templateRef: WIONodeRef[Ctx.Ctx, InputState, ConversationState] =
       WIONodeRef[Ctx.Ctx, InputState, ConversationState](NodeKey.unsafeApply("template"))
     val chatRef: WIONodeRef[Ctx.Ctx, ConversationState, CompletionState] =
@@ -190,11 +193,12 @@ object ToolCallOnceExample extends IOApp.Simple:
         ifFalse = endBranchWio
       )
 
-    WIOGraph[Ctx.Ctx, InputState, GraphState]
-      .addNode("template", templateNode)
-      .addNode("chat", chatNode)
-      .addNode("branch", branchNode)
-      .addEdge(templateRef, chatRef)
-      .addEdge(chatRef, branchRef)
-      .setEntry(templateRef)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, InputState, GraphState].addNode("template", templateNode)
+      g2 <- g1.addNode("chat", chatNode)
+      g3 <- g2.addNode("branch", branchNode)
+      g4 <- g3.addEdge(templateRef, chatRef)
+      g5 <- g4.addEdge(chatRef, branchRef)
+      g6 <- g5.setEntry(templateRef)
+      g7 <- g6.addEndNode(endRef)
+    yield g7

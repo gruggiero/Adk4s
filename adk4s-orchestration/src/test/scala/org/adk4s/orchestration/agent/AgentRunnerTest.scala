@@ -96,7 +96,7 @@ class AgentRunnerTest extends CatsEffectSuite:
       result <- runner.run(List(UserMessage("query")))
       checkpointId = result match
         case RunResult.Interrupted(id, _) => id
-        case _ => fail("Expected Interrupted").asInstanceOf[String]
+        case _ => fail("Expected Interrupted")
       checkpoint <- store.get(checkpointId)
     yield assert(checkpoint.isDefined)
   }

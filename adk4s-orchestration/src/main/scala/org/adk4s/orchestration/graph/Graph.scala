@@ -207,12 +207,7 @@ case class Graph[In, Out] private (
     }
 
   private def executeGraph(input: In, config: GraphConfig): IO[Out] =
-    IO.pure(identityStub[In, Out](input))
-
-  private def identityStub[A, B](value: A): B =
-    throw new UnsupportedOperationException(
-      "Graph execution not yet fully implemented - use GraphExecutor instead"
-    )
+    IO.raiseError(org.adk4s.core.error.GenericError("Graph execution not yet fully implemented - use GraphExecutor instead"))
 
   private def addNode[A, B](
     key: NodeKey,

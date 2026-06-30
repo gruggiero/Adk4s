@@ -6,6 +6,7 @@ import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.types.NodeKey
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
+import org.adk4s.orchestration.wiograph.WIOGraphError
 import org.adk4s.orchestration.wiograph.WIONode
 import org.adk4s.orchestration.wiograph.WIONodeRef
 import org.adk4s.orchestration.wiograph.WIORunnableNode
@@ -80,10 +81,8 @@ object GraphIntegrationStructuredExample extends IOApp.Simple:
       _ <- ExampleUtils.printSection("Graph Integration (Structured)")
       llmClient <- createLLMClient
 
-      graph = buildGraph(llmClient)
-
       _ <- ExampleUtils.printSubSection("Execute Graph Workflow")
-      runnable <- compileRunnable(graph)
+      runnable <- compileRunnable(buildGraph(llmClient))
 
       // Execute the workflow
       query: String = "I need help resetting my password for the admin dashboard"
@@ -100,7 +99,7 @@ object GraphIntegrationStructuredExample extends IOApp.Simple:
       _ <- IO.println("\nGraph integration example completed.")
     yield ()
 
-  private def buildGraph(llmClient: org.llm4s.llmconnect.LLMClient): WIOGraph[Ctx.Ctx, QueryState, Nothing, GraphState] =
+  private def buildGraph(llmClient: org.llm4s.llmconnect.LLMClient): Either[WIOGraphError, WIOGraph[Ctx.Ctx, QueryState, Nothing, GraphState]] =
     val structured: StructuredLLM[IO] = StructuredLLM.fromClient[IO](llmClient)
 
     // Node 1: Classify query category
@@ -144,22 +143,27 @@ object GraphIntegrationStructuredExample extends IOApp.Simple:
         toState = (state: QueryState, evt: RoleDetected) => state.copy(role = Some(evt.role))
       )
 
-    WIOGraph[Ctx.Ctx, QueryState, GraphState]
-      .addNode("classify", node1)
-      .addNode("detect_role", node2)
-      .addEdge(node1Ref, node2Ref)
-      .setEntry(node1Ref)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, QueryState, GraphState].addNode("classify", node1)
+      g2 <- g1.addNode("detect_role", node2)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(endRef)
+    yield g5
 
   private def compileRunnable(
-    graph: WIOGraph[Ctx.Ctx, QueryState, Nothing, GraphState]
+    graphEither: Either[WIOGraphError, WIOGraph[Ctx.Ctx, QueryState, Nothing, GraphState]]
   ): IO[Runnable[QueryState, GraphState]] =
-    graph.toRunnable match
-      case Right(runnable) => IO.pure(runnable)
-      case Left(errors) =>
-        IO.raiseError(new IllegalStateException(
-          s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-        ))
+    graphEither match
+      case Left(err: WIOGraphError) =>
+        IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+      case Right(graph: WIOGraph[Ctx.Ctx, QueryState, Nothing, GraphState]) =>
+        graph.toRunnable match
+          case Right(runnable) => IO.pure(runnable)
+          case Left(errors) =>
+            IO.raiseError(new IllegalStateException(
+              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+            ))
 
 /**
  * Mock LLM client for graph integration examples.

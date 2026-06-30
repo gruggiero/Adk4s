@@ -42,7 +42,7 @@ class StructuredToolCallDeriveTest extends CatsEffectSuite:
     val decodedQuery: Either[ToolSchemaError, WeatherQuery] = querySchema.decoder(toolCallArguments)
 
     assert(decodedQuery.isRight)
-    val query: WeatherQuery = decodedQuery.toOption.get
+    val query: WeatherQuery = decodedQuery.toOption.getOrElse(fail("expected Right"))
     assertEquals(query.city, "Tokyo")
     assertEquals(query.unit, "celsius")
 
@@ -55,10 +55,10 @@ class StructuredToolCallDeriveTest extends CatsEffectSuite:
 
     // Test 3: Encode result using derived ToolSchema
     val resultSchema: ToolSchema[WeatherResult] = summon[ToolSchema[WeatherResult]]
-    val decodedResult: Either[ToolSchemaError, WeatherResult] = resultSchema.decoder(toolResult.toOption.get)
+    val decodedResult: Either[ToolSchemaError, WeatherResult] = resultSchema.decoder(toolResult.toOption.getOrElse(fail("expected Right")))
 
     assert(decodedResult.isRight)
-    val result: WeatherResult = decodedResult.toOption.get
+    val result: WeatherResult = decodedResult.toOption.getOrElse(fail("expected Right"))
     assertEquals(result.city, "Tokyo")
     assertEquals(result.temperature, 22.5)
     assertEquals(result.condition, "sunny")
@@ -80,7 +80,7 @@ class StructuredToolCallDeriveTest extends CatsEffectSuite:
     val decoded: Either[ToolSchemaError, WeatherResult] = schema.decoder(encoded)
 
     assert(decoded.isRight)
-    assertEquals(decoded.toOption.get, original)
+    assertEquals(decoded.toOption.getOrElse(fail("expected Right")), original)
   }
 
   test("derived ToolSchema generates compatible JSON schema") {

@@ -57,7 +57,7 @@ class AgentToolTest extends CatsEffectSuite:
               assertEquals(composite.info, "AgentTool 'interrupting-agent' interrupted")
               assertEquals(composite.address, List(AddressSegment.Agent("interrupting-agent")))
               assertEquals(composite.children.length, 1)
-              assertEquals(composite.children.head.info, "Need approval")
+              assertEquals(composite.children.headOption.getOrElse(fail("expected non-empty list")).info, "Need approval")
             case other =>
               fail(s"Expected Composite interrupt, got $other")
         case other =>

@@ -38,7 +38,10 @@ object RealLlmExample extends IOApp.Simple {
 
   def run: IO[Unit] =
     for
-      config <- IO.blocking(validateAndLoadConfig())
+      config <- IO.blocking(validateAndLoadConfig()).flatMap {
+        case Right(c) => IO.pure(c)
+        case Left(err) => IO.raiseError(new RuntimeException(err))
+      }
 
       _ <- IO.println(s"\nRunning with model: ${config.llmModel}")
       _ <- IO.println(s"Smithy schema: ${config.smithySchemaPath.toAbsolutePath}")
@@ -105,7 +108,7 @@ object RealLlmExample extends IOApp.Simple {
       }
     yield ()
 
-  def validateAndLoadConfig(): AppConfig = {
+  def validateAndLoadConfig(): Either[String, AppConfig] = {
     val config = ConfigFactory.load("application")
 
     if (sysDebugEnabled) {
@@ -168,74 +171,81 @@ object RealLlmExample extends IOApp.Simple {
       errors += "Missing mandatory configuration: app.resume.input.path"
       errors += "  Example: app.resume.input.path = \"samples/resume/sample.txt\""
 
-    if (errors.nonEmpty)
-      throw new RuntimeException("Configuration validation failed:\n" + errors.mkString("\n"))
+    val configErrors: Either[String, Unit] =
+      if (errors.nonEmpty)
+        Left("Configuration validation failed:\n" + errors.mkString("\n"))
+      else
+        Right(())
 
-    val fileErrors = ListBuffer.empty[String]
+    configErrors.flatMap { (_: Unit) =>
+      val fileErrors = ListBuffer.empty[String]
 
-    smithyPathOpt.foreach { smithyPathStr =>
-      val smithyFromProjectRoot = resolveFromProjectRoot(smithyPathStr)
-      val smithyFromCurrentDir  = resolveFromCurrentDir(smithyPathStr)
-      val smithyPath = if (Files.exists(smithyFromProjectRoot)) smithyFromProjectRoot else smithyFromCurrentDir
+      smithyPathOpt.foreach { smithyPathStr =>
+        val smithyFromProjectRoot = resolveFromProjectRoot(smithyPathStr)
+        val smithyFromCurrentDir  = resolveFromCurrentDir(smithyPathStr)
+        val smithyPath = if (Files.exists(smithyFromProjectRoot)) smithyFromProjectRoot else smithyFromCurrentDir
 
-      if (!Files.exists(smithyPath))
-        fileErrors += "Smithy schema file not found"
-        fileErrors += s"  Attempted (project root): ${smithyFromProjectRoot.toAbsolutePath}"
-        fileErrors += s"  Attempted (current dir): ${smithyFromCurrentDir.toAbsolutePath}"
-        fileErrors += s"  Relative path from config: $smithyPathStr"
-      else if (!Files.isReadable(smithyPath))
-        fileErrors += s"Smithy schema file not readable: ${smithyPath.toAbsolutePath}"
-      else if (!Files.isRegularFile(smithyPath))
-        fileErrors += s"Smithy schema path is not a file: ${smithyPath.toAbsolutePath}"
+        if (!Files.exists(smithyPath))
+          fileErrors += "Smithy schema file not found"
+          fileErrors += s"  Attempted (project root): ${smithyFromProjectRoot.toAbsolutePath}"
+          fileErrors += s"  Attempted (current dir): ${smithyFromCurrentDir.toAbsolutePath}"
+          fileErrors += s"  Relative path from config: $smithyPathStr"
+        else if (!Files.isReadable(smithyPath))
+          fileErrors += s"Smithy schema file not readable: ${smithyPath.toAbsolutePath}"
+        else if (!Files.isRegularFile(smithyPath))
+          fileErrors += s"Smithy schema path is not a file: ${smithyPath.toAbsolutePath}"
+      }
+
+      resumePathOpt.foreach { resumePathStr =>
+        val resumeFromProjectRoot = resolveFromProjectRoot(resumePathStr)
+        val resumeFromCurrentDir  = resolveFromCurrentDir(resumePathStr)
+        val resumePath = if (Files.exists(resumeFromProjectRoot)) resumeFromProjectRoot else resumeFromCurrentDir
+
+        if (!Files.exists(resumePath))
+          fileErrors += "Resume input file not found"
+          fileErrors += s"  Attempted (project root): ${resumeFromProjectRoot.toAbsolutePath}"
+          fileErrors += s"  Attempted (current dir): ${resumeFromCurrentDir.toAbsolutePath}"
+          fileErrors += s"  Relative path from config: $resumePathStr"
+        else if (!Files.isReadable(resumePath))
+          fileErrors += s"Resume input file not readable: ${resumePath.toAbsolutePath}"
+        else if (!Files.isRegularFile(resumePath))
+          fileErrors += s"Resume input path is not a file: ${resumePath.toAbsolutePath}"
+      }
+
+      val fileValidation: Either[String, Unit] =
+        if (fileErrors.nonEmpty)
+          Left("File validation failed:\n" + fileErrors.mkString("\n"))
+        else
+          Right(())
+
+      fileValidation.flatMap { (_: Unit) =>
+        for
+          smithyPathStr <- smithyPathOpt.toRight("Missing --smithy-path argument")
+          resumePathStr <- resumePathOpt.toRight("Missing --resume-input argument")
+          providerConfig <- Llm4sConfig.defaultProvider().left.map(err => s"Failed to load provider config: $err")
+          llmModel <- llmModelOpt.toRight("Missing --model argument")
+        yield
+          val smithyPath = {
+            val fromProjectRoot = resolveFromProjectRoot(smithyPathStr)
+            val fromCurrentDir  = resolveFromCurrentDir(smithyPathStr)
+            if (Files.exists(fromProjectRoot)) fromProjectRoot else fromCurrentDir
+          }
+          val resumePath = {
+            val fromProjectRoot = resolveFromProjectRoot(resumePathStr)
+            val fromCurrentDir  = resolveFromCurrentDir(resumePathStr)
+            if (Files.exists(fromProjectRoot)) fromProjectRoot else fromCurrentDir
+          }
+          val completionOptions = loadCompletionOptions(config)
+          AppConfig(
+            llmModel = llmModel,
+            smithySchemaPath = smithyPath,
+            resumeInputPath = resumePath,
+            logPrompt = logPromptOpt,
+            providerConfig = providerConfig,
+            completionOptions = completionOptions
+          )
+      }
     }
-
-    resumePathOpt.foreach { resumePathStr =>
-      val resumeFromProjectRoot = resolveFromProjectRoot(resumePathStr)
-      val resumeFromCurrentDir  = resolveFromCurrentDir(resumePathStr)
-      val resumePath = if (Files.exists(resumeFromProjectRoot)) resumeFromProjectRoot else resumeFromCurrentDir
-
-      if (!Files.exists(resumePath))
-        fileErrors += "Resume input file not found"
-        fileErrors += s"  Attempted (project root): ${resumeFromProjectRoot.toAbsolutePath}"
-        fileErrors += s"  Attempted (current dir): ${resumeFromCurrentDir.toAbsolutePath}"
-        fileErrors += s"  Relative path from config: $resumePathStr"
-      else if (!Files.isReadable(resumePath))
-        fileErrors += s"Resume input file not readable: ${resumePath.toAbsolutePath}"
-      else if (!Files.isRegularFile(resumePath))
-        fileErrors += s"Resume input path is not a file: ${resumePath.toAbsolutePath}"
-    }
-
-    if (fileErrors.nonEmpty)
-      throw new RuntimeException("File validation failed:\n" + fileErrors.mkString("\n"))
-
-    val smithyPath = {
-      val pathStr         = smithyPathOpt.get
-      val fromProjectRoot = resolveFromProjectRoot(pathStr)
-      val fromCurrentDir  = resolveFromCurrentDir(pathStr)
-      if (Files.exists(fromProjectRoot)) fromProjectRoot else fromCurrentDir
-    }
-
-    val resumePath = {
-      val pathStr         = resumePathOpt.get
-      val fromProjectRoot = resolveFromProjectRoot(pathStr)
-      val fromCurrentDir  = resolveFromCurrentDir(pathStr)
-      if (Files.exists(fromProjectRoot)) fromProjectRoot else fromCurrentDir
-    }
-
-    val providerConfig = Llm4sConfig
-      .defaultProvider()
-      .getOrElse(throw new RuntimeException("Failed to load provider config"))
-
-    val completionOptions = loadCompletionOptions(config)
-
-    AppConfig(
-      llmModel = llmModelOpt.get,
-      smithySchemaPath = smithyPath,
-      resumeInputPath = resumePath,
-      logPrompt = logPromptOpt,
-      providerConfig = providerConfig,
-      completionOptions = completionOptions
-    )
   }
 
   def resolveFromProjectRoot(relativePath: String): Path = {
@@ -334,10 +344,10 @@ object RealLlmExample extends IOApp.Simple {
                    IO.println("\nCheck your API key configuration")
                  } else if (msg.contains("429")) {
                    val retryDelay = underlying.code.flatMap(_.split("retryAfter=").lastOption)
-                   IO.whenA(retryDelay.isDefined)(IO.println(s"\nRate limited. Retry after: ${retryDelay.get} seconds"))
+                   IO.whenA(retryDelay.isDefined)(IO.println(s"\nRate limited. Retry after: ${retryDelay.getOrElse("unknown")} seconds"))
                  } else if (msg.contains("timeout") || msg.contains("connection")) {
                    IO.whenA(underlying.context.get("endpoint").isDefined)(
-                     IO.println(s"\nNetwork error connecting to: ${underlying.context.get("endpoint").get}")
+                     IO.println(s"\nNetwork error connecting to: ${underlying.context.getOrElse("endpoint", "unknown")}")
                    )
                  } else {
                    IO.println("")

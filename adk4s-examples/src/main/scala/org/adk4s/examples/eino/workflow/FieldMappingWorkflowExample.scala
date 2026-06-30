@@ -52,15 +52,15 @@ object FieldMappingWorkflowExample extends IOApp.Simple:
         val subStr: String = input.subStr
         if subStr.isEmpty then 0
         else
-          var count: Int = 0
-          var idx: Int = 0
-          while idx <= fullStr.length - subStr.length do
-            if fullStr.substring(idx, idx + subStr.length) == subStr then
-              count = count + 1
-              idx = idx + subStr.length
+          import scala.annotation.tailrec
+          @tailrec
+          def loop(idx: Int, count: Int): Int =
+            if idx > fullStr.length - subStr.length then count
+            else if fullStr.substring(idx, idx + subStr.length) == subStr then
+              loop(idx + subStr.length, count + 1)
             else
-              idx = idx + 1
-          count
+              loop(idx + 1, count)
+          loop(0, 0)
       }
     }
 

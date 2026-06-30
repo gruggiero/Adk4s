@@ -54,8 +54,8 @@ class ChatModelSpec extends CatsEffectSuite:
 
     val _ = model.generate(conversation).attempt.unsafeRunSync()
 
-    assert(mockClient.lastOptions.exists(_.temperature == 0.7), "Should use temperature")
-    assert(mockClient.lastOptions.exists(_.maxTokens == Some(1000)), "Should use maxTokens")
+    assert(mockClient.lastOptions.get.exists(_.temperature == 0.7), "Should use temperature")
+    assert(mockClient.lastOptions.get.exists(_.maxTokens == Some(1000)), "Should use maxTokens")
   }
 
   test("Create ChatModel from LLM4S client") {
@@ -81,5 +81,5 @@ class ChatModelSpec extends CatsEffectSuite:
 
     val _ = newModel.generate(conversation).attempt.unsafeRunSync()
 
-    assert(mockClient.lastOptions.exists(_.temperature == 0.9), "Should use new config")
+    assert(mockClient.lastOptions.get.exists(_.temperature == 0.9), "Should use new config")
   }

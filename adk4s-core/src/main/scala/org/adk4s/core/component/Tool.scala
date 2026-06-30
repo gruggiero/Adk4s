@@ -21,6 +21,7 @@ final case class AdkToolInfo(
       handler = (_: SafeParameterExtractor) => Left("AdkToolInfo wrapper: execution not supported via ToolFunction")
     )
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def buildObjectSchema(params: ujson.Value): org.llm4s.toolapi.ObjectSchema[ujson.Value] =
     val properties: Seq[org.llm4s.toolapi.PropertyDefinition[String]] = params.obj.get("properties") match
       case Some(props: ujson.Obj) =>
@@ -76,10 +77,9 @@ object Tool:
       def asToolFunction: Option[org.llm4s.toolapi.ToolFunction[Any, Any]] = None
 
       def run(arguments: ujson.Value): F[ujson.Value] =
-        F.delay {
-          handler(arguments) match
-            case Right(result) => result
-            case Left(err) => throw org.adk4s.core.error.ToolExecutionError(name, new Exception(err))
+        F.delay(handler(arguments)).flatMap {
+          case Right(result) => F.pure(result)
+          case Left(err) => F.raiseError(org.adk4s.core.error.ToolExecutionError(name, new Exception(err)))
         }
 
   def streamable[F[_]](name: String, description: String, handler: ujson.Value => Stream[F, String])(using F: Sync[F]): StreamableTool[F] =

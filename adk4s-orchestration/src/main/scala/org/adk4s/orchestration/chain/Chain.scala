@@ -1,6 +1,7 @@
 package org.adk4s.orchestration.chain
 
 import cats.effect.IO
+import org.adk4s.core.error.GenericError
 import org.adk4s.core.runnable.{Runnable, Lambda}
 import org.adk4s.core.component.ChatModel
 import org.adk4s.core.runnable.RunnableOps.{andThen, contramap}
@@ -34,14 +35,18 @@ case class Chain[I, O] private (
 
   def compile: IO[Runnable[I, O]] = compileFn
 
-  def toGraph(using runtime: cats.effect.unsafe.IORuntime, classTag: ClassTag[O]): IO[Graph[I, O]] = IO.delay {
+  def toGraph(using runtime: cats.effect.unsafe.IORuntime, classTag: ClassTag[O]): IO[Graph[I, O]] = IO.defer {
     val identityRunnable = compileFn.unsafeRunSync()
-    val g1 = Graph[I, O]
+    Graph[I, O]
       .addLambdaNode("chain", Lambda((input: I) => identityRunnable.invoke(input)))
-      .toOption.get
-    val g2 = g1.graph.addEndNode(Graph.NodeRef[I, O](NodeKey.unsafeApply("chain"))).toOption.get
-      .setEntry(Graph.NodeRef[I, I](NodeKey.unsafeApply("chain"))).toOption.get
-    g2
+      .toOption
+      .fold(IO.raiseError(GenericError("Graph validation failed: addLambdaNode")): IO[Graph[I, O]]) { g1 =>
+        g1.graph.addEndNode(Graph.NodeRef[I, O](NodeKey.unsafeApply("chain"))).toOption
+          .fold(IO.raiseError(GenericError("Graph validation failed: addEndNode")): IO[Graph[I, O]]) { endResult =>
+            endResult.setEntry(Graph.NodeRef[I, I](NodeKey.unsafeApply("chain"))).toOption
+              .fold(IO.raiseError(GenericError("Graph validation failed: setEntry")): IO[Graph[I, O]])(IO.pure)
+          }
+      }
   }
 
 object Chain:

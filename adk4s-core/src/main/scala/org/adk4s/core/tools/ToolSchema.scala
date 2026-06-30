@@ -132,8 +132,11 @@ object ToolSchema:
     inline erasedValue[T] match
       case _: EmptyTuple => Nil
       case _: (head *: tail) =>
-        val encodedValue: Value = encodeField[head](values.head)
-        encodedValue :: encodeFields[tail](values.tail)
+        values match
+          case v :: rest =>
+            val encodedValue: Value = encodeField[head](v)
+            encodedValue :: encodeFields[tail](rest)
+          case Nil => Nil
 
   /** Encodes a single field value to JSON based on its type.
     *
@@ -141,6 +144,7 @@ object ToolSchema:
     * @param value the field value to encode
     * @return the encoded JSON value
     */
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline def encodeField[T](value: Any): Value =
     inline erasedValue[T] match
       case _: String  => ujson.Str(value.asInstanceOf[String])

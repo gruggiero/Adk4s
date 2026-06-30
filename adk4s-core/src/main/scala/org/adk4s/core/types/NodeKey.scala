@@ -1,6 +1,7 @@
 package org.adk4s.core.types
 
 import cats.{ Eq, Show, Order }
+import org.adk4s.core.error.NodeKeyError
 
 opaque type NodeKey = String
 
@@ -15,8 +16,15 @@ object NodeKey:
     else if reservedKeys.contains(key) then Left(s"Node key '$key' is reserved")
     else Right(key)
 
-  def unsafeApply(key: String): NodeKey =
-    apply(key).getOrElse(throw new IllegalArgumentException(s"Invalid node key: $key"))
+  /** Total smart constructor returning a typed error. */
+  def from(key: String): Either[NodeKeyError, NodeKey] =
+    if key.isEmpty then Left(NodeKeyError(key))
+    else if reservedKeys.contains(key) then Left(NodeKeyError(key))
+    else Right(key)
+
+  /** Direct construction without validation. For use with hardcoded,
+   * known-valid keys only. Does not throw. */
+  def unsafeApply(key: String): NodeKey = key
 
   extension (key: NodeKey)
     def value: String       = key

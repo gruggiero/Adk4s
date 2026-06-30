@@ -51,11 +51,14 @@ object BranchWorkflowExample extends IOApp.Simple:
     for
       _ <- ExampleUtils.printSection("Branch Workflow Example (Eino: workflow/4_control_only_branch)")
 
-      graph = buildGraph()
-      wio <- graph.toWIO match
-        case Right(wio) => IO.pure(wio)
-        case Left(errors: NonEmptyChain[WIOGraphError]) =>
-          IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
+      wio <- buildGraph() match
+        case Left(err: WIOGraphError) =>
+          IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+        case Right(graph: WIOGraph[Ctx.Ctx, InputState, Nothing, BranchState]) =>
+          graph.toWIO match
+            case Right(wio) => IO.pure(wio)
+            case Left(errors: NonEmptyChain[WIOGraphError]) =>
+              IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
 
       // Test with "high" category
       _ <- ExampleUtils.printSubSection("1. High Priority Input")
@@ -81,7 +84,7 @@ object BranchWorkflowExample extends IOApp.Simple:
       _ <- IO.println("\nBranch workflow example completed.")
     yield ()
 
-  private def buildGraph(): WIOGraph[Ctx.Ctx, InputState, Nothing, BranchState] =
+  private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, BranchState]] =
     val forkRef: WIONodeRef[Ctx.Ctx, InputState, OutputState] =
       WIONodeRef[Ctx.Ctx, InputState, OutputState](NodeKey.unsafeApply("fork"))
     val endRef: WIONodeRef[Ctx.Ctx, InputState, BranchState] =
@@ -119,11 +122,13 @@ object BranchWorkflowExample extends IOApp.Simple:
         otherwise = defaultBranch
       )
 
-    WIOGraph[Ctx.Ctx, InputState, BranchState]
-      .addNode("fork", forkNode)
-      .setEntry(forkRef)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, InputState, BranchState].addNode("fork", forkNode)
+      g2 <- g1.setEntry(forkRef)
+      g3 <- g2.addEndNode(endRef)
+    yield g3
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio(
     wio: WIO[InputState, Nothing, BranchState, Ctx.Ctx],
     input: InputState

@@ -66,11 +66,14 @@ object SimpleGraphExample extends IOApp.Simple:
       _ <- ExampleUtils.printSection("Simple Graph Example (Eino: graph/simple)")
       chatModel <- ExampleUtils.createChatModel
 
-      graph = buildGraph(chatModel)
-      wio <- graph.toWIO match
-        case Right(wio) => IO.pure(wio)
-        case Left(errors: NonEmptyChain[WIOGraphError]) =>
-          IO.raiseError(new IllegalStateException(s"Graph errors: ${errors.toNonEmptyList.toList.mkString(", ")}"))
+      wio <- buildGraph(chatModel) match
+        case Left(err: WIOGraphError) =>
+          IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+        case Right(graph: WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState]) =>
+          graph.toWIO match
+            case Right(wio) => IO.pure(wio)
+            case Left(errors: NonEmptyChain[WIOGraphError]) =>
+              IO.raiseError(new IllegalStateException(s"Graph errors: ${errors.toNonEmptyList.toList.mkString(", ")}"))
 
       input = InputState("cats")
       result <- executeWio(wio, input)
@@ -85,7 +88,7 @@ object SimpleGraphExample extends IOApp.Simple:
       _ <- IO.println("\nSimple graph example completed.")
     yield ()
 
-  private def buildGraph(chatModel: ChatModel[IO]): WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState] =
+  private def buildGraph(chatModel: ChatModel[IO]): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState]] =
     val templateRef: WIONodeRef[Ctx.Ctx, InputState, ConversationState] =
       WIONodeRef[Ctx.Ctx, InputState, ConversationState](NodeKey.unsafeApply("template"))
     val chatRef: WIONodeRef[Ctx.Ctx, ConversationState, OutputState] =
@@ -109,13 +112,15 @@ object SimpleGraphExample extends IOApp.Simple:
           OutputState(response = evt.completion.content)
       )
 
-    WIOGraph[Ctx.Ctx, InputState, GraphState]
-      .addNode("template", templateNode)
-      .addNode("chat", chatNode)
-      .addEdge(templateRef, chatRef)
-      .setEntry(templateRef)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, InputState, GraphState].addNode("template", templateNode)
+      g2 <- g1.addNode("chat", chatNode)
+      g3 <- g2.addEdge(templateRef, chatRef)
+      g4 <- g3.setEntry(templateRef)
+      g5 <- g4.addEndNode(endRef)
+    yield g5
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio(
     wio: WIO[InputState, Nothing, GraphState, Ctx.Ctx],
     input: InputState

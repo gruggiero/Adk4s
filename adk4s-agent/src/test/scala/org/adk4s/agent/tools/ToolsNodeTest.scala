@@ -2,12 +2,12 @@ package org.adk4s.agent.tools
 
 import munit.CatsEffectSuite
 import cats.effect.IO
+import cats.effect.Ref
 import cats.effect.unsafe.implicits.global
 import org.llm4s.llmconnect.model.ToolCall
 import org.adk4s.core.component.Tool
 import org.adk4s.core.tools.{ToolsNode, ToolsNodeConfig, ToolInput, ToolOutput, ToolMiddleware}
 import upickle.default.*
-import scala.collection.mutable.ListBuffer
 
 class ToolsNodeTest extends CatsEffectSuite:
 
@@ -37,7 +37,7 @@ class ToolsNodeTest extends CatsEffectSuite:
     val result = node.executeFromToolCalls(calls).unsafeRunSync()
 
     assertEquals(result.outputs.length, 1)
-    assertEquals(result.outputs.head.result, "echo result")
+    assertEquals(result.outputs.headOption.getOrElse(fail("expected non-empty list")).result, "echo result")
     assert(result.allSucceeded, "All tools should succeed")
   }
 
@@ -66,8 +66,8 @@ class ToolsNodeTest extends CatsEffectSuite:
   }
 
   test("tool execution error is caught") {
-    val tool = Tool.invokable[IO]("failing_tool", "Failing tool", _ => 
-      throw new RuntimeException("execution failed")
+    val tool = Tool.invokable[IO]("failing_tool", "Failing tool", _ =>
+      Left("execution failed")
     )
 
     val node = ToolsNode.fromAdkTools(List(tool))
@@ -80,11 +80,9 @@ class ToolsNodeTest extends CatsEffectSuite:
 
 
   test("argumentsHandler preprocesses arguments") {
-    var processedArgs: Option[String] = None
-    val argHandler = (name: String, args: String) => IO {
-      processedArgs = Some(args)
-      """{"value":"processed"}"""
-    }
+    val processedArgs: Ref[IO, Option[String]] = Ref.of[IO, Option[String]](None).unsafeRunSync()
+    val argHandler = (name: String, args: String) =>
+      processedArgs.update(_ => Some(args)).as("""{"value":"processed"}""")
 
     val tool = Tool.invokable[IO]("test", "Test tool", _ => Right(ujson.Str("result")))
 
@@ -97,14 +95,14 @@ class ToolsNodeTest extends CatsEffectSuite:
     val input = ToolInput("test", """{"value":"original"}""", "call_1")
     node.executeTool(input).unsafeRunSync()
 
-    assertEquals(processedArgs, Some("""{"value":"original"}"""))
+    assertEquals(processedArgs.get.unsafeRunSync(), Some("""{"value":"original"}"""))
   }
 
   test("middleware is applied") {
-    var logged = false
-    val logMiddleware: ToolMiddleware = ToolMiddleware.logging(msg => IO {
-      if msg.contains("Tool call") then logged = true
-    })
+    val logged: Ref[IO, Boolean] = Ref.of[IO, Boolean](false).unsafeRunSync()
+    val logMiddleware: ToolMiddleware = ToolMiddleware.logging(msg =>
+      if msg.contains("Tool call") then logged.update(_ => true) else IO.unit
+    )
 
     val tool = Tool.invokable[IO]("test", "Test tool", _ => Right(ujson.Str("result")))
 
@@ -117,13 +115,13 @@ class ToolsNodeTest extends CatsEffectSuite:
     val input = ToolInput("test", """{}""", "call_1")
     node.executeTool(input).unsafeRunSync()
 
-    assert(logged, "Should have logged")
+    assert(logged.get.unsafeRunSync(), "Should have logged")
   }
 
   test("batch execution with some failures") {
     val successTool = Tool.invokable[IO]("success", "Success tool", _ => Right(ujson.Str("result")))
-    val failTool = Tool.invokable[IO]("fail", "Fail tool", _ => 
-      throw new RuntimeException("failed")
+    val failTool = Tool.invokable[IO]("fail", "Fail tool", _ =>
+      Left("failed")
     )
 
     val node = ToolsNode.fromAdkTools(List(successTool, failTool))

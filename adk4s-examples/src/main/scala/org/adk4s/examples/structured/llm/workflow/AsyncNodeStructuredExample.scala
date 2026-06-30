@@ -7,6 +7,7 @@ import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.types.NodeKey
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
+import org.adk4s.orchestration.wiograph.WIOGraphError
 import org.adk4s.orchestration.wiograph.WIONode
 import org.adk4s.orchestration.wiograph.WIONodeRef
 import org.adk4s.orchestration.wiograph.WIORunnableNode
@@ -85,11 +86,10 @@ object AsyncNodeStructuredExample extends IOApp.Simple:
       _ <- ExampleUtils.printSection("Async Node (Structured)")
       llmClient <- createLLMClient
 
-      graph = buildGraph(llmClient)
+      runnable <- compileRunnable(buildGraph(llmClient))
 
       // Scenario 1: Invoke mode
       _ <- ExampleUtils.printSubSection("1. Invoke Mode")
-      runnable <- compileRunnable(graph)
       invokeResult <- runnable.invoke(WorkState("1. Install dependencies\n2. Run tests\n3. Deploy"))
       _ <- invokeResult match
         case state: WorkState =>
@@ -109,7 +109,7 @@ object AsyncNodeStructuredExample extends IOApp.Simple:
                 case Some(steps) if s.processedCount.isEmpty =>
                   IO.println(s"     → Parsed ${steps.items.size} steps")
                 case _ if s.processedCount.isDefined =>
-                  IO.println(s"     → Processed ${s.processedCount.get} steps")
+                  IO.println(s"     → Processed ${s.processedCount.getOrElse(0)} steps")
                 case _ =>
                   IO.unit
             case _ => IO.unit
@@ -120,7 +120,7 @@ object AsyncNodeStructuredExample extends IOApp.Simple:
       _ <- IO.println("\nAsync node example completed.")
     yield ()
 
-  private def buildGraph(llmClient: org.llm4s.llmconnect.LLMClient): WIOGraph[Ctx.Ctx, WorkState, Nothing, GraphState] =
+  private def buildGraph(llmClient: org.llm4s.llmconnect.LLMClient): Either[WIOGraphError, WIOGraph[Ctx.Ctx, WorkState, Nothing, GraphState]] =
     val structured: StructuredLLM[IO] = StructuredLLM.fromClient[IO](llmClient)
 
     // Node 1: async_parser — parses steps with delay (simulating async work)
@@ -188,22 +188,27 @@ object AsyncNodeStructuredExample extends IOApp.Simple:
         toState = (state: WorkState, evt: StepsProcessed) => state.copy(processedCount = Some(evt.count))
       )
 
-    WIOGraph[Ctx.Ctx, WorkState, GraphState]
-      .addNode("async_parser", node1)
-      .addNode("async_processor", node2)
-      .addEdge(node1Ref, node2Ref)
-      .setEntry(node1Ref)
-      .addEndNode(endRef)
+    for
+      g1 <- WIOGraph[Ctx.Ctx, WorkState, GraphState].addNode("async_parser", node1)
+      g2 <- g1.addNode("async_processor", node2)
+      g3 <- g2.addEdge(node1Ref, node2Ref)
+      g4 <- g3.setEntry(node1Ref)
+      g5 <- g4.addEndNode(endRef)
+    yield g5
 
   private def compileRunnable(
-    graph: WIOGraph[Ctx.Ctx, WorkState, Nothing, GraphState]
+    graphEither: Either[WIOGraphError, WIOGraph[Ctx.Ctx, WorkState, Nothing, GraphState]]
   ): IO[Runnable[WorkState, GraphState]] =
-    graph.toRunnable match
-      case Right(runnable) => IO.pure(runnable)
-      case Left(errors) =>
-        IO.raiseError(new IllegalStateException(
-          s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-        ))
+    graphEither match
+      case Left(err: WIOGraphError) =>
+        IO.raiseError(new IllegalStateException(s"Graph build failed: $err"))
+      case Right(graph: WIOGraph[Ctx.Ctx, WorkState, Nothing, GraphState]) =>
+        graph.toRunnable match
+          case Right(runnable) => IO.pure(runnable)
+          case Left(errors) =>
+            IO.raiseError(new IllegalStateException(
+              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+            ))
 
 /**
  * Mock LLM client for async node examples.

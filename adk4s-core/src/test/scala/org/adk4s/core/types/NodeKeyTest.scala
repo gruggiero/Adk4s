@@ -36,16 +36,12 @@ class NodeKeyTest extends CatsEffectSuite:
     assertEquals(key.value, "model_node")
   }
 
-  test("unsafeApply throws on invalid key") {
-    intercept[IllegalArgumentException] {
-      NodeKey.unsafeApply("")
-    }
+  test("from rejects invalid key") {
+    assertEquals(NodeKey.from(""), Left(org.adk4s.core.error.NodeKeyError("")))
   }
 
-  test("unsafeApply throws on reserved key") {
-    intercept[IllegalArgumentException] {
-      NodeKey.unsafeApply("__start__")
-    }
+  test("from rejects reserved key") {
+    assertEquals(NodeKey.from("__start__"), Left(org.adk4s.core.error.NodeKeyError("__start__")))
   }
 
   test("check if node key is start") {

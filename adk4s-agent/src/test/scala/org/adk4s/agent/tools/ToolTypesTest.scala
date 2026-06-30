@@ -28,7 +28,7 @@ class ToolTypesTest extends CatsEffectSuite:
     val inputs = ToolInput.fromToolCalls(toolCalls)
 
     assertEquals(inputs.length, 2)
-    assertEquals(inputs.head.name, "get_weather")
+    assertEquals(inputs.headOption.getOrElse(fail("expected non-empty list")).name, "get_weather")
     assertEquals(inputs(1).name, "calculate")
   }
 
@@ -50,7 +50,7 @@ class ToolTypesTest extends CatsEffectSuite:
     val messages = result.toLlm4sMessages(includeErrors = true)
 
     assertEquals(messages.length, 2)
-    assertEquals(messages.head.content, "result1")
+    assertEquals(messages.headOption.getOrElse(fail("expected non-empty list")).content, "result1")
     assertEquals(messages(1).content, "result2")
   }
 

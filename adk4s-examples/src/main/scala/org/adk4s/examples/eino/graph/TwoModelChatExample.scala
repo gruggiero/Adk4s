@@ -158,6 +158,7 @@ object TwoModelChatExample extends IOApp.Simple:
     // Chain: writer → critic
     writerNode.toWIO.flatMap((_: ChatState) => criticNode.toWIO)
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   private def executeWio(
     wio: WIO[ChatState, Nothing, LoopState, Ctx.Ctx],
     input: ChatState

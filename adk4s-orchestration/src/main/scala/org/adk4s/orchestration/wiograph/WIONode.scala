@@ -199,6 +199,7 @@ final case class WIORunIONode[Ctx <: WorkflowContext, I, Err, Evt <: WCEvent[Ctx
       }
     )
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def toWIO(using errorMeta: ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
     val detectEvent: WCEvent[Ctx] => Option[Evt] = (evt: WCEvent[Ctx]) => evtCt.unapply(evt)
     val convertEvent: Evt => WCEvent[Ctx] = (evt: Evt) => evt
@@ -336,12 +337,28 @@ final case class WIOAwaitNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]]
 final case class WIOSubGraphNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]](
   subGraph: WIOGraph[Ctx, I, Err, O]
 ) extends WIONode[Ctx, I, Err, O]:
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def toWIO(using errorMeta: ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
     subGraph.toWIO match
+      case Right(wio) => wio
       case Left(errors) =>
         val message: String = errors.toNonEmptyList.toList.mkString("Sub-graph compilation failed: ", ", ", "")
-        throw new IllegalStateException(message)
-      case Right(wio) => wio
+        val failEffect: I => WCEffect[Ctx][Nothing] = (_: I) =>
+          IO.raiseError(org.adk4s.core.error.GenericError(message)).asInstanceOf[WCEffect[Ctx][Nothing]]
+        val detectNothing: WCEvent[Ctx] => Option[Nothing] = (_: WCEvent[Ctx]) => None
+        val convertNothing: Nothing => WCEvent[Ctx] = (n: Nothing) => n
+        val handleNothing: (I, Nothing) => Either[Err, O] = (_: I, n: Nothing) => n
+        val eventHandler: EventHandler[I, Either[Err, O], WCEvent[Ctx], Nothing] =
+          EventHandler[WCEvent[Ctx], I, Either[Err, O], Nothing](
+            detect0 = detectNothing,
+            convert0 = convertNothing,
+            handle0 = handleNothing
+          )
+        WIO.RunIO[Ctx, I, Err, O, Nothing](
+          _ => failEffect,
+          eventHandler,
+          WIO.RunIO.Meta(errorMeta, None, None)
+        )
 
 final case class WIOHandleSignalNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx], Req, Resp, Evt <: WCEvent[Ctx]](
   signalDef: SignalDef[Req, Resp],
@@ -350,6 +367,7 @@ final case class WIOHandleSignalNode[Ctx <: WorkflowContext, I, Err, O <: WCStat
   responseHandler: (I, Evt) => Resp,
   operationName: Option[String]
 )(using evtCt: ClassTag[Evt]) extends WIONode[Ctx, I, Err, O]:
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def toWIO(using errorMeta: ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
     val sigHandler: SignalHandler[WCEffect[Ctx], Req, Evt, I, WCState[Ctx]] =
       SignalHandler[WCEffect[Ctx], Req, Evt, I, WCState[Ctx]](_ => (in: I, req: Req) => signalHandler(in, req).asInstanceOf[WCEffect[Ctx][Evt]])
@@ -401,6 +419,7 @@ final case class WIORunnableNode[Ctx <: WorkflowContext, I, Err, Evt <: WCEvent[
         }
     )
 
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def toWIO(using errorMeta: ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
     val runIOFn: I => IO[Evt] = (i: I) => runnable.invoke(i).map(toEvent)
     val detectEvent: WCEvent[Ctx] => Option[Evt] = (evt: WCEvent[Ctx]) => evtCt.unapply(evt)
@@ -424,6 +443,7 @@ final case class WIOForEachNode[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx
   signalRouter: SignalRouter.Receiver[Elem, InterimState],
   name: Option[String]
 ) extends WIONode[Ctx, I, Err, O]:
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def toWIO(using errorMeta: ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
     val meta: WIOMeta.ForEach = WIOMeta.ForEach(name)
     WIO.ForEach[Ctx, I, Err, O, Elem, InnerCtx, ElemOut, InterimState](
