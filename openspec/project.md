@@ -1,43 +1,58 @@
 # Project Context
 
 ## Purpose
-adk4s is an Agent Development Kit for Scala, inspired by industry-leading agent frameworks including Eino (CloudWego), Google ADK, Dapr Agents, and Letta. The goal is to provide a comprehensive toolkit for building production-ready AI agents with type-safe, composable abstractions.
+adk4s (Agent Development Kit for Scala 3) is a functional, type-safe agent toolkit. It builds on **llm4s** (LLM client), **workflows4s** (workflow engine), and **smithy4s** (schema codegen) to provide a complete stack for LLM-powered agents: structured outputs, tool execution, streaming, multi-agent orchestration, interrupt/resume, and real-time observability.
 
-**Current Scope**: The project is in early development and currently includes only the LLM integration layer (`structured-llm`), which provides type-safe, composable structured outputs from Large Language Models. It wraps the llm4s library with Smithy-based schema definitions, enforcing structured output parsing through Schema-Aligned Parsing (SAP). Inspired by BAML, this component enables developers to define output types as Scala case classes with Smithy schemas that guide LLM responses, ensuring type-safe parsing with automatic recovery from common LLM JSON errors.
+**Core idea**: compose LLM calls, tools, and workflows as pure functions using Cats Effect and fs2.
 
-**Vision**: adk4s aims to expand beyond LLM integration to include:
-- Multi-agent orchestration and coordination
-- Tool/function calling with type-safe abstractions
-- Memory management (short-term, long-term, vector stores)
-- Agent state persistence and checkpointing
-- Event-driven agent communication
-- Workflow composition and DAG execution
-- Monitoring, observability, and debugging tools
+## Module Dependency Graph
+
+```
+adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models
+adk4s-orchestration → adk4s-core, structured-llm, workflows4s-core
+adk4s-core → structured-llm, llm4s/core
+structured-llm → llm4s/core, workflows4s-core
+structured-llm-test-models → structured-llm (compile only, Smithy codegen)
+verified → (leaf module, Scala 3.7.2, Stainless, not aggregated by root)
+```
+
+### Modules
+
+- **structured-llm** — Type-safe LLM outputs. `StructuredLLM[F[_]]`, `Schema[A]` typeclass, `Prompt`, `SchemaAlignedParser` (lenient JSON recovery), `PromptSyntax`.
+- **structured-llm-test-models** — Smithy schemas (`.smithy` files) compiled via smithy4s. Generated types used in tests. Keeps test-only schemas isolated from production code.
+- **adk4s-core** — Components, tools, runnables, events, interrupts. `ChatModel`, `Tool`/`InvokableTool`/`StreamableTool`, `Agent`, `AgentTool`, `ToolsNode`, `ToolMiddleware`, `Runnable`/`Lambda`, `AgentEvent`/`AgentEventEmitter`, `InterruptSignal`, streaming utilities, `AdkError` hierarchy.
+- **adk4s-orchestration** — Agents, graphs, workflows. `ReactAgent`, `AgentRunner` (interrupt/resume), `WIOGraph`/`WIONode` (type-safe DAG), `Graph`/`GraphExecutor`, `Branch`/`Router`, `Chain`, `Workflow`, `StatefulNode`, `EventSourcedState`, `CheckpointStore`.
+- **adk4s-examples** — 55+ runnable examples (all extend `IOApp.Simple`). Run via `./adk4s-examples/run-example.sh <name>` or `sbt "adk4s-examples/runMain <FQCN>"`.
+- **verified** — Leaf module pinned to Scala 3.7.2 for Stainless formal verification (Ring 6). Not aggregated by root. Run with `sbt -J-Xmx6g ring6`.
 
 ## Tech Stack
 
-### Current (LLM Module)
-- **Language**: Scala 3.7.3
-- **Build Tool**: sbt 1.11.7
-- **Core Libraries**:
-  - Cats Effect 3.6.3 - For IO monad and effect management
-  - Smithy4s 0.18.45 - For schema definitions and code generation
-  - llm4s - Core LLM client abstraction (local dependency)
-  - workflows4s - Workflow orchestration (local dependency)
-- **Testing**:
-  - MUnit 1.0.3 - Test framework
-  - MUnit Cats Effect 2.0.0 - IO testing support
-- **Code Quality**:
-  - Scalafmt 2.5.6 - Code formatting
-  - Scalafix 0.14.3 - Linting and code quality
-  - Scoverage 2.2.2 - Code coverage
+### Language & Build
+- **Language**: Scala 3.8.4 (verified module: Scala 3.7.2 for Stainless)
+- **Build Tool**: sbt 1.12.12
+- **Compiler Options**: `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, `-source:future`, `-Wconf:src=target/.*:s`
 
-### Planned (Future Modules)
-Additional technologies will be evaluated as new agent capabilities are developed, including:
-- Vector databases (for memory storage)
-- Message queues (for agent coordination)
-- Observability stacks (for monitoring and tracing)
-- State persistence layers
+### Core Libraries
+- llm4s 0.3.4 (Maven Central) — `LLMClient`, `Conversation`, `Message`, `ToolFunction`, `ToolRegistry`, `CompletionOptions`
+- Cats Effect 3.7.0 — IO monad and effect management
+- fs2 3.13.0 — functional streams
+- smithy4s 0.18.55 — schema definitions and code generation
+- workflows4s 0.6.2 (local sibling repo via ProjectRef) — WIO monad, WorkflowContext, event sourcing, signal routing
+- upickle — serialization (core/orchestration)
+- logback 1.5.34 (examples only)
+
+### Testing
+- MUnit 1.3.3 / munit-cats-effect 2.2.0 — test framework with IO support
+- Hedgehog 0.13.1 — property testing with integrated shrinking (`hedgehog-munit` % Test)
+- ~568 tests total across all modules
+
+### Code Quality
+- WartRemover 3.5.8 (sbt-wartremover, Ring 1 static analysis) — `Warts.unsafe` enabled with permanent exclusions for `TripleQuestionMark`, `Any` (Scala 3 string interpolation false positive), `DefaultArguments` (valid Scala API design feature)
+- Scalafmt 2.6.1 — code formatting
+- Scalafix 0.14.7 — linting and code quality
+- Scoverage 2.4.4 — code coverage
+- Stryker4s 0.21.0 (sbt-stryker4s, Ring 5 mutation testing)
+- Stainless (bundled jar, Ring 6 formal verification)
 
 ## Project Conventions
 
@@ -52,95 +67,99 @@ Additional technologies will be evaluated as new agent capabilities are develope
 - **Imports**:
   - Organize alphabetically
   - Group stdlib, third-party, and local imports
-  - Use wildcard imports for package objects (`import org.adk4s.structured.*`)
+  - Import only the symbols needed — do NOT use wildcard imports (`*` / `_`)
 - **Comments**: Use Scaladoc style for public APIs with `/** */` format
-- **Compiler Options**:
-  - `-deprecation` - Warn on deprecated features
-  - `-feature` - Warn on feature usage requiring import
-  - `-unchecked` - Warn on unchecked type operations
-  - `-Xkind-projector:underscores` - Enable kind projector syntax
-  - `-source:future` - Enable future language features
-  - `-Wconf:src=target/.*:s` - Silence warnings in generated code
+- **Types**: Write all types explicitly — do NOT rely on type inference
+- **Functional Programming**: Pure functions with IO effects via Cats Effect. Use immutable data structures. Do NOT use mutable variables.
+- **No `isInstanceOf` / `asInstanceOf`**: Use pattern matching instead. Suppress with `@SuppressWarnings` only when unavoidable (Scala 3 type erasure).
+- **No `Any` type**: If `Any` is needed, ask for help.
+- **Error Handling**: Sealed trait hierarchies for ADT errors (`AdkError`, `WIOGraphError`, `StructuredLLMError`). Use `Either` for error propagation in builders. Use `IO.raiseError` for runtime errors in effectful code.
 
 ### Architecture Patterns
-- **Opaque Types**: Use opaque types for type-safe abstractions (e.g., `opaque type Schema[A]`)
+- **Opaque Types**: Use opaque types for type-safe abstractions (e.g., `opaque type Schema[A]`, `NodeKey`)
 - **Typeclasses**: Implement typeclasses for extensibility (e.g., `Schema[A]`)
-- **Functional Programming**: Pure functions with IO effects via Cats Effect
-- **Separation of Concerns** (current modules):
-  - `structured-llm/core/` - LLM abstractions (Schema, Prompt, StructuredLLM)
-  - `structured-llm/template/` - Prompt DSL and string interpolators
-  - `structured-llm/sap/` - Schema-Aligned Parser for lenient JSON parsing
-  - `structured-llm/smithy/` - Smithy schema derivation (planned)
-- **Modular Growth** (planned modules):
-  - `agent-core/` - Agent lifecycle and state management
-  - `memory/` - Memory abstractions (vector stores, conversation history)
-  - `tools/` - Function calling with type-safe tool definitions
-  - `orchestration/` - Multi-agent coordination and workflows
-  - `observability/` - Logging, metrics, and tracing
+- **Effect Polymorphism**: Components parameterized by `F[_]` effect type, instantiated with `IO` for production
+- **Sealed ADTs**: Sealed trait hierarchies for errors, events, signals, node types
+- **Companion Object Factories**: Use companion `apply` / `create` methods for construction with validation
+- **Middleware Pattern**: `Kleisli`-based composable middleware (e.g., `ToolMiddleware`)
 - **Dependency Injection**: Constructor injection with typeclass parameters
-- **Error Handling**: Sealed trait hierarchies for ADT errors (`ParseResult`, `StructuredLLMError`)
 
 ### Testing Strategy
-- **Framework**: MUnit with Cats Effect integration
+- **Framework**: MUnit with Cats Effect integration + Hedgehog property testing
 - **Test Structure**:
   - Mock LLM clients for unit testing
   - Use `CatsEffectSuite` for IO-based tests
+  - Use `HedgehogSuite` for property-based tests
   - Test naming: descriptive, e.g., `"extract resume using smithy4s decoder"`
-- **Coverage**: Aim for high coverage on core parsing logic
-- **Test Data**: Use structured-llm-test-models for Smithy schema test cases
-- **Run tests**: `sbt test`
+- **Coverage**: Aim for high coverage on core parsing and orchestration logic
+- **Test Data**: Use `structured-llm-test-models` for Smithy schema test cases
+- **Run tests**: `sbt test` (~568 tests)
+
+### Verification Rings
+The project uses a multi-ring verification strategy:
+- **Ring 0**: `sbt compile` — basic compilation
+- **Ring 1**: WartRemover — static analysis (Warts.unsafe with permanent exclusions)
+- **Ring 3**: Hedgehog — property-based testing
+- **Ring 5**: Stryker4s — mutation testing (retarget `stryker4s.conf` first)
+- **Ring 6**: Stainless — formal verification (`sbt -J-Xmx6g ring6`)
+- **Ring 8**: Adversarial code review
 
 ### Git Workflow
-- **Branching**: Main development on main branch (currently no specific branch strategy defined)
-- **Commit Messages**: Conventional commits recommended (subject to local conventions)
+- **Branching**: Main development on main branch
+- **Commit Messages**: Conventional commits recommended
 - **Spec-Driven Development**: Use OpenSpec for proposals and specs:
   - Create change proposals in `openspec/changes/[change-id]/`
   - Implement after approval
-  - Archive completed changes
+  - Archive completed changes to `openspec/changes/archive/`
 
 ## Domain Context
 
-### Current (LLM Integration)
-Key concepts for the structured-llm module:
-
-- **Schema[A]**: Typeclass providing Smithy IDL definition and JSON decoder
+### Structured LLM Outputs (structured-llm)
+- **Schema[A]**: Typeclass providing Smithy IDL definition and smithy4s JSON decoder
 - **StructuredLLM[F]**: Main wrapper providing `Prompt => F[A]` abstraction
 - **Prompt**: Immutable conversation representation with system/user messages
-- **PromptTemplate[I]**: Reusable template taking input I to produce a Prompt
-- **SAP (Schema-Aligned Parser)**: Lenient JSON parser recovering from:
-  - Markdown code fences
-  - Trailing commas
-  - Single quotes vs double quotes
-  - Unquoted keys
-  - JSON comments
-  - Truncated responses
+- **SAP (Schema-Aligned Parser)**: Lenient JSON parser recovering from markdown fences, trailing commas, single quotes, unquoted keys, JSON comments, truncated responses
+
+### Agent Components (adk4s-core)
+- **ChatModel[F[_]]**: Effect-polymorphic LLM interface wrapping llm4s
+- **Tool / InvokableTool / StreamableTool**: Three-tier tool abstraction
+- **Agent**: Minimal interface for LLM-powered agents
+- **AgentTool**: Wraps an Agent as InvokableTool for hierarchical delegation
+- **ToolsNode**: Executes LLM tool calls with middleware, parallel/sequential strategies
+- **Runnable[I, O]**: Universal computation with 4 modes (invoke, stream, collect, transform)
+- **AgentEvent / AgentEventEmitter**: Event system with hierarchical scoping via fs2 Topic
+- **InterruptSignal**: Sealed trait for interrupt routing with address targeting
+
+### Orchestration (adk4s-orchestration)
+- **ReactAgent**: ReAct (Reasoning + Acting) loop with tool execution
+- **AgentRunner**: Manages interrupt/resume lifecycle with CheckpointStore
+- **WIOGraph**: Type-safe DAG built from WIONodes, compiles to WIO or Runnable
+- **Graph / GraphExecutor**: Generic graph structure and parallel execution
+- **Branch / Router / Chain**: Conditional branching and linear chain execution
+- **StatefulNode / EventSourcedState**: State management with event sourcing
 
 ### Smithy Integration
 - Output types defined in Smithy (`.smithy` files in `structured-llm-test-models/src/main/smithy`)
 - Smithy4s generates Scala code from Smithy definitions
 - Smithy IDL is ~80% more compact than JSON Schema for LLM prompts
 - Rich metadata via `@documentation` and `@required` traits
-
-### Planned (Agent Framework)
-Future agent capabilities will introduce additional abstractions:
-- **Agent**: Autonomous entities with tools, memory, and goals
-- **Tool**: Type-safe function definitions with input/output schemas
-- **Memory**: Abstractions for short-term (context), long-term (vector store), and persistent storage
-- **Orchestration**: Multi-agent patterns, DAG workflows, event-driven coordination
-- **State**: Agent state management with persistence and checkpointing
+- Never use Smithy `list Foo { member: Bar }` in IDL strings shown to LLMs — use `Type[]` notation instead
 
 ## Important Constraints
-- **Early Development**: Currently only LLM integration is implemented; other agent components are planned
-- **Scala 3 Only**: Targeting Scala 3.7.3 with modern language features
+- **Scala 3 Only**: Targeting Scala 3.8.4 with modern language features (verified module: 3.7.2 for Stainless)
 - **Type Safety**: All LLM outputs must be parsed into typed case classes
-- **Effect System**: All LLM calls must return IO[A] for referential transparency
-- **Local Dependencies**: llm4s and workflows4s are referenced as local projects in parent directories
-- **No Secrets**: Never commit API keys or credentials (use environment variables)
-- **Modular Design**: New agent capabilities should be added as separate modules (e.g., `agent-core`, `memory`, `tools`, `orchestration`)
+- **Effect System**: All LLM calls must return `F[A]` (typically `IO[A]`) for referential transparency
+- **Local Dependencies**: llm4s (Maven Central 0.3.4) and workflows4s (local sibling repo `../../business4s/workflows4s`) — workflows4s must exist on disk for compilation
+- **No Secrets**: Never commit API keys or credentials (use environment variables like `OPENAI_API_KEY`)
+- **No `throw`**: Use `Either` for error propagation or `IO.raiseError` for effectful errors
+- **No `asInstanceOf` / `isInstanceOf`**: Use pattern matching; suppress only when unavoidable (type erasure)
+- **No mutable variables**: Use immutable data structures and pure functions
+- **No wildcard imports**: Import only needed symbols
 
 ## External Dependencies
-- **llm4s**: LLM client library (local: `../../llm4s/llm4s`)
+- **llm4s**: LLM client library (Maven Central: `org.llm4s %% core % 0.3.4`)
 - **workflows4s**: Workflow orchestration library (local: `../../business4s/workflows4s`)
 - **LLM Providers**: Via llm4s (OpenAI, Anthropic, Azure, etc.)
-- **Smithy4s**: Schema definition and code generation (Maven dependency)
-- **Alloy**: Smithy extensions for enhanced metadata
+- **Smithy4s**: Schema definition and code generation (Maven Central)
+- **Cats Effect**: Effect system library (Maven Central)
+- **fs2**: Functional streams (Maven Central)
