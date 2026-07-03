@@ -7,6 +7,8 @@ import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.AssistantMessage
 import org.llm4s.llmconnect.model.Completion
+import org.llm4s.llmconnect.model.SystemMessage
+import org.llm4s.llmconnect.model.UserMessage
 import org.llm4s.llmconnect.model.CompletionOptions
 import org.llm4s.llmconnect.model.Conversation
 import org.llm4s.llmconnect.model.StreamedChunk
@@ -94,8 +96,8 @@ class SimpleResumeTest extends CatsEffectSuite:
     val extractResume = new PromptTemplate[String]:
       def render(input: String): Prompt =
         val basePrompt = Prompt(
-          org.adk4s.structured.core.Message(org.adk4s.structured.core.Role.System, "Extract resume information"),
-          org.adk4s.structured.core.Message(org.adk4s.structured.core.Role.User, s"Extract from: $input")
+          SystemMessage("Extract resume information"),
+          UserMessage(s"Extract from: $input")
         )
         // Add output format to the last message
         basePrompt.withOutputFormat[TestResume]

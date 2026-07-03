@@ -4,12 +4,11 @@ import munit.CatsEffectSuite
 import cats.effect.IO
 import fs2.Stream
 import org.llm4s.llmconnect.{LLMClient}
-import org.llm4s.llmconnect.model.{Conversation, CompletionOptions, Completion, StreamedChunk, AssistantMessage}
+import org.llm4s.llmconnect.model.{Conversation, CompletionOptions, Completion, StreamedChunk, AssistantMessage, UserMessage}
 import org.llm4s.error.NetworkError
 import org.llm4s.error.LLMError
 import org.adk4s.core.error.LlmCallError
-import org.adk4s.core.types.ConversationConverter
-import org.adk4s.structured.core.{Prompt, Message, Role}
+import org.adk4s.structured.core.Prompt
 
 class StreamingLLMClientTest extends CatsEffectSuite:
 
@@ -55,8 +54,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val completion = Completion("id", 0L, "Hello World", "model", AssistantMessage(Some("Hello World")), List.empty, None, None)
     val client = mockStreamingClient(List(chunk1, chunk2), Right(completion))
     val streaming = StreamingLLMClient.fromClient(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.stream(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 2)
     assertIO(result.map(_.headOption.getOrElse(fail("expected element")).content), Some("Hello"))
@@ -68,8 +67,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val completion = Completion("id", 0L, "Hello World", "model", AssistantMessage(Some("Hello World")), List.empty, None, None)
     val client = mockStreamingClient(List(chunk1, chunk2), Right(completion))
     val streaming = StreamingLLMClient.fromClient(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.streamContent(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 2)
     assertIO(result.map(_ == List("Hello", "World")), true)
@@ -82,8 +81,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val completion = Completion("id", 0L, "HelloWorld", "model", AssistantMessage(Some("HelloWorld")), List.empty, None, None)
     val client = mockStreamingClient(List(chunk1, chunk2, chunk3), Right(completion))
     val streaming = StreamingLLMClient.fromClient(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.streamContent(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 2)
     assertIO(result.map(_ == List("Hello", "World")), true)
@@ -93,8 +92,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val completion = Completion("id", 0L, "Response", "model", AssistantMessage(Some("Response")), List.empty, None, None)
     val client = mockStreamingClient(List(), Right(completion))
     val streaming = StreamingLLMClient.fromClient(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.complete(conv, CompletionOptions())
     assertIO(result.map(_.content), "Response")
   }
@@ -103,8 +102,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val error = NetworkError("Connection failed", None, "test")
     val client = mockStreamingClient(List(), Left(error))
     val streaming = StreamingLLMClient.fromClient(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.stream(conv, CompletionOptions()).compile.toList.attempt
     assertIO(result.map(_.isLeft), true)
   }
@@ -113,8 +112,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val completion = Completion("id", 0L, "Response", "model", AssistantMessage(Some("Response")), List.empty, None, None)
     val client = mockNonStreamingClient(Right(completion))
     val streaming = StreamingLLMClient.fromNonStreaming(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.stream(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 1)
     assertIO(result.map(_.headOption.getOrElse(fail("expected element")).content), Some("Response"))
@@ -124,8 +123,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val completion = Completion("id", 0L, "Hello", "model", AssistantMessage(Some("Hello")), List.empty, None, None)
     val client = mockNonStreamingClient(Right(completion))
     val streaming = StreamingLLMClient.fromNonStreaming(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.streamContent(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 1)
     assertIO(result.map(_ == List("Hello")), true)
@@ -135,8 +134,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val completion = Completion("id", 0L, "Response", "model", AssistantMessage(Some("Response")), List.empty, None, None)
     val client = mockNonStreamingClient(Right(completion))
     val streaming = StreamingLLMClient.fromNonStreaming(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.complete(conv, CompletionOptions())
     assertIO(result.map(_.content), "Response")
   }
@@ -145,8 +144,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val error = NetworkError("Connection failed", None, "test")
     val client = mockNonStreamingClient(Left(error))
     val streaming = StreamingLLMClient.fromNonStreaming(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.stream(conv, CompletionOptions()).compile.toList.attempt
     assertIO(result.map(_.isLeft), true)
   }
@@ -155,8 +154,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     val error = NetworkError("Connection failed", None, "test")
     val client = mockNonStreamingClient(Left(error))
     val streaming = StreamingLLMClient.fromNonStreaming(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.complete(conv, CompletionOptions()).attempt
     assertIO(result.map(_.isLeft), true)
   }
@@ -174,8 +173,8 @@ class StreamingLLMClientTest extends CatsEffectSuite:
     )
     val client = mockStreamingClient(List(chunk), Right(completion))
     val streaming = StreamingLLMClient.fromClient(client)
-    val prompt = Prompt(Vector(Message(Role.User, "Test")))
-    val conv = ConversationConverter.toConversation(prompt)
+    val prompt = Prompt(UserMessage("Test"))
+    val conv = prompt.conversation
     val result = streaming.stream(conv, CompletionOptions()).compile.toList
     assertIO(result.map(_.size), 1)
     assertIO(result.map(_.headOption.getOrElse(fail("expected element")).toolCall), Some(tool))

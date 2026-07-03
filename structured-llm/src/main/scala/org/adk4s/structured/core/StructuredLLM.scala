@@ -8,17 +8,8 @@ import fs2.Stream
 import org.adk4s.structured.sap.SchemaAlignedParser
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.{
-  AssistantMessage,
-  Completion,
-  CompletionOptions,
-  Conversation,
-  Message as LLM4sMessage,
-  StreamedChunk,
-  SystemMessage,
-  ToolMessage,
-  UserMessage
-}
+import org.llm4s.llmconnect.middleware.LLMMiddleware
+import org.llm4s.llmconnect.model.{ Completion, CompletionOptions, Conversation, StreamedChunk }
 import scala.concurrent.duration.Duration
 
 /**
@@ -127,6 +118,9 @@ object StructuredLLMError:
     underlying: LLMError,
     prompt: Prompt
   ) extends StructuredLLMError:
+    // Wire the cause so getCause returns LLMErrorCause wrapping the original LLMError.
+    // LLMError is not a Throwable, so we wrap it in LLMErrorCause.
+    initCause(LLMErrorCause(underlying))
     def message: String = s"LLM call failed: ${underlying.toString}"
 
   case class ParseFailed(
@@ -156,9 +150,11 @@ object StructuredLLMError:
     attempts: Vector[AttemptRecord]
   ) extends StructuredLLMError:
     def message: String =
-      val attemptDetails: String = attempts.zipWithIndex.map { case (record, idx) =>
-        s"  Attempt ${idx + 1} (${record.client}): ${record.error.message}"
-      }.mkString("\n")
+      val attemptDetails: String = attempts.zipWithIndex
+        .map { case (record, idx) =>
+          s"  Attempt ${idx + 1} (${record.client}): ${record.error.message}"
+        }
+        .mkString("\n")
       s"${underlying.message}\nAttempts:\n$attemptDetails"
 
 object StructuredLLM:
@@ -170,6 +166,53 @@ object StructuredLLM:
     client: LLMClient,
     defaultOptions: CompletionOptions = CompletionOptions()
   ): StructuredLLM[F] = new StructuredLLMImpl[F](client, defaultOptions, logRawResponse = false)
+
+  /**
+   * Create a StructuredLLM from an llm4s LLMClient with a middleware stack.
+   *
+   * The middlewares are composed via foldRight, so the first middleware in the
+   * list is outermost (executed first) and the last is innermost (closest to
+   * the raw LLMClient). The structured-output concern (schema injection, SAP
+   * parsing, constraint evaluation) is applied innermost by StructuredLLMImpl.
+   *
+   * spec: llm4s-middleware-adoption — Requirement: Middleware-composed factory
+   *
+   * @param client The underlying LLM client
+   * @param middlewares List of middlewares to compose (outermost first)
+   * @param defaultOptions Completion options to use
+   * @param parseRetryTrigger Controls parse-failure retry (None = no parse retry)
+   * @param maxParseAttempts Maximum parse retry attempts (including the first)
+   * @param parseRetryDelay Delay between parse retries
+   */
+  def fromClientWithMiddlewares[F[_]: Async](
+    client: LLMClient,
+    middlewares: List[LLMMiddleware],
+    defaultOptions: CompletionOptions = CompletionOptions(),
+    parseRetryTrigger: Option[ParseRetryTrigger] = None,
+    maxParseAttempts: Int = 1,
+    parseRetryDelay: Duration = Duration.Zero
+  ): StructuredLLM[F] =
+    val composedClient: LLMClient = middlewares.foldRight(client)((mw, c) => mw.wrap(c))
+    new StructuredLLMImpl[F](
+      composedClient,
+      defaultOptions,
+      logRawResponse = false,
+      parseRetryTrigger = parseRetryTrigger,
+      maxParseAttempts = maxParseAttempts,
+      parseRetryDelay = parseRetryDelay
+    )
+
+  /**
+   * Ergonomic alias for fromClient with a single middleware.
+   *
+   * spec: llm4s-middleware-adoption — Requirement: Middleware-composed factory
+   */
+  def fromClientWithMiddleware[F[_]: Async](
+    client: LLMClient,
+    middleware: LLMMiddleware,
+    defaultOptions: CompletionOptions = CompletionOptions()
+  ): StructuredLLM[F] =
+    fromClientWithMiddlewares[F](client, List(middleware), defaultOptions)
 
   /**
    * Create a StructuredLLM from an llm4s LLMClient with raw response logging.
@@ -199,7 +242,10 @@ object StructuredLLM:
    * @param delay Delay between retry attempts
    * @param trigger Which failure types trigger retries
    * @param defaultOptions Completion options to use
+   *
+   * spec: llm4s-middleware-adoption — Deprecated: use fromClient with middleware + ParseRetryTrigger
    */
+  @deprecated("Use fromClient with ReliableClient middleware + ParseRetryTrigger", "llm4s-middleware-adoption")
   def fromClientWithRetry[F[_]: Async](
     client: LLMClient,
     maxAttempts: Int,
@@ -207,7 +253,22 @@ object StructuredLLM:
     trigger: RetryTrigger,
     defaultOptions: CompletionOptions = CompletionOptions()
   ): StructuredLLM[F] =
-    val underlying: StructuredLLM[F] = new StructuredLLMImpl[F](client, defaultOptions, logRawResponse = false)
+    // Parse-failure retry is enabled ONLY when the trigger requests it. A caller
+    // asking for RetryTrigger.LLMError must NOT also get parse-failure retry as a
+    // side effect — the LLM-error loop is handled by RetryStructuredLLM around
+    // `underlying`. (Previously LLMError was mis-mapped to ParseFailed, which
+    // silently enabled parse retry the caller did not request.)
+    val parseTrigger: Option[ParseRetryTrigger] = trigger match
+      case RetryTrigger.LLMError          => None
+      case RetryTrigger.ParseFailure      => Some(ParseRetryTrigger.ParseFailed)
+      case RetryTrigger.ValidationFailure => Some(ParseRetryTrigger.ValidationFailed)
+      case RetryTrigger.All               => Some(ParseRetryTrigger.All)
+    val underlying: StructuredLLM[F] = new StructuredLLMImpl[F](
+      client, defaultOptions, logRawResponse = false,
+      parseRetryTrigger = parseTrigger,
+      maxParseAttempts = maxAttempts,
+      parseRetryDelay = delay
+    )
     new RetryStructuredLLM[F](underlying, maxAttempts, delay, trigger)
 
 /**
@@ -216,7 +277,10 @@ object StructuredLLM:
 private class StructuredLLMImpl[F[_]: Async](
   client: LLMClient,
   options: CompletionOptions,
-  logRawResponse: Boolean
+  logRawResponse: Boolean,
+  parseRetryTrigger: Option[ParseRetryTrigger] = None,
+  maxParseAttempts: Int = 1,
+  parseRetryDelay: Duration = Duration.Zero
 ) extends StructuredLLM[F] {
 
   override def complete[A: Schema](prompt: Prompt): F[A] =
@@ -225,6 +289,16 @@ private class StructuredLLMImpl[F[_]: Async](
     completeRaw[A](promptWithSchema)
 
   override def completeRaw[A: Schema](prompt: Prompt): F[A] =
+    parseRetryTrigger match
+      case None =>
+        completeRawSingle[A](prompt)
+      case Some(trigger) =>
+        completeRawWithRetry[A](prompt, trigger, maxParseAttempts)
+
+  /**
+   * Single attempt at completeRaw (no parse retry).
+   */
+  private def completeRawSingle[A: Schema](prompt: Prompt): F[A] =
     for
       // Convert to llm4s Conversation
       conversation <- Async[F].pure(toConversation(prompt))
@@ -241,6 +315,39 @@ private class StructuredLLMImpl[F[_]: Async](
       // Parse with SAP
       result <- parseResponse[A](responseContent)
     yield result
+
+  /**
+   * completeRaw with parse-failure retry.
+   * Re-invokes the inner LLMClient on parse/validation failures.
+   *
+   * spec: llm4s-middleware-adoption — Requirement: Parse-failure retry
+   */
+  private def completeRawWithRetry[A: Schema](
+    prompt: Prompt,
+    trigger: ParseRetryTrigger,
+    maxAttempts: Int
+  ): F[A] =
+    def attempt(remaining: Int): F[A] =
+      if remaining <= 0 then
+        Async[F].raiseError(
+          StructuredLLMError.ParseFailed(List.empty, "Max parse retries exhausted")
+        )
+      else
+        val singleAttempt: F[A] =
+          for
+            conversation <- Async[F].pure(toConversation(prompt))
+            completion    <- callLLM(conversation, prompt)
+            response      <- extractContent(completion, prompt)
+            _             <- logRawResponseIfEnabled(response)
+            result        <- parseResponse[A](response)
+          yield result
+        singleAttempt.handleErrorWith { (error: Throwable) =>
+          if trigger.shouldRetry(error) && remaining > 1 then
+            Async[F].sleep(parseRetryDelay) *> attempt(remaining - 1)
+          else
+            Async[F].raiseError(error)
+        }
+    attempt(maxAttempts)
 
   override def function[I, A: Schema](template: PromptTemplate[I]): I => F[A] =
     input => complete[A](template.render(input))
@@ -267,15 +374,20 @@ private class StructuredLLMImpl[F[_]: Async](
 
       // Call streaming LLM with callback to collect chunks
       val streamResult: Either[LLMError, Completion] =
-        client.streamComplete(conversation, options, (chunk: StreamedChunk) => {
-          chunks += chunk
-          chunk.content.foreach(accumulator.append)
-        })
+        client.streamComplete(
+          conversation,
+          options,
+          (chunk: StreamedChunk) => {
+            chunks += chunk
+            chunk.content.foreach(accumulator.append)
+          }
+        )
 
       // Create token stream from collected chunks
       val tokenStream: Stream[F, String] = streamResult match
         case Right(_) =>
-          Stream.emits(chunks.toList)
+          Stream
+            .emits(chunks.toList)
             .map((chunk: StreamedChunk) => chunk.content.getOrElse(""))
             .filter(_.nonEmpty)
         case Left(err) =>
@@ -285,10 +397,8 @@ private class StructuredLLMImpl[F[_]: Async](
       val resultF: F[A] = streamResult match
         case Right(_) =>
           val fullResponse: String = accumulator.toString
-          if fullResponse.trim.isEmpty then
-            Async[F].raiseError(StructuredLLMError.EmptyResponse(prompt))
-          else
-            logRawResponseIfEnabled(fullResponse) *> parseResponse[A](fullResponse)
+          if fullResponse.trim.isEmpty then Async[F].raiseError(StructuredLLMError.EmptyResponse(prompt))
+          else logRawResponseIfEnabled(fullResponse) *> parseResponse[A](fullResponse)
         case Left(err) =>
           Async[F].raiseError(StructuredLLMError.LLMCallFailed(err, prompt))
 
@@ -319,14 +429,7 @@ private class StructuredLLMImpl[F[_]: Async](
    * Convert our Prompt to llm4s Conversation.
    */
   private def toConversation(prompt: Prompt): Conversation =
-    val messages: Vector[LLM4sMessage] = prompt.messages.map { msg =>
-      msg.role match
-        case Role.System    => SystemMessage(msg.content)
-        case Role.User      => UserMessage(msg.content)
-        case Role.Assistant => AssistantMessage(Some(msg.content))
-        case Role.Tool      => ToolMessage(msg.content, toolCallId = "tool-call-id")
-    }
-    Conversation(messages)
+    prompt.conversation
 
   /**
    * Call the underlying LLM.

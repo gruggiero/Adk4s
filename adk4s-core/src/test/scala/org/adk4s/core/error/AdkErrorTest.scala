@@ -4,7 +4,6 @@ import munit.CatsEffectSuite
 import org.llm4s.error.NetworkError
 import org.adk4s.structured.core.StructuredLLMError.LLMCallFailed
 import org.adk4s.structured.core.Prompt
-import org.adk4s.structured.core.{ Message, Role }
 
 class AdkErrorTest extends CatsEffectSuite:
 
@@ -16,7 +15,7 @@ class AdkErrorTest extends CatsEffectSuite:
   }
 
   test("StructuredOutputError formats message with underlying error") {
-    val underlying = LLMCallFailed(NetworkError("Timeout", None, "anthropic"), Prompt(Vector.empty))
+    val underlying = LLMCallFailed(NetworkError("Timeout", None, "anthropic"), Prompt.empty)
     val error      = StructuredOutputError(underlying)
     assert(error.message.contains("Structured output error:"))
     assert(error.message.contains("LLM call failed"))

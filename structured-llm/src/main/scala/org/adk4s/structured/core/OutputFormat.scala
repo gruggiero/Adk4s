@@ -63,8 +63,8 @@ object OutputFormatRenderer:
     description: Option[String],
     options: OutputFormatOptions
   ): String =
-    val sanitized: String = sanitizeForRendering(smithyDefinition, options)
-    val descPart: String = description.fold("")(d => s"\n// $d\n")
+    val sanitized: String  = sanitizeForRendering(smithyDefinition, options)
+    val descPart: String   = description.fold("")(d => s"\n// $d\n")
     val prefixPart: String = options.prefix.fold("")(p => s"$p\n")
     s"""${prefixPart}Respond with JSON matching this schema:
        |```smithy$descPart
@@ -84,18 +84,15 @@ object OutputFormatRenderer:
     val listPattern: scala.util.matching.Regex =
       """(?s)list\s+(\w+)\s*\{\s*member\s*:\s*(\w+)\s*\}""".r
 
-    val listMappings: Map[String, String] = listPattern.findAllMatchIn(idl).map { m =>
-      m.group(1) -> m.group(2)
-    }.toMap
+    val listMappings: Map[String, String] = listPattern.findAllMatchIn(idl).map(m => m.group(1) -> m.group(2)).toMap
 
     val withoutListDefs: String =
       if listMappings.isEmpty then idl
       else listPattern.replaceAllIn(idl, "")
 
-    val withArrayNotation: String = listMappings.foldLeft(withoutListDefs) {
-      case (acc, (listName, elementType)) =>
-        val fieldRefPattern: scala.util.matching.Regex = s"""(:\\s*)$listName""".r
-        fieldRefPattern.replaceAllIn(acc, m => s"${m.group(1)}$elementType[]")
+    val withArrayNotation: String = listMappings.foldLeft(withoutListDefs) { case (acc, (listName, elementType)) =>
+      val fieldRefPattern: scala.util.matching.Regex = s"""(:\\s*)$listName""".r
+      fieldRefPattern.replaceAllIn(acc, m => s"${m.group(1)}$elementType[]")
     }
 
     // Apply quoteClassFields if enabled

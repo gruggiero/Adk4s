@@ -83,7 +83,7 @@ object StructuredTestFramework:
     llm.completeValidated[A](prompt).attempt.map {
       case Right(validationResult) =>
         IntegrationTestResult(
-          prompt = prompt.messages.map(_.content).mkString("\n"),
+          prompt = prompt.conversation.messages.map(_.content).mkString("\n"),
           rawResponse = None,
           parsed = true,
           value = Some(validationResult.value),
@@ -92,7 +92,7 @@ object StructuredTestFramework:
         )
       case Left(err: StructuredLLMError) =>
         IntegrationTestResult(
-          prompt = prompt.messages.map(_.content).mkString("\n"),
+          prompt = prompt.conversation.messages.map(_.content).mkString("\n"),
           rawResponse = None,
           parsed = false,
           value = None,
@@ -101,7 +101,7 @@ object StructuredTestFramework:
         )
       case Left(other) =>
         IntegrationTestResult(
-          prompt = prompt.messages.map(_.content).mkString("\n"),
+          prompt = prompt.conversation.messages.map(_.content).mkString("\n"),
           rawResponse = None,
           parsed = false,
           value = None,
@@ -119,10 +119,9 @@ object StructuredTestFramework:
   def reportParseResults[A](results: Map[String, ParseTestResult[A]]): String =
     val lines: Vector[String] = results.toVector.map { case (label, result) =>
       val status: String = if result.parsed then "PASS" else "FAIL"
-      val details: String = if result.parsed then
-        s"warnings: ${result.warnings.mkString(", ")}"
-      else
-        s"errors: ${result.errors.mkString(", ")}"
+      val details: String =
+        if result.parsed then s"warnings: ${result.warnings.mkString(", ")}"
+        else s"errors: ${result.errors.mkString(", ")}"
       s"[$status] $label — $details"
     }
     lines.mkString("\n")

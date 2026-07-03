@@ -107,3 +107,40 @@ class FallbackRoundRobinSpec extends HedgehogSuite:
       ClientStrategy.execute[IO, String](strategy, operation, Vector("a")).attempt.unsafeRunSync()
     assertEquals(result.toOption, Some("success"))
   }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Scenario: short clientNames vector yields index-based names (fix #7)
+  // spec: fix-llm4s-middleware-review-issues — Requirement: Fallback clients
+  // are named by index, not "unknown"
+  // ════════════════════════════════════════════════════════════════════════
+
+  test("short clientNames vector yields index-based names, not repeated unknown (fix #7)") {
+    // spec: fix-llm4s-middleware-review-issues — Scenario: short clientNames
+    // When clientNames is shorter than clients, the unnamed clients must be
+    // named by index (client-1, client-2, ...) so AttemptRecord names are
+    // unambiguous. Previously they were all labelled "unknown".
+    val clients: Vector[LLMClient] = Vector(
+      new StubClient("a", Left(new Exception("fail-a"))),
+      new StubClient("b", Left(new Exception("fail-b"))),
+      new StubClient("c", Left(new Exception("fail-c")))
+    )
+    val strategy: ClientStrategy = ClientStrategy.fallback(clients)
+    val operation: LLMClient => IO[String] = client =>
+      IO.fromEither(
+        client.complete(Conversation.empty(), CompletionOptions())
+          .map(_.content)
+          .left.map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
+      )
+    val result: Either[Throwable, String] =
+      ClientStrategy.execute[IO, String](strategy, operation, Vector("only")).attempt.unsafeRunSync()
+    result match
+      case Left(e: StructuredLLMError.Enriched) =>
+        val names: Seq[String] = e.attempts.map(_.client)
+        assertEquals(names(0), "only")
+        assertEquals(names(1), "client-1")
+        assertEquals(names(2), "client-2")
+      case Left(other) =>
+        fail(s"Expected Enriched error with attempt records, got ${other.getClass.getName}: $other")
+      case Right(value) =>
+        fail(s"Expected error, got $value")
+  }

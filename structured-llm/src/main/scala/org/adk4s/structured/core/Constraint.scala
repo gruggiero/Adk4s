@@ -76,9 +76,10 @@ object Constraint:
      */
     def evaluateStrict(value: A): Either[ValidationFailed, A] =
       if constraint.predicate(value) then Right(value)
-      else constraint.level match
-        case ConstraintLevel.Check  => Right(value)
-        case ConstraintLevel.Assert => Left(ValidationFailed(Vector(constraint.label)))
+      else
+        constraint.level match
+          case ConstraintLevel.Check  => Right(value)
+          case ConstraintLevel.Assert => Left(ValidationFailed(Vector(constraint.label)))
 
   /**
    * Evaluate all constraints on a value, collecting check results.
@@ -101,9 +102,10 @@ object Constraint:
   ): Either[ValidationFailed, A] =
     val failedAsserts: Vector[String] = constraints.flatMap { c =>
       if c.predicate(value) then None
-      else c.level match
-        case ConstraintLevel.Check  => None
-        case ConstraintLevel.Assert => Some(c.label)
+      else
+        c.level match
+          case ConstraintLevel.Check  => None
+          case ConstraintLevel.Assert => Some(c.label)
     }
     if failedAsserts.isEmpty then Right(value)
     else Left(ValidationFailed(failedAsserts))

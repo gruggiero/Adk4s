@@ -30,17 +30,17 @@ enum JsonishValue:
    * The completion state of this value.
    */
   def completionState: CompletionState = this match
-    case Null                              => CompletionState.Complete
-    case Bool(_, state)                    => state
-    case Num(_, state)                     => state
-    case Str(_, state)                     => state
-    case Arr(_, state)                     => state
-    case Obj(_, state)                     => state
-    case Markdown(_, _, state)             => state
-    case AnyOf(choices, _)                 =>
+    case Null                  => CompletionState.Complete
+    case Bool(_, state)        => state
+    case Num(_, state)         => state
+    case Str(_, state)         => state
+    case Arr(_, state)         => state
+    case Obj(_, state)         => state
+    case Markdown(_, _, state) => state
+    case AnyOf(choices, _) =>
       choices.map(_.completionState).foldLeft[CompletionState](CompletionState.Pending) {
         case (CompletionState.Complete, CompletionState.Complete) => CompletionState.Complete
-        case (CompletionState.Pending, _)                        => CompletionState.Incomplete
-        case (_, CompletionState.Pending)                        => CompletionState.Incomplete
-        case _                                                   => CompletionState.Incomplete
+        case (CompletionState.Pending, _)                         => CompletionState.Incomplete
+        case (_, CompletionState.Pending)                         => CompletionState.Incomplete
+        case _                                                    => CompletionState.Incomplete
       }

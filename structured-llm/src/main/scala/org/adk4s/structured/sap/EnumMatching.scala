@@ -22,27 +22,31 @@ object EnumMatching:
     input: String,
     enumValues: List[String]
   ): Option[(String, Vector[CoercionFlag])] =
-
     // Strategy 1: Exact match (score 0)
-    enumValues.find(_ == input).map(_ -> Vector.empty)
+    enumValues
+      .find(_ == input)
+      .map(_ -> Vector.empty)
 
       // Strategy 3: Case-insensitive match (score 2)
       .orElse {
-        enumValues.find(v => v.equalsIgnoreCase(input))
+        enumValues
+          .find(v => v.equalsIgnoreCase(input))
           .map(_ -> Vector(CoercionFlag.CaseInsensitive))
       }
 
       // Strategy 2: Punctuation-stripped match (score 3)
       .orElse {
         val strippedInput: String = stripPunctuation(input)
-        enumValues.find(v => stripPunctuation(v) == strippedInput)
+        enumValues
+          .find(v => stripPunctuation(v) == strippedInput)
           .map(_ -> Vector(CoercionFlag.PunctuationStripped))
       }
 
       // Strategy 4: Case-insensitive + punctuation-stripped match (score 5)
       .orElse {
         val strippedInput: String = stripPunctuation(input)
-        enumValues.find(v => stripPunctuation(v).equalsIgnoreCase(strippedInput))
+        enumValues
+          .find(v => stripPunctuation(v).equalsIgnoreCase(strippedInput))
           .map(_ -> Vector(CoercionFlag.CaseInsensitive, CoercionFlag.PunctuationStripped))
       }
 

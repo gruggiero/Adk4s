@@ -2,7 +2,7 @@ package org.adk4s.core.streaming
 
 import fs2.Stream
 import cats.effect.IO
-import org.llm4s.llmconnect.model.{StreamedChunk, ToolCall, Completion, AssistantMessage}
+import org.llm4s.llmconnect.model.{ StreamedChunk, ToolCall, Completion, AssistantMessage }
 
 case class AccumulatedResponse(
   content: String,

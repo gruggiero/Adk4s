@@ -8,8 +8,6 @@ package object types:
   type AdkResult[A]   = Either[AdkError, A]
   type AdkIOResult[A] = IO[Either[AdkError, A]]
 
-  type Message           = org.adk4s.structured.core.Message
-  type Role              = org.adk4s.structured.core.Role
   type Prompt            = org.adk4s.structured.core.Prompt
   type Schema[A]         = org.adk4s.structured.core.Schema[A]
   type PromptTemplate[I] = org.adk4s.structured.core.PromptTemplate[I]

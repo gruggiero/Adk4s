@@ -32,46 +32,19 @@ object ToolsNodeConfig:
 
   def builder: ToolsNodeConfigBuilder = ToolsNodeConfigBuilder()
 
-trait SafeToolExecutable:
-  def execute(args: ujson.Value): Either[org.llm4s.toolapi.ToolCallError, ujson.Value]
-
-// Opaque type that makes ToolFunction behave like SafeToolExecutable
-opaque type ToolFunctionAdapter[T, R] = ToolFunction[T, R]
-
-object ToolFunctionAdapter:
-  def apply[T, R](toolFunction: ToolFunction[T, R]): ToolFunctionAdapter[T, R] = toolFunction
-  
-  given [T, R] => Conversion[ToolFunctionAdapter[T, R], SafeToolExecutable] = 
-    adapter => new SafeToolExecutable {
-      def execute(args: ujson.Value): Either[org.llm4s.toolapi.ToolCallError, ujson.Value] =
-        adapter.execute(args)
-    }
-  
-  extension [T, R](adapter: ToolFunctionAdapter[T, R])
-    def execute(args: ujson.Value): Either[org.llm4s.toolapi.ToolCallError, ujson.Value] =
-      adapter.execute(args)
-    
-    def name: String = adapter.name
-    
-    def description: String = adapter.description
-
 case class ToolWrapper(
-  originalToolFunction: Option[ToolFunction[?, ?]],  // Some if created from ToolFunction, None if from StructuredToolFunction
-  executable: SafeToolExecutable,  // For actual execution
-  name: String,
-  description: String
+  toolFunction: ToolFunction[?, ?]
 ):
+  def name: String = toolFunction.name
+  def description: String = toolFunction.description
   def execute(args: ujson.Value): Either[Throwable, ujson.Value] =
-    executable.execute(args).left.map {
+    toolFunction.execute(args).left.map {
       case org.llm4s.toolapi.ToolCallError.ExecutionError(message, cause) =>
         new RuntimeException(s"Tool execution error: $message", cause)
       case err => new RuntimeException(err.toString)
     }
 
-object ToolWrapper:
-  def apply[T, R](tf: ToolFunction[T, R]): ToolWrapper =
-    val adapter: ToolFunctionAdapter[T, R] = ToolFunctionAdapter(tf)
-    ToolWrapper(Some(tf), adapter, tf.name, tf.description)
+object ToolWrapper
 
 case class ToolsNodeConfigBuilder(
   private val config: ToolsNodeConfig = ToolsNodeConfig()
@@ -110,12 +83,11 @@ case class ToolsNodeConfigBuilder(
 
 extension (config: ToolsNodeConfig)
   /** Extract only LLM4S tools and build a ToolRegistry.
-    * NOTE: Only includes ToolWrappers that have an originalToolFunction (i.e., were created from ToolFunction,
-    * not from StructuredToolFunction). */
+    * Includes ALL ToolWrappers (both ToolFunction-derived and StructuredToolFunction-derived). */
   def toToolRegistry: ToolRegistry =
     val llm4sWrappers: List[ToolWrapper] = config.tools.collect { case Left(tw) => tw }
     val toolFunctions: Seq[org.llm4s.toolapi.ToolFunction[?, ?]] =
-      llm4sWrappers.flatMap(_.originalToolFunction)
+      llm4sWrappers.map(_.toolFunction)
     ToolRegistry(toolFunctions)
 
   /** Extract only ADK4S InvokableTools. */

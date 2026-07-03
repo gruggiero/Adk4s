@@ -1,6 +1,15 @@
 package org.adk4s.structured.template
 
-import org.adk4s.structured.core.{ Message, Prompt, PromptTemplate, Role, Schema }
+import org.adk4s.structured.core.{ Prompt, PromptTemplate, Schema }
+import org.llm4s.llmconnect.model.{
+  AssistantMessage,
+  Conversation,
+  Message as Llm4sMessage,
+  MessageRole,
+  SystemMessage,
+  ToolMessage,
+  UserMessage
+}
 
 /**
  * Custom string interpolators for creating prompt templates.
@@ -46,10 +55,10 @@ object syntax:
     case Assistant
     case Raw
 
-    def toRole: Option[Role] = this match
-      case System    => Some(Role.System)
-      case User      => Some(Role.User)
-      case Assistant => Some(Role.Assistant)
+    def toRole: Option[MessageRole] = this match
+      case System    => Some(MessageRole.System)
+      case User      => Some(MessageRole.User)
+      case Assistant => Some(MessageRole.Assistant)
       case Raw       => None
 
   /**
@@ -74,26 +83,26 @@ object syntax:
         def render(input: I): Prompt =
           val evaluatedArgs: Seq[Matchable] = args.map(f => f(input))
           val content: String               = buildString(sc.parts, evaluatedArgs)
-          val messages: List[Message]       = parseMessages(content)
-          Prompt(messages.toVector)
+          val messages: List[Llm4sMessage]  = parseMessages(content)
+          Prompt(messages*)
 
     /**
      * System message interpolator.
      */
-    def system(args: Matchable*): Message =
-      Message.system(buildString(sc.parts, args))
+    def system(args: Matchable*): Llm4sMessage =
+      SystemMessage(buildString(sc.parts, args))
 
     /**
      * User message interpolator.
      */
-    def user(args: Matchable*): Message =
-      Message.user(buildString(sc.parts, args))
+    def user(args: Matchable*): Llm4sMessage =
+      UserMessage(buildString(sc.parts, args))
 
     /**
      * Assistant message interpolator.
      */
-    def assistant(args: Matchable*): Message =
-      Message.assistant(buildString(sc.parts, args))
+    def assistant(args: Matchable*): Llm4sMessage =
+      AssistantMessage(contentOpt = Some(buildString(sc.parts, args)), toolCalls = Seq.empty)
 
   /**
    * Build a string from StringContext parts and arguments.
@@ -122,64 +131,77 @@ object syntax:
     if s.contains('|') then s.stripMargin.trim
     else s.trim
 
+  private def messageForRole(role: MessageRole, content: String): Llm4sMessage = role match
+    case MessageRole.System    => SystemMessage(content)
+    case MessageRole.User      => UserMessage(content)
+    case MessageRole.Assistant => AssistantMessage(contentOpt = Some(content), toolCalls = Seq.empty)
+    // Tool results keep their role label rather than being silently mislabelled as
+    // a user message. No toolCallId is available here, so it is left empty.
+    case MessageRole.Tool      => ToolMessage(content, toolCallId = "")
+
   /**
    * Parse messages from a formatted string.
    * Supports XML-like tags: <s>, <system>, <u>, <user>, <a>, <assistant>
    */
-  private def parseMessages(content: String): List[Message] =
+  private def parseMessages(content: String): List[Llm4sMessage] =
     val systemPattern    = """(?s)<(?:s|system)>(.*?)</(?:s|system)>""".r
     val userPattern      = """(?s)<(?:u|user)>(.*?)</(?:u|user)>""".r
     val assistantPattern = """(?s)<(?:a|assistant)>(.*?)</(?:a|assistant)>""".r
 
-    case class TaggedSection(role: Role, content: String, start: Int)
+    case class TaggedSection(role: MessageRole, content: String, start: Int)
 
     val sections = scala.collection.mutable.ListBuffer[TaggedSection]()
 
     // Find all tagged sections with their positions
-    for m <- systemPattern.findAllMatchIn(content) do sections += TaggedSection(Role.System, m.group(1).trim, m.start)
+    for m <- systemPattern.findAllMatchIn(content) do
+      sections += TaggedSection(MessageRole.System, m.group(1).trim, m.start)
 
-    for m <- userPattern.findAllMatchIn(content) do sections += TaggedSection(Role.User, m.group(1).trim, m.start)
+    for m <- userPattern.findAllMatchIn(content) do
+      sections += TaggedSection(MessageRole.User, m.group(1).trim, m.start)
 
     for m <- assistantPattern.findAllMatchIn(content) do
-      sections += TaggedSection(Role.Assistant, m.group(1).trim, m.start)
+      sections += TaggedSection(MessageRole.Assistant, m.group(1).trim, m.start)
 
     if sections.isEmpty then
       // No tags found - treat entire content as a user message
-      List(Message.user(content.trim))
+      List(UserMessage(content.trim))
     else
       // Sort by position and convert to messages
-      sections.sortBy(_.start).map(s => Message(s.role, s.content)).toList
+      sections.sortBy(_.start).map(s => messageForRole(s.role, s.content)).toList
 
   /**
    * Builder for more complex prompts.
    */
   class PromptBuilder:
-    private val messages = scala.collection.mutable.ListBuffer[Message]()
+    private val messages = scala.collection.mutable.ListBuffer[Llm4sMessage]()
 
     def system(content: String): this.type =
-      messages += Message.system(content)
+      messages += SystemMessage(content)
       this
 
     def user(content: String): this.type =
-      messages += Message.user(content)
+      messages += UserMessage(content)
       this
 
     def assistant(content: String): this.type =
-      messages += Message.assistant(content)
+      messages += AssistantMessage(contentOpt = Some(content), toolCalls = Seq.empty)
       this
 
-    def message(role: Role, content: String): this.type =
-      messages += Message(role, content)
+    def message(role: MessageRole, content: String): this.type =
+      messages += messageForRole(role, content)
       this
 
     def withOutputFormat[A: Schema]: this.type =
       val lastIdx = messages.length - 1
       if lastIdx >= 0 then
-        val last = messages(lastIdx)
-        messages(lastIdx) = last.append("\n\n" + Schema[A].outputFormatBlock)
+        val last                = messages(lastIdx)
+        val schemaBlock: String = "\n\n" + Schema[A].outputFormatBlock
+        last match
+          case um: UserMessage => messages(lastIdx) = UserMessage(um.content + schemaBlock)
+          case _               => messages += UserMessage(schemaBlock)
       this
 
-    def build: Prompt = Prompt(messages.toVector)
+    def build: Prompt = Prompt(messages.toSeq*)
 
   /**
    * Start building a prompt.
@@ -190,7 +212,7 @@ object syntax:
  * Alternative syntax using a more functional builder pattern.
  */
 object dsl:
-  import org.adk4s.structured.core.*
+  import org.adk4s.structured.core.{ Prompt, PromptTemplate, Schema }
 
   /**
    * Create a prompt template using a builder function.
@@ -202,24 +224,29 @@ object dsl:
   /**
    * Builder that accumulates messages.
    */
-  class PromptBuilder private[dsl] (messages: Vector[Message]):
+  class PromptBuilder private[dsl] (messages: Vector[Llm4sMessage]):
     def system(content: String): PromptBuilder =
-      PromptBuilder(messages :+ Message.system(content))
+      PromptBuilder(messages :+ SystemMessage(content))
 
     def user(content: String): PromptBuilder =
-      PromptBuilder(messages :+ Message.user(content))
+      PromptBuilder(messages :+ UserMessage(content))
 
     def assistant(content: String): PromptBuilder =
-      PromptBuilder(messages :+ Message.assistant(content))
+      PromptBuilder(messages :+ AssistantMessage(contentOpt = Some(content), toolCalls = Seq.empty))
 
     def outputFormat[A: Schema]: PromptBuilder =
       messages.lastOption match
         case Some(last) =>
-          val updated = last.append("\n\n" + Schema[A].outputFormatBlock)
-          PromptBuilder(messages.dropRight(1) :+ updated)
+          val schemaBlock: String = "\n\n" + Schema[A].outputFormatBlock
+          last match
+            case um: UserMessage =>
+              val updated: UserMessage = UserMessage(um.content + schemaBlock)
+              PromptBuilder(messages.dropRight(1) :+ updated)
+            case _ =>
+              PromptBuilder(messages :+ UserMessage(schemaBlock))
         case None => this
 
-    def build: Prompt = Prompt(messages)
+    def build: Prompt = Prompt(messages*)
 
   object PromptBuilder:
     def empty: PromptBuilder = PromptBuilder(Vector.empty)

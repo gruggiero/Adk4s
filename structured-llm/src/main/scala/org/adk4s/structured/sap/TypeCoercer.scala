@@ -28,14 +28,14 @@ object TypeCoercer:
    */
   def coerceToJson(value: JsonishValue): (String, Vector[CoercionFlag]) =
     value match
-      case JsonishValue.Null => ("null", Vector.empty)
+      case JsonishValue.Null       => ("null", Vector.empty)
       case JsonishValue.Bool(b, _) => (b.toString, Vector.empty)
-      case JsonishValue.Num(n, _) => (n.toString, Vector.empty)
-      case JsonishValue.Str(s, _) => (s"\"${escapeJson(s)}\"", Vector.empty)
+      case JsonishValue.Num(n, _)  => (n.toString, Vector.empty)
+      case JsonishValue.Str(s, _)  => (s"\"${escapeJson(s)}\"", Vector.empty)
       case JsonishValue.Arr(items, _) =>
         val coerced: Vector[(String, Vector[CoercionFlag])] = items.map(coerceToJson)
-        val json: String = coerced.map(_._1).mkString("[", ",", "]")
-        val flags: Vector[CoercionFlag] = coerced.flatMap(_._2)
+        val json: String                                    = coerced.map(_._1).mkString("[", ",", "]")
+        val flags: Vector[CoercionFlag]                     = coerced.flatMap(_._2)
         (json, flags)
       case JsonishValue.Obj(fields, _) =>
         val coerced: Vector[(String, String, Vector[CoercionFlag])] =
@@ -44,7 +44,7 @@ object TypeCoercer:
         val flags: Vector[CoercionFlag] = coerced.flatMap(_._3)
         (json, flags)
       case JsonishValue.Markdown(_, inner, _) => coerceToJson(inner)
-      case JsonishValue.AnyOf(choices, _) =>
+      case JsonishValue.AnyOf(choices, _)     =>
         // Pick the first choice (best effort — smithy4s will validate)
         choices.headOption match
           case Some(first) =>

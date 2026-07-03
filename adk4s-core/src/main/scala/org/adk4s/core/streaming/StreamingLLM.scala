@@ -3,8 +3,8 @@ package org.adk4s.core.streaming
 import fs2.Stream
 import cats.effect.IO
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.{Conversation, CompletionOptions, Completion, StreamedChunk, AssistantMessage}
-import org.adk4s.core.error.{AdkError, LlmCallError}
+import org.llm4s.llmconnect.model.{ Conversation, CompletionOptions, Completion, StreamedChunk, AssistantMessage }
+import org.adk4s.core.error.{ AdkError, LlmCallError }
 import org.llm4s.error.LLMError
 
 trait StreamingLLMClient[F[_]]:
@@ -17,17 +17,17 @@ trait StreamingLLMClient[F[_]]:
 object StreamingLLMClient:
   def fromClient(client: LLMClient): StreamingLLMClient[IO] = new StreamingLLMClient[IO]:
     def stream(conversation: Conversation, options: CompletionOptions): Stream[IO, StreamedChunk] =
-      Stream.eval(IO {
-        val chunks = scala.collection.mutable.ListBuffer[StreamedChunk]()
-        val result: Either[LLMError, Completion] =
-          client.streamComplete(conversation, options, chunk => 
-            chunks += chunk
-          )
-        (result, chunks.toList)
-      }).flatMap {
-        case (Right(_), chunks) => Stream.emits(chunks)
-        case (Left(err), _) => Stream.raiseError[IO](LlmCallError(err))
-      }
+      Stream
+        .eval(IO {
+          val chunks = scala.collection.mutable.ListBuffer[StreamedChunk]()
+          val result: Either[LLMError, Completion] =
+            client.streamComplete(conversation, options, chunk => chunks += chunk)
+          (result, chunks.toList)
+        })
+        .flatMap {
+          case (Right(_), chunks) => Stream.emits(chunks)
+          case (Left(err), _)     => Stream.raiseError[IO](LlmCallError(err))
+        }
 
     def streamContent(conversation: Conversation, options: CompletionOptions): Stream[IO, String] =
       stream(conversation, options)
@@ -37,12 +37,13 @@ object StreamingLLMClient:
     def complete(conversation: Conversation, options: CompletionOptions): IO[Completion] =
       IO(client.complete(conversation, options)).flatMap {
         case Right(completion) => IO.pure(completion)
-        case Left(error) => IO.raiseError(LlmCallError(error))
+        case Left(error)       => IO.raiseError(LlmCallError(error))
       }
 
   def fromNonStreaming(client: LLMClient): StreamingLLMClient[IO] = new StreamingLLMClient[IO]:
     def stream(conversation: Conversation, options: CompletionOptions): Stream[IO, StreamedChunk] =
-      Stream.eval(IO(client.complete(conversation, options)))
+      Stream
+        .eval(IO(client.complete(conversation, options)))
         .flatMap {
           case Right(completion) =>
             val chunk = StreamedChunk(
@@ -63,5 +64,5 @@ object StreamingLLMClient:
     def complete(conversation: Conversation, options: CompletionOptions): IO[Completion] =
       IO(client.complete(conversation, options)).flatMap {
         case Right(completion) => IO.pure(completion)
-        case Left(error) => IO.raiseError(LlmCallError(error))
+        case Left(error)       => IO.raiseError(LlmCallError(error))
       }

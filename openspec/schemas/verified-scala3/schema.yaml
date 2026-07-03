@@ -230,6 +230,26 @@ artifacts:
          pattern matches over that type should behave for the new variants.
       10. Specs are DELTA specs. Use `## ADDED Requirements` headers for new
           requirements and `## MODIFIED Requirements` for changes to existing ones.
+      11. TYPE-WIDENING / ALIAS IMPACT: if a spec changes a public type to an
+          alias of another type (or otherwise widens it) and the target type
+          has MORE variants/cases than the source, the spec MUST include a
+          "Type-Widening Impact" subsection listing every downstream pattern
+          match on that type that contains a catch-all/default arm, and state
+          how each must behave for the newly-reachable variants (handle
+          exhaustively, explicitly reject, or justify). Aliasing to a richer
+          type IS an enum extension for this purpose, even though no variant
+          is added in source — the reachable variant set still grew.
+      12. CONSUMER-FACING SURFACE: if a spec introduces or changes an
+          LLM-/caller-facing surface (tool, operation, IDL operation, public
+          schema exposed to a model or external consumer), the spec MUST state
+          what the consumer observes (e.g. parameter names/types/schema, not
+          just name + description) and carry a scenario asserting that surface.
+      13. ERROR-VARIANT FEASIBILITY: any requirement whose `Then` asserts a
+          specific error variant is returned MUST be type-feasible against the
+          producing API's return type — e.g. a handler typed `Either[String, R]`
+          cannot carry a structured `ToolCallError`. Resolve the contradiction
+          in the spec (amend the requirement or the producing signature); do
+          NOT defer it to implementation.
     requires:
       - proposal
       - capability-profile
@@ -250,6 +270,12 @@ artifacts:
       1b. Every requirement opens with a normative statement containing SHALL or
          MUST before its `**Given**` clause (FAIL otherwise — `openspec validate
          --strict` rejects requirements without SHALL/MUST).
+      1c. Every requirement that asserts "identical/same/preserved behavior"
+         over an enum/dispatch parameter (e.g. a deprecated factory delegating
+         per-trigger) is backed by at least one scenario PER enum variant, each
+         asserting the discriminating observable (which inputs trigger which
+         behavior), not just an aggregate like a call count. FAIL if only one
+         variant is covered.
       2. Every `Then` is observable (a return value, persisted event, emitted
          message, error value — not an internal intention).
       3. Every scenario is testable with the detected stack (capability-profile.md).
@@ -263,9 +289,19 @@ artifacts:
       10. Every "unreachable"/"cannot happen" claim has a type-level proof
           obligation or an explicit runtime check.
       11. Every enum/GADT extension states how existing pattern matches behave.
+          NOTE: aliasing a public type to a richer type (more variants) counts
+          as an extension — check 11 FAILS if the spec's "Type-Widening Impact"
+          subsection (specs rule 11) is absent or incomplete.
       12. The Proof Obligations table covers every requirement, scenario,
           invariant, and introduced type constraint, each with a declared
           enforcement mechanism.
+      13. Every consumer-facing surface (tool/operation/IDL) has a scenario
+          asserting what the consumer observes (parameter schema, not just
+          presence/name). (specs rule 12.)
+      14. Every requirement asserting a specific returned error variant is
+          type-feasible vs the producing API's return type. (specs rule 13.)
+          A `Then` of "Left(ToolCallError.InvalidArguments(...))" produced by
+          a handler typed `Either[String, R]` FAILS until resolved.
 
       VERDICT: each spec gets PASS / FAIL. A FAIL lists the exact offending
       headings and what is missing. Do NOT proceed to implementation-order while
@@ -470,6 +506,20 @@ apply:
     requirement, scenario, invariant, and type constraint has a declared
     enforcement mechanism. If not, STOP — the spec must be fixed first.
 
+    PUBLIC-TYPE-CHANGE IMPACT SCAN — run when the spec aliases, widens, or
+    changes the variant set of a PUBLIC type (see design.md + the spec's
+    "Type-Widening Impact" subsection, specs rule 11). This closes the
+    structural blind spot where aliasing to a richer enum silently widens
+    every downstream catch-all match WITHOUT any file edit:
+    - For every public type whose effective variant set grew, grep the WHOLE
+      module graph (not just the change's diff) for pattern matches on that
+      type containing a catch-all/default arm (`case other =>`, `case _ =>`,
+      `case _: T =>`).
+    - For each such site, require one of, recorded in the spec's Proof
+      Obligations: made exhaustive over the new variant set; explicitly rejects
+      the new variants; or a justified `case` with rationale.
+    - Record the scan result (sites found + resolution) in the checkpoint.
+
     ═══════════════════════════════════════════════════════════════════════════
     STEP 1 — TYPED CONTRACT ◄ MANDATORY — GENUINELY COMPILED
     ═══════════════════════════════════════════════════════════════════════════
@@ -527,6 +577,18 @@ apply:
     - Compile-negative obligations become `assertDoesNotCompile` tests
     - The tests must COMPILE against the typed contract (`sbt <module>/Test/compile`).
       They are EXPECTED TO FAIL at runtime until Step 3 — that is the point.
+    - ORACLE FAITHFULNESS — a test asserting a spec-named error variant MUST
+      assert that variant exactly. Do NOT loosen an error assertion with
+      `.toString.contains(...)` / `message.contains(...)` / `||` substring
+      fallbacks to accommodate the implementation; if the implementation
+      cannot produce the named variant, the spec or the producing signature
+      must change (re-approved at this gate), NEVER the oracle. Substring /
+      `contains` checks are acceptable only for human-readable message text,
+      never as a substitute for the structured variant the scenario names.
+    - BEHAVIOR-PRESERVATION COVERAGE — for a requirement asserting
+      identical/same behavior over an enum/dispatch parameter, generate one
+      scenario test PER variant (spec-lint check 1c), each asserting the
+      discriminating observable, not just an aggregate call count.
 
     Produce the coverage cross-reference tables (they will be re-verified in
     Step 6):
@@ -572,10 +634,16 @@ apply:
     Fix any DisableSyntax violations (var, null, throw, return, while).
     Fix any RemoveUnused violations.
 
-    Additionally grep the diff for dangerous correctness patterns and remove or
-    justify each occurrence:
+    Additionally grep for dangerous correctness patterns and remove or justify
+    each occurrence. SCOPE: scan BOTH (a) the change's production-file diff AND
+    (b) every file that IMPORTS a public type whose variant set this change
+    widens or aliases (per the Step 0 PUBLIC-TYPE-CHANGE IMPACT SCAN) —
+    catch-all matches in those importers silently change behavior with no edit.
+    Patterns:
     - `.get` on Option/Either/Try; unsafe `head`/`tail`/`last`
-    - `case _` in critical ADT/evaluator/typechecker matches
+    - `case _` / `case other` in critical ADT/evaluator/typechecker/conversion
+      matches — ESPECIALLY a catch-all that constructs a VALID domain value
+      from an unrecognized variant (e.g. `case other => UserMessage(...)`)
     - `@unchecked`, unchecked casts, `asInstanceOf`
     - `Await`, `Thread.sleep`, swallowed `NonFatal`
     - comments claiming "unreachable" without a type-level proof
@@ -593,6 +661,10 @@ apply:
     - EffectDiscipline: service methods return the project's effect type
     - RawPrimitivesInDomain: no raw String/Int/Long in domain public APIs
     - ErrorHandlingDiscipline: no Try, sealed error types, no swallowed errors
+    - ExhaustiveDomainConversion: pattern matches that convert or construct
+      domain values (e.g. over Message/Role/enum) must be exhaustive or
+      explicitly reject; a catch-all that maps an unrecognized variant to a
+      VALID domain value is a violation (pairs with the Ring 1 grep)
     Generated code is excluded where the design says so.
     Fix violations. Re-run until clean.
 
@@ -733,6 +805,14 @@ apply:
     1. update the spec and get human approval; or
     2. remove the extra concept.
     This prevents scope creep.
+
+    REMOVAL AUDIT — for every field/type REMOVED from a refactored concept
+    (e.g. a case class field deleted during a storage collapse), grep main
+    sources for now-orphaned dependents (traits, opaque adapters, extension
+    methods, helper factories that existed only to serve the removed member).
+    Each orphan MUST be deleted in this change or explicitly retained with
+    rationale. `RemoveUnused` lint does not flag public/opaque members, so
+    this audit is mandatory.
 
     Then append the verified NEW concepts to concept-inventory.md:
     - New opaque types with their constraints

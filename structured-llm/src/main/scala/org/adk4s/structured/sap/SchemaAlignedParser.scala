@@ -375,8 +375,8 @@ object SchemaAlignedParser:
    */
   private def applyUnwrapSmithyMember(json: String): (String, Boolean, String) =
     val memberPattern: Regex = """("[\w]+"\s*:\s*)\{\s*"member"\s*:\s*(\[[\s\S]*?\])\s*\}""".r
-    val replaced: String = memberPattern.replaceAllIn(json, m => s"${m.group(1)}${m.group(2)}")
-    val changed: Boolean = replaced != json
+    val replaced: String     = memberPattern.replaceAllIn(json, m => s"${m.group(1)}${m.group(2)}")
+    val changed: Boolean     = replaced != json
     (replaced, changed, "Unwrapped Smithy 'member' list wrapper from JSON values")
 
   /**

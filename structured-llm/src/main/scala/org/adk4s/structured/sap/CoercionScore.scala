@@ -23,8 +23,8 @@ enum CoercionFlag:
  */
 final case class CoercionScore(value: Int):
   def +(other: CoercionScore): CoercionScore = CoercionScore(value + other.value)
-  def <=(other: CoercionScore): Boolean       = value <= other.value
-  def <(other: CoercionScore): Boolean        = value < other.value
+  def <=(other: CoercionScore): Boolean      = value <= other.value
+  def <(other: CoercionScore): Boolean       = value < other.value
 
 object CoercionScore:
   val Zero: CoercionScore = CoercionScore(0)
@@ -36,18 +36,18 @@ object CoercionScore:
     CoercionScore(flags.map(flagPenalty).sum)
 
   private def flagPenalty(flag: CoercionFlag): Int = flag match
-    case CoercionFlag.StringToInt           => 1
-    case CoercionFlag.StringToBool          => 1
-    case CoercionFlag.StringToFloat         => 1
-    case CoercionFlag.IntToFloat            => 1
-    case CoercionFlag.FloatToInt            => 2
-    case CoercionFlag.SingleToArray         => 1
-    case CoercionFlag.ObjectToString        => 2
+    case CoercionFlag.StringToInt             => 1
+    case CoercionFlag.StringToBool            => 1
+    case CoercionFlag.StringToFloat           => 1
+    case CoercionFlag.IntToFloat              => 1
+    case CoercionFlag.FloatToInt              => 2
+    case CoercionFlag.SingleToArray           => 1
+    case CoercionFlag.ObjectToString          => 2
     case CoercionFlag.StrippedNonAlphaNumeric => 3
-    case CoercionFlag.DefaultFromNoValue    => 3
-    case CoercionFlag.CaseInsensitive       => 2
-    case CoercionFlag.PunctuationStripped   => 3
-    case CoercionFlag.AnyOfResolved         => 1
+    case CoercionFlag.DefaultFromNoValue      => 3
+    case CoercionFlag.CaseInsensitive         => 2
+    case CoercionFlag.PunctuationStripped     => 3
+    case CoercionFlag.AnyOfResolved           => 1
 
 /**
  * Result of a successful coercion — the coerced value plus flags and score.

@@ -83,7 +83,7 @@ object Schema:
      * Failed checks are collected as warnings but do not fail the parse.
      */
     def withCheck(label: String)(predicate: A => Boolean): Schema[A] =
-      val data: SchemaData[A] = asData[A](schema)
+      val data: SchemaData[A]       = asData[A](schema)
       val constraint: Constraint[A] = Constraint.check(label)(predicate)
       SchemaData[A](
         data.smithyDefinition,
@@ -97,7 +97,7 @@ object Schema:
      * Failed asserts raise ValidationFailed.
      */
     def withAssert(label: String)(predicate: A => Boolean): Schema[A] =
-      val data: SchemaData[A] = asData[A](schema)
+      val data: SchemaData[A]       = asData[A](schema)
       val constraint: Constraint[A] = Constraint.assert(label)(predicate)
       SchemaData[A](
         data.smithyDefinition,
@@ -116,7 +116,7 @@ object Schema:
      */
     def outputFormatBlock: String =
       val sanitized: String = sanitizeSmithyForPrompt(smithyDefinition)
-      val descPart: String = description.fold("")(d => s"\n// $d\n")
+      val descPart: String  = description.fold("")(d => s"\n// $d\n")
       s"""Respond with JSON matching this schema:
          |```smithy$descPart
          |$sanitized
@@ -138,20 +138,22 @@ object Schema:
   private def sanitizeSmithyForPrompt(idl: String): String =
     val listPattern: Regex = """(?s)list\s+(\w+)\s*\{\s*member\s*:\s*(\w+)\s*\}""".r
 
-    val listMappings: Map[String, String] = listPattern.findAllMatchIn(idl).map { m =>
-      val listName: String = m.group(1)
-      val elementType: String = m.group(2)
-      listName -> elementType
-    }.toMap
+    val listMappings: Map[String, String] = listPattern
+      .findAllMatchIn(idl)
+      .map { m =>
+        val listName: String    = m.group(1)
+        val elementType: String = m.group(2)
+        listName -> elementType
+      }
+      .toMap
 
     if listMappings.isEmpty then idl
     else
       val withoutListDefs: String = listPattern.replaceAllIn(idl, "")
 
-      val withArrayNotation: String = listMappings.foldLeft(withoutListDefs) {
-        case (acc, (listName, elementType)) =>
-          val fieldRefPattern: Regex = s"""(:\\s*)$listName""".r
-          fieldRefPattern.replaceAllIn(acc, m => s"${m.group(1)}$elementType[]")
+      val withArrayNotation: String = listMappings.foldLeft(withoutListDefs) { case (acc, (listName, elementType)) =>
+        val fieldRefPattern: Regex = s"""(:\\s*)$listName""".r
+        fieldRefPattern.replaceAllIn(acc, m => s"${m.group(1)}$elementType[]")
       }
 
       val cleaned: String = withArrayNotation

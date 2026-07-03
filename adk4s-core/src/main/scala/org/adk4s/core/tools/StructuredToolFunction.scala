@@ -1,8 +1,8 @@
 package org.adk4s.core.tools
 
-import org.llm4s.toolapi.ToolCallError
-import org.llm4s.toolapi.ToolParameterError
+import org.llm4s.toolapi.{ BooleanSchema, IntegerSchema, NumberSchema, ObjectSchema, PropertyDefinition, SafeParameterExtractor, SchemaDefinition, StringSchema, ToolFunction }
 import ujson.Value
+import upickle.default.*
 
 /** Typed wrapper for building tool functions with input and output schemas.
   *
@@ -105,47 +105,74 @@ object StructuredToolFunction:
       handler = handler
     )
 
+  /** Builds llm4s [[PropertyDefinition]]s from a derived JSON schema so the
+    * synthesized ToolFunction exposes its parameters to the LLM. Only the
+    * primitive JSON-schema types produced by ToolInfer (string/integer/number/
+    * boolean) are mapped to typed llm4s schemas; anything else falls back to a
+    * permissive string schema (argument validation still happens in the handler).
+    */
+  private def propertiesFromJsonSchema(jsonSchema: Value): Seq[PropertyDefinition[?]] =
+    jsonSchema match
+      case schemaObj: ujson.Obj =>
+        val requiredNames: Set[String] =
+          schemaObj.obj.get("required").map(_.arr.map(_.str).toSet).getOrElse(Set.empty[String])
+        schemaObj.obj.get("properties") match
+          case Some(props: ujson.Obj) =>
+            props.obj.toSeq.map { (name: String, propSchema: Value) =>
+              val typeStr: String = propSchema match
+                case p: ujson.Obj => p.obj.get("type").map(_.str).getOrElse("string")
+                case _            => "string"
+              val propSchemaDef: SchemaDefinition[?] = typeStr match
+                case "string"  => StringSchema("")
+                case "integer" => IntegerSchema("")
+                case "number"  => NumberSchema("")
+                case "boolean" => BooleanSchema("")
+                case _         => StringSchema("")
+              PropertyDefinition(name, propSchemaDef, required = requiredNames.contains(name))
+            }
+          case _ => Seq.empty[PropertyDefinition[?]]
+      case _ => Seq.empty[PropertyDefinition[?]]
+
   extension [I, O](stf: StructuredToolFunction[I, O])
-    /** Converts to [[SafeToolExecutable]] for use with [[ToolsNode]].
+    /** Synthesizes a llm4s [[ToolFunction]] from this StructuredToolFunction.
       *
-      * The resulting executable handles JSON argument parsing, handler
-      * execution, and result encoding automatically.
+      * The ToolFunction's schema is derived from `inputSchema.jsonSchema` so the
+      * LLM sees the tool's parameters (names/types/required), not just name +
+      * description. Argument validation is still performed by
+      * `inputSchema.decoder` in the handler.
       *
-      * @return a SafeToolExecutable that wraps this function
+      * Error-reporting note: llm4s `ToolFunction` handlers return
+      * `Either[String, R]`, so structured `ToolCallError` variants cannot be
+      * carried through this path. Errors surface as
+      * `ToolCallError.HandlerError(name, message)` where the message preserves
+      * the field/path from the underlying `ToolSchemaError`.
+      *
+      * @return a ToolFunction[ujson.Value, ujson.Value] that wraps this function
       */
-    def toSafeExecutable: SafeToolExecutable =
-      new SafeToolExecutable:
-        def execute(args: Value): Either[ToolCallError, Value] =
-          stf.inputSchema.decoder(args) match
-            case Left(schemaErr) =>
-              val paramError: ToolParameterError = schemaErr match
-                case ToolSchemaError.MissingRequiredField(fieldName, path) =>
-                  ToolParameterError.MissingParameter(fieldName, "unknown")
-                case ToolSchemaError.TypeMismatch(expectedType, actualValue, path) =>
-                  ToolParameterError.TypeMismatch(path, expectedType, actualValue.getClass.getSimpleName)
-                case ToolSchemaError.InvalidEnumValue(value, allowedValues, path) =>
-                  ToolParameterError.TypeMismatch(path, s"one of: ${allowedValues.mkString(", ")}", value)
-                case ToolSchemaError.DecodingFailed(msg, underlying) =>
-                  ToolParameterError.TypeMismatch("input", "valid JSON", msg)
-              Left(ToolCallError.InvalidArguments(stf.name, List(paramError)))
-            case Right(input) =>
+    def toToolFunction: ToolFunction[ujson.Value, ujson.Value] =
+      val schemaDef: ObjectSchema[ujson.Value] =
+        ObjectSchema[ujson.Value](stf.description, propertiesFromJsonSchema(stf.inputSchema.jsonSchema), false)
+      ToolFunction[ujson.Value, ujson.Value](
+        name = stf.name,
+        description = stf.description,
+        schema = schemaDef,
+        handler = (extractor: SafeParameterExtractor) =>
+          stf.inputSchema.decoder(extractor.params) match
+            case Left(err: ToolSchemaError) => Left(err.message)
+            case Right(input: I) =>
               stf.handler(input) match
-                case Left(handlerErr) =>
-                  Left(ToolCallError.ExecutionError(stf.name, handlerErr))
-                case Right(output) =>
-                  Right(stf.outputSchema.encoder(output))
+                case Left(err: ToolSchemaError) => Left(err.message)
+                case Right(output: O)           => Right(stf.outputSchema.encoder(output))
+      )
 
     /** Converts to [[ToolWrapper]] for use with [[ToolsNodeConfig]].
       *
       * This is the preferred method for integrating structured tool functions
-      * with the ToolsNode orchestration system.
+      * with the ToolsNode orchestration system. The resulting ToolWrapper
+      * contains a synthesized ToolFunction (via [[toToolFunction]]), making
+      * the tool visible in [[ToolsNodeConfig.toToolRegistry]].
       *
       * @return a ToolWrapper that can be added to ToolsNodeConfig
       */
     def toToolWrapper: ToolWrapper =
-      ToolWrapper(
-        originalToolFunction = None,  // StructuredToolFunction doesn't wrap a ToolFunction
-        executable = stf.toSafeExecutable,
-        name = stf.name,
-        description = stf.description
-      )
+      ToolWrapper(stf.toToolFunction)

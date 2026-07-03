@@ -2,6 +2,8 @@ package org.adk4s.orchestration.state
 
 import cats.effect.IO
 import munit.CatsEffectSuite
+import org.llm4s.llmconnect.model.AssistantMessage
+import org.llm4s.llmconnect.model.UserMessage
 
 class EventSourcedStateTest extends CatsEffectSuite:
 
@@ -14,7 +16,7 @@ class EventSourcedStateTest extends CatsEffectSuite:
   }
 
   test("MessageAdded event appends message to state") {
-    val message = org.adk4s.structured.core.Message.user("test")
+    val message: org.llm4s.llmconnect.model.Message = UserMessage("test")
     val event = AgentStateContext.MessageAdded(message)
 
     val initialState = AgentStateContext.AgentState()
@@ -60,8 +62,8 @@ class EventSourcedStateTest extends CatsEffectSuite:
   }
 
   test("Multiple events are applied correctly") {
-    val msg1 = org.adk4s.structured.core.Message.user("hello")
-    val msg2 = org.adk4s.structured.core.Message.assistant("hi")
+    val msg1: org.llm4s.llmconnect.model.Message = UserMessage("hello")
+    val msg2: org.llm4s.llmconnect.model.Message = AssistantMessage(Some("hi"), List.empty)
 
     val events = List(
       AgentStateContext.MessageAdded(msg1),

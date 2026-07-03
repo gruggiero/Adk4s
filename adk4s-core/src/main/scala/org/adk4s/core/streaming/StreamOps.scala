@@ -1,6 +1,6 @@
 package org.adk4s.core.streaming
 
-import fs2.{Stream, Pipe}
+import fs2.{ Stream, Pipe }
 import cats.effect.IO
 import scala.concurrent.duration.*
 import org.adk4s.core.error.AdkError
@@ -21,9 +21,8 @@ object StreamOps:
       stream.handleErrorWith { error =>
         if retriesLeft > 0 then
           Stream.exec(IO.sleep(currentDelay)) ++
-          loop(retriesLeft - 1, (currentDelay * 2).min(maxDelay))
-        else
-          Stream.raiseError[IO](error)
+            loop(retriesLeft - 1, (currentDelay * 2).min(maxDelay))
+        else Stream.raiseError[IO](error)
       }
     loop(maxRetries, initialDelay)
 

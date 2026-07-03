@@ -5,7 +5,6 @@ import cats.effect.IOApp
 import io.circe.generic.auto.*
 import org.adk4s.structured.core.Prompt
 import org.adk4s.structured.core.PromptTemplate
-import org.adk4s.structured.core.Role
 import org.adk4s.structured.core.Schema
 import org.adk4s.structured.core.StructuredLLM
 import org.adk4s.structured.template.syntax.*
@@ -15,10 +14,8 @@ import org.llm4s.llmconnect.model.AssistantMessage
 import org.llm4s.llmconnect.model.Completion
 import org.llm4s.llmconnect.model.CompletionOptions
 import org.llm4s.llmconnect.model.Conversation
-import org.llm4s.llmconnect.model.Message as LLM4sMessage
 import org.llm4s.llmconnect.model.StreamedChunk
 import org.llm4s.llmconnect.model.SystemMessage
-import org.llm4s.llmconnect.model.UserMessage
 import org.llm4s.types.Result
 import smithy4s.schema.Schema as Smithy4sSchema
 import smithy4s.{ ShapeId, Hints }
@@ -138,7 +135,7 @@ object StructuredLLMExample extends IOApp.Simple:
                          |- Educational background
                          |- Overall seniority level based on experience""".stripMargin
 
-        Prompt(Vector(org.adk4s.structured.core.Message(org.adk4s.structured.core.Role.System, content)))
+        Prompt(SystemMessage(content))
     .expecting[Resume]
 
   // ============================================================
@@ -166,7 +163,7 @@ object StructuredLLMExample extends IOApp.Simple:
 
     for
       prompt <- IO.pure(extractResumeTemplate.render(ResumeInput(resumeText)))
-      _      <- IO.println(s"\nPrompt being sent:\n${prompt.messages.map(_.content).mkString("\n")}\n")
+      _      <- IO.println(s"\nPrompt being sent:\n${prompt.conversation.messages.map(_.content).mkString("\n")}\n")
       result <- structured.complete[Resume](prompt)
     yield result
 

@@ -2,7 +2,7 @@ package org.adk4s.structured.test
 
 import cats.effect.IO
 import munit.CatsEffectSuite
-import org.adk4s.structured.core.{ Message as CoreMessage, Prompt, PromptTemplate, Role, Schema, StructuredLLM }
+import org.adk4s.structured.core.{ Prompt, PromptTemplate, Schema, StructuredLLM }
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.AssistantMessage
@@ -10,6 +10,8 @@ import org.llm4s.llmconnect.model.Completion
 import org.llm4s.llmconnect.model.CompletionOptions
 import org.llm4s.llmconnect.model.Conversation
 import org.llm4s.llmconnect.model.StreamedChunk
+import org.llm4s.llmconnect.model.SystemMessage
+import org.llm4s.llmconnect.model.UserMessage
 import org.llm4s.types.Result
 
 class ResumeSchemaTest extends CatsEffectSuite:
@@ -89,8 +91,8 @@ class ResumeSchemaTest extends CatsEffectSuite:
     val extractResume = new PromptTemplate[String]:
       def render(input: String): Prompt =
         val basePrompt = Prompt(
-          CoreMessage(Role.System, "Extract resume information"),
-          CoreMessage(Role.User, s"Extract from: $input")
+          SystemMessage("Extract resume information"),
+          UserMessage(s"Extract from: $input")
         )
         basePrompt.withOutputFormat[Resume]
 

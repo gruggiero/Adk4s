@@ -3,8 +3,7 @@ package org.adk4s.structured.test
 import cats.effect.IO
 import fs2.Stream
 import munit.CatsEffectSuite
-import org.adk4s.structured.core.{ Prompt, Role, Schema, StructuredLLM }
-import org.adk4s.structured.core.Message as CoreMessage
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.AssistantMessage
@@ -12,6 +11,8 @@ import org.llm4s.llmconnect.model.Completion
 import org.llm4s.llmconnect.model.CompletionOptions
 import org.llm4s.llmconnect.model.Conversation
 import org.llm4s.llmconnect.model.StreamedChunk
+import org.llm4s.llmconnect.model.SystemMessage
+import org.llm4s.llmconnect.model.UserMessage
 import org.llm4s.types.Result
 
 class StructuredLLMStreamingTest extends CatsEffectSuite:
@@ -226,8 +227,8 @@ class StructuredLLMStreamingTest extends CatsEffectSuite:
 
     // Prompt already has schema in it
     val promptWithSchema: Prompt = Prompt(
-      CoreMessage(Role.System, "You are a helpful assistant"),
-      CoreMessage(Role.User, "Respond with JSON matching Resume schema")
+      SystemMessage("You are a helpful assistant"),
+      UserMessage("Respond with JSON matching Resume schema")
     )
 
     for

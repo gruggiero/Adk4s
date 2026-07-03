@@ -4,7 +4,7 @@ import fs2.Stream
 import cats.effect.IO
 import org.llm4s.llmconnect.model.StreamedChunk
 import org.llm4s.error.LLMError
-import org.adk4s.core.error.{AdkError, LlmCallError}
+import org.adk4s.core.error.{ AdkError, LlmCallError }
 
 object StreamConverter:
   def fromIterator[A](iter: Iterator[A], chunkSize: Int = 1): Stream[IO, A] =
@@ -27,5 +27,4 @@ object StreamConverter:
       .evalMap(chunk => IO.pure(chunk.content.getOrElse("")))
       .filter(_.nonEmpty)
 
-  extension [A](result: Either[LLMError, Iterator[A]])
-    def toFs2Stream: Stream[IO, A] = fromEither(result)
+  extension [A](result: Either[LLMError, Iterator[A]]) def toFs2Stream: Stream[IO, A] = fromEither(result)

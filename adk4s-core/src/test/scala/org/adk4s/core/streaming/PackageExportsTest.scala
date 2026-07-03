@@ -4,7 +4,8 @@ import munit.CatsEffectSuite
 import fs2.Stream
 import cats.effect.IO
 import cats.effect.Ref
-import org.adk4s.structured.core.Message
+import org.llm4s.llmconnect.model.Message
+import org.llm4s.llmconnect.model.UserMessage
 import scala.concurrent.duration.*
 
 class PackageExportsTest extends CatsEffectSuite:
@@ -52,7 +53,7 @@ class PackageExportsTest extends CatsEffectSuite:
   }
 
   test("Message toStream extension works") {
-    val message = Message(org.adk4s.structured.core.Role.User, "Hello")
+    val message: Message = UserMessage("Hello")
     val stream = message.toStream
     val resultIO = stream.compile.toList
     assertIO(resultIO, List(message))

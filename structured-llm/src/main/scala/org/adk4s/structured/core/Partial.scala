@@ -40,4 +40,4 @@ object Partial:
     new Partial[A]:
       type Repr = R
       def partialSchema: Schema[R] = schema
-      def fromPartial(repr: R): A = convert(repr)
+      def fromPartial(repr: R): A  = convert(repr)

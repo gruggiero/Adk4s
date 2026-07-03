@@ -3,6 +3,7 @@ package org.adk4s.structured.core
 import cats.effect.Async
 import cats.effect.Temporal
 import cats.syntax.all.*
+import org.llm4s.error.LLMError
 import scala.concurrent.duration.Duration
 
 /**
@@ -16,12 +17,36 @@ enum RetryTrigger:
 
   /**
    * Check if a given error should trigger a retry.
+   *
+   * Accepts any `Throwable` and inspects the error to find the underlying
+   * `LLMError` via `getCause` (for `LLMErrorCause`) or direct pattern matching
+   * on `StructuredLLMError.LLMCallFailed`. This makes the trigger wrapper-agnostic:
+   * it works whether the error is a raw `LLMError` (wrapped in `LLMErrorCause`),
+   * a `StructuredLLMError.LLMCallFailed`, or an `AdkError.LlmCallError` (whose
+   * `getCause` returns `LLMErrorCause`).
+   *
+   * spec: error-hierarchy-dedup
    */
-  def shouldRetry(error: StructuredLLMError): Boolean = this match
-    case LLMError          => error match { case _: StructuredLLMError.LLMCallFailed     => true; case _ => false }
-    case ParseFailure      => error match { case _: StructuredLLMError.ParseFailed       => true; case _ => false }
-    case ValidationFailure => error match { case _: StructuredLLMError.ValidationFailed  => true; case _ => false }
+  def shouldRetry(error: Throwable): Boolean = this match
+    case LLMError          => extractLLMError(error).isDefined
+    case ParseFailure      => error match { case _: StructuredLLMError.ParseFailed => true; case _ => false }
+    case ValidationFailure => error match { case _: StructuredLLMError.ValidationFailed => true; case _ => false }
     case All               => true
+
+  /**
+   * Extracts the underlying `LLMError` from a `Throwable` by inspecting
+   * wrapper types and the cause chain.
+   */
+  private def extractLLMError(error: Throwable): Option[LLMError] =
+    error match
+      case llmCallFailed: StructuredLLMError.LLMCallFailed =>
+        Some(llmCallFailed.underlying)
+      case cause: LLMErrorCause =>
+        Some(cause.error)
+      case other =>
+        other.getCause match
+          case cause: LLMErrorCause => Some(cause.error)
+          case _                    => None
 
 object Retry:
 
@@ -39,20 +64,18 @@ object Retry:
     delay: Duration,
     trigger: RetryTrigger
   )(operation: F[A])(using F: Temporal[F]): F[A] =
-    def attempt(remaining: Int, lastError: Option[StructuredLLMError]): F[A] =
+    def attempt(remaining: Int, lastError: Option[Throwable]): F[A] =
       if remaining <= 0 then
-        F.raiseError(lastError.getOrElse(
-          StructuredLLMError.ParseFailed(List.empty, "Max retries exhausted")
-        ))
+        F.raiseError(
+          lastError.getOrElse(
+            StructuredLLMError.ParseFailed(List.empty, "Max retries exhausted")
+          )
+        )
       else
         operation.attempt.flatMap {
           case Right(value) => F.pure(value)
-          case Left(error: StructuredLLMError) =>
-            if trigger.shouldRetry(error) && remaining > 1 then
-              F.sleep(delay) *> attempt(remaining - 1, Some(error))
-            else
-              F.raiseError(error)
-          case Left(other) =>
-            F.raiseError(other)
+          case Left(error: Throwable) =>
+            if trigger.shouldRetry(error) && remaining > 1 then F.sleep(delay) *> attempt(remaining - 1, Some(error))
+            else F.raiseError(error)
         }
     attempt(maxAttempts, None)

@@ -66,15 +66,25 @@ object ClientStrategy:
         operation(head).attempt.flatMap {
           case Right(value) => F.pure(value)
           case Left(error: StructuredLLMError) =>
-            val name: String = clientNames.headOption.getOrElse("unknown")
+            val idx: Int             = errors.size
+            val name: String         = clientNames.lift(idx).getOrElse(s"client-$idx")
             val record: AttemptRecord = AttemptRecord(name, error, "", System.currentTimeMillis())
-            executeFallback(tail, operation, clientNames.drop(1), errors :+ record)
+            executeFallback(tail, operation, clientNames, errors :+ record)
           case Left(other) =>
             F.raiseError(other)
         }
       case empty =>
+        val lastError: StructuredLLMError =
+          errors.lastOption
+            .map(_.error)
+            .getOrElse(
+              StructuredLLMError.ParseFailed(List.empty, "All clients failed")
+            )
+        // Wrap in Enriched when there were multiple attempts so the per-client
+        // AttemptRecord names (including index-based fallback names) are
+        // observable by callers. With a single attempt the Enriched wrapper
+        // adds no information, so we skip it.
         val finalError: StructuredLLMError =
-          errors.lastOption.map(_.error).getOrElse(
-            StructuredLLMError.ParseFailed(List.empty, "All clients failed")
-          )
+          if errors.size > 1 then StructuredLLMError.Enriched(lastError, errors)
+          else lastError
         F.raiseError(finalError)

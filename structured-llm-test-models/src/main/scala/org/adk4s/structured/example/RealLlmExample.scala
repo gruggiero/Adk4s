@@ -314,7 +314,7 @@ object RealLlmExample extends IOApp.Simple {
       IO.println("") *>
       IO.println("MESSAGES:") *>
       IO.println("-" * 80) *>
-      prompt.messages.zipWithIndex
+      prompt.conversation.messages.zipWithIndex
         .map { case (msg, idx) =>
           IO.println(s"\n[${idx + 1}] Role: ${msg.role}") *>
             IO.println("-" * 40) *>

@@ -1,6 +1,7 @@
 package org.adk4s.core.error
 
 import org.llm4s.error.LLMError
+import org.adk4s.structured.core.LLMErrorCause
 import org.adk4s.structured.core.StructuredLLMError
 import org.adk4s.core.interrupt.InterruptSignal
 import cats.Show
@@ -10,6 +11,9 @@ sealed trait AdkError extends Throwable:
   override def getMessage: String = message
 
 case class LlmCallError(underlying: LLMError) extends AdkError:
+  // Wire the cause so getCause returns LLMErrorCause wrapping the original LLMError.
+  // LLMError is not a Throwable, so we wrap it in LLMErrorCause.
+  initCause(LLMErrorCause(underlying))
   def message: String = s"LLM call failed: ${underlying.formatted}"
 
 case class StructuredOutputError(underlying: StructuredLLMError) extends AdkError:
@@ -78,4 +82,3 @@ object AdkError:
   given Show[AdkError] = Show.show(_.message)
 
   def apply(message: String): AdkError = GenericError(message)
-
