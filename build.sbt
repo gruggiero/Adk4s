@@ -93,6 +93,24 @@ lazy val `adk4s-memory-api` = (project in file("adk4s-memory-api"))
     scalacOptions ++= scala3Options
   )
 
+// ── adk4s-memory-testkit — downstream-consumable behavioral laws ───────────
+// Publishes AgentMemoryLaws in main scope so downstream backends (e.g.
+// GraphStore) can depend on it as a regular libraryDependencies line.
+// munit is in MAIN scope (not Test) because AgentMemoryLaws is a test-contract
+// API, not a test-only utility.
+lazy val `adk4s-memory-testkit` = (project in file("adk4s-memory-testkit"))
+  .dependsOn(`adk4s-memory-api`)
+  .settings(
+    name := "adk4s-memory-testkit",
+    libraryDependencies ++= Seq(
+      catsEffect,
+      munitMain,
+      munitCatsEffect,
+      hedgehogMunit
+    ),
+    scalacOptions ++= scala3Options
+  )
+
 lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
   .dependsOn(
     `adk4s-core`,

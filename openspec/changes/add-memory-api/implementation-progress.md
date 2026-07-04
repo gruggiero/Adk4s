@@ -32,8 +32,9 @@
 - [x] Concept-delta + checkpoint
 
 ## 3. memory-testkit
-- [ ] Step 1 — build wiring + typed contract (human gate)
-- [ ] Step 2 — test oracle (human gate)
-- [ ] Step 3 — implementation
-- [ ] Rings: R0 R1 R2 R3 R8
-- [ ] Concept-delta + checkpoint
+- [x] Step 1 — build wiring + typed contract (human gate)
+- [x] Step 2 — test oracle (human gate)
+- [x] Step 3 — implementation
+- [x] Rings: R0 R1 R2 R3 R8
+  - R5 skipped per spec (test harness, not production logic).
+- [x] Concept-delta + checkpoint

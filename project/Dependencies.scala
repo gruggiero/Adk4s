@@ -58,6 +58,11 @@ object Dependencies {
   val munit: ModuleID =
     "org.scalameta" %% "munit" % Versions.Munit % Test
 
+  /** munit in MAIN scope — used by adk4s-memory-testkit, which publishes
+    * AgentMemoryLaws as a downstream-consumable main-scoped API. */
+  val munitMain: ModuleID =
+    "org.scalameta" %% "munit" % Versions.Munit
+
   val munitCatsEffect: ModuleID =
     "org.typelevel" %% "munit-cats-effect" % Versions.MunitCatsEffect % Test
 

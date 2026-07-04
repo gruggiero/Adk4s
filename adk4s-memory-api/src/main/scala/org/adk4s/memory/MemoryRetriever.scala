@@ -52,18 +52,23 @@ object MemoryRetriever:
    * Synthesizes a stable `id` from the hit's fields, packs `score` /
    * `provenance` / `payload` into `metadata` as ujson values.
    */
+  private val reservedKeys: Set[String] = Set("score", "provenance")
+
   def toDocument(hit: MemoryHit): Document =
-    val payloadMeta: Map[String, ujson.Value] = hit.payload.view.mapValues(ujson.Str(_)).toMap
-    val metadata: Map[String, ujson.Value] =
-      payloadMeta
-        .updated("score", ujson.Num(hit.score))
-        ++ hit.provenance.map(p => Map("provenance" -> ujson.Str(p)))
+    val payloadMeta: Map[String, ujson.Value] =
+      hit.payload.view.filterKeys(k => !reservedKeys.contains(k)).mapValues(ujson.Str(_)).toMap
+    val withScore: Map[String, ujson.Value]   = payloadMeta.updated("score", ujson.Num(hit.score))
+    val metadata: Map[String, ujson.Value]    = hit.provenance match
+      case Some(p) => withScore.updated("provenance", ujson.Str(p))
+      case None    => withScore
     Document(id = synthesizeId(hit), content = hit.text, metadata = metadata)
 
-  /** Deterministic id from hit fields (SHA-256 hex of text|score|provenance|payload). */
+  /** Deterministic id from hit fields (SHA-256 hex of text|score|provenance|validFrom|validTo|payload). */
   private def synthesizeId(hit: MemoryHit): String =
     val provenanceStr: String = hit.provenance.getOrElse("")
+    val validFromStr: String  = hit.validFrom.map(_.toString).getOrElse("")
+    val validToStr: String    = hit.validTo.map(_.toString).getOrElse("")
     val payloadStr: String    = hit.payload.toSeq.sortBy(_._1).map((k, v) => s"$k=$v").mkString(";")
-    val input: String         = s"${hit.text}|${hit.score}|$provenanceStr|$payloadStr"
+    val input: String         = s"${hit.text}|${hit.score}|$provenanceStr|$validFromStr|$validToStr|$payloadStr"
     val digest: Array[Byte]   = MessageDigest.getInstance("SHA-256").digest(input.getBytes("UTF-8"))
     digest.map(b => f"$b%02x").mkString
