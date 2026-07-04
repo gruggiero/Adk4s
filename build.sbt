@@ -37,7 +37,7 @@ lazy val scala3Options: Seq[String] = Seq(
   "-feature",
   "-unchecked",
   "-Xkind-projector:underscores",
-  "-source:future"
+  // "-source:future"
 )
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,21 @@ lazy val `adk4s-core` = (project in file("adk4s-core"))
       llm4s,
       catsEffect
     ) ++ fs2 ++ testDeps,
+    scalacOptions ++= scala3Options
+  )
+
+// ── adk4s-memory-api — durable, recallable agent memory capability ─────────
+// Effect-polymorphic interface (AgentMemory[F]) + value types + in-process
+// test double (InMemoryAgentMemory) + Retriever bridge (MemoryRetriever).
+// Depends on adk4s-core for Retriever/Document/RetrieverConfig.
+lazy val `adk4s-memory-api` = (project in file("adk4s-memory-api"))
+  .dependsOn(`adk4s-core`)
+  .settings(
+    name := "adk4s-memory-api",
+    libraryDependencies ++= Seq(
+      catsEffect,
+      fs2Core
+    ) ++ testDeps,
     scalacOptions ++= scala3Options
   )
 
