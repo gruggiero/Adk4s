@@ -1,6 +1,7 @@
 package org.adk4s.orchestration.state
 
 import cats.effect.IO
+import org.llm4s.llmconnect.model.Message
 import workflows4s.wio.{WIO, WorkflowContext}
 
 trait AdkWorkflowContext extends WorkflowContext:
@@ -9,14 +10,14 @@ trait AdkWorkflowContext extends WorkflowContext:
 
 object AgentStateContext extends AdkWorkflowContext:
   case class AgentState(
-    messages: List[org.adk4s.structured.core.Message] = Nil,
+    messages: List[Message] = Nil,
     stepCount: Int = 0,
     toolCallCount: Int = 0,
     metadata: Map[String, String] = Map.empty
   )
 
   sealed trait AgentEvent
-  case class MessageAdded(message: org.adk4s.structured.core.Message) extends AgentEvent
+  case class MessageAdded(message: Message) extends AgentEvent
   case class StepCompleted(stepNumber: Int) extends AgentEvent
   case class ToolCalled(toolName: String) extends AgentEvent
   case class MetadataUpdated(key: String, value: String) extends AgentEvent

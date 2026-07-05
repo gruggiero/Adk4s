@@ -2,8 +2,7 @@ package org.adk4s.core.streaming
 
 import fs2.{ Stream, Pipe }
 import cats.effect.IO
-import org.adk4s.structured.core.{ Message, Role }
-import org.llm4s.llmconnect.model.{ Message as Llm4sMessage, MessageRole, SystemMessage, UserMessage, AssistantMessage, ToolMessage }
+import org.llm4s.llmconnect.model.{ Message, MessageRole, SystemMessage, UserMessage, AssistantMessage, ToolMessage }
 
 object MessageStream:
   def box(message: Message): Stream[IO, Message] =
@@ -12,7 +11,7 @@ object MessageStream:
   def fromMessages(messages: Message*): Stream[IO, Message] =
     Stream.emits(messages)
 
-  def concatenate(role: Role): Pipe[IO, String, Message] =
+  def concatenate(role: MessageRole): Pipe[IO, String, Message] =
     _.fold("")(_ + _).flatMap(content => Stream.emit(messageForRole(role, content)))
 
   def merge(streams: Stream[IO, Message]*): Stream[IO, Message] =
@@ -29,7 +28,7 @@ object MessageStream:
 
   extension (messages: Seq[Message]) def toStreamIO: Stream[IO, Message] = Stream.emits(messages)
 
-  private def messageForRole(role: Role, content: String): Message =
+  private def messageForRole(role: MessageRole, content: String): Message =
     role match
       case MessageRole.System    => SystemMessage(content)
       case MessageRole.User      => UserMessage(content)
