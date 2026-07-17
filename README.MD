@@ -11,6 +11,8 @@ graph TD
     core["<b>adk4s-core</b><br/>ChatModel, Tool,<br/>Runnable, Lambda,<br/>ToolsNode, Events,<br/>Interrupt/Resume"]
     orchestration["<b>adk4s-orchestration</b><br/>ReactAgent,<br/>WIOGraph,<br/>AgentRunner,<br/>Workflow DSL"]
     structured["<b>structured-llm</b><br/>StructuredLLM,<br/>Schema[A],<br/>SAP Parser,<br/>Prompt Templates"]
+    memoryApi["<b>adk4s-memory-api</b><br/>AgentMemory,<br/>Episode, MemoryHit,<br/>MemoryRetriever,<br/>InMemoryAgentMemory"]
+    memoryTestkit["<b>adk4s-memory-testkit</b><br/>AgentMemoryLaws<br/>(reusable contract)"]
 
     llm4s["<b>llm4s</b><br/>LLMClient,<br/>Conversation,<br/>ToolFunction"]
     workflows4s["<b>workflows4s</b><br/>WIO monad,<br/>WorkflowContext,<br/>Event sourcing"]
@@ -24,6 +26,8 @@ graph TD
     orchestration --> workflows4s
     structured --> llm4s
     structured --> workflows4s
+    memoryApi --> core
+    memoryTestkit --> memoryApi
 ```
 
 ## What LLM4S Provides (Foundation)
@@ -245,6 +249,63 @@ val resume: IO[Resume] = structured.complete[Resume](
 
 SAP recovers from common LLM output issues: markdown code fences, trailing commas, single quotes, unquoted keys, comments, and truncated responses.
 
+### AgentMemory — Durable, Recallable Memory
+
+ADK4S agents are stateless across runs by default (`ReactMemoryExample` only keeps the in-conversation message list). The `adk4s-memory-api` module adds a **lightweight capability interface** for durable, cross-session, semantically-searchable memory — the same architectural move ADK4S already made with `Tool` and `Retriever`: the abstraction lives here, implementations live elsewhere.
+
+The interface is effect-polymorphic and imposes no `Async`/`Sync` constraint on callers. A real temporal knowledge-graph backend (GraphStore with Neo4j, embeddings, etc.) and a zero-dependency in-process test double satisfy the same trait:
+
+```scala
+import cats.effect.IO
+import org.adk4s.memory.*
+
+trait AgentMemory[F[_]]:
+  def remember(episode: Episode): F[EpisodeOutcome]
+  def recall(query: String, k: Int, scope: Option[TemporalScope] = None): F[List[MemoryHit]]
+  def rememberAll(episodes: List[Episode])(using Monad[F]): F[List[EpisodeOutcome]]
+```
+
+**Value types** (all in `org.adk4s.memory`):
+
+- `Episode(content, sourceType, timestamp, groupId?, metadata?)` — a discrete unit of experience (conversation turn, tool result, ingested document). `timestamp` is *valid time* (when facts were true), not record time. `SourceType` enum: `Conversation`, `Document`, `StructuredData`, `ToolResult`, `ExternalApi`.
+- `EpisodeOutcome(entitiesExtracted, relationshipsCreated, edgesInvalidated, processingTimeMs, errors, episodeId?)` — counts-only report from `remember`. A backend that does no extraction reports zeros and still succeeds.
+- `MemoryHit(text, score, validFrom?, validTo?, provenance?, payload?)` — a single recalled fact, agent-facing `text` suitable for splicing into a prompt.
+- `TemporalScope(asOf)` — optional point-in-time scoping for recall. Backends without temporal support MUST ignore it rather than fail.
+
+**In-process test double** — `InMemoryAgentMemory[F]` (requires `Sync[F]`): substring/term-overlap scoring, no extraction, no embeddings, ignores `scope`. Useful for tests, demos, and local dev.
+
+```scala
+import cats.effect.IO
+import org.adk4s.memory.*
+
+val mem: IO[AgentMemory[IO]] = InMemoryAgentMemory.create[IO]
+```
+
+**Bridge to the existing `Retriever`** — `MemoryRetriever` adapts any `AgentMemory[F]` into the `Retriever[F]` interface that `ReactAgent` / `ToolsNode` already consume, so current agent wiring accepts memory with no new plumbing. It honors `RetrieverConfig.topK` and `minScore`, and packs `score` / `provenance` / `payload` into `Document.metadata` with a deterministic SHA-256 `id`:
+
+```scala
+import org.adk4s.core.component.Retriever
+import org.adk4s.memory.MemoryRetriever
+
+val retriever: Retriever[IO] = MemoryRetriever[IO](mem, k = 8, scope = None)
+```
+
+**Behavioral contract (testkit)** — `adk4s-memory-testkit` publishes `AgentMemoryLaws` in **main** scope so downstream backends depend on it as a regular library and run the same laws against their implementation (e.g. GraphStore with Testcontainers-backed Neo4j). The laws encode four invariants:
+
+1. **Recall-after-remember** (gated by `indexesContent`): a remembered term is found by `recall`.
+2. **Score ordering**: `recall` results are sorted by descending `score`.
+3. **k bound**: `recall(_, k)` returns at most `k` hits.
+4. **Temporal ignorability**: `recall` with `Some(scope)` never errors.
+
+```scala
+import org.adk4s.memory.testkit.AgentMemoryLaws
+
+val laws: AgentMemoryLaws = AgentMemoryLaws(indexesContent = true)
+mem.flatMap(laws.all).assertEquals(true)   // InMemoryAgentMemory satisfies the contract
+```
+
+**Design boundaries**: no storage engine, embeddings, or graph logic live in this module; no mandatory change to `ReactAgent` behavior (the optional memory hook in orchestration is strictly opt-in and additive); no heavy transitive dependencies on the main classpath.
+
 ### WIOGraph — DAG-Based Workflow Orchestration
 
 Builds on workflows4s' WIO monad to define type-safe directed acyclic graphs that compile to executable workflows:
@@ -272,6 +333,8 @@ Node types: `WIOPureNode` (pure), `WIORunIONode` (effectful), `WIORunnableNode` 
 | Module | Purpose |
 |--------|---------|
 | **adk4s-core** | ChatModel, Tool, Runnable, Lambda, ToolsNode, AgentEvent, InterruptSignal, Streaming, Error types |
+| **adk4s-memory-api** | AgentMemory capability, Episode, MemoryHit, TemporalScope, MemoryRetriever bridge, InMemoryAgentMemory test double |
+| **adk4s-memory-testkit** | AgentMemoryLaws — reusable behavioral contract any AgentMemory backend can run |
 | **adk4s-orchestration** | ReactAgent, AgentRunner, WIOGraph, Workflow DSL, State management, Graph execution |
 | **structured-llm** | StructuredLLM, Schema[A], SchemaAlignedParser, PromptTemplate |
 | **structured-llm-test-models** | Smithy schema definitions and tests for structured-llm |
@@ -431,6 +494,8 @@ Type-safe structured outputs with Schema-Aligned Parser.
 sbt compile                    # compile all modules
 sbt test                       # run all tests
 sbt "adk4s-core/test"          # test core module only
+sbt "adk4s-memory-api/test"    # test memory API module only
+sbt "adk4s-memory-testkit/test" # run the AgentMemoryLaws contract suite
 sbt "adk4s-orchestration/test" # test orchestration module only
 sbt scalafmt                   # format code
 sbt assembly                   # build fat JAR
