@@ -31,13 +31,17 @@ enum SourceType:
  * Result of committing one episode. Counts only — no infrastructure types
  * leak across the boundary. A backend that does no extraction (e.g. the test
  * double) reports zeros and still succeeds.
+ *
+ * `episodeId` carries the backend-assigned identifier for the stored episode,
+ * if one was created. Backends that do not assign an ID leave this as `None`.
  */
 final case class EpisodeOutcome(
   entitiesExtracted: Int,
   relationshipsCreated: Int,
   edgesInvalidated: Int,
   processingTimeMs: Long,
-  errors: List[String] = Nil
+  errors: List[String] = Nil,
+  episodeId: Option[String] = None
 ):
   def isSuccess: Boolean = errors.isEmpty
 
