@@ -1,0 +1,19 @@
+# Concept-registry drift check (verified-scala3 workflow).
+# Copy to .github/workflows/registry-check.yml.
+name: registry-check
+
+on:
+  push:
+    paths:
+      - "openspec/**"
+      - "**/*.scala"
+      - "**/*.smithy"
+  pull_request:
+
+jobs:
+  registry-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run concept-registry drift check
+        run: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .

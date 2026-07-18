@@ -1,0 +1,14 @@
+# Concept-registry drift check (verified-scala3 workflow).
+# Add as a job to the existing .gitlab-ci.yml, or use standalone.
+registry-check:
+  stage: test
+  image: alpine/git
+  script:
+    - apk add --no-cache bash
+    - ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
+  rules:
+    - changes:
+        - "openspec/**/*"
+        - "**/*.scala"
+        - "**/*.smithy"
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'

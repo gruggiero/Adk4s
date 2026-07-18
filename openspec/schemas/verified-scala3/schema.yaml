@@ -1,5 +1,5 @@
 name: verified-scala3
-version: 2
+version: 4
 description: >
   Depth-first verified Scala 3 workflow for functional, type-safe codebases.
   Correctness-first: every spec flows through
@@ -12,6 +12,22 @@ description: >
   Shared domain concepts accumulate incrementally via a concept inventory that
   prevents duplicate type creation. The actual project stack (test framework,
   actor/HTTP/persistence libraries, verification tools) is DETECTED, not assumed.
+
+  Since version 2.1 the workflow also supports a repo-level BEHAVIORAL CONCEPT
+  REGISTRY (openspec/concepts/, in the Meng & Jackson "What You See Is What
+  It Does" sense): specs reference behavior as Concept/action; each concept
+  file's Implementation map is the single place code identifiers live;
+  cross-concept flows are named synchronizations. Bootstrap a project with
+  scanner/install-skills.sh (copies the schema's skill sources into
+  .claude/skills/), the openspec-extract-concepts skill, and the
+  templates/concept-registry/ templates; verify with
+  scanner/registry-check.sh, wired into CI (dependency-free: bash + git
+  grep). registry-check also verifies declared fold fields ("maps f1, f2, ..."
+  rows must match the fold's file — the machine check for declared-but-never-
+  folded state) and lints active change specs' "Concepts Used (behavioral)"
+  tables against the registry. Registry-aware rules in the spec template and
+  apply instruction are conditional — projects without a registry are
+  unaffected.
 
 artifacts:
   - id: proposal
@@ -160,6 +176,28 @@ artifacts:
       - every recorded generator compiles (exists in test sources as recorded)
       Report any discrepancy explicitly rather than silently recording it.
 
+      BEHAVIORAL REGISTRY PASS (if openspec/concepts/ exists) — the type
+      inventory above catalogs *types*; the behavioral concept registry at
+      openspec/concepts/ catalogs *behavior* (concepts in the Meng & Jackson
+      sense: purpose / state / actions / operational principle, plus
+      synchronizations). During a scan, run this pass AGAINST the registry
+      (do not regenerate it):
+      1. Run openspec/schemas/verified-scala3/scanner/registry-check.sh — it
+         verifies every Implementation-map symbol against the source tree,
+         every declared fold field against its fold file, and every
+         Concept/action cited by active change specs against the registry.
+         A failing row MUST be fixed as part of the change that moved the code.
+      2. Detect new candidate concepts and syncs — flag for human review:
+         - a new variant in a persistent entity's command/event enum not in
+           any concept's action table
+         - a new message consumer handler, producer, or HTTP middleware not
+           in any Synchronizations section or the README sync index
+         - a new persisted state component not owned by any concept (and for
+           state-bearing concepts, verify it is listed in a "maps ..." fold
+           declaration)
+      3. Record the registry check result in the inventory's "Behavioral
+         Concepts (registry pass)" section.
+
       IMPORTANT: If the project is new or empty, create the inventory with empty tables
       and header rows only. The inventory will be populated as specs are implemented.
 
@@ -250,6 +288,23 @@ artifacts:
           cannot carry a structured `ToolCallError`. Resolve the contradiction
           in the spec (amend the requirement or the producing signature); do
           NOT defer it to implementation.
+      14. ALTITUDE RULE — if the project has a concept registry
+          (openspec/concepts/): requirements and scenarios use behavioral
+          vocabulary only (Concept/action references, user-facing surface
+          language, new domain terms, test vectors). Code identifiers — module
+          names, error classes, build commands — go in the spec's
+          "## Implementation Anchors" section, never inside a Given/When/Then.
+          Cite touched concepts in "## Concepts Used (behavioral)" with links;
+          if the spec alters a concept's actions/state/syncs, state that
+          updating the concept file is part of the spec.
+      15. ADVERSARIAL RULE — every requirement containing "only", "never", or
+          "must not" MUST have at least one scenario whose input the
+          requirement forbids. Positive examples alone do not pin a negative
+          requirement.
+      16. MUST-CONFIRM RULE — any classification table, code mapping, or
+          value domain whose authoritative source is outside the repo is
+          marked "MUST-CONFIRM — do not invent", with a pointer to the real
+          source. Never write invented values into a spec.
     requires:
       - proposal
       - capability-profile
@@ -302,6 +357,20 @@ artifacts:
           type-feasible vs the producing API's return type. (specs rule 13.)
           A `Then` of "Left(ToolCallError.InvalidArguments(...))" produced by
           a handler typed `Either[String, R]` FAILS until resolved.
+      15. ADVERSARIAL RULE — every requirement containing "only", "never", or
+          "must not" has at least one scenario whose input the requirement
+          forbids. (specs rule 15.) Positive examples alone do not satisfy a
+          negative requirement — FAIL if no adversarial scenario exists.
+      16. MUST-CONFIRM RULE — every classification table, code mapping, or
+          value domain whose authoritative source is outside the repo is
+          marked "MUST-CONFIRM" with a pointer to the real source. (specs
+          rule 16.) Invented plausible values FAIL — the apply phase cannot
+          proceed on fabricated data.
+      17. ALTITUDE RULE (if openspec/concepts/ exists) — no Given/When/Then
+          clause contains code identifiers (module names, error class names,
+          build commands). These belong in "## Implementation Anchors".
+          Cited concepts in "## Concepts Used (behavioral)" link to registry
+          files. (specs rule 14.)
 
       VERDICT: each spec gets PASS / FAIL. A FAIL lists the exact offending
       headings and what is missing. Do NOT proceed to implementation-order while
@@ -519,6 +588,22 @@ apply:
       Obligations: made exhaustive over the new variant set; explicitly rejects
       the new variants; or a justified `case` with rationale.
     - Record the scan result (sites found + resolution) in the checkpoint.
+
+    REGISTRY GATE (if openspec/concepts/ exists) — BLOCKING:
+    a. Run openspec/schemas/verified-scala3/scanner/registry-check.sh — it
+       must pass before you write code. A stale Implementation-map row means
+       the spec's ground truth has drifted: fix the map first.
+    b. For every concept the spec cites in "Concepts Used (behavioral)",
+       open its concept file and verify each state component and action the
+       spec RELIES ON is actually realized: read the fold/handler the
+       Implementation map points to — a field declared on a model shape but
+       never populated by the fold is NOT available. If a spec assumption
+       contradicts the concept file or the code, STOP and report the
+       discrepancy instead of implementing on top of it.
+    c. For every spec item marked MUST-CONFIRM: STOP and ask the human for
+       the authoritative data. Do NOT synthesize plausible values —
+       fabricated tables, codes, or mappings are a schema violation even if
+       every test passes.
 
     ═══════════════════════════════════════════════════════════════════════════
     STEP 1 — TYPED CONTRACT ◄ MANDATORY — GENUINELY COMPILED
@@ -822,6 +907,17 @@ apply:
     - New ScalaCheck generators
     Use ACTUAL source details (package, constraint), not planned ones.
 
+    REGISTRY UPDATE (if openspec/concepts/ exists): if this spec altered a
+    concept's actions, state, or synchronizations, update the corresponding
+    openspec/concepts/*.md file NOW — state declaration, action cases,
+    Implementation map rows, sync blocks, deviations. If the spec added or
+    changed a state component, keep the fold row's "maps f1, f2, ..."
+    declaration in step with the fold's actual field list (exact field
+    names — registry-check verifies each against the fold's file). Keep the
+    map's symbols exact and re-run scanner/registry-check.sh: it must pass,
+    including its spec-reference lint over this change's specs. An
+    implementation whose concept files are stale is not complete.
+
     ███████████████████████████████████████████████████████████████████████████
     STEP 13 — MANDATORY CHECKPOINT ◄ YOU MUST STOP HERE
     ███████████████████████████████████████████████████████████████████████████
@@ -839,6 +935,7 @@ apply:
       **Adversarial review:** <PASS | PARTIAL/FAIL items with human decision needed>
       **Proof obligations:** <all enforced / list of manually-reviewed ones>
       **Concepts added to inventory:** <list or "none">
+      **Concept registry files updated:** <list or "none / n.a.">
       **Concept delta:** <exactly as committed | deviations + resolution>
       **Cross-reference table updates:** Ring 3: +<added>/~<updated>, Ring 5: +<added>/~<updated>
       **Design decisions made:** <any deviation from the spec or notable choices>

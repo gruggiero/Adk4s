@@ -17,7 +17,32 @@
      - No vague words ("valid", "fast", "reasonable", "correct") without a
        concrete definition next to them
      - Any "unreachable" claim needs a type-level proof or explicit runtime check
-     - Enum/GADT extensions must state how existing pattern matches behave -->
+     - Enum/GADT extensions must state how existing pattern matches behave
+     - ADVERSARIAL RULE: every requirement containing "only", "never", or
+       "must not" needs at least one scenario whose INPUT the requirement
+       forbids. Positive examples alone do not pin a negative requirement.
+     - MUST-CONFIRM RULE: any classification table, code mapping, or value
+       domain whose authoritative source is outside the repo must be marked
+       **MUST-CONFIRM — do not invent** with a pointer to where the real data
+       lives. The apply phase stops and asks; synthesizing plausible values is
+       a schema violation. -->
+
+## Concepts Used (behavioral)
+
+<!-- If the project has a concept registry (openspec/concepts/), cite the
+     behavioral concepts this spec touches as Concept or Concept/action,
+     with a link to the concept file and one line on the role here.
+     Cross-concept requirements should lean on the registry's named
+     synchronizations rather than restating imperative recipes.
+     If the project has no registry, delete this section. -->
+
+| Concept | Role here | File |
+|---------|-----------|------|
+| <!-- e.g. Anagrafica --> | <!-- e.g. state gains field X; record payload extended --> | <!-- link --> |
+
+<!-- If this spec alters a concept's actions, state, or synchronizations,
+     updating the corresponding openspec/concepts/*.md file is PART OF
+     implementing this spec. Say so explicitly here. -->
 
 ## Concepts Used (from inventory)
 
@@ -42,6 +67,13 @@
 | <!-- e.g. TransferResult --> | <!-- e.g. case class --> | <!-- e.g. Holds from/to balances after transfer --> |
 
 ## ADDED Requirements
+
+<!-- ALTITUDE RULE (if openspec/concepts/ exists): requirements and scenarios
+     use behavioral vocabulary only — Concept/action references, the project's
+     user-facing surface language (DSL paths, API fields), new domain terms,
+     concrete test vectors. Module names, error class names, and build commands
+     belong in "## Implementation Anchors" at the bottom, never in a
+     Given/When/Then. -->
 
 ### Requirement: [Requirement Name]
 
@@ -221,3 +253,19 @@ always {
 | <!-- e.g. Missing attribute gives Tri.U --> | <!-- scenario --> | <!-- ScalaCheck property --> | <!-- EvalSpec --> |
 | <!-- e.g. Replay equals live transition --> | <!-- invariant --> | <!-- model/property test --> | <!-- ReplaySpec --> |
 | <!-- e.g. Invalid ID unrepresentable --> | <!-- type strategy --> | <!-- opaque type + constructor property --> | <!-- domain spec --> |
+
+## Implementation Anchors
+
+<!-- The ONE place in this spec where code identifiers may appear (when a
+     concept registry exists — otherwise the "Concepts Used (from inventory)"
+     table already carries type-level references). Existing types/modules this
+     spec touches, the modules each requirement lands in, and any
+     build/codegen steps. The apply phase reads this for zero-hop precision;
+     for behavior owned by a registry concept, prefer linking the concept
+     file's Implementation map over repeating symbols here.
+     Delete this section if not applicable. -->
+
+| Anchor | Kind | Where | Note |
+|--------|------|-------|------|
+| <!-- e.g. AccountService --> | <!-- trait --> | <!-- package/file --> | <!-- e.g. gains method X --> |
+| <!-- e.g. sbt someCodegen/run --> | <!-- build step --> | <!-- module --> | <!-- when to run --> |

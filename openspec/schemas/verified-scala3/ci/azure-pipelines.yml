@@ -1,0 +1,19 @@
+# Concept-registry drift check (verified-scala3 workflow).
+# Dependency-free: bash + git grep only — no JDK, no sbt, no internal Nexus.
+trigger:
+  branches:
+    include:
+      - "*"
+
+pr:
+  branches:
+    include:
+      - "*"
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+  - bash: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
+    displayName: registry-check (concept registry drift)

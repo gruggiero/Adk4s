@@ -77,3 +77,30 @@
 | Resource | Type | Purpose | Package | Introduced By |
 |----------|------|---------|---------|---------------|
 | <!-- n/a --> | <!-- n/a --> | <!-- n/a --> | <!-- n/a --> | <!-- n/a --> |
+
+## Behavioral Concepts (registry pass)
+
+<!-- If the project has a concept registry (openspec/concepts/), this section
+     records the registry check result and any new candidate concepts/syncs
+     detected during the scan. The type inventory above catalogs *types*; the
+     behavioral concept registry catalogs *behavior* (concepts in the Meng &
+     Jackson sense: purpose / state / actions / operational principle, plus
+     synchronizations). See openspec/concepts/README.md for the format.
+
+     During a scan, run this pass AGAINST the registry (do not regenerate it):
+     1. Run openspec/schemas/verified-scala3/scanner/registry-check.sh .
+     2. Flag for human review (do not auto-write concept files):
+        - a new variant in a persistent entity's command/event enum not in any
+          concept's action table
+        - a new message consumer handler, producer, or HTTP middleware not in
+          any Synchronizations section or the README sync index
+        - a new persisted state component not owned by any concept (and for
+          state-bearing concepts, verify it is listed in a "maps ..." fold
+          declaration)
+     3. Report alongside the type-inventory summary above.
+
+     Delete this section if the project has no concept registry. -->
+
+**registry-check.sh**: <!-- OK / FAILED (paste summary line) -->
+**Stale implementation-map rows**: <!-- list or "none" -->
+**Unregistered actions / syncs / state components**: <!-- list or "none" -->
