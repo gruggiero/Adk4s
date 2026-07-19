@@ -119,7 +119,8 @@ lazy val `adk4s-memory-testkit` = (project in file("adk4s-memory-testkit"))
 lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
   .dependsOn(
     `adk4s-core`,
-    `structured-llm`
+    `structured-llm`,
+    `adk4s-memory-api`
   )
   .settings(
     name := "adk4s-orchestration",
