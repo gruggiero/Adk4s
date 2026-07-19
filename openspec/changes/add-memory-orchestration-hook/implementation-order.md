@@ -54,6 +54,31 @@ using this column as the starting estimate. The current fixed
 `stryker4s.conf` `mutate = ["**/memory/MemoryRetriever.scala"]` is stale
 (left over from the archived memory-api change) and MUST be repointed.
 
+## Public-Type-Change Impact Scans (Step 0, schema v7)
+
+Spec 2 is a PUBLIC-TYPE-CHANGE: it extends the sealed `AgentEvent` ADT in
+`adk4s-core.interrupt` with two new variants (`MemoryRecalled`,
+`MemoryWritten`). Per schema v7 Step 0, this triggers the
+PUBLIC-TYPE-CHANGE IMPACT SCAN BEFORE any code is written:
+
+- PRIMARY METHOD:
+  `openspec/schemas/verified-scala3/scanner/impact-scan.sh org.adk4s.core.interrupt.AgentEvent`
+  — computes the compiler-resolved reference set (Metals `get-usages` on
+  the running :8394 endpoint) and reports catch-all arms near a usage; it
+  falls back to a whole-tree grep by itself when no Metals endpoint is
+  running.
+- For each catch-all site found, require one of (recorded in the spec's
+  Proof Obligations): made exhaustive over the new variant set; explicitly
+  rejects the new variants; or a justified `case` with rationale.
+- The capability-check.md already records the pre-scan result (Metals on
+  :8394 surfaced catch-alls in `EventStreamExample:89`,
+  `HierarchicalEventStreamExample:242/262`, `AgentTool:122`); the spec 2
+  Step 0 task re-runs the scan against the baseline and records the
+  resolution per site in the checkpoint.
+
+Spec 1 is NOT a public-type-change (it adds new types, does not widen an
+existing sealed ADT), so no impact scan is required for it.
+
 ## Human Gate Tier
 
 | # | Spec | Tier (combined/separate) | Justification |
@@ -81,19 +106,57 @@ exhaustiveness obligation is type-enforced, not complex logic).
 - [ ] 2. `specs/memory-orchestration-events/spec.md` — add `MemoryRecalled` + `MemoryWritten` to the sealed `AgentEvent` ADT in `adk4s-core.interrupt`; add the two `emit` calls inside `MemoryAwareRunner`; update `openspec/concepts/agent-event-stream.md`.
 
 <!-- Process each spec in this exact order. For each spec:
-     1. Record baseline SHA (clean tree) + inventory snapshot; read
-        openspec/concept-inventory.md — import existing concepts; verify the spec's
-        Proof Obligations table is complete
-     2. Typed contract (mandatory) — genuinely compiled in test sources
+     0. STEP 0 — BASELINE + CONCEPT CHECK (schema v7):
+        - working tree clean; record `git rev-parse HEAD` as BASELINE SHA in
+          implementation-progress.md (every per-spec diff is `git diff <baseline>`)
+        - INVENTORY SNAPSHOT: run the semantic scanner into
+          `openspec/changes/<change>/inventory-snapshots/<spec>-before.md`
+          (Step 12 re-runs it and machine-diffs the two)
+        - read openspec/concept-inventory.md — import existing concepts; verify
+          the spec's Proof Obligations table is complete
+        - CODE INTELLIGENCE (v7): the Metals MCP endpoint on :8394 is running
+          (see openspec/capability-profile.md "Code Intelligence"). PREFER the
+          schema's semantic recipes (scanner/metals-call.sh resolve/inspect/
+          get-usages, impact-scan.sh, removal-audit.sh — see the
+          openspec-code-intel skill) over grep for symbol questions; every
+          recipe degrades to git grep on its own when the endpoint is down.
+          Semantic answers are index-based: trust them only after a successful
+          compile.
+        - PUBLIC-TYPE-CHANGE IMPACT SCAN (v7, spec 2 ONLY — extends the sealed
+          `AgentEvent` ADT): run
+          `scanner/impact-scan.sh org.adk4s.core.interrupt.AgentEvent` and
+          resolve every catch-all site (see "Public-Type-Change Impact Scans"
+          above); record the resolution in the checkpoint
+        - REGISTRY GATE: run scanner/registry-check.sh (must pass); verify
+          every MUST-CONFIRM item with the human before coding
+     1. Typed contract (mandatory) — genuinely compiled in test sources
         → human review GATE (separate tier: gate 1 of 2)
-     3. Test oracle from spec + contract only (before implementation),
+     2. Test oracle from spec + contract only (before implementation),
         run once for ORACLE POLARITY (red / green-by-design)
         → human review GATE (separate tier: gate 2 of 2)
-     4. Implement through all applicable rings (see table above) — Ring 8
+     3. Implement through all applicable rings (see table above) — Ring 8
         adversarial review (fresh context) runs BEFORE Rings 5/6/7
-     5. Concept delta check (scanner diff) + build-dependency delta +
-        update openspec/concept-inventory.md
-     6. Mark checkbox below, regenerate tasks.md, COMMIT the spec
-     7. STOP for human validation before next spec
+     4. STEP 12 — CONCEPT DELTA CHECK + UPDATE INVENTORY (schema v7):
+        - MECHANICAL: re-run the semantic scanner into
+          `openspec/changes/<change>/inventory-snapshots/<spec>-after.md` and
+          diff against the Step 0 `-before` snapshot — that diff IS the concept
+          delta; compare it line-by-line against the spec's Concepts Introduced
+          table + approved extensions
+        - BUILD-DEPENDENCY DELTA: `git diff <baseline-SHA> -- build.sbt project/`;
+          any NEW library dependency must be named in the proposal/design or
+          get explicit human approval at the checkpoint
+        - REMOVAL AUDIT (v7): for every field/type REMOVED from a refactored
+          concept, run `scanner/removal-audit.sh --suggest <baseline-SHA>` then
+          `removal-audit.sh <suspect-fqcn>...` for who-still-uses verdicts
+          (ORPHAN-CANDIDATE = only self-references remain). Each orphan MUST be
+          deleted in this change or explicitly retained with rationale. (This
+          change is purely additive — no removals — so the audit is expected to
+          yield "none removed", but it MUST be run and recorded.)
+        - append verified NEW concepts to openspec/concept-inventory.md
+          (provenance `spec:<change>/<spec>` accumulates across changes)
+        - REGISTRY UPDATE: if the spec altered a concept's actions/state/syncs,
+          update openspec/concepts/*.md NOW and re-run scanner/registry-check.sh
+     5. Mark checkbox below, regenerate tasks.md, COMMIT the spec
+     6. STOP for human validation before next spec
 
      DO NOT skip ahead. DO NOT batch-implement. One spec at a time. -->
