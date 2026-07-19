@@ -24,6 +24,7 @@ graph TD
     core --> llm4s
     orchestration --> core
     orchestration --> workflows4s
+    orchestration --> memoryApi
     structured --> llm4s
     structured --> workflows4s
     memoryApi --> core
@@ -193,9 +194,11 @@ AgentEvent.IterationCompleted(runPath, iteration, remainingSteps)
 AgentEvent.Interrupted(runPath, signal)
 AgentEvent.ErrorOccurred(runPath, error)
 AgentEvent.TokenDelta(runPath, delta)
+AgentEvent.MemoryRecalled(runPath, query, hitCount)
+AgentEvent.MemoryWritten(runPath, episodes)
 ```
 
-Events flow through nested agent boundaries via `AgentEventEmitter.scoped(step)`, enabling full visibility into hierarchical execution.
+Events flow through nested agent boundaries via `AgentEventEmitter.scoped(step)`, enabling full visibility into hierarchical execution. The `MemoryRecalled` and `MemoryWritten` variants are emitted by `MemoryAwareRunner` (see below) to trace what memory was recalled and what was written per turn.
 
 ### Interrupt / Resume — Pauseable Agents
 
@@ -306,6 +309,45 @@ mem.flatMap(laws.all).assertEquals(true)   // InMemoryAgentMemory satisfies the 
 
 **Design boundaries**: no storage engine, embeddings, or graph logic live in this module; no mandatory change to `ReactAgent` behavior (the optional memory hook in orchestration is strictly opt-in and additive); no heavy transitive dependencies on the main classpath.
 
+### MemoryAwareRunner — Memory-Orchestrated Agent Execution
+
+The `adk4s-orchestration` module provides a decorator that wires `AgentMemory` into the agent execution lifecycle. `MemoryAwareRunner` wraps an `AgentRunner` with a **pre-turn recall** (retrieves relevant facts and injects them into the prompt) and a **post-turn remember** (persists the user input and/or assistant output as episodes), skipping the write on `Interrupted` or `Failed` so partial or erroneous output never corrupts the memory store.
+
+```scala
+import org.adk4s.orchestration.memory.*
+
+val policy: MemoryPolicy = MemoryPolicy(
+  recallK = 3,                    // top-k facts to retrieve before each turn
+  writeUserInput = true,          // persist the user's message as an Episode
+  writeAssistantOutput = true     // persist the assistant's response as an Episode
+)
+
+val mem: IO[AgentMemory[IO]] = InMemoryAgentMemory.create[IO]
+
+// Wrap any AgentRunner with memory awareness
+mem.flatMap { memory =>
+  val decorator: MemoryAwareRunner =
+    MemoryAwareRunner(runner, Some(memory), policy)
+
+  // run / runWithEvents / resume delegate after pre-turn recall + post-turn write
+  decorator.run(List(UserMessage("What is Alice's role?")))
+}
+```
+
+**Opt-in and additive**: when `memory = None`, the decorator is the identity — the underlying runner's behavior, event stream, and `RunResult` are unchanged. Existing callers and examples run without modification.
+
+**`MemoryPolicy`** is an immutable config case class:
+- `recallK: Int` — number of facts to recall (0 skips recall entirely)
+- `scope: Option[TemporalScope]` — optional point-in-time scoping for recall
+- `writeUserInput` / `writeAssistantOutput` — booleans controlling which episodes are persisted
+- `render: List[MemoryHit] => String` — renders hits into a context block (default: a labeled "Relevant memory:" block)
+
+**Event emission**: when an `AgentEventEmitter` and agent name are supplied to `MemoryAwareRunner`, the decorator emits two observability events on the same stream as the underlying runner:
+- `MemoryRecalled(runPath, query, hitCount)` — after `preTurn`, carrying the user query and the number of hits returned (0 if recall was skipped or empty)
+- `MemoryWritten(runPath, episodes)` — after `postTurn` (only on `Completed`), carrying the number of episodes written (0 if both write flags are false)
+
+Both events share the runner's `RunPath` via `AgentEventEmitter.scoped`, so they nest correctly under the agent's `RunStep` in hierarchical execution. When either `emitter` or `agentName` is `None`, no memory events are emitted (the hook spec's observability-neutral behavior).
+
 ### WIOGraph — DAG-Based Workflow Orchestration
 
 Builds on workflows4s' WIO monad to define type-safe directed acyclic graphs that compile to executable workflows:
@@ -335,7 +377,7 @@ Node types: `WIOPureNode` (pure), `WIORunIONode` (effectful), `WIORunnableNode` 
 | **adk4s-core** | ChatModel, Tool, Runnable, Lambda, ToolsNode, AgentEvent, InterruptSignal, Streaming, Error types |
 | **adk4s-memory-api** | AgentMemory capability, Episode, MemoryHit, TemporalScope, MemoryRetriever bridge, InMemoryAgentMemory test double |
 | **adk4s-memory-testkit** | AgentMemoryLaws — reusable behavioral contract any AgentMemory backend can run |
-| **adk4s-orchestration** | ReactAgent, AgentRunner, WIOGraph, Workflow DSL, State management, Graph execution |
+| **adk4s-orchestration** | ReactAgent, AgentRunner, MemoryAwareRunner, WIOGraph, Workflow DSL, State management, Graph execution |
 | **structured-llm** | StructuredLLM, Schema[A], SchemaAlignedParser, PromptTemplate |
 | **structured-llm-test-models** | Smithy schema definitions and tests for structured-llm |
 | **adk4s-examples** | 55+ runnable examples across all modules |
