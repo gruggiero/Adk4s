@@ -219,6 +219,8 @@ object HierarchicalEventStreamExample extends IOApp.Simple:
           case _: AgentEvent.Interrupted        => "Interrupted"
           case _: AgentEvent.ErrorOccurred      => "ErrorOccurred"
           case _: AgentEvent.TokenDelta         => "TokenDelta"
+          case _: AgentEvent.MemoryRecalled     => "MemoryRecalled"
+          case _: AgentEvent.MemoryWritten      => "MemoryWritten"
 
         for
           _ <- eventCounts.update { (counts: Map[String, Int]) =>

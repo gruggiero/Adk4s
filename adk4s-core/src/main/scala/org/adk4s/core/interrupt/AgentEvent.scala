@@ -65,3 +65,18 @@ object AgentEvent:
   ) extends AgentEvent:
     def withPrependedStep(step: RunStep): TokenDelta =
       copy(runPath = runPath.prepended(step))
+
+  final case class MemoryRecalled(
+    runPath: RunPath,
+    query: String,
+    hitCount: Int
+  ) extends AgentEvent:
+    def withPrependedStep(step: RunStep): MemoryRecalled =
+      copy(runPath = runPath.prepended(step))
+
+  final case class MemoryWritten(
+    runPath: RunPath,
+    episodes: Int
+  ) extends AgentEvent:
+    def withPrependedStep(step: RunStep): MemoryWritten =
+      copy(runPath = runPath.prepended(step))

@@ -78,6 +78,8 @@ object EventStreamExample extends IOApp.Simple:
           case _: AgentEvent.Interrupted        => "Interrupted"
           case _: AgentEvent.ErrorOccurred      => "ErrorOccurred"
           case _: AgentEvent.TokenDelta         => "TokenDelta"
+          case _: AgentEvent.MemoryRecalled     => "MemoryRecalled"
+          case _: AgentEvent.MemoryWritten      => "MemoryWritten"
         IO.println(s"  [EVENT] $eventType @ ${event.runPath.show}")
       }.compile.toList
       result <- resultFiber.joinWithNever

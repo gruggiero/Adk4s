@@ -3,7 +3,7 @@ package org.adk4s.orchestration.memory
 import cats.effect.IO
 import cats.syntax.all.toFlatMapOps
 import fs2.Stream
-import org.adk4s.core.interrupt.{AgentEvent, InterruptResult}
+import org.adk4s.core.interrupt.{AgentEvent, AgentEventEmitter, InterruptResult, RunPath, RunStep}
 import org.adk4s.memory.AgentMemory
 import org.adk4s.orchestration.agent.{AgentRunner, RunResult}
 import org.llm4s.llmconnect.model.{Message, UserMessage}
@@ -18,12 +18,18 @@ import java.util.UUID
   * but ONLY calls `postTurn` when the `RunResult` is `Completed`.
   * `Interrupted`/`Failed` skip the write.
   *
-  * NO event emission in this spec (memory events are the separate events spec).
+  * Event emission: when `emitter` and `agentName` are both `Some`, the
+  * decorator emits `MemoryRecalled` after `preTurn` and `MemoryWritten`
+  * after `postTurn` (only on `Completed`) on the same `AgentEventEmitter`
+  * the underlying runner uses. When either is `None`, no memory events are
+  * emitted (spec 1 behavior).
   */
 final class MemoryAwareRunner(
   agentRunner: AgentRunner,
   memory: Option[AgentMemory[IO]],
-  policy: MemoryPolicy
+  policy: MemoryPolicy,
+  emitter: Option[AgentEventEmitter] = None,
+  agentName: Option[String] = None
 ):
   private val hook: MemoryHook = MemoryHook(memory, policy)
 
@@ -39,31 +45,53 @@ final class MemoryAwareRunner(
 
   /** Run the agent and return both the result and an event stream.
     *
-    * The event stream is the underlying runner's stream verbatim (no memory
-    * events in this spec). The result `IO` runs `preTurn` before the
-    * underlying result `IO` and `postTurn` (only on `Completed`) after it.
+    * When `emitter` and `agentName` are both `Some`, the decorator emits
+    * `MemoryRecalled` after `preTurn` and `MemoryWritten` after `postTurn`
+    * (only on `Completed`) on the same `AgentEventEmitter` the underlying
+    * runner uses. The event stream is `emitter.subscribe`.
+    *
+    * When either is `None` (spec 1 behavior), the event stream is the
+    * underlying runner's stream verbatim (no memory events).
     *
     * NOTE: Context injection (prepending the rendered recall block to the
-    * messages) is applied in `run` but NOT in `runWithEvents`, because the
-    * underlying `runWithEvents` captures the messages at construction time
-    * and the event stream is subscribed before we can run `preTurn`. The
-    * spec's "Pre-turn recall injects context" requirement specifically names
-    * `run`, not `runWithEvents`; `runWithEvents` only requires that
-    * `preTurn` runs (for recall side-effects) and `postTurn` runs on
-    * `Completed`. Context injection in the `runWithEvents` path is deferred
-    * to the events spec, which will have access to the emitter for
-    * `MemoryRecalled` events.
+    * messages) is applied in `run` but NOT in `runWithEvents`. The spec's
+    * "Pre-turn recall injects context" requirement specifically names `run`,
+    * not `runWithEvents`; `runWithEvents` requires that `preTurn` runs (for
+    * recall side-effects + `MemoryRecalled` emission) and `postTurn` runs on
+    * `Completed` (for `MemoryWritten` emission).
     */
   def runWithEvents(messages: List[Message], maxSteps: Int = 10): (IO[RunResult], Stream[IO, AgentEvent]) =
-    val (underlyingIO: IO[RunResult], events: Stream[IO, AgentEvent]) = agentRunner.runWithEvents(messages, maxSteps)
-    val latestUserInput: String = extractLatestUserInput(messages)
-    val wrappedIO: IO[RunResult] =
-      for
-        _      <- hook.preTurn(latestUserInput)
-        result <- underlyingIO
-        _      <- postTurnIfCompleted(result, messages)
-      yield result
-    (wrappedIO, events)
+    (emitter, agentName) match
+      case (Some(em), Some(name)) =>
+        val events: Stream[IO, AgentEvent] = em.subscribe
+        val scopedEm: AgentEventEmitter = em.scoped(RunStep(name))
+        val runPath: RunPath = RunPath.of(name)
+        val latestUserInput: String = extractLatestUserInput(messages)
+        val wrappedIO: IO[RunResult] =
+          for
+            pair         <- hook.preTurnWithHits(latestUserInput)
+            (_, hitCount) = pair
+            // MemoryRecalled fires iff memory is present (spec requirement).
+            // When memory = None, preTurnWithHits returns hitCount = 0 and
+            // we skip the emission entirely.
+            _            <- emitMemoryRecalledIfMemoryPresent(scopedEm, runPath, latestUserInput, hitCount)
+            result       <- agentRunner.run(messages, maxSteps)
+            episodeCount <- postTurnWithCountIfCompleted(result, messages)
+            // MemoryWritten fires iff memory is present AND Completed.
+            _            <- emitMemoryWrittenIfMemoryPresentAndCompleted(scopedEm, runPath, result, episodeCount)
+            _            <- em.complete
+          yield result
+        (wrappedIO, events)
+      case _ =>
+        val (underlyingIO: IO[RunResult], events: Stream[IO, AgentEvent]) = agentRunner.runWithEvents(messages, maxSteps)
+        val latestUserInput: String = extractLatestUserInput(messages)
+        val wrappedIO: IO[RunResult] =
+          for
+            _      <- hook.preTurn(latestUserInput)
+            result <- underlyingIO
+            _      <- postTurnIfCompleted(result, messages)
+          yield result
+        (wrappedIO, events)
 
   /** Resume from a checkpoint with pre-turn recall and post-turn write (only on `Completed`).
     *
@@ -132,3 +160,43 @@ final class MemoryAwareRunner(
         hook.postTurn(groupId, latestUserInput, output, Instant.now)
       case _: RunResult.Interrupted => IO.unit
       case _: RunResult.Failed => IO.unit
+
+  /** Run `postTurnWithCount` only when `result` is `Completed`; return the
+    * episode count. Returns 0 for `Interrupted`/`Failed` (no write).
+    */
+  private def postTurnWithCountIfCompleted(result: RunResult, originalMessages: List[Message]): IO[Int] =
+    result match
+      case RunResult.Completed(output, _) =>
+        val groupId: String = UUID.randomUUID().toString
+        val latestUserInput: String = extractLatestUserInput(originalMessages)
+        hook.postTurnWithCount(groupId, latestUserInput, output, Instant.now)
+      case _: RunResult.Interrupted => IO.pure(0)
+      case _: RunResult.Failed => IO.pure(0)
+
+  /** Emit `MemoryRecalled` only when `memory` is present (non-`None`).
+    * When `memory = None`, `hitCount` is 0 and the spec forbids emission.
+    */
+  private def emitMemoryRecalledIfMemoryPresent(
+    scopedEm: AgentEventEmitter,
+    runPath: RunPath,
+    query: String,
+    hitCount: Int
+  ): IO[Unit] =
+    memory match
+      case Some(_) => scopedEm.emit(AgentEvent.MemoryRecalled(runPath, query, hitCount))
+      case None    => IO.unit
+
+  /** Emit `MemoryWritten` only when `memory` is present (non-`None`) AND
+    * `result` is `Completed`. The spec forbids emission when `memory = None`
+    * or on `Interrupted`/`Failed`.
+    */
+  private def emitMemoryWrittenIfMemoryPresentAndCompleted(
+    scopedEm: AgentEventEmitter,
+    runPath: RunPath,
+    result: RunResult,
+    episodeCount: Int
+  ): IO[Unit] =
+    (memory, result) match
+      case (Some(_), _: RunResult.Completed) =>
+        scopedEm.emit(AgentEvent.MemoryWritten(runPath, episodeCount))
+      case _ => IO.unit

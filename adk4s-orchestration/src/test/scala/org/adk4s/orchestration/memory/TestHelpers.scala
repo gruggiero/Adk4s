@@ -105,6 +105,60 @@ object TestHelpers:
       emitter <- AgentEventEmitter.create()
     yield AgentRunner.create(StubFailingAgent(agentName, "stub", error), store, emitter)
 
+  // ── Emitter-exposed stub runners (for spec: memory-orchestration-events) ──
+
+  /** Builds an `AgentRunner` that returns `RunResult.Completed(output, messages)` on `run`,
+    * AND exposes the `AgentEventEmitter` it uses (so `MemoryAwareRunner` can emit
+    * memory events on the same emitter). Returns `(runner, emitter, agentName)`.
+    */
+  def stubRunnerCompletedWithEmitter(
+    output: String,
+    agentName: String = "stub-agent"
+  ): IO[(AgentRunner, AgentEventEmitter, String)] =
+    for
+      store   <- InMemoryCheckpointStore.create
+      emitter <- AgentEventEmitter.create()
+      runner   = AgentRunner.create(StubCompletedAgent(agentName, "stub", output), store, emitter)
+    yield (runner, emitter, agentName)
+
+  /** Builds an `AgentRunner` that returns `RunResult.Interrupted(_, signal)` on `run`,
+    * AND exposes the `AgentEventEmitter`. Returns `(runner, emitter, agentName)`.
+    */
+  def stubRunnerInterruptedWithEmitter(
+    signal: InterruptSignal,
+    agentName: String = "stub-agent"
+  ): IO[(AgentRunner, AgentEventEmitter, String)] =
+    for
+      store   <- InMemoryCheckpointStore.create
+      emitter <- AgentEventEmitter.create()
+      runner   = AgentRunner.create(StubInterruptingAgent(agentName, "stub", signal), store, emitter)
+    yield (runner, emitter, agentName)
+
+  /** Builds an `AgentRunner` that returns `RunResult.Failed(error)` on `run`,
+    * AND exposes the `AgentEventEmitter`. Returns `(runner, emitter, agentName)`.
+    */
+  def stubRunnerFailedWithEmitter(
+    error: AdkError,
+    agentName: String = "stub-agent"
+  ): IO[(AgentRunner, AgentEventEmitter, String)] =
+    for
+      store   <- InMemoryCheckpointStore.create
+      emitter <- AgentEventEmitter.create()
+      runner   = AgentRunner.create(StubFailingAgent(agentName, "stub", error), store, emitter)
+    yield (runner, emitter, agentName)
+
+  /** Builds an `AgentRunner` whose behavior matches a given `RunResult` variant,
+    * AND exposes the `AgentEventEmitter`. Returns `(runner, emitter, agentName)`.
+    */
+  def stubRunnerForWithEmitter(
+    outcome: RunResult,
+    agentName: String = "stub-agent"
+  ): IO[(AgentRunner, AgentEventEmitter, String)] =
+    outcome match
+      case RunResult.Completed(output, _)   => stubRunnerCompletedWithEmitter(output, agentName)
+      case RunResult.Interrupted(_, signal) => stubRunnerInterruptedWithEmitter(signal, agentName)
+      case RunResult.Failed(error)          => stubRunnerFailedWithEmitter(error, agentName)
+
   /** Builds an `AgentRunner` whose behavior matches a given `RunResult` variant.
     * Used by property tests that draw `RunResult` from a generator.
     */

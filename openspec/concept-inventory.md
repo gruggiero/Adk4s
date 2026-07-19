@@ -125,6 +125,8 @@
 | `Interrupted` | `runPath: RunPath, signal: InterruptSignal` | `org.adk4s.core.interrupt` | pre-existing (AgentEvent variant) |
 | `ErrorOccurred` | `runPath: RunPath, error: AdkError` | `org.adk4s.core.interrupt` | pre-existing (AgentEvent variant) |
 | `TokenDelta` | `runPath: RunPath, delta: String` | `org.adk4s.core.interrupt` | pre-existing (AgentEvent variant) |
+| `MemoryRecalled` | `runPath: RunPath, query: String, hitCount: Int` | `org.adk4s.core.interrupt` | spec:memory-orchestration-events (AgentEvent variant) |
+| `MemoryWritten` | `runPath: RunPath, episodes: Int` | `org.adk4s.core.interrupt` | spec:memory-orchestration-events (AgentEvent variant) |
 | `InterruptResult` | `address: List[AddressSegment], data: ujson.Value` | `org.adk4s.core.interrupt` | pre-existing |
 | `Completed` | `output: String, messages: List[Message]` | `org.adk4s.orchestration.agent` | pre-existing (RunResult variant) — **REUSED by this change** (`MemoryAwareRunner` extracts `output` for `postTurn`) |
 | `Interrupted` | `checkpointId: String, signal: InterruptSignal` | `org.adk4s.orchestration.agent` | pre-existing (RunResult variant) — **REUSED by this change** (`MemoryAwareRunner` skips `postTurn` on this variant) |

@@ -35,6 +35,8 @@ operational principle
 - `Interrupted(runPath, signal: InterruptSignal)`
 - `ErrorOccurred(runPath, error: AdkError)`
 - `TokenDelta(runPath, delta: String)`
+- `MemoryRecalled(runPath, query: String, hitCount: Int)`
+- `MemoryWritten(runPath, episodes: Int)`
 
 ## Implementation map
 
@@ -48,6 +50,8 @@ operational principle
 | variant `Interrupted` | `final case class Interrupted(runPath, signal)` (`adk4s-core/src/main/scala/org/adk4s/core/interrupt/AgentEvent.scala`) |
 | variant `ErrorOccurred` | `final case class ErrorOccurred(runPath, error)` (`adk4s-core/src/main/scala/org/adk4s/core/interrupt/AgentEvent.scala`) |
 | variant `TokenDelta` | `final case class TokenDelta(runPath, delta)` (`adk4s-core/src/main/scala/org/adk4s/core/interrupt/AgentEvent.scala`) |
+| variant `MemoryRecalled` | `final case class MemoryRecalled(runPath, query, hitCount)` (`adk4s-core/src/main/scala/org/adk4s/core/interrupt/AgentEvent.scala`) |
+| variant `MemoryWritten` | `final case class MemoryWritten(runPath, episodes)` (`adk4s-core/src/main/scala/org/adk4s/core/interrupt/AgentEvent.scala`) |
 | class `AgentEventEmitter` | `final class AgentEventEmitter(queue, scopeStep)` (`adk4s-core/src/main/scala/org/adk4s/core/interrupt/AgentEventEmitter.scala`) |
 | action `emit` | `AgentEventEmitter.emit(event): IO[Unit]` (`adk4s-core/src/main/scala/org/adk4s/core/interrupt/AgentEventEmitter.scala`) |
 | action `subscribe` | `AgentEventEmitter.subscribe: Stream[IO, AgentEvent]` (`adk4s-core/src/main/scala/org/adk4s/core/interrupt/AgentEventEmitter.scala`) |
