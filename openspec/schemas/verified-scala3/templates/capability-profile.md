@@ -67,6 +67,22 @@
 | WartRemover | `Warts.unsafe` minus excluded set (see right) | Temporarily excluded: `TripleQuestionMark` (intentional), `Any` (s"..." interpolation false positive), `DefaultArguments`, `IterableOps`, `AsInstanceOf`, `Throw`, `Var`, `OptionPartial`, `StringPlusAny`. Re-enable each as code is refactored. `verified` module: `wartremoverErrors := Seq.empty` (exempt). `adk4s-examples`: same relaxed set. | build.sbt |
 | scalafmt | Config present: scala3 dialect, maxColumn=120, align.preset=more | — | .scalafmt.conf |
 
+## Code Intelligence
+
+<!-- DETECTED, like everything else. If a Metals MCP endpoint is running (or
+     startable), the apply phase prefers the schema's semantic recipes
+     (scanner/metals-call.sh, impact-scan.sh, removal-audit.sh — see the
+     openspec-code-intel skill) over grep for symbol questions. Git grep
+     remains the fallback and the ONLY tool for restricted CI. Semantic
+     answers are index-based — trusted only post-compile. -->
+
+| Item | Detected Value | Evidence |
+|------|---------------|----------|
+| Metals MCP endpoint | <!-- e.g. http://localhost:8394/mcp — PER-PROJECT instance (Metals is workspace-scoped); discovery via .metals/mcp.url; start/stop: scanner/metals-start.sh --> | <!-- metals-call.sh probe --> |
+| Metals version | <!-- e.g. 1.6.7 (pin: MCP tool names are not yet a stable contract) --> | <!-- cs install metals-mcp --> |
+| JDK for Metals | <!-- 17+ required; metals-start.sh auto-detects from JAVA_HOME or PATH java --> | <!-- java -version --> |
+| External-dep API lookup | <!-- e.g. cellar CLI available / sources-jar extraction --> | <!-- which cellar --> |
+
 ## Compile & Test Commands
 
 <!-- The EXACT commands that genuinely compile/run code in this project.

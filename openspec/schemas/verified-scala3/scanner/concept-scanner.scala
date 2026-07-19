@@ -1,21 +1,35 @@
 //> using scala 3.5.2
 //> using dep "com.lihaoyi::os-lib:0.11.3"
+//> using dep "org.scalameta::scalameta:4.13.6"
 //> using options -Wunused:all, -deprecation
 
 package scanner
 
+import scala.meta.*
 import scala.util.matching.Regex
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Concept Scanner for Scala 3 Projects
+//  Concept Scanner for Scala 3 Projects — SEMANTIC (Scalameta) edition
 //
-//  Scans a Scala 3 source tree and extracts domain concepts:
-//  - Refined/opaque types (Iron-style constraints or plain opaque types)
-//  - Sealed traits and enums (with variants)
-//  - Case classes (domain value objects)
-//  - Service traits (tagless final, F[_])
-//  - Smithy models (from .smithy files)
-//  - Property generators (Gen[_], Arbitrary[_] — ScalaCheck or Hedgehog)
+//  Scans a Scala 3 source tree and extracts domain concepts by PARSING the
+//  sources with Scalameta (dialects.Scala3) — not by regexing lines. Regex
+//  scanning demonstrably catalogued prose words from comments as sealed
+//  types and missed nested/multiline declarations; trees cannot make those
+//  mistakes. Files that fail to parse are counted and reported on stderr.
+//
+//  Extracted:
+//  - Refined/opaque types (Iron-style `:|` constraints or plain opaque types)
+//  - Sealed traits / sealed abstract classes (with same-file direct subtypes
+//    as variants) and enums (with cases)
+//  - Case classes (public domain value objects; enum cases excluded by
+//    construction — they are different AST nodes)
+//  - Service traits (any trait with a higher-kinded type param, e.g. F[_])
+//  - Property generators (Gen[_] vals/defs, Arbitrary instances)
+//  - Smithy models (from .smithy files — regex; smithy is not Scala)
+//
+//  Nested declarations are reported with their enclosing path
+//  (e.g. `GraphWorkflowContext.Event`, `RunnableOps.FallbackSemantic`) —
+//  matching how Metals/SemanticDB name them.
 //
 //  Output: Markdown tables matching the concept-inventory.md template.
 //
@@ -78,7 +92,8 @@ case class ScanResult(
     caseClasses: List[CaseClassDef],
     serviceTraits: List[ServiceTrait],
     smithyModels: List[SmithyModel],
-    generators: List[GeneratorDef]
+    generators: List[GeneratorDef],
+    parseFailures: List[String]
 )
 
 // ---------------------------------------------------------------------------
@@ -100,13 +115,22 @@ object ConceptScanner:
       .filter(os.exists)
       .flatMap(d => os.walk(d).filter(_.ext == "smithy").toList)
 
+    val mainParsed = mainScala.map(f => f -> parseFile(f))
+    val testParsed = testScala.map(f => f -> parseFile(f))
+    val failures =
+      (mainParsed ++ testParsed).collect { case (f, Left(err)) => s"${f.relativeTo(projectDir)}: $err" }
+
+    val mainTrees = mainParsed.collect { case (f, Right(t)) => (f, t) }
+    val testTrees = testParsed.collect { case (f, Right(t)) => (f, t) }
+
     ScanResult(
-      opaqueTypes = mainScala.flatMap(scanOpaqueTypes),
-      sealedTypes = mainScala.flatMap(scanSealedTypes),
-      caseClasses = mainScala.flatMap(scanCaseClasses),
-      serviceTraits = mainScala.flatMap(scanServiceTraits),
+      opaqueTypes = mainTrees.flatMap(scanOpaqueTypes.tupled),
+      sealedTypes = mainTrees.flatMap(scanSealedTypes.tupled),
+      caseClasses = mainTrees.flatMap(scanCaseClasses.tupled),
+      serviceTraits = mainTrees.flatMap(scanServiceTraits.tupled),
       smithyModels = smithyFiles.flatMap(scanSmithyModels),
-      generators = testScala.flatMap(scanGenerators)
+      generators = testTrees.flatMap(scanGenerators.tupled),
+      parseFailures = failures
     )
 
   private val skipDirNames: Set[String] =
@@ -123,180 +147,147 @@ object ConceptScanner:
       os.walk(dir).filter(_.ext == "scala").toList
     else Nil
 
+  // ── Parsing + tree navigation ──────────────────────────────────────────
+
+  private def parseFile(file: os.Path): Either[String, Source] =
+    try
+      dialects.Scala3(os.read(file)).parse[Source] match
+        case Parsed.Success(tree) => Right(tree)
+        case e: Parsed.Error      => Left(e.message.linesIterator.nextOption.getOrElse("parse error"))
+    catch case ex: Throwable => Left(ex.getMessage)
+
+  private def all(t: Tree): LazyList[Tree] =
+    t #:: LazyList.from(t.children).flatMap(all)
+
+  /** Package of a node: concatenation of enclosing Pkg names. */
+  private def pkgOf(source: Source, node: Tree): String =
+    val pkgs = ancestors(source, node).collect { case p: Pkg => p.ref.syntax }
+    if pkgs.isEmpty then "(default)" else pkgs.mkString(".")
+
+  /** Enclosing object/class/trait path, e.g. "RunnableOps" for a nested enum
+    * — reported as `Outer.Inner`, matching Metals/SemanticDB naming. */
+  private def ownerPath(source: Source, node: Tree): String =
+    ancestors(source, node).collect {
+      case o: Defn.Object => o.name.value
+      case c: Defn.Class  => c.name.value
+      case t: Defn.Trait  => t.name.value
+      case e: Defn.Enum   => e.name.value
+    }.mkString(".")
+
+  private def qualified(source: Source, node: Tree, name: String): String =
+    val owner = ownerPath(source, node)
+    if owner.isEmpty then name else s"$owner.$name"
+
+  private def ancestors(source: Source, node: Tree): List[Tree] =
+    // parent chain from root to node (excluding the node itself)
+    def chain(t: Tree): List[Tree] =
+      t.parent match
+        case Some(p) => chain(p) :+ p
+        case None    => Nil
+    chain(node)
+
+  private def isPublic(mods: List[Mod]): Boolean =
+    !mods.exists(m => m.is[Mod.Private] || m.is[Mod.Protected])
+
   // ── Opaque types ───────────────────────────────────────────────────────
 
-  private val opaqueTypeRegex: Regex =
-    """opaque\s+type\s+(\w+)\s*=\s*(\w+)\s*:\|\s*(.+)""".r
-
-  private val opaqueTypeSimpleRegex: Regex =
-    """opaque\s+type\s+(\w+)\s*=\s*(\w+)""".r
-
-  def scanOpaqueTypes(file: os.Path): List[OpaqueType] =
-    val content = os.read(file)
-    val pkg = extractPackage(content)
-
-    val refined = opaqueTypeRegex.findAllMatchIn(content).map { m =>
-      OpaqueType(
-        name = m.group(1).trim,
-        underlying = m.group(2).trim,
-        constraint = m.group(3).trim,
-        pkg = pkg,
-        file = file.last
-      )
+  private val scanOpaqueTypes: (os.Path, Source) => List[OpaqueType] = (file, source) =>
+    all(source).collect {
+      case d: Defn.Type if d.mods.exists(_.is[Mod.Opaque]) && isPublic(d.mods) =>
+        val (underlying, constraint) = d.body match
+          case Type.ApplyInfix(lhs, Type.Name(":|"), rhs) => (lhs.syntax, rhs.syntax)
+          case other                                      => (other.syntax, "(none — plain opaque type)")
+        OpaqueType(qualified(source, d, d.name.value), underlying, constraint,
+          pkgOf(source, d), file.last)
     }.toList
 
-    // Also catch opaque types without Iron constraint
-    val simple = opaqueTypeSimpleRegex.findAllMatchIn(content)
-      .map(m => m.group(1).trim)
-      .filterNot(name => refined.exists(_.name == name))
-      .map { name =>
-        val m = opaqueTypeSimpleRegex.findFirstMatchIn(
-          content.linesIterator.find(_.contains(s"opaque type $name")).getOrElse("")
-        ).get
-        OpaqueType(
-          name = m.group(1).trim,
-          underlying = m.group(2).trim,
-          constraint = "(none)",
-          pkg = pkg,
-          file = file.last
-        )
-      }.toList
+  // ── Sealed traits, sealed abstract classes, enums ──────────────────────
 
-    refined ++ simple
+  private val scanSealedTypes: (os.Path, Source) => List[SealedType] = (file, source) =>
+    val nodes = all(source).toList
 
-  // ── Sealed traits and enums ────────────────────────────────────────────
+    // same-file direct subtypes of a sealed type, by init reference
+    def subtypesOf(name: String): List[String] =
+      nodes.collect {
+        case c: Defn.Class if extendsName(c.templ, name)  => c.name.value
+        case o: Defn.Object if extendsName(o.templ, name) => o.name.value
+        case t: Defn.Trait if extendsName(t.templ, name)  => t.name.value
+      }.distinct
 
-  private val sealedTraitRegex: Regex =
-    """sealed\s+trait\s+(\w+)""".r
+    val sealedTraits = nodes.collect {
+      case t: Defn.Trait if t.mods.exists(_.is[Mod.Sealed]) && isPublic(t.mods) =>
+        SealedType(qualified(source, t, t.name.value), "sealed trait",
+          subtypesOf(t.name.value), pkgOf(source, t), file.last)
+    }
 
-  private val sealedAbstractClassRegex: Regex =
-    """sealed\s+abstract\s+class\s+(\w+)""".r
+    val sealedClasses = nodes.collect {
+      case c: Defn.Class
+          if c.mods.exists(_.is[Mod.Sealed]) && c.mods.exists(_.is[Mod.Abstract])
+            && isPublic(c.mods) =>
+        SealedType(qualified(source, c, c.name.value), "sealed abstract class",
+          subtypesOf(c.name.value), pkgOf(source, c), file.last)
+    }
 
-  private val enumRegex: Regex =
-    """enum\s+(\w+)""".r
-
-  private val enumCaseRegex: Regex =
-    """case\s+(\w+)""".r
-
-  def scanSealedTypes(file: os.Path): List[SealedType] =
-    val content = os.read(file)
-    val lines = content.linesIterator.toVector
-    val pkg = extractPackage(content)
-
-    val sealedTraits = sealedTraitRegex.findAllMatchIn(content).map { m =>
-      SealedType(m.group(1), "sealed trait", Nil, pkg, file.last)
-    }.toList
-
-    val sealedClasses = sealedAbstractClassRegex.findAllMatchIn(content).map { m =>
-      SealedType(m.group(1), "sealed abstract class", Nil, pkg, file.last)
-    }.toList
-
-    val enums = enumRegex.findAllMatchIn(content).map { m =>
-      val enumName = m.group(1)
-      // Extract variants: find lines after "enum X:" that start with "case"
-      val startIdx = lines.indexWhere(_.contains(s"enum $enumName"))
-      val variants = if startIdx >= 0 then
-        lines.drop(startIdx + 1)
-          .takeWhile(l => l.trim.startsWith("case ") || l.trim.isEmpty || l.trim.startsWith("//"))
-          .filter(_.trim.startsWith("case "))
-          .flatMap { l =>
-            val trimmed = l.trim.stripPrefix("case ").trim
-            val name = trimmed.takeWhile(c => c.isLetterOrDigit || c == '_')
-            // Filter out "case class" — those are case class definitions, not enum variants
-            if trimmed.startsWith("class ") then None
-            else Some(name)
-          }
-          .toList
-      else Nil
-      SealedType(enumName, "enum", variants, pkg, file.last)
-    }.toList
+    val enums = nodes.collect {
+      case e: Defn.Enum if isPublic(e.mods) =>
+        val variants = e.templ.stats.flatMap {
+          case c: Defn.EnumCase         => List(c.name.value)
+          case r: Defn.RepeatedEnumCase => r.cases.map(_.value)
+          case _                        => Nil
+        }
+        SealedType(qualified(source, e, e.name.value), "enum", variants,
+          pkgOf(source, e), file.last)
+    }
 
     sealedTraits ++ sealedClasses ++ enums
 
+  private def extendsName(templ: Template, name: String): Boolean =
+    templ.inits.exists(init => init.tpe match
+      case Type.Name(n)                  => n == name
+      case Type.Apply(Type.Name(n), _)   => n == name
+      case Type.Select(_, Type.Name(n))  => n == name
+      case _                             => false)
+
   // ── Case classes ───────────────────────────────────────────────────────
 
-  private val caseClassRegex: Regex =
-    """case\s+class\s+(\w+)\s*\(([\s\S]*?)\)""".r
-
-  def scanCaseClasses(file: os.Path): List[CaseClassDef] =
-    val content = os.read(file)
-    val pkg = extractPackage(content)
-
-    // Exclude enum case variants (they're inside an enum block)
-    val enumNames = enumRegex.findAllMatchIn(content).map(_.group(1)).toSet
-
-    caseClassRegex.findAllMatchIn(content).map { m =>
-      val name = m.group(1)
-      val rawFields = m.group(2).trim
-      // Collapse multiline fields to single line
-      val fields = rawFields.replaceAll("\\s+", " ").trim
-      CaseClassDef(name, fields, pkg, file.last)
-    }.toList
-      // Filter out enum variant-like names (heuristic: skip if starts with uppercase
-      // and appears right after an enum definition)
-      .filter(cc => !isEnumVariant(content, cc.name))
-
-  private def isEnumVariant(content: String, name: String): Boolean =
-    // Check if this case class appears inside an enum block
-    val lines = content.linesIterator.toVector
-    val idx = lines.indexWhere(l => l.contains(s"case class $name"))
-    if idx < 0 then false
-    else
-      // Walk backwards to find if we're inside an enum
-      val preceding = lines.take(idx).reverse.take(20)
-      val inEnum = preceding.exists(l =>
-        l.matches(""".*enum\s+\w+.*:""") || l.matches(""".*enum\s+\w+.*""")
-      )
-      // Also check indentation — enum variants are indented
-      val indent = lines(idx).takeWhile(_.isSpaceChar).length
-      inEnum && indent > 0
-
-  // ── Service traits (tagless final) ─────────────────────────────────────
-
-  private val serviceTraitRegex: Regex =
-    """trait\s+(\w+)\s*\[\s*(\w+)\s*\[\s*_\s*\]""".r
-
-  private val defMethodRegex: Regex =
-    """def\s+(\w+)""".r
-
-  def scanServiceTraits(file: os.Path): List[ServiceTrait] =
-    val content = os.read(file)
-    val lines = content.linesIterator.toVector
-    val pkg = extractPackage(content)
-
-    serviceTraitRegex.findAllMatchIn(content).map { m =>
-      val traitName = m.group(1)
-      val typeParam = s"${m.group(2)}[_]"
-
-      // Extract method names from the trait body
-      val startIdx = lines.indexWhere(_.contains(s"trait $traitName"))
-      val methods = if startIdx >= 0 then
-        lines.drop(startIdx + 1)
-          .takeWhile(l => !l.matches("""^\S.*""") || l.trim.isEmpty) // until next top-level decl
-          .filter(_.trim.startsWith("def "))
-          .flatMap(l => defMethodRegex.findFirstMatchIn(l.trim).map(_.group(1)))
-          .toList
-      else Nil
-
-      ServiceTrait(traitName, typeParam, methods, pkg, file.last)
+  private val scanCaseClasses: (os.Path, Source) => List[CaseClassDef] = (file, source) =>
+    all(source).collect {
+      // enum cases are Defn.EnumCase nodes, not Defn.Class — excluded by
+      // construction, no indentation heuristics needed
+      case c: Defn.Class if c.mods.exists(_.is[Mod.Case]) && isPublic(c.mods) =>
+        val fields = c.ctor.paramClauses.headOption
+          .map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.syntax).getOrElse("?")}")
+            .mkString(", "))
+          .getOrElse("")
+        CaseClassDef(qualified(source, c, c.name.value), fields, pkgOf(source, c), file.last)
     }.toList
 
-  // ── Smithy models ──────────────────────────────────────────────────────
+  // ── Service traits (any trait with a higher-kinded type param) ─────────
 
-  private val smithyServiceRegex: Regex =
-    """service\s+(\w+)\s*\{""".r
+  private val scanServiceTraits: (os.Path, Source) => List[ServiceTrait] = (file, source) =>
+    all(source).collect {
+      case t: Defn.Trait
+          if isPublic(t.mods)
+            && t.tparamClause.values.exists(_.tparamClause.values.nonEmpty) =>
+        val hk = t.tparamClause.values.find(_.tparamClause.values.nonEmpty).get
+        val methods = t.templ.stats.collect {
+          case d: Decl.Def => d.name.value
+          case d: Defn.Def => d.name.value
+        }
+        ServiceTrait(qualified(source, t, t.name.value), hk.syntax, methods,
+          pkgOf(source, t), file.last)
+    }.toList
 
-  private val smithyStructureRegex: Regex =
-    """structure\s+(\w+)\s*\{""".r
+  // ── Smithy models (regex — smithy is not Scala) ────────────────────────
 
-  private val smithyOperationRegex: Regex =
-    """operation\s+(\w+)\s*\{""".r
+  private val smithyServiceRegex: Regex = """service\s+(\w+)\s*\{""".r
+  private val smithyStructureRegex: Regex = """structure\s+(\w+)\s*\{""".r
+  private val smithyOperationRegex: Regex = """operation\s+(\w+)\s*\{""".r
 
   def scanSmithyModels(file: os.Path): List[SmithyModel] =
     val content = os.read(file)
 
     val services = smithyServiceRegex.findAllMatchIn(content).map { m =>
-      // Extract operations from the service block
       val ops = smithyOperationRegex.findAllMatchIn(content).map(_.group(1)).mkString(", ")
       SmithyModel(m.group(1), "service", ops, file.last)
     }.toList
@@ -307,42 +298,34 @@ object ConceptScanner:
 
     services ++ structures
 
-  // ── ScalaCheck generators ──────────────────────────────────────────────
+  // ── Property generators (ScalaCheck or Hedgehog — both use `Gen`) ──────
 
-  private val genRegex: Regex =
-    """val\s+(gen\w+)\s*:\s*Gen\[(\w+)\]""".r
+  private val scanGenerators: (os.Path, Source) => List[GeneratorDef] = (file, source) =>
+    def genType(tpe: Option[Type]): Option[String] = tpe.map(_.syntax).filter(s =>
+      s.startsWith("Gen[") || s.startsWith("Arbitrary["))
 
-  private val genInferredRegex: Regex =
-    """val\s+(gen\w+)\s*=\s*Gen\.""".r
-
-  private val arbitraryRegex: Regex =
-    """(?:implicit|given)\s+.*Arbitrary\[(\w+)\]""".r
-
-  def scanGenerators(file: os.Path): List[GeneratorDef] =
-    val content = os.read(file)
-
-    val explicit = genRegex.findAllMatchIn(content).map { m =>
-      GeneratorDef(m.group(1), s"Gen[${m.group(2)}]", file.last)
+    val valsAndDefs = all(source).collect {
+      case v: Defn.Val =>
+        val name = v.pats.collectFirst { case Pat.Var(n) => n.value }.getOrElse("?")
+        (name, genType(v.decltpe), v.rhs.syntax)
+      case d: Defn.Def =>
+        (d.name.value, genType(d.decltpe), d.body.syntax)
     }.toList
 
-    val inferred = genInferredRegex.findAllMatchIn(content)
-      .map(_.group(1))
-      .filterNot(name => explicit.exists(_.name == name))
-      .map(name => GeneratorDef(name, "Gen[?]", file.last))
-      .toList
+    val gens = valsAndDefs.flatMap {
+      case (name, Some(tpe), _)                             => Some(GeneratorDef(name, tpe, file.last))
+      case (name, None, rhs) if name.startsWith("gen")
+          && (rhs.startsWith("Gen.") || rhs.contains("Gen.")) => Some(GeneratorDef(name, "Gen[?]", file.last))
+      case _                                                => None
+    }
 
-    val arbitraries = arbitraryRegex.findAllMatchIn(content).map { m =>
-      GeneratorDef(s"arbitrary${m.group(1)}", s"Arbitrary[${m.group(1)}]", file.last)
+    val arbitraries = all(source).collect {
+      case g: Defn.GivenAlias if g.decltpe.syntax.startsWith("Arbitrary[") =>
+        val inner = g.decltpe.syntax.stripPrefix("Arbitrary[").stripSuffix("]")
+        GeneratorDef(s"arbitrary$inner", g.decltpe.syntax, file.last)
     }.toList
 
-    explicit ++ inferred ++ arbitraries
-
-  // ── Helpers ────────────────────────────────────────────────────────────
-
-  private val packageRegex: Regex = """package\s+([\w.]+)""".r
-
-  private def extractPackage(content: String): String =
-    packageRegex.findFirstMatchIn(content).map(_.group(1)).getOrElse("(default)")
+    (gens ++ arbitraries).distinctBy(g => (g.name, g.generates))
 
 // ---------------------------------------------------------------------------
 //  Markdown formatter
@@ -353,15 +336,18 @@ object MarkdownFormatter:
   def format(result: ScanResult, projectName: String): String =
     val sb = new StringBuilder
     sb.append(s"# Concept Inventory\n\n")
-    sb.append(s"<!-- Auto-generated by concept-scanner for project: $projectName -->\n")
-    sb.append(s"<!-- Scan date: ${java.time.LocalDate.now} -->\n\n")
+    sb.append(s"<!-- Auto-generated by concept-scanner (Scalameta) for project: $projectName -->\n")
+    sb.append(s"<!-- Scan date: ${java.time.LocalDate.now} -->\n")
+    if result.parseFailures.nonEmpty then
+      sb.append(s"<!-- WARNING: ${result.parseFailures.size} file(s) failed to parse — see scanner stderr -->\n")
+    sb.append("\n")
 
     // Opaque types
     sb.append("## Refined / Opaque Types\n\n")
     sb.append("| Type | Underlying | Constraint | Package | Introduced By |\n")
     sb.append("|------|-----------|------------|---------|---------------|\n")
     result.opaqueTypes.foreach { t =>
-      sb.append(s"| ${t.name} | ${t.underlying} | ${esc(t.constraint)} | ${t.pkg} | scan:${t.file} |\n")
+      sb.append(s"| ${t.name} | ${esc(t.underlying)} | ${esc(t.constraint)} | ${t.pkg} | scan:${t.file} |\n")
     }
     if result.opaqueTypes.isEmpty then sb.append("| *(none found)* | | | | |\n")
     sb.append("\n")
@@ -372,7 +358,7 @@ object MarkdownFormatter:
     sb.append("|------|------|----------|---------|---------------|\n")
     result.sealedTypes.foreach { t =>
       val variants = if t.variants.nonEmpty then t.variants.mkString(", ") else "—"
-      sb.append(s"| ${t.name} | ${t.kind} | $variants | ${t.pkg} | scan:${t.file} |\n")
+      sb.append(s"| ${t.name} | ${t.kind} | ${esc(variants)} | ${t.pkg} | scan:${t.file} |\n")
     }
     if result.sealedTypes.isEmpty then sb.append("| *(none found)* | | | | |\n")
     sb.append("\n")
@@ -393,7 +379,7 @@ object MarkdownFormatter:
     sb.append("|-------|-----------|---------|---------|---------------|\n")
     result.serviceTraits.foreach { s =>
       val methods = s.methods.mkString(", ")
-      sb.append(s"| ${s.name} | ${s.typeParam} | $methods | ${s.pkg} | scan:${s.file} |\n")
+      sb.append(s"| ${s.name} | ${esc(s.typeParam)} | ${esc(methods)} | ${s.pkg} | scan:${s.file} |\n")
     }
     if result.serviceTraits.isEmpty then sb.append("| *(none found)* | | | | |\n")
     sb.append("\n")
@@ -413,7 +399,7 @@ object MarkdownFormatter:
     sb.append("| Generator | Generates | Location | Introduced By |\n")
     sb.append("|-----------|----------|----------|---------------|\n")
     result.generators.foreach { g =>
-      sb.append(s"| ${g.name} | ${g.generates} | ${g.file} | scan:${g.file} |\n")
+      sb.append(s"| ${g.name} | ${esc(g.generates)} | ${g.file} | scan:${g.file} |\n")
     }
     if result.generators.isEmpty then sb.append("| *(none found)* | | | |\n")
     sb.append("\n")
@@ -439,17 +425,18 @@ object JsonFormatter:
     import result.*
     val parts = List(
       "opaqueTypes" -> opaqueTypes.map(t =>
-        s"""    {"name":"${t.name}","underlying":"${t.underlying}","constraint":"${je(t.constraint)}","package":"${t.pkg}","file":"${t.file}"}"""),
+        s"""    {"name":"${t.name}","underlying":"${je(t.underlying)}","constraint":"${je(t.constraint)}","package":"${t.pkg}","file":"${t.file}"}"""),
       "sealedTypes" -> sealedTypes.map(t =>
         s"""    {"name":"${t.name}","kind":"${t.kind}","variants":[${t.variants.map(v => s""""$v"""").mkString(",")}],"package":"${t.pkg}","file":"${t.file}"}"""),
       "caseClasses" -> caseClasses.map(c =>
         s"""    {"name":"${c.name}","fields":"${je(c.fields)}","package":"${c.pkg}","file":"${c.file}"}"""),
       "serviceTraits" -> serviceTraits.map(s =>
-        s"""    {"name":"${s.name}","typeParam":"${s.typeParam}","methods":[${s.methods.map(m => s""""$m"""").mkString(",")}],"package":"${s.pkg}","file":"${s.file}"}"""),
+        s"""    {"name":"${s.name}","typeParam":"${je(s.typeParam)}","methods":[${s.methods.map(m => s""""$m"""").mkString(",")}],"package":"${s.pkg}","file":"${s.file}"}"""),
       "smithyModels" -> smithyModels.map(m =>
         s"""    {"name":"${m.name}","kind":"${m.kind}","members":"${je(m.members)}","file":"${m.file}"}"""),
       "generators" -> generators.map(g =>
-        s"""    {"name":"${g.name}","generates":"${g.generates}","file":"${g.file}"}""")
+        s"""    {"name":"${g.name}","generates":"${je(g.generates)}","file":"${g.file}"}"""),
+      "parseFailures" -> parseFailures.map(f => s"""    "${je(f)}"""")
     )
     val sections = parts.map { case (key, items) =>
       s"""  "$key": [\n${items.mkString(",\n")}\n  ]"""
@@ -467,7 +454,8 @@ object JsonFormatter:
   if args.isEmpty then
     System.err.println("Usage: concept-scanner <project-dir> [--json] [--output <file>]")
     System.err.println("")
-    System.err.println("Scans a Scala 3 project and extracts domain concepts.")
+    System.err.println("Scans a Scala 3 project (Scalameta parsing, multi-module) and")
+    System.err.println("extracts domain concepts.")
     System.err.println("Output: Markdown tables for concept-inventory.md (default) or JSON.")
     System.exit(1)
 
@@ -482,7 +470,7 @@ object JsonFormatter:
     System.err.println(s"Error: directory not found: $projectDir")
     System.exit(1)
 
-  System.err.println(s"Scanning: $projectDir")
+  System.err.println(s"Scanning: $projectDir (Scalameta)")
   val result = ConceptScanner.scan(projectDir)
 
   System.err.println(s"Found: ${result.opaqueTypes.size} opaque types, " +
@@ -491,6 +479,9 @@ object JsonFormatter:
     s"${result.serviceTraits.size} service traits, " +
     s"${result.smithyModels.size} smithy models, " +
     s"${result.generators.size} generators")
+  if result.parseFailures.nonEmpty then
+    System.err.println(s"WARNING: ${result.parseFailures.size} file(s) failed to parse:")
+    result.parseFailures.foreach(f => System.err.println(s"  $f"))
 
   val output = if jsonMode then JsonFormatter.format(result)
     else MarkdownFormatter.format(result, projectDir.last)

@@ -23,10 +23,13 @@
      SCAN METHOD: manual/regex scan on 2026-07-18 (cross-checked against the
      archived `2026-07-05-add-memory-api` inventory), performed while the
      semantic scanner still missed multi-module builds. The scanner has since
-     been fixed (it now discovers every `src/` root — 383 rows on this repo)
-     and is the verification tool of choice: scan to a scratch file and diff
-     against this document; never re-create this file from a raw scan (that
-     would replace spec provenance with scan provenance).
+     been fixed twice: multi-module discovery (every `src/` root) and true
+     Scalameta parsing (2026-07-19 — 469 accurate rows on this repo, zero
+     parse failures; nested types qualified as `Outer.Inner`, sealed-trait
+     variants enumerated). It is the verification tool of choice: scan to a
+     scratch file and diff against this document; never re-create this file
+     from a raw scan (that would replace spec provenance with scan
+     provenance).
 
      Seeded 2026-07-18 from the add-memory-orchestration-hook change's
      inventory (schema v6 migration); "REUSED/EXTENDED by this change"

@@ -14,7 +14,7 @@ globs:
   - "src/main/scala/**/*.scala"
   - "src/test/scala/**/*.scala"
 metadata:
-  generatedBy: verified-scala3-schema/6.0.0
+  generatedBy: verified-scala3-schema/7.0.0
 ---
 
 # Adversarial Spec-Compliance Review Skill (Ring 8)
@@ -84,7 +84,9 @@ answer in writing:
 3. Can a public API construct a state this requirement forbids? Try the
    direct construction path, not just the sanctioned pipeline (e.g.
    constructing an AST node directly instead of going through the
-   typechecker).
+   typechecker). When a Metals MCP endpoint is available
+   (openspec-code-intel skill), `metals-call.sh get-usages` on the guarded
+   type enumerates every construction site authoritatively.
 4. Are negative paths exercised directly, or only inferred?
 
 ### 3. Dangerous-pattern hunt

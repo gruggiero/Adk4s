@@ -35,3 +35,4 @@ and moved as-is; no rows required correction at seeding time.
 | R8 adversarial | yes | fresh-context, before Rings 5/6/7 |
 | R9 telemetry | no | no telemetry stack — skip with stated impact |
 | Concurrency kit | yes | cats-effect `TestControl` (transitive, no extra dep) |
+| Code intelligence | yes | Metals MCP running on :8394 — Step 0 impact scan for the `AgentEvent` widening runs `scanner/impact-scan.sh org.adk4s.core.interrupt.AgentEvent` (already surfaced catch-alls in EventStreamExample:89, HierarchicalEventStreamExample:242/262, AgentTool:122) |

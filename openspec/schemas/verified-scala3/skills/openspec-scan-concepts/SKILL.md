@@ -14,7 +14,7 @@ globs:
   - "**/src/test/scala/**/*.scala"
   - "**/src/main/smithy/**/*.smithy"
 metadata:
-  generatedBy: verified-scala3-schema/6.0.0
+  generatedBy: verified-scala3-schema/7.0.0
 
 ---
 
@@ -60,9 +60,15 @@ openspec/schemas/verified-scala3/scanner/scan.sh . --output openspec/concept-inv
 openspec/schemas/verified-scala3/scanner/scan.sh . --output /tmp/inventory-scan.md
 ```
 
-The scanner is MULTI-MODULE: it discovers every `src/` root in the repo
-(`<module>/src/main/scala`, top-level `src/`, nested modules), so a
-multi-module build is scanned completely rather than silently yielding 0.
+The scanner is SEMANTIC and MULTI-MODULE: it PARSES sources with Scalameta
+(dialects.Scala3) rather than regexing lines — no phantom types from prose,
+nested declarations reported qualified (`Outer.Inner`, matching Metals
+naming), sealed-trait variants enumerated from same-file subtypes — and it
+discovers every `src/` root in the repo (`<module>/src/main/scala`,
+top-level `src/`, nested modules), so a multi-module build is scanned
+completely rather than silently yielding 0. It reports files that fail to
+parse on stderr — treat a nonzero parse-failure count as an INCOMPLETE
+scan and fall back to a manual scan for those files only.
 
 ### Option B: Manual scan (default)
 

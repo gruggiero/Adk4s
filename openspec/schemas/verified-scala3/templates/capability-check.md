@@ -46,3 +46,4 @@
 | R6 formal | <!-- yes/no --> | <!-- verified module / skip impact --> |
 | R9 telemetry | <!-- yes/no --> | <!-- skip impact or setup task --> |
 | Concurrency kit | <!-- yes/no --> | <!-- TestControl availability --> |
+| Code intelligence | <!-- yes/no --> | <!-- Metals MCP endpoint status; recipes vs grep-fallback for this change --> |

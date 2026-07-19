@@ -84,6 +84,21 @@ This change adds a dependency `adk4s-orchestration → adk4s-memory-api` (new pa
 | WartRemover | `Warts.unsafe` minus excluded set (see right) | Temporarily excluded: `TripleQuestionMark` (intentional), `Any` (s"..." interpolation false positive), `DefaultArguments`, `IterableOps`, `AsInstanceOf`, `Throw`, `Var`, `OptionPartial`, `StringPlusAny`. Re-enable each as code is refactored. `verified` module: `wartremoverErrors := Seq.empty` (exempt). `adk4s-examples`: same relaxed set. | build.sbt |
 | scalafmt | Config present: scala3 dialect, maxColumn=120, align.preset=more | — | .scalafmt.conf |
 
+## Code Intelligence
+
+<!-- The apply phase prefers the schema's semantic recipes over grep when
+     the endpoint is running (see openspec-code-intel skill); git grep is
+     the fallback and the only CI tool. Semantic answers trusted only
+     post-compile. -->
+
+| Item | Detected Value | Evidence |
+|------|---------------|----------|
+| Metals MCP endpoint | `http://localhost:8394/mcp` — PER-PROJECT instance (Metals is workspace-scoped; graphStore runs its own on :8395); discovery via `.metals/mcp.url`; start/stop: `scanner/metals-start.sh` (auto-detects JDK 17+, free port) | `scanner/metals-call.sh probe` |
+| Metals version | 1.6.7 (pinned — MCP tool names are not yet a stable contract) | `cs install metals-mcp` |
+| JDK for Metals | 17+ required; default java on this host is 11 → set `JAVA_HOME` to the Homebrew JDK 26 | UnsupportedClassVersionError without it |
+| External-dep API lookup | cellar CLI available (`~/.local/share/coursier/bin/cellar`) — use for llm4s/workflows4s APIs instead of sources-jar extraction | which cellar |
+| Known limits (Metals 1.6.7) | `glob-search` needs `fileInFocus`; sealed-trait `inspect` lists members not variants; opaque-type companions may return empty usages (scripts fall back textually) | prototype session 2026-07-19 |
+
 ## Compile & Test Commands
 
 | Purpose | Command |

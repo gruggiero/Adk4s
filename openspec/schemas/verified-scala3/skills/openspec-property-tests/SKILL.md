@@ -10,7 +10,7 @@ description: >
   green-by-design). Reads implementation-order.md and
   implementation-progress.md (tasks.md is derived output, not an input).
 metadata:
-  generatedBy: verified-scala3-schema/6.0.0
+  generatedBy: verified-scala3-schema/7.0.0
 ---
 
 Build a spec-derived test oracle: analyse an OpenSpec change's artifacts to

@@ -1,4 +1,18 @@
 # Changelog:
+#   7 — code intelligence (option B): semantic search recipes driving a
+#       headless Metals MCP endpoint from schema scripts — metals-call.sh
+#       (bridge + resolve), impact-scan.sh (Step 0 public-type-change impact
+#       scan: semantic reference set + syntactic catch-all detection),
+#       removal-audit.sh (Step 12 orphan audit with --suggest) — plus the
+#       openspec-code-intel skill. All degrade to git grep deterministically;
+#       CI checks stay bash+git-grep only. Capability profile gains a "Code
+#       Intelligence" section (endpoint, Metals version, detected not
+#       assumed). Semantic answers are trusted only post-compile.
+#       concept-scanner extraction rewritten on Scalameta trees (dialects.
+#       Scala3) — the "SEMANTIC scanner" claim is now true: no more regex
+#       phantom types from prose, nested declarations qualified as
+#       Outer.Inner (matching Metals naming), sealed-trait variants
+#       enumerated, parse failures counted and reported.
 #   6 — project-scoped living documents: capability-profile.md and
 #       concept-inventory.md move to openspec/ root (siblings of the
 #       openspec/concepts/ registry) instead of being re-created per change —
@@ -27,7 +41,7 @@
 #   2.1 — first concept-registry support.
 #   2 — ring pipeline + typed contract + test oracle.
 name: verified-scala3
-version: 6
+version: 7
 description: >
   Depth-first verified Scala 3 workflow for functional, type-safe codebases.
   Correctness-first: every spec flows through
@@ -189,6 +203,17 @@ artifacts:
            (e.g. cats-effect-testkit `TestControl`, ZIO `TestClock`) on the test
            classpath? Record it — specs involving concurrency/timeouts/
            cancellation MUST use it (apply Step 2).
+         - Code intelligence: is a Metals MCP endpoint running or startable
+           (`cs install metals-mcp` once per machine, then
+           `scanner/metals-start.sh` per project — Metals is
+           workspace-scoped, so parallel projects each run their own
+           instance; discovery via the repo's `.metals/mcp.url`)? Record
+           the endpoint and Metals version in the profile's "Code
+           Intelligence" section. Consequence: the apply phase prefers the
+           schema's semantic recipes (scanner/metals-call.sh,
+           impact-scan.sh, removal-audit.sh — see the openspec-code-intel
+           skill); git grep remains the fallback and the ONLY tool for
+           restricted CI. Semantic answers are trusted only post-compile.
          - Property framework facilities: record the coverage-assertion
            mechanism (e.g. Hedgehog `cover` — fails when a label's percentage
            is unmet; ScalaCheck `classify`/`collect` — informational only) and
@@ -261,12 +286,15 @@ artifacts:
          result, and new candidate concepts flagged for human review.
 
       SCAN PROCEDURE (for creating the project inventory, or spot-verifying):
-      1. Prefer the SEMANTIC scanner when available (scala-cli based script
-         under `openspec/schemas/verified-scala3/scanner/`, MULTI-MODULE —
-         it discovers every `src/` root), because regex
-         scanning misses Scala 3 constructs: multiline type aliases, nested objects,
-         parameterised enum cases, givens, extension methods, nested packages,
-         generated IDL types outside expected paths, typeclass instances, overloads.
+      1. Prefer the SEMANTIC scanner when available (scala-cli + Scalameta
+         script under `openspec/schemas/verified-scala3/scanner/` — it PARSES
+         sources with dialects.Scala3 and is MULTI-MODULE, discovering every
+         `src/` root). Regex scanning demonstrably catalogued prose words as
+         sealed types and misses Scala 3 constructs: multiline declarations,
+         nested objects (the scanner reports them qualified, `Outer.Inner`),
+         parameterised enum cases, givens, extension methods, nested packages.
+         The scanner counts and reports files that fail to parse — treat a
+         nonzero parse-failure count as an incomplete scan, not a clean one.
          Run: `scanner/scan.sh . --output openspec/concept-inventory.md`
          (creation only — see B for refreshing an existing inventory).
          Fall back to a manual/regex scan only if the scanner cannot run, and say so.
@@ -717,6 +745,13 @@ apply:
 
     Read openspec/capability-profile.md FIRST — every command, framework choice, and
     test style below must match the DETECTED stack, not an assumed one.
+    If the profile records a running Metals MCP endpoint (Code Intelligence
+    section), PREFER the semantic recipes in
+    openspec/schemas/verified-scala3/scanner/ (metals-call.sh resolve/
+    inspect/get-usages, impact-scan.sh, removal-audit.sh — see the
+    openspec-code-intel skill) over grep for symbol questions; every recipe
+    degrades to git grep on its own when the endpoint is down. Semantic
+    answers are index-based: trust them only after a successful compile.
     Read implementation-order.md to determine the sequence.
     Then implement ONE spec — the first pending one — following Steps 0–13 below.
 
@@ -753,10 +788,15 @@ apply:
     "Type-Widening Impact" subsection, specs rule 11). This closes the
     structural blind spot where aliasing to a richer enum silently widens
     every downstream catch-all match WITHOUT any file edit:
-    - For every public type whose effective variant set grew, grep the WHOLE
-      module graph (not just the change's diff) for pattern matches on that
-      type containing a catch-all/default arm (`case other =>`, `case _ =>`,
-      `case _: T =>`).
+    - PRIMARY METHOD: run
+        openspec/schemas/verified-scala3/scanner/impact-scan.sh <fqcn>
+      — it computes the compiler-resolved reference set (Metals get-usages)
+      and reports catch-all arms near a usage; it falls back to a whole-tree
+      grep by itself when no Metals endpoint is running.
+    - Manual fallback: for every public type whose effective variant set
+      grew, grep the WHOLE module graph (not just the change's diff) for
+      pattern matches on that type containing a catch-all/default arm
+      (`case other =>`, `case _ =>`, `case _: T =>`).
     - For each such site, require one of, recorded in the spec's Proof
       Obligations: made exhaustive over the new variant set; explicitly rejects
       the new variants; or a justified `case` with rationale.
@@ -1169,9 +1209,15 @@ apply:
     remove it. Record the delta (or "none") for the checkpoint.
 
     REMOVAL AUDIT — for every field/type REMOVED from a refactored concept
-    (e.g. a case class field deleted during a storage collapse), grep main
+    (e.g. a case class field deleted during a storage collapse), audit main
     sources for now-orphaned dependents (traits, opaque adapters, extension
     methods, helper factories that existed only to serve the removed member).
+    PRIMARY METHOD:
+      openspec/schemas/verified-scala3/scanner/removal-audit.sh --suggest <baseline-SHA>
+    to list what was removed and the suspect pool, then
+      removal-audit.sh <suspect-fqcn>...
+    for authoritative who-still-uses verdicts (ORPHAN-CANDIDATE = only
+    self-references remain). Grep is the built-in fallback.
     Each orphan MUST be deleted in this change or explicitly retained with
     rationale. `RemoveUnused` lint does not flag public/opaque members, so
     this audit is mandatory.
