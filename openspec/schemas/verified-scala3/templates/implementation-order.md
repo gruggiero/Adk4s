@@ -38,12 +38,28 @@
 
 <!-- Per spec, the production files expected to change. Ring 5 dynamically
      retargets the Stryker mutate list to the files ACTUALLY changed by the
-     spec (git diff), using this column as the starting estimate. NEVER rely
-     on a fixed mutate list in stryker4s.conf. -->
+     spec (git diff against the spec's Step 0 baseline SHA), using this
+     column as the starting estimate. NEVER rely on a fixed mutate list in
+     stryker4s.conf. -->
 
 | # | Spec | Expected Files |
 |---|------|----------------|
 | <!-- 1 --> | <!-- accounts --> | <!-- src/main/scala/domain/Account.scala, ... --> |
+
+## Human Gate Tier
+
+<!-- Per spec: `combined` (typed contract + test oracle presented at ONE
+     gate) is allowed ONLY when complexity is `simple` AND the proposal's
+     correctness risk is `low`. Everything else is `separate` (two gates —
+     the default). Both steps are always executed in full either way; the
+     tier changes only how many stops the human reviews. Rationale: human
+     attention is the scarcest verification resource — a gate the human
+     stops reading is worse than no gate. -->
+
+| # | Spec | Tier (combined/separate) | Justification |
+|---|------|--------------------------|---------------|
+| <!-- 1 --> | <!-- accounts --> | <!-- separate --> | <!-- complexity=high --> |
+| <!-- 3 --> | <!-- notifications --> | <!-- combined --> | <!-- complexity=simple, risk=low --> |
 
 ## Complexity Guide
 
@@ -61,16 +77,19 @@
 ## Implementation Sequence
 
 <!-- Process each spec in this exact order. For each spec:
-     1. Read concept-inventory.md — import existing concepts; verify the
-        spec's Proof Obligations table is complete
+     1. Record baseline SHA (clean tree) + inventory snapshot; read
+        openspec/concept-inventory.md — import existing concepts; verify the spec's
+        Proof Obligations table is complete
      2. Typed contract (mandatory) — genuinely compiled in test sources
+        → human review GATE (combined-tier specs: merged into gate 3)
+     3. Test oracle from spec + contract only (before implementation),
+        run once for ORACLE POLARITY (red / green-by-design)
         → human review GATE
-     3. Test oracle from spec + contract only (before implementation)
-        → human review GATE
-     4. Implement through all applicable rings (see table above), including
-        the mandatory adversarial spec-compliance review (Ring 8)
-     5. Concept delta check + update concept-inventory.md
-     6. Mark checkbox below
+     4. Implement through all applicable rings (see table above) — Ring 8
+        adversarial review (fresh context) runs BEFORE Rings 5/6/7
+     5. Concept delta check (scanner diff) + build-dependency delta +
+        update openspec/concept-inventory.md
+     6. Mark checkbox below, regenerate tasks.md, COMMIT the spec
      7. STOP for human validation before next spec
 
      DO NOT skip ahead. DO NOT batch-implement. One spec at a time. -->

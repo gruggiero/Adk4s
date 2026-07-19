@@ -23,7 +23,7 @@
 - [ ] Step 2 — test oracle: scenarios + [N] properties + compile-negative stubs (human gate)
 - [ ] Step 3 — implementation
 - [ ] Rings: [applicable rings for this spec, e.g. R0 R1 R2 R3 R5 R8]
-- [ ] Concept-delta check + update concept-inventory.md + checkpoint
+- [ ] Concept-delta check + update openspec/concept-inventory.md + checkpoint
 
 ## 2. [next-spec-name]
 

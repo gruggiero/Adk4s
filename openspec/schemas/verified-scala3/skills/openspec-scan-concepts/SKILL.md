@@ -2,18 +2,19 @@
 
 name: openspec-scan-concepts
 description: >
-  Scan the Scala 3 codebase to discover and catalogue existing domain concepts
-  (opaque types, sealed traits, enums, service traits, case classes, Smithy models,
-  ScalaCheck generators). Populates or updates the concept-inventory.md artifact
-  in the current OpenSpec change directory.
+  Scan the Scala 3 codebase (multi-module) to discover and catalogue existing
+  domain concepts (opaque types, sealed traits, enums, service traits, case
+  classes, Smithy models, property generators). Creates or verifies the
+  PROJECT-scoped living inventory at openspec/concept-inventory.md; the
+  per-change inventory-check.md artifact records the verification result.
 globs:
 
-  - "openspec/changes/*/concept-inventory.md"
-  - "src/main/scala/**/*.scala"
-  - "src/test/scala/**/*.scala"
-  - "src/main/smithy/**/*.smithy"
+  - "openspec/concept-inventory.md"
+  - "**/src/main/scala/**/*.scala"
+  - "**/src/test/scala/**/*.scala"
+  - "**/src/main/smithy/**/*.smithy"
 metadata:
-  generatedBy: verified-scala3-schema/1.1.0
+  generatedBy: verified-scala3-schema/6.0.0
 
 ---
 
@@ -21,15 +22,30 @@ metadata:
 
 ## Purpose
 
-Scan the project source tree and produce a structured concept inventory. This
-inventory is the mechanism that prevents duplicate type creation when specs are
-implemented sequentially in the verified-scala3 workflow.
+Scan the project source tree and maintain the PROJECT-scoped concept
+inventory at `openspec/concept-inventory.md` (a living document, sibling of
+the behavioral registry `openspec/concepts/`). The inventory prevents
+duplicate type creation when specs are implemented sequentially, and its
+`Introduced By` provenance accumulates ACROSS changes.
 
 ## When to Use
 
-- When creating the `concept-inventory` artifact during `/opsx:continue` or `/opsx:ff`
-- When manually invoked via `/opsx:scan` to refresh the inventory
+- When creating the `concept-inventory` artifact (inventory-check.md) during
+  `/opsx:continue` or `/opsx:ff`
+- When manually invoked via `/opsx:scan` to verify the inventory
 - Before implementing any spec during `/opsx:apply` (concept check step)
+
+## Create vs Verify — never re-create an existing inventory
+
+- `openspec/concept-inventory.md` MISSING → CREATE it with a full scan
+  (Option A/B below).
+- It EXISTS → VERIFY it: spot-check rows against the source (scan into a
+  scratch file and diff relevant sections); fix stale rows PRESERVING their
+  `Introduced By` provenance. A from-scratch re-scan replaces `spec:<name>`
+  provenance with `scan:<file>` — that loss is exactly what project scoping
+  exists to prevent.
+- Either way, record the result in the change's `inventory-check.md`
+  (template: `templates/inventory-check.md`).
 
 ## Procedure
 
@@ -38,22 +54,33 @@ implemented sequentially in the verified-scala3 workflow.
 If `openspec/schemas/verified-scala3/scanner/concept-scanner.scala` exists:
 
 ```bash
-scala-cli run openspec/schemas/verified-scala3/scanner/concept-scanner.scala -- . --output openspec/changes/<CHANGE_NAME>/concept-inventory.md
+# creation (inventory missing):
+openspec/schemas/verified-scala3/scanner/scan.sh . --output openspec/concept-inventory.md
+# verification (inventory exists) — scan to scratch and compare:
+openspec/schemas/verified-scala3/scanner/scan.sh . --output /tmp/inventory-scan.md
 ```
+
+The scanner is MULTI-MODULE: it discovers every `src/` root in the repo
+(`<module>/src/main/scala`, top-level `src/`, nested modules), so a
+multi-module build is scanned completely rather than silently yielding 0.
 
 ### Option B: Manual scan (default)
 
-Scan the project source tree systematically. For each category below, search the
-indicated directories and extract the specified patterns.
+Scan the project source tree systematically — EVERY module's source roots
+(`**/src/main/scala/`, `**/src/test/scala/`), not just a top-level `src/`.
+For each category below, search the indicated directories and extract the
+specified patterns.
 
-#### 1. Opaque Types (Iron Refined)
+#### 1. Refined / Opaque Types
 
-Search: `src/main/scala/` recursively
+Search: every module’s `src/main/scala/` recursively (`**/src/main/scala/`)
 
-Pattern to find:
+Patterns to find (Iron-style refined types AND plain opaque types with
+smart constructors — record whichever the project actually uses):
 
 ```
 opaque type <Name> = <Underlying> :| <Constraint>
+opaque type <Name> = <Underlying>
 ```
 
 Also look for constraint type aliases:
@@ -71,13 +98,13 @@ For each match, record:
 |--------|-------|
 | Type | The opaque type name |
 | Underlying | The base type (String, Long, Int, etc.) |
-| Iron Constraint | The full constraint expression (with aliases resolved) |
+| Constraint | The full constraint expression (aliases resolved), or the smart constructor for plain opaque types |
 | Package | The `package` declaration in the file |
 | Introduced By | `scan:<filename>` |
 
 #### 2. Sealed Traits and Enums
 
-Search: `src/main/scala/` recursively
+Search: every module’s `src/main/scala/` recursively (`**/src/main/scala/`)
 
 Patterns to find:
 
@@ -104,7 +131,7 @@ For each match, record:
 
 #### 3. Case Classes (Domain Value Objects)
 
-Search: `src/main/scala/` recursively (focus on domain packages)
+Search: every module’s `src/main/scala/` recursively (`**/src/main/scala/`) (focus on domain packages)
 
 Pattern to find:
 
@@ -129,7 +156,7 @@ For each match, record:
 
 #### 4. Service Traits (Tagless Final)
 
-Search: `src/main/scala/` recursively
+Search: every module’s `src/main/scala/` recursively (`**/src/main/scala/`)
 
 Pattern to find:
 
@@ -153,7 +180,7 @@ For each match, record:
 
 #### 5. Smithy Models
 
-Search: `src/main/smithy/`, `src/main/resources/` for `*.smithy` files
+Search: every module’s `src/main/smithy/` and `src/main/resources/` for `*.smithy` files
 
 Patterns to find:
 
@@ -173,15 +200,17 @@ For each match, record:
 | Location | The `.smithy` file path |
 | Introduced By | `scan:<filename>` |
 
-#### 6. ScalaCheck Generators
+#### 6. Property Generators
 
-Search: `src/test/scala/` recursively
+Search: every module’s `src/test/scala/` recursively (`**/src/test/scala/`)
 
-Patterns to find:
+Patterns to find (for the DETECTED property framework — ScalaCheck and
+Hedgehog both use a `Gen` type; only ScalaCheck has `Arbitrary`):
 
 ```
 val gen<Name>: Gen[<Type>] = ...
 val gen<Name> = Gen.<method>(...)
+def gen<Name>: Gen[<Type>] = ...
 implicit val arb<Name>: Arbitrary[<Type>] = ...
 given Arbitrary[<Type>] = ...
 ```
@@ -252,33 +281,41 @@ instead of re-enumerating implementation types in the spec body.
 
 ### After Scanning
 
-1. Write the inventory to the concept-inventory artifact path:
-   `openspec/changes/<CHANGE_NAME>/concept-inventory.md`
+1. CREATION: write the inventory to the PROJECT path
+   `openspec/concept-inventory.md`, using the template structure from
+   `openspec/schemas/verified-scala3/templates/concept-inventory.md` and
+   replacing the placeholder comment rows with actual scan results.
+   VERIFICATION: diff the scratch scan against the existing inventory; fix
+   stale rows in place, preserving each row's `Introduced By` value.
 
-2. Use the template structure from:
-   `openspec/schemas/verified-scala3/templates/concept-inventory.md`
-
-3. Replace the template's placeholder comment rows with actual scan results.
-
-4. If the project is empty (no Scala source files), create the inventory with
+2. If the project is empty (no Scala source files), create the inventory with
    empty tables (header rows only, no data rows).
 
-5. Report a summary:
+3. Write the change's `inventory-check.md` report (template:
+   `openspec/schemas/verified-scala3/templates/inventory-check.md`) with the
+   consistency-check and registry-pass results.
+
+4. Report a summary:
    ```
-   Concept scan complete:
+   Concept scan complete (created | verified openspec/concept-inventory.md):
    - N opaque types
    - N sealed traits/enums
    - N case classes
    - N service traits
    - N Smithy models
-   - N ScalaCheck generators
+   - N property generators
+   - stale rows fixed: N (provenance preserved)
    ```
 
 ## Important Rules
 
 - SCAN what exists. Do NOT invent or assume concepts.
+- NEVER re-create an existing inventory from scratch — provenance
+  (`spec:<change>/<spec>`) accumulates across changes and a fresh scan
+  destroys it.
 - Record EXACT package paths (they will be used for import statements).
 - Record EXACT constraint expressions (they will be used for type verification).
 - If a file has multiple packages (unusual), use the first one.
 - If a concept appears in multiple files, record the definition site (not usage sites).
-- This is a LIVING DOCUMENT — it will be updated after each spec implementation.
+- The PROJECT inventory is a LIVING DOCUMENT — apply Step 12 appends to it
+  after each spec implementation.

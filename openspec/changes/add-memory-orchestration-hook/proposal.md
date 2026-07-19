@@ -108,13 +108,13 @@ schema/evaluator logic; pure orchestration wiring with fallback/default paths.
 
 - [x] Ring 0: Compilation — strict scalac flags, refined types
 - [x] Ring 1: Lint — Scalafix DisableSyntax, WartRemover, dangerous-pattern scan
-- [ ] Ring 2: Architecture — project-specific layer dependencies, sealed domain types, effect discipline
-- [x] Ring 3: Property-based tests — MANDATORY (waiver only for docs/formatting/build-metadata/test-only changes; state waiver + rationale here if claimed)
+- [x] Ring 2: Architecture — project-specific layer dependencies, sealed domain types, effect discipline (new `org.adk4s.orchestration.memory` package must depend only on `adk4s-orchestration` + `adk4s-memory-api`; the events spec extends the sealed `AgentEvent` ADT in `adk4s-core`)
+- [x] Ring 3: Property-based tests — MANDATORY (waiver only for docs/formatting/build-metadata/test-only changes; state waiver + rationale here if claimed). This change touches INTERRUPT/RESUME semantics (a `RunResult.Interrupted` must not trigger a `postTurn` write), so its concurrency scenarios MUST use the detected deterministic test kit (cats-effect `TestControl` via munit-cats-effect), never wall-clock sleeps.
 - [ ] Ring 4: Wire/persistence compatibility — round-trips, old fixtures, snapshots (REQUIRED if serialization/persistence/wire data is touched)
 - [x] Ring 5: Mutation testing — Stryker4s on changed files, threshold 90% (pure orchestration wiring with default/no-op paths)
 - [ ] Ring 6: Formal verification — Stainless, PureScala modules only
 - [ ] Ring 7: Model checking — TLA+/Apalache for distributed/event-driven invariants
-- [x] Ring 8: Adversarial spec-compliance review — MANDATORY for code changes
+- [x] Ring 8: Adversarial spec-compliance review — MANDATORY for code changes (fresh-context reviewer; runs BEFORE Rings 5/6/7 in the apply sequence)
 - [ ] Ring 9: Telemetry — span contracts, temporal monitors (only if telemetry stack detected)
 
 Ring 4 is not checked: the hook does not touch serialization, persisted

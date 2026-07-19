@@ -37,6 +37,11 @@ lazy val scala3Options: Seq[String] = Seq(
   "-feature",
   "-unchecked",
   "-Xkind-projector:underscores",
+  // Ring 0 exhaustiveness escalation (verified-scala3 schema): an
+  // inexhaustive match over a sealed type must fail compilation, not warn —
+  // the schema's no-catch-all rules are unenforceable otherwise.
+  "-Wconf:name=PatternMatchExhaustivity:e",
+  "-Wconf:name=MatchCaseUnreachable:e",
   // "-source:future"
 )
 

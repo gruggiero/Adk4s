@@ -15,10 +15,21 @@ package <target.package>.typecontract
 //  real project classpath. Files under openspec/changes/... are NOT part of
 //  the sbt source graph and give FALSE confidence.
 //
+//  LIFECYCLE — after implementation (apply Step 3) this file is NOT deleted
+//  or gutted: it becomes a permanent API CONFORMANCE ASSERTION. For each
+//  approved public signature, keep an eta-expanded pin against the real
+//  implementation, e.g.
+//    val transferSig: (AccountId, AccountId, Amount)
+//      => IO[Either[TransferError, TransferResult]] = AccountService.transfer
+//  plus the compile-negative checks. Zero runtime cost; any later signature
+//  drift breaks <module>/Test/compile — "signatures stay as approved"
+//  becomes compiler-checked instead of prose.
+//
 //  Status: [ ] Compiles via <module>/Test/compile  [ ] Human-approved
+//          [ ] Converted to conformance assertions after implementation
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ── Concepts reused (from concept-inventory.md) ─────────────────────────
+// ── Concepts reused (from openspec/concept-inventory.md) ─────────────────────────
 // import <package>.<Type>    // <kind> — <brief note>
 
 // ── New opaque types + smart constructors ───────────────────────────────

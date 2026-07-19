@@ -7,7 +7,7 @@ description: >
   plus synchronizations — from the existing code. One-time per project (then
   the registry is maintained as a living document by every change).
 metadata:
-  generatedBy: verified-scala3-schema/1.1.0
+  generatedBy: verified-scala3-schema/6.0.0
 ---
 
 # Extract Concepts Skill

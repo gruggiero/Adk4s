@@ -1,11 +1,19 @@
 # Capability Profile
 
-<!-- DETECTED project capabilities. Populated by inspecting build.sbt,
+<!-- PROJECT-SCOPED LIVING DOCUMENT — lives at openspec/capability-profile.md
+     (sibling of the openspec/concepts/ registry), NOT in a change directory.
+     Each change's capability-check artifact verifies and refreshes it;
+     per-change copies drift and die with archiving.
+
+     DETECTED project capabilities. Populated by inspecting build.sbt,
      project/plugins.sbt, project/Versions.scala, project/Dependencies.scala,
      source code, and tool configs — NEVER assumed.
      All later artifacts (specs, design, apply phase) must generate code
      and tests for THIS stack. If this file disagrees with openspec/config.yaml,
-     this file wins — update config.yaml. -->
+     this file wins — update config.yaml.
+
+     The values below are EXAMPLES from the pilot project — replace every
+     row with your project's detected values. -->
 
 ## Build & Language
 
@@ -15,8 +23,8 @@
 | sbt version | 1.12.12 | project/build.properties |
 | JDK | 26 (Homebrew OpenJDK) | runtime |
 | Modules | `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-orchestration`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
-| Fatal warnings | NO — `-Werror` is NOT active; warnings do not fail the build | build.sbt scala3Options |
-| scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, `-source:future` (shared via `scala3Options` val) | build.sbt |
+| Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule) | build.sbt scala3Options |
+| scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, exhaustiveness `-Wconf` escalations (shared via `scala3Options` val) | build.sbt |
 | Dependency management | Centralized: `project/Versions.scala` (all versions), `project/Dependencies.scala` (all ModuleIDs), `build.sbt` imports `Dependencies._` | project/*.scala |
 | semanticdb | Enabled (for scalafix semantic rules: RemoveUnused, OrganizeImports) | build.sbt `semanticdbEnabled := true` |
 

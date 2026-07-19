@@ -5,7 +5,7 @@
 <!-- Define the package layout and layer dependency rules.
      These rules are enforced by the architecture rules (Ring 2) and must
      be PROJECT-SPECIFIC: derive the forbidden imports from the stack
-     detected in capability-profile.md. -->
+     detected in openspec/capability-profile.md. -->
 
 ### Layers
 

@@ -33,7 +33,10 @@
 <!-- low / medium / high, with one-line justification.
      High-risk examples: evaluators, typecheckers, desugarers, mappers,
      money arithmetic, persistence schema changes, anything with
-     fallback/default paths. -->
+     fallback/default paths.
+     The risk level, combined with per-spec complexity, sets the HUMAN GATE
+     TIER in implementation-order.md: only simple+low specs may combine the
+     typed-contract and test-oracle gates into one. -->
 
 **Risk**: [low / medium / high] — [justification]
 
@@ -42,18 +45,18 @@
 <!-- Check which verification rings apply to this change.
      Ring 0 and Ring 1 always apply.
      Ring 3 and Ring 8 are MANDATORY for every code-changing spec.
-     Ring availability comes from capability-profile.md — do not check a ring
+     Ring availability comes from openspec/capability-profile.md — do not check a ring
      whose tooling is absent without adding a setup task. -->
 
 - [x] Ring 0: Compilation — strict scalac flags, refined types
 - [x] Ring 1: Lint — Scalafix DisableSyntax, WartRemover, dangerous-pattern scan
 - [ ] Ring 2: Architecture — project-specific layer dependencies, sealed domain types, effect discipline
-- [x] Ring 3: Property-based tests — MANDATORY (waiver only for docs/formatting/build-metadata/test-only changes; state waiver + rationale here if claimed)
+- [x] Ring 3: Property-based tests — MANDATORY (waiver only for docs/formatting/build-metadata/test-only changes; state waiver + rationale here if claimed). If the change involves CONCURRENT behavior (parallel execution, streaming, timeouts, cancellation, interruption), note it here — its scenarios must use the detected deterministic test kit (never wall-clock sleeps)
 - [ ] Ring 4: Wire/persistence compatibility — round-trips, old fixtures, snapshots (REQUIRED if serialization/persistence/wire data is touched)
 - [ ] Ring 5: Mutation testing — Stryker4s on changed files, threshold ____% (90–95% pure domain logic, 80–90% adapters)
 - [ ] Ring 6: Formal verification — Stainless, PureScala modules only
 - [ ] Ring 7: Model checking — TLA+/Apalache for distributed/event-driven invariants
-- [x] Ring 8: Adversarial spec-compliance review — MANDATORY for code changes
+- [x] Ring 8: Adversarial spec-compliance review — MANDATORY for code changes (fresh-context reviewer; runs BEFORE Rings 5/6/7 in the apply sequence)
 - [ ] Ring 9: Telemetry — span contracts, temporal monitors (only if telemetry stack detected)
 
 ## Typed Contract Decision
@@ -80,7 +83,7 @@
 
 ## Existing Concepts to Reuse
 
-<!-- Reference entries from concept-inventory.md that this change will use.
+<!-- Reference entries from openspec/concept-inventory.md that this change will use.
      If the inventory is empty (new project), write "None — new project." -->
 
 | Concept | Kind | Package | Notes |

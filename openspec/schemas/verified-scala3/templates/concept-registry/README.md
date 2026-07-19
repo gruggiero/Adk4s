@@ -18,9 +18,9 @@ does not require the code to be restructured. Where the implementation
 violates the pattern's design rules, the concept file records the deviation
 instead of hiding it.
 
-## Relation to `concept-inventory.md`
+## Relation to `openspec/concept-inventory.md`
 
-The per-change `concept-inventory.md` (from `openspec-scan-concepts`) catalogs
+The project-scoped `openspec/concept-inventory.md` (its sibling, maintained via `openspec-scan-concepts`) catalogs
 **types** — it answers "does this type already exist?" during apply. This
 registry catalogs **behavior** — it answers "what is the stable name for the
 thing this spec changes?". Spec deltas refer to behavior as `Concept/action`;
@@ -86,9 +86,10 @@ artifact repositories):
 
 1. Copy `templates/concept-registry/README.md` → `openspec/concepts/README.md`.
 2. Run `scanner/install-skills.sh` to copy the schema's skill sources into
-   `.claude/skills/` (repeat after every schema upgrade — `.claude/` is often
-   git-ignored, so these copies are local; the schema dir is the source of
-   truth).
+   the project's agent skill directories — `.claude/skills/`, `.pi/skills/`,
+   `.devin/skills/` (repeat after every schema upgrade — these directories
+   are often git-ignored, so the copies are local; the schema dir is the
+   source of truth).
 3. Run the `openspec-extract-concepts` skill to populate the registry.
 4. Add a CI job running `scanner/registry-check.sh .` — ready-made templates
    for Azure DevOps, GitLab and GitHub Actions are in the schema's `ci/`

@@ -1,26 +1,35 @@
 # Concept Inventory
 
-<!-- This is a LIVING DOCUMENT. It is populated by scanning the existing codebase
-     and updated after each spec's implementation during the apply phase.
+<!-- PROJECT-SCOPED LIVING DOCUMENT — lives at openspec/concept-inventory.md
+     (the type-level companion of the behavioral registry at
+     openspec/concepts/), NOT in a change directory. It is populated by
+     scanning the existing codebase once, then updated after each spec's
+     implementation during the apply phase (Step 12). Provenance accumulates
+     ACROSS changes; per-change copies died with archiving and destroyed it.
+     Each change's inventory-check artifact verifies this file instead of
+     re-creating it.
 
      PURPOSE: Prevent duplicate creation of domain concepts when implementing
      specs sequentially. Before creating any new type, the apply phase MUST
      check this inventory and reuse existing concepts.
 
      MAINTENANCE RULES:
-     - APPEND ONLY during apply (never remove or modify existing entries)
-     - Each entry records which spec introduced it (traceability)
+     - APPEND ONLY during apply (never remove or modify existing entries,
+       except fixing a stale row while PRESERVING its provenance)
+     - Each entry records which spec introduced it: `spec:<change>/<spec>`
+       (or `scan:<file>` for concepts predating the workflow)
      - Package paths must be exact (used for import statements)
-     - Constraints must be exact (used for Iron type verification) -->
+     - Constraints must be exact (used for refined-type verification) -->
 
-## Opaque Types (Iron Refined)
+## Refined / Opaque Types
 
-<!-- Types with compile-time constraints via Iron. These make invalid
-     states unrepresentable. Example:
+<!-- Constrained domain types — via the DETECTED refined-type library
+     (e.g. Iron) or plain Scala 3 opaque types with smart constructors.
+     These make invalid states unrepresentable. Iron example:
      opaque type AccountId = String :| (MinLength[10] & MaxLength[10]) -->
 
-| Type | Underlying | Iron Constraint | Package | Introduced By |
-|------|-----------|-----------------|---------|---------------|
+| Type | Underlying | Constraint | Package | Introduced By |
+|------|-----------|------------|---------|---------------|
 | <!-- AccountId --> | <!-- String --> | <!-- MinLength[10] & MaxLength[10] & Match["^[a-zA-Z0-9]+$"] --> | <!-- domain --> | <!-- spec:accounts --> |
 
 ## Sealed Traits and Enums
@@ -60,10 +69,11 @@
 |-------|------|-------------------|----------|---------------|
 | <!-- AccountService --> | <!-- service --> | <!-- Withdraw, Deposit, Transfer --> | <!-- src/main/smithy/account.smithy --> | <!-- spec:accounts --> |
 
-## ScalaCheck Generators
+## Property Generators
 
-<!-- Reusable generators for property-based tests. Record these to
-     avoid duplicate generator creation across specs. -->
+<!-- Reusable generators for property-based tests, in the DETECTED property
+     framework (ScalaCheck Gen/Arbitrary, Hedgehog Gen, ...). Record these
+     to avoid duplicate generator creation across specs. -->
 
 | Generator | Generates | Location | Introduced By |
 |-----------|----------|----------|---------------|

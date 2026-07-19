@@ -10,12 +10,12 @@ import scala.util.matching.Regex
 //  Concept Scanner for Scala 3 Projects
 //
 //  Scans a Scala 3 source tree and extracts domain concepts:
-//  - Opaque types with Iron constraints
+//  - Refined/opaque types (Iron-style constraints or plain opaque types)
 //  - Sealed traits and enums (with variants)
 //  - Case classes (domain value objects)
 //  - Service traits (tagless final, F[_])
 //  - Smithy models (from .smithy files)
-//  - ScalaCheck generators (Gen[_], Arbitrary[_])
+//  - Property generators (Gen[_], Arbitrary[_] — ScalaCheck or Hedgehog)
 //
 //  Output: Markdown tables matching the concept-inventory.md template.
 //
@@ -88,9 +88,17 @@ case class ScanResult(
 object ConceptScanner:
 
   def scan(projectDir: os.Path): ScanResult =
-    val mainScala = findScalaFiles(projectDir / "src" / "main" / "scala")
-    val testScala = findScalaFiles(projectDir / "src" / "test" / "scala")
-    val smithyFiles = findSmithyFiles(projectDir)
+    // MULTI-MODULE: discover every `src/` root in the repo (top-level or
+    // per-module, e.g. adk4s-core/src/...), not just <projectDir>/src.
+    // A scanner that silently finds 0 concepts in a multi-module build
+    // looks like an empty project — that failure mode is why this walks.
+    val srcRoots = findSrcRoots(projectDir)
+    val mainScala = srcRoots.flatMap(s => findScalaFiles(s / "main" / "scala"))
+    val testScala = srcRoots.flatMap(s => findScalaFiles(s / "test" / "scala"))
+    val smithyFiles = srcRoots
+      .flatMap(s => List(s / "main" / "smithy", s / "main" / "resources"))
+      .filter(os.exists)
+      .flatMap(d => os.walk(d).filter(_.ext == "smithy").toList)
 
     ScanResult(
       opaqueTypes = mainScala.flatMap(scanOpaqueTypes),
@@ -101,19 +109,19 @@ object ConceptScanner:
       generators = testScala.flatMap(scanGenerators)
     )
 
+  private val skipDirNames: Set[String] =
+    Set("target", "project", "openspec", "node_modules")
+
+  private def findSrcRoots(projectDir: os.Path): List[os.Path] =
+    os.walk(
+      projectDir,
+      skip = p => p.last.startsWith(".") || skipDirNames.contains(p.last)
+    ).filter(p => os.isDir(p) && p.last == "src").toList.sortBy(_.toString)
+
   private def findScalaFiles(dir: os.Path): List[os.Path] =
     if os.exists(dir) then
       os.walk(dir).filter(_.ext == "scala").toList
     else Nil
-
-  private def findSmithyFiles(projectDir: os.Path): List[os.Path] =
-    val dirs = List(
-      projectDir / "src" / "main" / "smithy",
-      projectDir / "src" / "main" / "resources"
-    )
-    dirs.filter(os.exists).flatMap(d =>
-      os.walk(d).filter(_.ext == "smithy").toList
-    )
 
   // ── Opaque types ───────────────────────────────────────────────────────
 
@@ -349,9 +357,9 @@ object MarkdownFormatter:
     sb.append(s"<!-- Scan date: ${java.time.LocalDate.now} -->\n\n")
 
     // Opaque types
-    sb.append("## Opaque Types (Iron Refined)\n\n")
-    sb.append("| Type | Underlying | Iron Constraint | Package | Introduced By |\n")
-    sb.append("|------|-----------|-----------------|---------|---------------|\n")
+    sb.append("## Refined / Opaque Types\n\n")
+    sb.append("| Type | Underlying | Constraint | Package | Introduced By |\n")
+    sb.append("|------|-----------|------------|---------|---------------|\n")
     result.opaqueTypes.foreach { t =>
       sb.append(s"| ${t.name} | ${t.underlying} | ${esc(t.constraint)} | ${t.pkg} | scan:${t.file} |\n")
     }
@@ -401,7 +409,7 @@ object MarkdownFormatter:
     sb.append("\n")
 
     // Generators
-    sb.append("## ScalaCheck Generators\n\n")
+    sb.append("## Property Generators\n\n")
     sb.append("| Generator | Generates | Location | Introduced By |\n")
     sb.append("|-----------|----------|----------|---------------|\n")
     result.generators.foreach { g =>

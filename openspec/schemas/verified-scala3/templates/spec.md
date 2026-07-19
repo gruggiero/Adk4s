@@ -25,7 +25,13 @@
        domain whose authoritative source is outside the repo must be marked
        **MUST-CONFIRM — do not invent** with a pointer to where the real data
        lives. The apply phase stops and asks; synthesizing plausible values is
-       a schema violation. -->
+       a schema violation.
+     - CONCURRENCY RULE: requirements about concurrent execution, timeouts,
+       cancellation, or interruption state a DETERMINISTIC observable
+       (ordering guarantee, final state, emitted-event set), never a
+       wall-clock expectation ("within 100ms"). Their scenarios are tested
+       with the detected deterministic test kit (e.g. cats-effect
+       TestControl). -->
 
 ## Concepts Used (behavioral)
 
@@ -34,6 +40,10 @@
      with a link to the concept file and one line on the role here.
      Cross-concept requirements should lean on the registry's named
      synchronizations rather than restating imperative recipes.
+     A concept this spec CREATES is cited with a "(NEW — created by this
+     spec)" annotation in the Concept cell — registry-check skips such rows
+     until the concept file lands with the implementation (apply Step 12),
+     which is a commitment of the spec.
      If the project has no registry, delete this section. -->
 
 | Concept | Role here | File |
@@ -46,7 +56,7 @@
 
 ## Concepts Used (from inventory)
 
-<!-- Reference existing concepts from concept-inventory.md.
+<!-- Reference existing concepts from openspec/concept-inventory.md.
      These MUST already exist — do NOT invent concepts here.
      The implementation will import these, not recreate them. -->
 
@@ -60,7 +70,7 @@
 <!-- New types, traits, enums, or IDL operations this spec creates.
      These are COMMITMENTS — the implementation must create exactly these
      and NOTHING MORE (verified by the concept delta check at Step 12).
-     After implementation, these will be added to concept-inventory.md. -->
+     After implementation, these will be added to openspec/concept-inventory.md. -->
 
 | Concept | Kind | Description |
 |---------|------|-------------|
@@ -111,19 +121,23 @@ Given/When/Then clauses below refine it into testable form].
 
 ## Properties (Ring 3)
 
-<!-- ScalaCheck properties that the implementation MUST satisfy.
+<!-- Property-based tests (in the DETECTED property framework) that the
+     implementation MUST satisfy.
      Write as English invariants AND forAll pseudocode.
      These become the test harness BEFORE implementation (Step 2 test oracle) —
      they are the SPEC, not the tests. The implementation must satisfy them,
-     not the other way around.
+     not the other way around. Generators are PART of the oracle: narrowing
+     one after approval is oracle tampering (needs re-approval).
 
      EVERY property declares its generator strategy:
      - which Gen it uses (existing from inventory, or new)
-     - constructive (preferred) or filtered (avoid heavy suchThat — discards
+     - constructive (preferred) or filtered (avoid heavy filtering — discards
        weaken coverage)
      - which edge cases the generator covers
-     - classification labels (ScalaCheck classify/collect) used to make
-       case coverage visible -->
+     - classification/coverage labels (Hedgehog cover/classify, ScalaCheck
+       classify/collect) used to make case coverage visible; where the
+       framework supports coverage ASSERTIONS (Hedgehog cover), conditioned
+       properties must carry one -->
 
 ### Property: [Invariant Name]
 
@@ -204,7 +218,7 @@ def functionName(param: Type): ReturnType = {
 
 <!-- EARS natural language patterns for runtime monitoring.
      Only include if the proposal's verification strategy checks Ring 9
-     AND the telemetry stack is detected (capability-profile.md).
+     AND the telemetry stack is detected (openspec/capability-profile.md).
      Every temporal property MUST name its trigger and response events.
 
      EARS patterns:
