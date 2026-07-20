@@ -69,6 +69,7 @@ case class ServiceTrait(
     name: String,
     typeParam: String,
     methods: List[String],
+    impls: List[String], // cross-file implementations, linked by extends clauses
     pkg: String,
     file: String
 )
@@ -123,11 +124,33 @@ object ConceptScanner:
     val mainTrees = mainParsed.collect { case (f, Right(t)) => (f, t) }
     val testTrees = testParsed.collect { case (f, Right(t)) => (f, t) }
 
+    // Cross-file hierarchy: sealed types' DIRECT children are same-file by
+    // language rule (already complete), but service-trait IMPLEMENTATIONS
+    // live anywhere in the repo — link them via extends clauses (including
+    // anonymous `new Trait[F]: ...` factory implementations) across all
+    // parsed files. Name resolution: a simple-name match links when the
+    // trait's simple name is unique in the scan, or the implementor shares
+    // its package (ambiguous cross-package matches are skipped, not guessed).
+    val edges = mainTrees.flatMap(extendsEdges.tupled)
+    val serviceRaw = mainTrees.flatMap(scanServiceTraits.tupled)
+    val simpleNameCount: Map[String, Int] =
+      serviceRaw.groupBy(_.name.split('.').last).view.mapValues(_.size).toMap
+    val serviceLinked = serviceRaw.map { s =>
+      val simple = s.name.split('.').last
+      val impls = edges.collect {
+        case (child, parent, childPkg)
+            if parent == simple && child != simple
+              && (simpleNameCount.getOrElse(simple, 0) == 1 || childPkg == s.pkg) =>
+          child
+      }.distinct.sorted
+      s.copy(impls = impls)
+    }
+
     ScanResult(
       opaqueTypes = mainTrees.flatMap(scanOpaqueTypes.tupled),
       sealedTypes = mainTrees.flatMap(scanSealedTypes.tupled),
       caseClasses = mainTrees.flatMap(scanCaseClasses.tupled),
-      serviceTraits = mainTrees.flatMap(scanServiceTraits.tupled),
+      serviceTraits = serviceLinked,
       smithyModels = smithyFiles.flatMap(scanSmithyModels),
       generators = testTrees.flatMap(scanGenerators.tupled),
       parseFailures = failures
@@ -241,12 +264,32 @@ object ConceptScanner:
 
     sealedTraits ++ sealedClasses ++ enums
 
+  private def parentNames(templ: Template): List[String] =
+    templ.inits.flatMap(init => init.tpe match
+      case Type.Name(n)                  => Some(n)
+      case Type.Apply(Type.Name(n), _)   => Some(n)
+      case Type.Select(_, Type.Name(n))  => Some(n)
+      case _                             => None)
+
   private def extendsName(templ: Template, name: String): Boolean =
-    templ.inits.exists(init => init.tpe match
-      case Type.Name(n)                  => n == name
-      case Type.Apply(Type.Name(n), _)   => n == name
-      case Type.Select(_, Type.Name(n))  => n == name
-      case _                             => false)
+    parentNames(templ).contains(name)
+
+  /** (childName, parentSimpleName, childPkg) for every extends clause —
+    * including ANONYMOUS implementations (`new Trait[F]: ...` inside a
+    * factory), attributed to their enclosing definition, e.g.
+    * `MemoryRetriever (anonymous)`. */
+  private val extendsEdges: (os.Path, Source) => List[(String, String, String)] =
+    (_, source) =>
+      all(source).flatMap {
+        case c: Defn.Class  => parentNames(c.templ).map(p => (c.name.value, p, pkgOf(source, c)))
+        case o: Defn.Object => parentNames(o.templ).map(p => (o.name.value, p, pkgOf(source, o)))
+        case t: Defn.Trait  => parentNames(t.templ).map(p => (t.name.value, p, pkgOf(source, t)))
+        case n: Term.NewAnonymous =>
+          val owner = ownerPath(source, n)
+          val child = if owner.isEmpty then "(anonymous)" else s"$owner (anonymous)"
+          parentNames(n.templ).map(p => (child, p, pkgOf(source, n)))
+        case _ => Nil
+      }.toList
 
   // ── Case classes ───────────────────────────────────────────────────────
 
@@ -275,7 +318,7 @@ object ConceptScanner:
           case d: Defn.Def => d.name.value
         }
         ServiceTrait(qualified(source, t, t.name.value), hk.syntax, methods,
-          pkgOf(source, t), file.last)
+          Nil, pkgOf(source, t), file.last)
     }.toList
 
   // ── Smithy models (regex — smithy is not Scala) ────────────────────────
@@ -375,13 +418,14 @@ object MarkdownFormatter:
 
     // Service traits
     sb.append("## Service Traits\n\n")
-    sb.append("| Trait | Type Param | Methods | Package | Introduced By |\n")
-    sb.append("|-------|-----------|---------|---------|---------------|\n")
+    sb.append("| Trait | Type Param | Methods | Implementations | Package | Introduced By |\n")
+    sb.append("|-------|-----------|---------|-----------------|---------|---------------|\n")
     result.serviceTraits.foreach { s =>
       val methods = s.methods.mkString(", ")
-      sb.append(s"| ${s.name} | ${esc(s.typeParam)} | ${esc(methods)} | ${s.pkg} | scan:${s.file} |\n")
+      val impls = if s.impls.nonEmpty then s.impls.mkString(", ") else "—"
+      sb.append(s"| ${s.name} | ${esc(s.typeParam)} | ${esc(methods)} | ${esc(impls)} | ${s.pkg} | scan:${s.file} |\n")
     }
-    if result.serviceTraits.isEmpty then sb.append("| *(none found)* | | | | |\n")
+    if result.serviceTraits.isEmpty then sb.append("| *(none found)* | | | | | |\n")
     sb.append("\n")
 
     // Smithy models
@@ -431,7 +475,7 @@ object JsonFormatter:
       "caseClasses" -> caseClasses.map(c =>
         s"""    {"name":"${c.name}","fields":"${je(c.fields)}","package":"${c.pkg}","file":"${c.file}"}"""),
       "serviceTraits" -> serviceTraits.map(s =>
-        s"""    {"name":"${s.name}","typeParam":"${je(s.typeParam)}","methods":[${s.methods.map(m => s""""$m"""").mkString(",")}],"package":"${s.pkg}","file":"${s.file}"}"""),
+        s"""    {"name":"${s.name}","typeParam":"${je(s.typeParam)}","methods":[${s.methods.map(m => s""""$m"""").mkString(",")}],"implementations":[${s.impls.map(i => s""""$i"""").mkString(",")}],"package":"${s.pkg}","file":"${s.file}"}"""),
       "smithyModels" -> smithyModels.map(m =>
         s"""    {"name":"${m.name}","kind":"${m.kind}","members":"${je(m.members)}","file":"${m.file}"}"""),
       "generators" -> generators.map(g =>

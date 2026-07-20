@@ -54,11 +54,14 @@
 
 <!-- Tagless final service interfaces parameterised on F[_].
      Record all methods to enable extension (adding methods to
-     existing traits) rather than parallel creation. -->
+     existing traits) rather than parallel creation.
+     Implementations = known implementors across the repo (the scanner
+     links extends clauses cross-file, including anonymous factory
+     implementations reported as `Owner (anonymous)`). -->
 
-| Trait | Type Param | Methods | Package | Introduced By |
-|-------|-----------|---------|---------|---------------|
-| <!-- AccountService[F[_]] --> | <!-- F: Async --> | <!-- getAccount, deposit, withdraw, transfer --> | <!-- service --> | <!-- spec:accounts --> |
+| Trait | Type Param | Methods | Implementations | Package | Introduced By |
+|-------|-----------|---------|-----------------|---------|---------------|
+| <!-- AccountService[F[_]] --> | <!-- F: Async --> | <!-- getAccount, deposit, withdraw, transfer --> | <!-- LiveAccountService, InMemoryAccountService --> | <!-- service --> | <!-- spec:accounts --> |
 
 ## Smithy Models
 

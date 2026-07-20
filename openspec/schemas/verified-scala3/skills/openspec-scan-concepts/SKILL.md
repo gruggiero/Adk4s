@@ -181,6 +181,7 @@ For each match, record:
 | Trait | The trait name (without type parameter) |
 | Type Param | The type parameter, e.g., `F[_]` |
 | Methods | Comma-separated list of method names |
+| Implementations | Known implementors across the repo — the scanner links extends clauses CROSS-FILE, including anonymous factory implementations (`new Trait[F]: ...`) reported as `Owner (anonymous)` |
 | Package | The `package` declaration in the file |
 | Introduced By | `scan:<filename>` |
 
