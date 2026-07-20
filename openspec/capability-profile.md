@@ -31,7 +31,7 @@
 
 ```
 adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models
-adk4s-orchestration → adk4s-core, structured-llm            (this change adds → adk4s-memory-api)
+adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api
 adk4s-memory-testkit → adk4s-memory-api                     (main-scope munit — behavioral laws)
 adk4s-memory-api → adk4s-core                               (for Retriever/Document/RetrieverConfig)
 adk4s-core → structured-llm, llm4s/core
@@ -39,8 +39,6 @@ structured-llm → llm4s/core, workflows4s-core, smithy4s (core+json)
 structured-llm-test-models → structured-llm (compile->compile, smithy codegen)
 verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 ```
-
-This change adds a dependency `adk4s-orchestration → adk4s-memory-api` (new package `org.adk4s.orchestration.memory`). That wiring is part of the hook spec's implementation.
 
 ## Libraries
 
