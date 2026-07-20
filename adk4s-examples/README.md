@@ -214,6 +214,14 @@ These examples mirror the [Eino](https://github.com/cloudwego/eino-examples) Go 
 |---------|----------------|-------------|
 | `ChatExample` | `quickstart/chat` | Basic multi-turn chat with generate and stream modes |
 
+### Memory
+
+| Example | Description |
+|---------|-------------|
+| `CrossRunMemoryExample` | Cross-run durable memory via `FileBackedAgentMemory` — a fact taught in Run 1 is recalled in Run 2 (same JVM) and Run 3 (fresh instance / simulated new JVM). Uses `MemoryAwareRunner` with an adversarial mock model that echoes recalled memory. CLI modes: `teach`, `recall`, `reset`. |
+| `MemoryRetrieverExample` | Bridges `AgentMemory` into the existing `Retriever` interface via `MemoryRetriever`, letting any `Retriever`-consuming agent read from memory with no new plumbing. |
+| `FileBackedAgentMemory` | `AgentMemory[F]` double that persists `Episode`s as JSON lines to disk, demonstrating cross-process durable memory. Scoring delegates to `InMemoryAgentMemory.naiveScore`. Passes `AgentMemoryLaws(indexesContent = true)`. |
+
 ### Running Eino Examples
 
 ```bash
@@ -262,6 +270,13 @@ sbt "adk4s-examples/runMain org.adk4s.examples.eino.workflow.StreamFieldMapExamp
 
 # New Components
 sbt "adk4s-examples/runMain org.adk4s.examples.eino.components.ToolSchemaExample"
+
+# Memory
+sbt "adk4s-examples/runMain org.adk4s.examples.memory.CrossRunMemoryExample"
+sbt "adk4s-examples/runMain org.adk4s.examples.memory.MemoryRetrieverExample"
+# or via the helper script:
+./adk4s-examples/run-example.sh crossrunmemory
+./adk4s-examples/run-example.sh memoryretriever
 ```
 
 ### Using a Real LLM
@@ -402,6 +417,27 @@ given Schema[CategoryClassification] = Schema.instance(
 val structured = StructuredLLM.fromClient[IO](llmClient)
 val result: IO[CategoryClassification] = structured.complete(prompt)
 ```
+
+## Memory-Aware Orchestration
+
+The `adk4s-orchestration` module provides `MemoryAwareRunner` and `MemoryPolicy` for wrapping any `AgentRunner` with automatic pre-turn recall and post-turn remember:
+
+```scala
+import org.adk4s.orchestration.memory.{MemoryAwareRunner, MemoryPolicy}
+
+val memory: AgentMemory[IO] = FileBackedAgentMemory[IO](dataDir).unsafeRunSync()
+val policy: MemoryPolicy = MemoryPolicy.default
+val memoryRunner = MemoryAwareRunner(
+  baseRunner,
+  Some(memory),
+  policy,
+  Some(emitter),
+  Some("my-agent")
+)
+// Each run() call now: recalls → injects context → runs agent → remembers output
+```
+
+See `CrossRunMemoryExample` for a full demonstration of cross-run durable memory.
 
 ## Contributing
 

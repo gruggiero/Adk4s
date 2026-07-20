@@ -73,6 +73,10 @@ usage() {
     echo "  reactagent         ReAct agent with tool calling loop + streaming"
     echo "  dynamicoption      Dynamic tool registry with runtime add/remove"
     echo ""
+    echo "Memory Examples:"
+    echo "  crossrunmemory     Cross-run durable memory (FileBackedAgentMemory)"
+    echo "  memoryretriever    Bridge AgentMemory to Retriever interface"
+    echo ""
     echo "Agent Orchestration Examples (NEW - Gap Resolution):"
     echo "  agenttool          Basic agent-as-tool delegation"
     echo "  nestedagent        Multi-level nested agent delegation (3 levels)"
@@ -139,7 +143,7 @@ FORCE_MOCK=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        all|chain|simple|workflow|lambda|chatmodel|chattemplate|docloader|retriever|toolschema|simplegraph|toolcallagent|twomodelchat|stategraph|toolcallonce|asyncnode|reactinterrupt|simpleworkflow|branchworkflow|staticvalues|fieldmapping|dataonly|streamfieldmap|reactmemory|multiagenthost|planexecute|reactagent|dynamicoption|batch|chat|categoryclassification|roledetection|queryclassification|chainroute|planextraction|stepsextraction|listparsing|schemaextraction|specialistdelegation|multiagenthostex|typedintermediates|chaincomposition|transformchain|graphintegration|asyncnodestructured|saperrorrecovery|reactagentstructured|dynamictoolregistry|wiographtool|agenttool|nestedagent|compositeinterrupt|agenttooladvanced|hierarchicalevents|statefulresume|interruptresume|eventstream)
+        all|chain|simple|workflow|lambda|chatmodel|chattemplate|docloader|retriever|toolschema|simplegraph|toolcallagent|twomodelchat|stategraph|toolcallonce|asyncnode|reactinterrupt|simpleworkflow|branchworkflow|staticvalues|fieldmapping|dataonly|streamfieldmap|reactmemory|multiagenthost|planexecute|reactagent|dynamicoption|batch|chat|categoryclassification|roledetection|queryclassification|chainroute|planextraction|stepsextraction|listparsing|schemaextraction|specialistdelegation|multiagenthostex|typedintermediates|chaincomposition|transformchain|graphintegration|asyncnodestructured|saperrorrecovery|reactagentstructured|dynamictoolregistry|wiographtool|agenttool|nestedagent|compositeinterrupt|agenttooladvanced|hierarchicalevents|statefulresume|interruptresume|eventstream|crossrunmemory|memoryretriever)
             EXAMPLE="$1"
             shift
             ;;
@@ -221,6 +225,8 @@ ALL_EXAMPLES=(
     "statefulresume"
     "interruptresume"
     "eventstream"
+    "crossrunmemory"
+    "memoryretriever"
 )
 
 # Function to resolve example name to main class
@@ -393,6 +399,12 @@ resolve_main_class() {
         ;;
     eventstream)
         echo "org.adk4s.examples.eino.agent.EventStreamExample"
+        ;;
+    crossrunmemory)
+        echo "org.adk4s.examples.memory.CrossRunMemoryExample"
+        ;;
+    memoryretriever)
+        echo "org.adk4s.examples.memory.MemoryRetrieverExample"
         ;;
     esac
 }

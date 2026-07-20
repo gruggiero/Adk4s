@@ -136,7 +136,8 @@ lazy val `adk4s-examples` = (project in file("adk4s-examples"))
     `adk4s-core`,
     `adk4s-orchestration`,
     `structured-llm`,
-    `structured-llm-test-models`
+    `structured-llm-test-models`,
+    `adk4s-memory-testkit` % Test
   )
   .settings(
     name := "adk4s-examples",
