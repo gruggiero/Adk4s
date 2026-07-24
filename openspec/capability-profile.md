@@ -22,7 +22,7 @@
 | sbt version | 1.12.12 | project/build.properties |
 | JDK | 26 (Homebrew OpenJDK) | runtime |
 | Modules | 8: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-orchestration`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
-| Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule). This change extends the sealed `AgentEvent` ADT, so the new variant MUST be handled by every existing match or Ring 0 fails. | build.sbt scala3Options |
+| Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule). Any change extending a sealed ADT (e.g. `AgentEvent`, `AdkError`) MUST handle the new variant in every existing match or Ring 0 fails. | build.sbt scala3Options |
 | scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, exhaustiveness `-Wconf` escalations (shared via `scala3Options` val) | build.sbt |
 | Dependency management | Centralized: `project/Versions.scala` (all versions), `project/Dependencies.scala` (all ModuleIDs), `build.sbt` imports `Dependencies._` | project/*.scala |
 | semanticdb | Enabled (for scalafix semantic rules: RemoveUnused, OrganizeImports) | build.sbt `semanticdbEnabled := true` |
@@ -67,10 +67,10 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 |---------|----------|-------------|
 | Test framework | munit 1.3.3 + munit-cats-effect 2.2.0 | Generated tests use `munit.FunSuite` / `munit.CatsEffectSuite`. NOT ScalaTest, NOT weaver. |
 | Property testing | Hedgehog 0.13.1 (hedgehog-munit % Test) | Properties extend `hedgehog.munit.HedgehogSuite` with `property("…") { for x <- gen.forAll yield <Result> }`. Integrated shrinking, NO `Arbitrary` typeclass, explicit `Range` sizing. NOT ScalaCheck/munit-scalacheck. Coverage ASSERTIONS via Hedgehog `cover` (fails when a label's percentage is unmet); seed-fixing via Hedgehog fixed `Seed`. |
-| Deterministic concurrency test kit | cats-effect `TestControl` (`cats.effect.unsafe.TestControl`) | Available transitively via cats-effect 3.7.0 (no extra dep needed). This change touches INTERRUPT/RESUME semantics, so its concurrency scenarios MUST use `TestControl` to drive `IO` deterministically — never wall-clock sleeps. munit-cats-effect provides `munit.CatsEffectSuite` for IO assertions. |
+| Deterministic concurrency test kit | cats-effect `TestControl` (`cats.effect.unsafe.TestControl`) | Available transitively via cats-effect 3.7.0 (no extra dep needed). Any change touching concurrency/timeouts/cancellation/interruption MUST use `TestControl` to drive `IO` deterministically — never wall-clock sleeps. munit-cats-effect provides `munit.CatsEffectSuite` for IO assertions. |
 | Actor test kits | N/A | No actor framework detected |
 | Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list (currently `**/memory/MemoryRetriever.scala`) — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. |
-| Formal verification | Stainless (bundled jar + local Maven repo) | Ring 6 available via `verified` module (Scala 3.7.2, `stainlessEnabled := false` by default). Run with `sbt -J-Xmx6g ring6`. NOT applicable to this change (the hook is effectful `IO` wiring, not a PureScala module). |
+| Formal verification | Stainless (bundled jar + local Maven repo) | Ring 6 available via `verified` module (Scala 3.7.2, `stainlessEnabled := false` by default). Run with `sbt -J-Xmx6g ring6`. Applicable only to PureScala modules in `verified`; effectful `IO` wiring is NOT a fit. |
 | Model checking | none | No TLA+/Apalache. Ring 7 skip. |
 | Memory test double | `InMemoryAgentMemory` (adk4s-memory-api, main scope) | Used as the `AgentMemory[IO]` implementation in hook tests — no LLM, no network. |
 
@@ -106,21 +106,20 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Test compile (typed contracts) | `sbt <module>/Test/compile` |
 | Run tests (all) | `sbt test` |
 | Run tests (per module) | `sbt adk4s-core/test`, `sbt adk4s-orchestration/test`, `sbt adk4s-memory-api/test`, `sbt structured-llm/test` |
-| Single test | `sbt "testOnly org.adk4s.orchestration.memory.MemoryHookSpec"` |
+| Single test | `sbt "testOnly <fully.qualified.Spec>"` |
 | Lint (scalafix check) | `sbt scalafixAll --check` |
 | Lint (scalafix apply) | `sbt scalafixAll` |
 | Format check | `sbt scalafmtCheck` |
 | Format apply | `sbt scalafmt` |
-| Mutation (Ring 5) | Retarget `stryker4s.conf` `mutate` list to changed files, then `sbt "adk4s-orchestration/stryker4s"` |
-| Formal verification (Ring 6) | `sbt -J-Xmx6g ring6` (NOT used by this change) |
+| Mutation (Ring 5) | Retarget `stryker4s.conf` `mutate` list to changed files, then `sbt "<module>/stryker4s"` |
+| Formal verification (Ring 6) | `sbt -J-Xmx6g ring6` (PureScala `verified` module only) |
 | Coverage | `sbt coverage test coverageReport` |
 | Fat JAR | `sbt assembly` |
 
 ## Typed Contract Placement
 
 - Contract location pattern: `<module>/src/test/scala/<pkg>/typecontract/<SpecName>TypeContract.scala`
-- This change's contracts land in `adk4s-orchestration/src/test/scala/org/adk4s/orchestration/memory/typecontract/` (hook) and `adk4s-core/src/test/scala/org/adk4s/core/interrupt/typecontract/` (events).
-- Compile command: `sbt adk4s-orchestration/Test/compile`, `sbt adk4s-core/Test/compile`
+- Compile command: `sbt <module>/Test/compile` for the owning module.
 - The `verified` module is NOT for typed contracts — it is a leaf module pinned to Scala 3.7.2 for Stainless only. Typed contracts go in the owning module's test sources.
 
 ## Domain Purity Rules (feeds Ring 2)
@@ -134,25 +133,25 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | `org.adk4s.core.interrupt` (events) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, fs2, adk4s-core.error |
 | `org.adk4s.memory` (memory capability) | workflows4s, llm4s LLM client, fs2-io, adk4s-orchestration | cats-effect, fs2-core, adk4s-core (Retriever/Document) |
 | `org.adk4s.memory.testkit` (laws) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, munit (main), adk4s-memory-api |
-| `org.adk4s.orchestration.memory` (NEW — this change) | workflows4s, llm4s LLM client, logback, http | cats-effect, fs2, adk4s-orchestration.agent, adk4s-core.interrupt, adk4s-memory-api, llm4s `Message` types (for context injection only) |
+| `org.adk4s.orchestration.memory` (memory orchestration hook) | workflows4s, llm4s LLM client, logback, http | cats-effect, fs2, adk4s-orchestration.agent, adk4s-core.interrupt, adk4s-memory-api, llm4s `Message` types (for context injection only) |
 | `org.adk4s.orchestration.*` (workflow layer) | logback, http | cats-effect, fs2, workflows4s, adk4s-core, structured-llm |
 | `org.adk4s.examples.*` (application edge) | — | everything (examples are edge code) |
 | `org.adk4s.verified` (Ring 6 model) | everything project-local (leaf module) | stdlib, Stainless library only |
 | Generated smithy4s code | excluded from checks | — |
 
-The new `org.adk4s.orchestration.memory` package is the key Ring 2 boundary this change introduces: it MAY depend on `adk4s-orchestration.agent` (decorates `AgentRunner`), `adk4s-core.interrupt` (emits `AgentEvent`), and `adk4s-memory-api` (calls `AgentMemory`). It MUST NOT reach into `workflows4s`, the llm4s LLM client, or `adk4s-core.tools`. llm4s `Message` types are allowed only for context-injection message construction (the hook prepends/appends a `UserMessage`).
+The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend on `adk4s-orchestration.agent` (decorates `AgentRunner`), `adk4s-core.interrupt` (emits `AgentEvent`), and `adk4s-memory-api` (calls `AgentMemory`). It MUST NOT reach into `workflows4s`, the llm4s LLM client, or `adk4s-core.tools`. llm4s `Message` types are allowed only for context-injection message construction (the hook prepends/appends a `UserMessage`).
 
 ## Ring Availability Summary
 
 | Ring | Available? | If unavailable: impact / setup task |
 |------|-----------|--------------------------------------|
-| 0 Compile | ✅ | `sbt compile` — all 8 modules. Exhaustiveness escalation active — the new `AgentEvent` variant forces all matches to handle it. |
+| 0 Compile | ✅ | `sbt compile` — all 8 modules. Exhaustiveness escalation active — any new sealed-ADT variant forces all matches to handle it. |
 | 1 Lint | ✅ | Scalafix (DisableSyntax + RemoveUnused + OrganizeImports) + WartRemover (relaxed set) + scalafmt |
-| 2 Architecture | ⚠️ Advisory only | No custom scalafix arch rules installed. The `org.adk4s.orchestration.memory` layer rules above are manual (enforced by code review + import audit). |
+| 2 Architecture | ⚠️ Advisory only | No custom scalafix arch rules installed. The layer rules above are manual (enforced by code review + import audit). |
 | 3 Property tests | ✅ | Hedgehog 0.13.1 via hedgehog-munit. Properties extend `HedgehogSuite`. Concurrency scenarios use `TestControl`. |
-| 4 Compatibility | ⚠️ Manual | No fixture-based compatibility framework. NOT applicable to this change (no serialization/wire data touched — `AgentRunner` checkpoint serialization is unchanged). |
-| 5 Mutation | ✅ | sbt-stryker4s 0.21.0 + stryker4s.conf. Retarget `mutate` list to `**/memory/MemoryHook.scala`, `**/memory/MemoryAwareRunner.scala` per spec. |
-| 6 Formal | ✅ but N/A | Stainless available via `verified` module, but the hook is effectful `IO` wiring — NOT a PureScala module. Ring 6 skipped for this change. |
+| 4 Compatibility | ⚠️ Manual | No fixture-based compatibility framework. Applies only to changes touching serialization/wire data. |
+| 5 Mutation | ✅ | sbt-stryker4s 0.21.0 + stryker4s.conf. Retarget `mutate` list to each spec's changed files before running. |
+| 6 Formal | ✅ but scoped | Stainless available via `verified` module; applicable only to PureScala modules. Effectful `IO` wiring is NOT a fit. |
 | 7 Model checking | ❌ | No TLA+/Apalache. Skip with stated correctness impact. |
 | 8 Adversarial review | ✅ (manual — always available) | Runs BEFORE Rings 5/6/7 in the apply sequence (fresh-context reviewer). |
 | 9 Telemetry | ❌ | No otel4s/Daut. Skip with stated impact. |
