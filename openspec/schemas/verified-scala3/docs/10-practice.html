@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>10 · In practice — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a class="current" href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 10 · Synthesis</div>
+<h1>In practice</h1>
+<p class="lede">
+  One real change, end to end, with its real artifacts and real numbers — then
+  the anti-patterns, an adoption path, and an honest account of what this
+  workflow still cannot do.
+</p>
+
+<h2>The change: proof of life for durable memory</h2>
+
+<p>
+  <code>add-cross-run-memory-example</code>, a genuine change in this
+  repository. Its proposal opens with the gap it closes:
+</p>
+
+<div class="box">
+  <p style="margin-bottom:0">
+    “ADK4S ships a complete durable-memory stack … but no example exercises
+    it. <code>ReactMemoryExample</code> demonstrates only in-conversation
+    memory, which dies with the process. The durable-memory stack has no proof
+    of life: no runnable artifact shows an agent taught a fact in one process
+    recalling it in a completely separate process.”
+  </p>
+</div>
+
+<p>
+  Note what that paragraph does: it states an <em>observable</em> gap. Not
+  “memory needs better docs” but “nothing demonstrates cross-process recall”.
+  The verification target is visible from the first sentence.
+</p>
+
+<h3>Planning artifacts, as they actually came out</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Artifact</th><th>What it decided</th></tr></thead>
+  <tbody>
+    <tr><td><strong>proposal</strong></td>
+        <td>Risk <em>low</em>. Rings: 0, 1, 3, 4, 8 apply; 5 skipped (example code — the laws suite is the safety net); 6, 7, 9 not applicable. Ring 3 mandatory.</td></tr>
+    <tr><td><strong>capability-check</strong></td>
+        <td>Confirmed munit + Hedgehog, cats-effect 3.7.0, no telemetry stack. Recorded that <code>TestControl</code> is <em>available but not required</em> — the file-backed memory is single-writer, the decorator sequential. An explicit “no concurrency here” finding, not an omission.</td></tr>
+    <tr><td><strong>inventory-check</strong></td>
+        <td>Verified reuse of <code>AgentMemory</code>, <code>Episode</code>, <code>MemoryHit</code>, <code>TemporalScope</code>, <code>MemoryAwareRunner</code>. Introduced: <code>FileBackedAgentMemory</code>.</td></tr>
+    <tr><td><strong>spec</strong></td>
+        <td>8 requirements, 4 properties, 23 proof obligations.</td></tr>
+    <tr><td><strong>spec-lint</strong></td>
+        <td>PASS.</td></tr>
+    <tr><td><strong>implementation-order</strong></td>
+        <td>One spec. Complexity <em>simple</em> + risk <em>low</em> ⇒ human gate tier <strong>combined</strong>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Step 0 · the baseline, for real</h3>
+
+<pre data-lang="md"><code>- BASELINE SHA: 0e1e4593107f05e6db6f680c1f06e8ee9c4a7309
+  (recorded 2026-07-19; working tree clean after spec commit)
+- registry-check.sh: OK (611 tokens verified,
+  2 pre-existing weak bindings in react-agent.md)
+- no PUBLIC-TYPE-CHANGE IMPACT SCAN
+  (spec adds new types, does not widen a sealed ADT)</code></pre>
+
+<p>
+  The last line is worth pausing on. The impact scan was <em>considered and
+  found not to apply</em>, and that judgement is recorded. A future reader —
+  or a Ring 8 reviewer — can see the question was asked. Silence would have
+  been indistinguishable from forgetting.
+</p>
+
+<h3>The combined gate: contract and oracle together</h3>
+
+<p>
+  Because the spec was simple and low risk, both steps executed in full but
+  the human stopped once. The polarity result is the most instructive line in
+  the whole change:
+</p>
+
+<pre data-lang="md"><code>ORACLE POLARITY: 7 RED against signature-only FileBackedAgentMemory,
+                 1 GREEN-BY-DESIGN (adversarial broken-double test)</code></pre>
+
+<div class="box insight">
+  <div class="box-title">Why that one green test is not a failure of the process</div>
+  <p style="margin-bottom:0">
+    Seven tests asserted behaviour that did not exist yet — they failed, as
+    they must. The eighth runs <code>AgentMemoryLaws</code> against a
+    <em>deliberately broken</em> memory double and asserts that at least one
+    law fails. That test passes before the real implementation exists, and
+    correctly so: it is not testing the new memory, it is testing
+    <strong>that the laws suite can detect a violation at all</strong>. A laws
+    suite that passes everything is decorative. Classifying it
+    green-by-design forces you to say out loud <em>why</em> it should pass —
+    which is exactly the reasoning that distinguishes it from a vacuous test.
+  </p>
+</div>
+
+<h3>Rings, with real reasoning</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Ring</th><th>Verdict and why</th></tr></thead>
+  <tbody>
+    <tr><td>R0</td><td>✅ — exhaustiveness escalation active but not exercised: no sealed ADT extended.</td></tr>
+    <tr><td>R1</td><td>✅ — Scalafix + WartRemover (examples use the relaxed set, as edge code) + scalafmt.</td></tr>
+    <tr><td>R2</td><td>⚠️ advisory — no custom architecture rules installed; <code>examples.*</code> may import anything, so no new purity boundary. Stated, not hidden.</td></tr>
+    <tr><td>R3</td><td>✅ — laws suite + 4 Hedgehog properties + a cross-run scenario test. <em>No concurrent behaviour</em>, so <code>TestControl</code> was not required — a decision, recorded.</td></tr>
+    <tr><td>R4</td><td>✅ manual — the change introduces a JSON-lines persistence format, so a reload-across-instances property was added: write with one instance, recall with a <em>fresh</em> instance at the same path.</td></tr>
+    <tr><td>R5</td><td>⏸ skipped — example code; the laws suite is the mutation-equivalent net. Recorded in the proposal, with impact.</td></tr>
+    <tr><td>R6/R7/R9</td><td>⏸ not applicable — effectful example wiring, no distributed invariants, no telemetry stack.</td></tr>
+    <tr><td>R8</td><td>✅ — fresh-context review of three specific risks: does the mock answer from injected context or from a script; do the two smoke-test stacks share only a temp directory; does the file-backed memory honour all four laws in spirit.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Read the R4 row again. The workflow noticed that “write JSON lines to a
+  file” <em>is</em> a persistence format, and demanded a cross-instance
+  property for it — in an <em>example</em>. That is the compatibility ring
+  earning its place on a change nobody would have thought needed it.
+</p>
+
+<h3>The state today</h3>
+
+<pre data-lang="bash"><code>$ scanner/spec-lint.sh .
+spec-lint: 2 spec file(s), 0 FAIL, 19 WARN
+
+$ scanner/registry-check.sh .
+registry-check: OK (611 implementation-map tokens verified,
+                    3 spec concept references checked,
+                    2 weak binding(s) to tighten)
+
+$ scanner/openspec-graph.py obligations
+  add-cross-run-memory-example: 8 requirements, 23 obligations, 8 artifacts
+    obligation links: title=19 · non-requirement sources: Property=4
+  add-optimizable-surface:     16 requirements, 43 obligations
+    obligation links: title=43
+  verdict: PASS — every requirement reaches an artifact</code></pre>
+
+<p>
+  Nineteen warnings remain, and they are all judgement items — vague-word
+  candidates and negative requirements awaiting confirmation that a scenario
+  input is genuinely forbidden. The workflow's position is that a warning you
+  have consciously accepted is fine; a warning you never saw is not.
+</p>
+
+<h2>Anti-patterns</h2>
+
+<p>
+  Every one of these has been observed, several in this very repository.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Anti-pattern</th><th>Looks like</th><th>Costs you</th></tr></thead>
+  <tbody>
+    <tr><td><strong>The retro-fitted oracle</strong></td>
+        <td>Implementation lands first, tests “from the spec” written after.</td>
+        <td>Everything. The tests are a mirror; the rest of the workflow now certifies a reflection.</td></tr>
+    <tr><td><strong>Coverage theatre</strong></td>
+        <td>A 40-row obligations table, one row per requirement, all “property test”.</td>
+        <td>Reachability without strength. Chapter 5's ladder exists so you climb it, not so you fill the column.</td></tr>
+    <tr><td><strong>The muted flake</strong></td>
+        <td>“It's just timing, retry in CI.”</td>
+        <td>A race condition with a 5% detection rate, now with the detector disabled.</td></tr>
+    <tr><td><strong>The defensive fix</strong></td>
+        <td>Ring 8 finds a bad input path; the fix adds a fallback so it “can't crash”.</td>
+        <td>Chapter 1's exact bug, deliberately installed. The fix is type-level prevention or explicit rejection.</td></tr>
+    <tr><td><strong>The generous generator</strong></td>
+        <td>A property fails; the generator gets a filter.</td>
+        <td>A property whose text over-claims what it tests, and a real finding discarded.</td></tr>
+    <tr><td><strong>Batch approval</strong></td>
+        <td>“Approve specs 3–6, they're all similar.”</td>
+        <td>Three unread approvals recorded as scrutiny, and four specs sharing one baseline.</td></tr>
+    <tr><td><strong>The stale profile</strong></td>
+        <td>Capability profile written once, never re-verified.</td>
+        <td>Tests generated for a framework you no longer use; rings claimed that no longer exist.</td></tr>
+    <tr><td><strong>Idealised registry</strong></td>
+        <td>Concept files describe the architecture you wish you had.</td>
+        <td>A confident second source of truth that disagrees with the code.</td></tr>
+    <tr><td><strong>The invented table</strong></td>
+        <td>A plausible mapping of codes/units/statuses, unmarked.</td>
+        <td>Self-consistent, externally wrong, with tests agreeing. Mark it MUST-CONFIRM.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Adopting this on a project that has none of it</h2>
+
+<p>
+  Do not start by writing eight artifacts. Start by making the cheap checks
+  true, then add ceremony only where it buys evidence.
+</p>
+
+<div data-pipeline="adopt"></div>
+<script type="application/json" id="adopt">
+[
+ { "short":"day 1 · Ring 0", "label":"Day 1 · Make the compiler strict",
+   "body":"<p>Escalate pattern-match exhaustiveness and unreachable cases to errors. If the build has pre-existing violations, fix them — each one is a place a future variant will be silently absorbed.</p><p style='margin-bottom:0'>Re-enable the type-aware lint rules you have disabled: <code>OptionPartial</code>, unsafe collection ops. This is the highest evidence-per-effort move available and it needs no process at all.</p>" },
+ { "short":"day 2 · inventory", "label":"Day 2 · Build the type inventory",
+   "body":"<p>Run the scanner into <code>openspec/concept-inventory.md</code>. You now have a catalogue of every domain type, its variants, and its implementations.</p><p style='margin-bottom:0'>Read it. On most codebases this alone surfaces two or three near-duplicate types nobody knew were duplicated — and from here on, new work has somewhere to check before inventing a fourth.</p>" },
+ { "short":"week 1 · one spec", "label":"Week 1 · One real spec, one real loop",
+   "body":"<p>Pick a small, genuinely uncertain change — not a trivial one, because trivial changes teach nothing. Write the spec with requirements, scenarios and properties. Run <code>spec-lint.sh</code>. Fix what it says.</p><p style='margin-bottom:0'>Then run the loop: contract → oracle (with polarity) → implement → rings 0,1,3,8 → checkpoint. Skip 2, 4, 5, 6, 7, 9 entirely. This is the minimum viable workflow and it already delivers most of the value.</p>" },
+ { "short":"month 1 · CI", "label":"Month 1 · Wire the gates into CI",
+   "body":"<p>Add <code>spec-lint.sh</code> and (if you adopt a registry) <code>registry-check.sh</code> to CI. They need only bash and git, so any runner works.</p><p style='margin-bottom:0'>A check that runs only when someone remembers is not a gate. This is the step that converts the workflow from a practice into a property of the repository.</p>" },
+ { "short":"month 2 · rings", "label":"Month 2 · Add rings where they pay",
+   "body":"<p>Ring 4 the first time you touch a persisted format — and write the fixtures then, because there is no cheaper moment. Ring 5 on your most critical pure module, to find out what your tests are actually asserting. Ring 2 once you can state your layer rules precisely enough to encode them.</p><p style='margin-bottom:0'>Rings 6, 7 and 9 are specialist: adopt them when you have a pure kernel worth proving, a distributed invariant worth modelling, or a temporal property worth monitoring — not before.</p>" },
+ { "short":"later · registry", "label":"Later · The behavioural registry, if it earns it",
+   "body":"<p>Adopt it when several specs keep touching the same behaviour, when refactors keep invalidating old specs, or when the domain has vocabulary worth stabilising.</p><p style='margin-bottom:0'>Skip it for a small library with one obvious API. Every registry-dependent rule is conditional on the directory existing, so declining costs you nothing elsewhere.</p>" }
+]
+</script>
+
+<div class="box insight">
+  <div class="box-title">The adoption principle</div>
+  <p style="margin-bottom:0">
+    Each step above is <em>independently valuable</em> and none requires the
+    next. That is deliberate: a method you must adopt wholesale is a method
+    that gets abandoned wholesale on the first sprint where it is inconvenient.
+    Strict compilation is worth having even if you never write a spec; the
+    inventory is worth having even if you never adopt the rings.
+  </p>
+</div>
+
+<h2>What this workflow still cannot do</h2>
+
+<p>
+  A method that hides its limits is doing the thing it warns you about.
+</p>
+
+<ul>
+  <li><strong>It cannot tell you the requirement is wrong.</strong> Chapter 1's
+      <em>adequacy</em> row is untouched. A perfectly enforced obligation
+      faithfully protects a mistaken claim, and no ring will ever object.</li>
+  <li><strong>The artifact column is unverified.</strong> Nothing yet checks
+      that the named test suite exists and asserts that row. The last link in
+      chapter 5's chain remains open.</li>
+  <li><strong>Property names are unchecked.</strong> <code>Property: recall-orderng</code>
+      with a typo passes F6 as a typed source and binds to nothing.</li>
+  <li><strong>Mechanism strength is advice, not a check.</strong> Nothing
+      forces a claim about an invalid state to use a type when a type is
+      available.</li>
+  <li><strong>Ordinal references remain legal</strong> (W4), so reordering
+      requirements can still silently re-point a link in specs that use them.</li>
+  <li><strong>It costs real time.</strong> Two extra gates, an obligations
+      table, and a fixed apply sequence per spec. On genuinely trivial work,
+      that overhead can exceed the value — which is what waivers, tiering and
+      conditional rings exist to manage, and what your judgement exists to
+      decide.</li>
+  <li><strong>It assumes a human who reads.</strong> Every mechanism
+      eventually reports to a checkpoint. If that human rubber-stamps, the
+      workflow degrades to an elaborate way of generating documentation about
+      unexamined code.</li>
+</ul>
+
+<h2>The through-line</h2>
+
+<p>
+  If you retain one sentence from ten chapters, retain this: <strong>evidence
+  is only worth what its independence is worth.</strong> Everything here is a
+  consequence.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Device</th><th>What it decorrelates</th></tr></thead>
+  <tbody>
+    <tr><td>Spec before code</td><td>the oracle from the implementation</td></tr>
+    <tr><td>Types before tests</td><td>the interface decision from the implementation convenience</td></tr>
+    <tr><td>Oracle polarity</td><td>“the test passes” from “the test can fail”</td></tr>
+    <tr><td>Generator faithfulness</td><td>the claim's domain from the implementation's comfort zone</td></tr>
+    <tr><td>Fresh-context Ring 8</td><td>the reviewer's model from the author's intent</td></tr>
+    <tr><td>Mutation</td><td>test <em>existence</em> from test <em>strength</em></td></tr>
+    <tr><td>Formal / model checking</td><td>the sampled inputs from all inputs</td></tr>
+    <tr><td>Proof obligations</td><td>“we tested it” from “here is the mechanism, ranked”</td></tr>
+    <tr><td>Per-spec baseline and commit</td><td>this spec's evidence from its neighbours'</td></tr>
+    <tr><td>Human gates</td><td>conformance from adequacy</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Final check</h2>
+
+<div class="quiz" data-quiz="q10"></div>
+<script type="application/json" id="q10">
+[
+  {
+    "q": "In the real change, one oracle test passed before implementation and was accepted. Under what condition is that legitimate?",
+    "options": [
+      "Whenever the behaviour already partly exists",
+      "Only when the test is classified GREEN-BY-DESIGN with a stated reason — here, it asserts that the laws suite can detect a violation, using a deliberately broken double",
+      "Never — all oracle tests must fail first",
+      "When the reviewer approves it at the gate"
+    ],
+    "answer": 1,
+    "why": "The classification is the safeguard. Green-by-design means the test describes behaviour that must hold before AND after — here, the meta-property that the laws suite is not decorative. Reclassifying a RED test as green because it happened to pass is precisely how the polarity check gets neutered."
+  },
+  {
+    "q": "You are adopting the workflow on a legacy service next week. What is the highest-value first move?",
+    "options": [
+      "Write specs for the existing behaviour",
+      "Escalate exhaustiveness to compile errors and re-enable type-aware lint rules — evidence per unit of effort is unbeatable and it needs no process",
+      "Install the mutation tool",
+      "Build the behavioural registry"
+    ],
+    "answer": 1,
+    "why": "Strict compilation makes the compiler enforce the no-silent-fallback rule everywhere at once, retroactively, with no ceremony. Specs for existing behaviour are the most expensive first step and the least likely to survive contact with a sprint."
+  },
+  {
+    "q": "A teammate says: “We ran all ten rings and everything is green, so the feature is correct.” What is the precise objection?",
+    "options": [
+      "Ten rings is excessive",
+      "The rings establish conformance to the spec; whether the spec says what was actually wanted is the adequacy question, which no ring can answer",
+      "Green rings mean nothing",
+      "They forgot Ring 5"
+    ],
+    "answer": 1,
+    "why": "This is chapter 1's three-way distinction, and the whole tutorial in one exchange. The rings are strong evidence of conformance and say nothing about adequacy — which is why every checkpoint ends at a human, and why the workflow foregrounds skipped rings and manual obligations rather than the green ones."
+  }
+]
+</script>
+
+<h2>Where to go next</h2>
+
+<ul class="refs">
+  <li><strong>The schema itself</strong> — <code>openspec/schemas/verified-scala3/schema.yaml</code>
+    <span class="rsrc">Every rule quoted in these chapters, in its authoritative form, with a changelog explaining why each version changed.</span></li>
+  <li><strong>The templates</strong> — <code>templates/</code>
+    <span class="rsrc">Start a real artifact from the skeleton rather than from a blank file; the inline comments are the rules restated at the point of use.</span></li>
+  <li><strong>The scanners</strong> — <code>scanner/</code>
+    <span class="rsrc">Small enough to read in an afternoon. Reading <code>spec-lint.sh</code> is the fastest way to learn exactly what is and is not mechanised.</span></li>
+  <li><a href="https://eecs481.org/readings/testoracles.pdf">Barr et al., The Oracle Problem</a>
+    <span class="rsrc">The theoretical spine of chapters 1 and 5.</span></li>
+  <li><a href="https://arxiv.org/abs/2508.14511">Meng &amp; Jackson, What You See Is What It Does</a>
+    <span class="rsrc">The concept-design pattern behind chapter 4.</span></li>
+</ul>
+
+<div class="checkpoint">
+  <h4>You have finished the tutorial</h4>
+  <p style="margin-bottom:.6rem">You should now be able to:</p>
+  <ul>
+    <li>Explain why a green suite is not conformance evidence, and what would be.</li>
+    <li>Write a spec that survives lint, and say what each rule prevents.</li>
+    <li>Build a proof-obligations table and defend every mechanism choice.</li>
+    <li>Run a spec through the apply loop and read its checkpoint critically.</li>
+    <li>Choose rings for a change and justify each omission.</li>
+    <li>Adopt the workflow incrementally without stalling a project.</li>
+  </ul>
+  <p style="margin-bottom:0">
+    The last skill is the one that matters most: knowing which parts to apply
+    when, and being honest — out loud, in an artifact — about what you skipped.
+  </p>
+</div>
+
+<div class="chapter-nav">
+  <a href="09-tooling.html"><span class="dir">← Chapter 9</span> The tooling</a>
+  <a class="next" href="index.html"><span class="dir">Back to</span> Start here</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>
