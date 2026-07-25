@@ -1,4 +1,16 @@
 # Changelog:
+#   8 — traceable proof obligations: the Proof-Obligations `Source` column now
+#       has a MANDATED format (every cell must NAME what the obligation comes
+#       from — "Requirement: <exact title>" preferred, "Requirement N" allowed,
+#       or a typed non-requirement source such as "Property: <name>"), and
+#       spec-lint.sh enforces it mechanically: F6 (Source names a resolvable
+#       reference), F7 (every requirement is named by >= 1 obligation —
+#       reachability, not row-counting), W4 (ordinal-only references are
+#       positional and break on reorder). Motivation: an audit of real specs
+#       found three incompatible Source conventions across projects, one of
+#       which named no requirement at all — so check 12 could pass on a table
+#       whose requirement->obligation binding was unverifiable.
+#       BREAKING for existing specs that used untyped Source prose.
 #   7 — code intelligence (option B): semantic search recipes driving a
 #       headless Metals MCP endpoint from schema scripts — metals-call.sh
 #       (bridge + resolve), impact-scan.sh (Step 0 public-type-change impact
@@ -41,7 +53,7 @@
 #   2.1 — first concept-registry support.
 #   2 — ring pipeline + typed contract + test oracle.
 name: verified-scala3
-version: 7
+version: 8
 description: >
   Depth-first verified Scala 3 workflow for functional, type-safe codebases.
   Correctness-first: every spec flows through
@@ -408,6 +420,26 @@ artifacts:
          review). A manually-reviewed obligation is allowed but must say so
          explicitly. No spec may enter implementation with an obligation that has
          no declared enforcement mechanism.
+         SOURCE FORMAT (mandated, machine-checked by spec-lint F6/F7) — the
+         `Source` cell must NAME what the obligation comes from, so the
+         requirement->obligation binding is verifiable rather than merely
+         plausible. Allowed references, combinable with " + ":
+           Requirement: <exact requirement title>   PREFERRED — survives
+                                                    requirement reordering
+           Requirement N   (or RN)                  allowed; POSITIONAL —
+                                                    reordering silently
+                                                    re-points it (spec-lint W4)
+           Property: <name> | Property N            non-requirement sources,
+           Scenario: <heading> | Invariant: <name>   equally valid; the kind
+           Compile-Negative: <what> | Temporal: <n>  must be TYPED (kind
+           Criterion: <name> | MUST-CONFIRM: <what>  followed by ":" or an
+                                                     ordinal)
+         A bare "Requirement" with no identifier names NOTHING and FAILS F6.
+         COVERAGE: every `### Requirement:` must be named by at least one
+         obligation (F7) — the table's completeness is checked as reachability,
+         not as a row count. An obligation may legitimately source from a
+         property or invariant instead of a requirement, but no requirement may
+         be left unnamed by all of them.
       9. Any claim that an invalid state is "unreachable" must cite a type-level
          proof (and a compile-negative test obligation) or an explicit runtime
          check. If a spec extends an enum/GADT, it must state how all existing
@@ -477,8 +509,15 @@ artifacts:
          — it mechanically enforces the greppable subset of the checks below
          (SHALL/MUST placement, scenario presence for only/never/must-not
          requirements, generator-strategy lines, Proof-Obligations presence,
-         temporal trigger/response lines) and reports vague-word candidates.
-         Its FAILs are lint FAILs; paste its summary into the report.
+         temporal trigger/response lines, the mandated obligation Source
+         format, and requirement->obligation REACHABILITY) and reports
+         vague-word candidates. Its FAILs are lint FAILs; paste its summary
+         into the report.
+         F6 = an obligation Source that names nothing resolvable.
+         F7 = a requirement no obligation names (unenforced) — this is
+              check 12 as reachability; it is STRICTER than counting rows and
+              supersedes the old row-count heuristic (W2).
+         W4 = ordinal-only requirement references (positional; prefer titles).
       The judgment checks (observability, testability, type-feasibility,
       altitude) remain below — the script does not replace them.
 
@@ -513,7 +552,11 @@ artifacts:
           subsection (specs rule 11) is absent or incomplete.
       12. The Proof Obligations table covers every requirement, scenario,
           invariant, and introduced type constraint, each with a declared
-          enforcement mechanism.
+          enforcement mechanism. MECHANICAL: spec-lint.sh F7 verifies that
+          every requirement is NAMED by at least one obligation (reachability)
+          and F6 that every Source cell names a resolvable reference in the
+          mandated format (specs rule 8). A table that merely has enough rows
+          does not pass — the binding must be verifiable.
       13. Every consumer-facing surface (tool/operation/IDL) has a scenario
           asserting what the consumer observes (parameter schema, not just
           presence/name). (specs rule 12.)

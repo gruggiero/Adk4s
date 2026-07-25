@@ -10,8 +10,12 @@
 <!-- Run BEFORE the judgment checks:
      1. `openspec validate --strict` — must pass.
      2. `openspec/schemas/verified-scala3/scanner/spec-lint.sh <change-dir>` —
-        enforces the greppable subset (F1–F5) and reports vague-word and
-        adversarial-confirmation candidates (W1–W3).
+        enforces the greppable subset (F1–F7) and reports vague-word,
+        adversarial-confirmation and positional-reference candidates (W1–W4).
+        F6 = obligation Source names nothing resolvable (mandated format).
+        F7 = requirement named by NO obligation (unenforced — check 12 as
+             reachability, stricter than the W2 row count).
+        W4 = ordinal-only requirement references (prefer exact titles).
      Paste both outputs here. Script FAILs are lint FAILs. -->
 
 **openspec validate --strict**: <!-- PASS / output -->
@@ -34,7 +38,7 @@ Each spec is checked against:
 9. No vague words ("valid", "fast", "reasonable", "correct", "appropriate") without a concrete definition (candidates: W1)
 10. Every "unreachable" claim has a type-level proof obligation or explicit runtime check
 11. Every enum/GADT extension states how existing pattern matches behave (aliasing to a richer type counts — "Type-Widening Impact" subsection required)
-12. The Proof Obligations table covers every requirement, scenario, invariant, and introduced type constraint with a declared enforcement mechanism (mechanical: F4/W2)
+12. The Proof Obligations table covers every requirement, scenario, invariant, and introduced type constraint with a declared enforcement mechanism, in the mandated Source format (mechanical: F4 section presence, **F6 Source resolvable**, **F7 every requirement named — reachability**, W2 row count, W4 positional refs)
 13. Every consumer-facing surface (tool/operation/IDL) has a scenario asserting what the consumer observes (parameter schema, not just presence)
 14. Every asserted error variant is type-feasible vs the producing API's return type
 15. ADVERSARIAL — every "only"/"never"/"must not" requirement has a scenario whose input the requirement forbids (mechanical half: F2/W3)
@@ -61,7 +65,7 @@ Each spec is checked against:
 | 9 | No vague words | | |
 | 10 | Unreachable claims proven | | |
 | 11 | Enum extension / type-widening behavior | | |
-| 12 | Proof obligations complete | | |
+| 12 | Proof obligations complete (F6 Source format / F7 reachability) | | |
 | 13 | Consumer-facing surface asserted | | |
 | 14 | Error variants type-feasible | | |
 | 15 | Adversarial scenarios for negatives | | |

@@ -250,6 +250,19 @@ always {
      constraint above to its enforcement mechanism. No spec enters
      implementation while any obligation lacks a declared mechanism.
 
+     SOURCE FORMAT (mandated — spec-lint F6/F7 check it mechanically).
+     The Source cell must NAME what the obligation comes from:
+       Requirement: <exact requirement title>   PREFERRED (survives reorder)
+       Requirement N  /  RN                     allowed; POSITIONAL — a later
+                                                reorder silently re-points it
+       Property: <name> | Property N            non-requirement sources are
+       Scenario: <heading> | Invariant: <name>   equally valid; the kind must
+       Compile-Negative: <what> | Temporal: <n>  be TYPED (kind + ":" or an
+       Criterion: <name> | MUST-CONFIRM: <what>  ordinal)
+     Combine with " + ". A bare "Requirement" with no identifier names
+     nothing and FAILS. EVERY requirement must be named by at least one
+     obligation — completeness is checked as reachability, not row count.
+
      Mechanisms (strongest first):
      - type system (unrepresentable — cite the type + compile-negative test)
      - smart constructor (cite constructor + rejection property)
@@ -263,10 +276,10 @@ always {
 
 | Obligation | Source | Enforcement | Artifact |
 |------------|--------|-------------|----------|
-| <!-- e.g. CmpOp.IN never maps to OrderOp --> | <!-- requirement/scenario name --> | <!-- type split + compile-negative test --> | <!-- EvalSpec, TypeContract --> |
-| <!-- e.g. Missing attribute gives Tri.U --> | <!-- scenario --> | <!-- ScalaCheck property --> | <!-- EvalSpec --> |
-| <!-- e.g. Replay equals live transition --> | <!-- invariant --> | <!-- model/property test --> | <!-- ReplaySpec --> |
-| <!-- e.g. Invalid ID unrepresentable --> | <!-- type strategy --> | <!-- opaque type + constructor property --> | <!-- domain spec --> |
+| <!-- e.g. CmpOp.IN never maps to OrderOp --> | <!-- Requirement: Operator mapping is total --> | <!-- type split + compile-negative test --> | <!-- EvalSpec, TypeContract --> |
+| <!-- e.g. Missing attribute gives Tri.U --> | <!-- Requirement: Missing values propagate + Scenario: absent attribute --> | <!-- property test --> | <!-- EvalSpec --> |
+| <!-- e.g. Replay equals live transition --> | <!-- Property: replay-equals-live --> | <!-- model/property test --> | <!-- ReplaySpec --> |
+| <!-- e.g. Invalid ID unrepresentable --> | <!-- Invariant: AccountId is well-formed --> | <!-- opaque type + constructor property --> | <!-- domain spec --> |
 
 ## Implementation Anchors
 

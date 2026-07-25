@@ -84,6 +84,8 @@ while IFS= read -r spec; do
       flush_req(); flush_prop(); flush_temp()
       n_reqs++
       req_name = substr($0, 18); gsub(/^[ \t]+|[ \t]+$/, "", req_name)
+      req_titles[n_reqs] = req_name
+      req_lines[n_reqs] = NR
       req_line = NR; req_has_norm = 0; req_seen_given = 0
       req_negative = 0; req_scenarios = 0; in_po = 0
       next
@@ -123,7 +125,51 @@ while IFS= read -r spec; do
         if ($0 ~ /\*\*Trigger event\*\*/)  temp_has_trig = 1
         if ($0 ~ /\*\*Response event\*\*/) temp_has_resp = 1
       }
-      if (in_po && $0 ~ /^\|/ && $0 !~ /^\|[ \t:]*-/ && $0 !~ /^\| *Obligation/) po_rows++
+      if (in_po && $0 ~ /^\|/ && $0 !~ /^\|[ \t:]*-/ && $0 !~ /^\| *Obligation/) {
+        po_rows++
+        check_source($0, NR)
+      }
+    }
+    # ── F6/F7: Proof-Obligations Source must NAME what it comes from ──────
+    # Resolvable forms (schema v8 mandate):
+    #   Requirement: <exact title>   (preferred — survives reordering)
+    #   Requirement N | RN           (ordinal — positional, W4)
+    #   Property:|Scenario:|Invariant:|Compile-Negative:|Temporal:|
+    #   Criterion:|Type-Constraint:|MUST-CONFIRM  (non-requirement sources)
+    # "Requirement" with no identifier names nothing -> FAIL F6.
+    function check_source(row, lineno,   nf, cells, src, i, toks, nt, idx, hit, low, j, key) {
+      nf = split(row, cells, "|")
+      if (nf < 4) return                      # not a 4-column obligations row
+      src = cells[3]; gsub(/^[ \t]+|[ \t]+$/, "", src)
+      if (src == "" || src ~ /^<!--/) return
+      hit = 0
+      # ordinal references: "Requirement 3", "R3"
+      nt = split(src, toks, /[^A-Za-z0-9]+/)
+      for (i = 1; i <= nt; i++) {
+        idx = 0
+        if (toks[i] ~ /^R[0-9]+$/)                                idx = substr(toks[i], 2) + 0
+        else if (toks[i] == "Requirement" && toks[i+1] ~ /^[0-9]+$/) idx = toks[i+1] + 0
+        if (idx >= 1 && idx <= n_reqs) {
+          covered[idx] = 1; hit = 1; ordinal_refs++
+        } else if (idx > n_reqs && idx > 0) {
+          printf "FAIL F6 line %d: Source cites Requirement %d but the spec has %d\n", lineno, idx, n_reqs
+          hit = 1
+        }
+      }
+      # title reference: the Source quotes an actual requirement title
+      low = tolower(src)
+      for (j = 1; j <= n_reqs; j++) {
+        key = tolower(substr(req_titles[j], 1, 40))
+        if (key != "" && index(low, key) > 0) { covered[j] = 1; hit = 1; title_refs++ }
+      }
+      if (hit) return
+      # non-requirement source kinds are legitimate — but must be TYPED,
+      # i.e. the kind must be followed by ": <name>" or " <ordinal>"
+      if (src ~ /(^|[^A-Za-z])(Property|Properties|Scenario|Scenarios|Invariant|Compile-Negative|Temporal|Criterion|Type-Constraint|MUST-CONFIRM|Design|Non-goal)[ ]*(:|[0-9])/ ||
+          src ~ /^(MUST-CONFIRM|Compile-Negative)([^A-Za-z]|$)/)
+        return
+      printf "FAIL F6 line %d: Source names no resolvable reference: %s\n", lineno, src
+      printf "         (use \"Requirement: <exact title>\", \"Requirement N\", or a typed source like \"Property: <name>\")\n"
     }
     END {
       flush_req(); flush_prop(); flush_temp()
@@ -131,6 +177,12 @@ while IFS= read -r spec; do
         printf "FAIL F4: spec has %d requirement(s) but no ## Proof Obligations section\n", n_reqs
       if (has_po && po_rows < n_reqs)
         printf "WARN W2: Proof Obligations has %d data row(s) for %d requirement(s)\n", po_rows, n_reqs
+      if (has_po)
+        for (i = 1; i <= n_reqs; i++)
+          if (!covered[i])
+            printf "FAIL F7 line %d: requirement \"%s\" is named by NO proof obligation (unenforced)\n", req_lines[i], req_titles[i]
+      if (ordinal_refs > 0 && title_refs == 0)
+        printf "WARN W4: %d obligation Source(s) reference requirements BY ORDINAL only — reordering requirements silently re-points them; prefer \"Requirement: <exact title>\"\n", ordinal_refs
     }
   ' "$spec")"
 
