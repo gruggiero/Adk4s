@@ -347,27 +347,29 @@ Ring 9 is NOT checked (no telemetry stack detected). No temporal properties.
 
 | Obligation | Source | Enforcement | Artifact |
 |------------|--------|-------------|----------|
-| File-backed memory persists across instances | Requirement 1, scenario 1 | Property test (reload-across-instances) + scenario test | `FileBackedAgentMemorySpec` |
-| Empty file on first recall returns `Nil` | Requirement 1, scenario 2 | Property test (empty storage) | `FileBackedAgentMemorySpec` |
-| No concurrent-write guarantee claimed | Requirement 1, scenario 3 | Manual review (documented non-goal) | spec §"Non-goals" |
-| `FileBackedAgentMemory` passes `AgentMemoryLaws` | Requirement 2, scenario 1 | Laws suite run against the double | `FileBackedAgentMemorySpec` |
-| Laws suite catches violations | Requirement 2, scenario 2 | Adversarial: run laws against a broken double, assert ≥ 1 failure | `FileBackedAgentMemorySpec` (negative test) |
-| Cross-run recall A1 + A2 | Requirement 3, scenario 1 | Scenario test (two rebuilt stacks, shared temp dir only) | `CrossRunMemorySmokeSpec` |
-| Recall without teach does not produce "blue" | Requirement 3, scenario 2 | Scenario test (adversarial — empty storage, assert no "blue") | `CrossRunMemorySmokeSpec` |
-| Reset clears storage | Requirement 3, scenario 3 | Scenario test | `CrossRunMemorySmokeSpec` or manual |
-| Mock answers from injected context, not script | Requirement 4, scenario 1 | Scenario test + adversarial review (Ring 8) | `CrossRunMemorySmokeSpec` + Ring 8 |
-| Mock does not echo when no context injected | Requirement 4, scenario 2 | Scenario test (adversarial — no injected block, assert no "blue") | `CrossRunMemorySmokeSpec` |
-| Observability — four labeled sections in order | Requirement 5, scenario 1 | Scenario test (assert printed output contains sections in order) | `CrossRunMemorySmokeSpec` |
-| Observability with zero hits | Requirement 5, scenario 2 | Scenario test (edge path) | `CrossRunMemorySmokeSpec` |
-| Retriever returns top-k with metadata | Requirement 6, scenario 1 | Scenario test | `MemoryRetrieverExampleSpec` or manual run |
-| Retriever with no matches returns empty | Requirement 6, scenario 2 | Scenario test (edge path) | `MemoryRetrieverExampleSpec` |
-| Test-scope dep on testkit present | Requirement 7, scenario 1 | `sbt adk4s-examples/Test/compile` succeeds with laws import | build + `FileBackedAgentMemorySpec` compilation |
-| No main-scope testkit leakage | Requirement 7, scenario 2 | Compile-negative test (adversarial) | `assertDoesNotCompile` or `sbt adk4s-examples/compile` |
-| README memory category present | Requirement 8, scenario 1 | Manual review | README |
-| README orchestration snippet present | Requirement 8, scenario 2 | Manual review | README |
-| Scoring delegates to `naiveScore` | Property 3 | Property test | `FileBackedAgentMemorySpec` |
-| Remember-all/recall-all round-trip | Property 1 | Property test | `FileBackedAgentMemorySpec` |
-| Two stacks share only temp dir (no in-memory leak) | Requirement 3, scenario 1 | Adversarial review (Ring 8) — verify no shared `Ref`/`InMemoryAgentMemory`/`AgentRunner` | Ring 8 |
+| File-backed memory persists across instances | Requirement: File-backed memory persists episodes across process boundaries + Scenario: Teach in one instance, recall in a fresh instance | Property test (reload-across-instances) + scenario test | `FileBackedAgentMemorySpec` |
+| Empty file on first recall returns `Nil` | Requirement: File-backed memory persists episodes across process boundaries + Scenario: Empty file on first recall | Property test (empty storage) | `FileBackedAgentMemorySpec` |
+| No concurrent-write guarantee claimed | Requirement: File-backed memory persists episodes across process boundaries + Scenario: Concurrent writers are out of scope (error path) | Manual review (documented non-goal) | spec §"Non-goals" |
+| `FileBackedAgentMemory` passes `AgentMemoryLaws` | Requirement: File-backed memory satisfies the AgentMemory laws + Scenario: Laws suite green | Laws suite run against the double | `FileBackedAgentMemorySpec` |
+| Laws suite catches violations | Requirement: File-backed memory satisfies the AgentMemory laws + Scenario: Laws suite red on a broken double (adversarial) | Adversarial: run laws against a broken double, assert ≥ 1 failure | `FileBackedAgentMemorySpec` (negative test) |
+| Cross-run recall A1 + A2 | Requirement: Cross-run recall via the memory-aware runner (pass criteria A1 and A2) + Scenario: Teach then recall across two fully rebuilt stacks (in-process approximation) | Scenario test (two rebuilt stacks, shared temp dir only) | `CrossRunMemorySmokeSpec` |
+| Recall without teach does not produce "blue" | Requirement: Cross-run recall via the memory-aware runner (pass criteria A1 and A2) + Scenario: Recall without prior teach (error/edge path) | Scenario test (adversarial — empty storage, assert no "blue") | `CrossRunMemorySmokeSpec` |
+| Reset clears storage | Requirement: Cross-run recall via the memory-aware runner (pass criteria A1 and A2) + Scenario: Reset clears the storage directory | Scenario test | `CrossRunMemorySmokeSpec` or manual |
+| Mock answers from injected context, not script | Requirement: Mock model answers from injected context, not from a script + Scenario: Mock echoes the injected value | Scenario test + adversarial review (Ring 8) | `CrossRunMemorySmokeSpec` + Ring 8 |
+| Mock does not echo when no context injected | Requirement: Mock model answers from injected context, not from a script + Scenario: Mock does not echo when no context is injected (adversarial) | Scenario test (adversarial — no injected block, assert no "blue") | `CrossRunMemorySmokeSpec` |
+| Observability — four labeled sections in order | Requirement: Observability — the recall run narrates its mechanism + Scenario: Full observability output on a recall run | Scenario test (assert printed output contains sections in order) | `CrossRunMemorySmokeSpec` |
+| Observability with zero hits | Requirement: Observability — the recall run narrates its mechanism + Scenario: Observability with zero hits (edge path) | Scenario test (edge path) | `CrossRunMemorySmokeSpec` |
+| Retriever returns top-k with metadata | Requirement: Memory retriever example shows the second seam + Scenario: Retriever returns top-k documents | Scenario test | `MemoryRetrieverExampleSpec` or manual run |
+| Retriever with no matches returns empty | Requirement: Memory retriever example shows the second seam + Scenario: Retriever with no matching episodes (edge path) | Scenario test (edge path) | `MemoryRetrieverExampleSpec` |
+| Test-scope dep on testkit present | Requirement: Build wiring — examples module depends on the memory testkit in test scope + Scenario: Test-scope dependency present | `sbt adk4s-examples/Test/compile` succeeds with laws import | build + `FileBackedAgentMemorySpec` compilation |
+| No main-scope testkit leakage | Requirement: Build wiring — examples module depends on the memory testkit in test scope + Scenario: No main-scope leakage (adversarial) | Compile-negative test (adversarial) | `assertDoesNotCompile` or `sbt adk4s-examples/compile` |
+| README memory category present | Requirement: Documentation — README memory category and orchestration snippet + Scenario: README memory category present | Manual review | README |
+| README orchestration snippet present | Requirement: Documentation — README memory category and orchestration snippet + Scenario: Orchestration snippet present | Manual review | README |
+| Scoring delegates to `naiveScore` | Property: Scoring delegates to InMemoryAgentMemory.naiveScore | Property test | `FileBackedAgentMemorySpec` |
+| Remember-all/recall-all round-trip | Property: Remember-all then recall-all round-trip | Property test | `FileBackedAgentMemorySpec` |
+| Reload-across-instances preserves recall equivalence | Property: Reload-across-instances preserves recall equivalence | Property test | `FileBackedAgentMemorySpec` |
+| Empty storage returns empty hits without error | Property: Empty storage returns empty hits (no error) | Property test | `FileBackedAgentMemorySpec` |
+| Two stacks share only temp dir (no in-memory leak) | Requirement: Cross-run recall via the memory-aware runner (pass criteria A1 and A2) + Scenario: Teach then recall across two fully rebuilt stacks (in-process approximation) | Adversarial review (Ring 8) — verify no shared `Ref`/`InMemoryAgentMemory`/`AgentRunner` | Ring 8 |
 
 ## Implementation Anchors
 

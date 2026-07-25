@@ -346,10 +346,23 @@ def build_specs(g: Graph, root: str) -> None:
                                 f"requirement — INFERRED -> R{best} by title overlap"
                             )
                     if not linked:
-                        g.warnings.append(
-                            f"{change}/{cap}: obligation #{n} cites no resolvable requirement "
-                            f"(Source={row[1][:60]!r})"
+                        # A TYPED non-requirement source (Property/Scenario/
+                        # Invariant/...) is legitimate per the v8 mandate: the
+                        # obligation comes from a property, not a requirement.
+                        # Only an untyped cell names nothing.
+                        typed = re.search(
+                            r"(^|[^A-Za-z])(Property|Properties|Scenario|Scenarios|Invariant|"
+                            r"Compile-Negative|Temporal|Criterion|Type-Constraint|MUST-CONFIRM|"
+                            r"Design|Non-goal)\s*(:|\d)",
+                            row[1],
                         )
+                        if typed:
+                            g.nodes[oid]["source_kind"] = typed.group(2)
+                        else:
+                            g.warnings.append(
+                                f"{change}/{cap}: obligation #{n} names NOTHING resolvable "
+                                f"(Source={row[1][:60]!r})"
+                            )
                     for art in BACKTICK.findall(row[3]) or [row[3]]:
                         art = art.strip()
                         if art and art not in ("—", "-"):
@@ -473,7 +486,14 @@ def cmd_obligations(g: Graph, change: str | None) -> int:
                 links[e.get("link", "?")] += 1
         print(f"  requirements: {len(reqs)}   obligations: {len(all_obls)}   "
               f"artifacts: {len({a['to'] for o in all_obls for a in g.out(o, 'verified-by')})}")
+        kind_sourced = [o for o in all_obls if g.nodes[o].get("source_kind")]
         print(f"  obligation links: " + ", ".join(f"{k}={v}" for k, v in sorted(links.items())) or "  (none)")
+        if kind_sourced:
+            kinds = defaultdict(int)
+            for o in kind_sourced:
+                kinds[g.nodes[o]["source_kind"]] += 1
+            print(f"  non-requirement sources (legitimate): "
+                  + ", ".join(f"{k}={v}" for k, v in sorted(kinds.items())))
         if links.get("inferred"):
             print(f"  ⚠ {links['inferred']} link(s) INFERRED by title overlap — the Source cell names "
                   f"no requirement; make it 'Requirement N' or quote the title")
