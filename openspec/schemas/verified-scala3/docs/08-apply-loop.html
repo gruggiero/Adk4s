@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>8 · The apply loop — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a class="current" href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 8 · Operations</div>
+<h1>The apply loop</h1>
+<p class="lede">
+  Chapter 7 covered the rings themselves. This chapter is the machinery
+  <em>around</em> them: how a spec starts, what makes each diff exact, what
+  gets checked at the end, and why the loop stops dead at a human three times.
+</p>
+
+<h2>One spec at a time</h2>
+
+<p>
+  The schema states this in a box of block characters, which is unusual for a
+  configuration file and tells you how often it is violated:
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule</div>
+  <p>
+    The cycle is: implement ONE spec → checkpoint → WAIT → human approves →
+    next spec. Moving to the next spec without explicit approval is a schema
+    violation. <em>“I'll just do the next one since it's simple”</em> is not
+    acceptable. <em>“The user said continue earlier, so I'll keep going”</em>
+    is not acceptable.
+  </p>
+  <p style="margin-bottom:0">
+    Each spec requires its own approval. No exceptions.
+  </p>
+</div>
+
+<p>
+  The reason is not ceremony. Batching converts N approvals into one, and a
+  human reviewing four specs at once reliably approves three of them unread —
+  producing a durable record of scrutiny that did not occur. It also destroys
+  the baseline discipline below: with four specs in one working tree, no diff
+  is attributable to any spec, which silently corrupts mutation targeting, the
+  adversarial review's scope, and the concept delta.
+</p>
+
+<h2>Step 0 · The baseline, in detail</h2>
+
+<p>
+  Everything downstream depends on getting this right, and it is the step most
+  likely to be skipped because nothing visible happens.
+</p>
+
+<div data-pipeline="step0"></div>
+<script type="application/json" id="step0">
+[
+ { "short":"clean tree", "label":"1 · The working tree must be clean",
+   "body":"<p>If uncommitted changes exist, <strong>stop and resolve with the human</strong>. A dirty tree means the baseline cannot distinguish this spec's work from whatever was already there.</p><p style='margin-bottom:0'>This is also the step that makes the previous spec's commit meaningful: a clean tree is the proof that spec N−1 really finished.</p>" },
+ { "short":"baseline SHA", "label":"2 · Record the baseline SHA",
+   "body":"<p><code>git rev-parse HEAD</code>, written into implementation-progress.md. Every diff this spec's machinery computes is <code>git diff &lt;baseline&gt;</code>:</p><ul><li>Ring 1's dangerous-pattern scan</li><li>Ring 5's mutation targeting</li><li>Ring 8's review scope</li><li>Step 12's build-dependency delta</li></ul><p style='margin-bottom:0'><strong>Never</strong> the unanchored working-tree diff, which from spec 2 onward contains earlier specs' changes.</p>" },
+ { "short":"inventory snapshot", "label":"3 · Snapshot the type inventory",
+   "body":"<p>Run the semantic scanner into <code>inventory-snapshots/&lt;spec&gt;-before.md</code>. Step 12 re-runs it and machine-diffs the two.</p><p style='margin-bottom:0'>That diff <em>is</em> the concept delta — computed, not eyeballed. Without the snapshot, step 12 degrades to reading the code diff and hoping you notice a new public type.</p>" },
+ { "short":"concept check", "label":"4 · Concept check",
+   "body":"<p>For every entry in the spec's <em>Concepts Used</em> table: verify it exists, locate its package, and plan to <strong>import it, not recreate it</strong>. If the spec extends an existing concept — a new enum variant, a new trait method — modify the existing file rather than creating a parallel version.</p><p style='margin-bottom:0'>Also verify the proof-obligations table is complete. <strong>If not, STOP</strong> — the spec is fixed first, and spec-lint re-run.</p>" },
+ { "short":"registry gate", "label":"5 · Registry gate (if a registry exists)",
+   "body":"<p>Run <code>registry-check.sh</code> — it must pass before code is written. A stale Implementation-map row means the spec's ground truth has drifted; fix the map first.</p><p style='margin-bottom:0'>Then, for each cited concept, verify that the state and actions the spec <em>relies on</em> are actually realised: read the fold or handler the map points at. <strong>A field declared on a model shape but never populated by the fold is not available</strong>, whatever the type says. If a spec assumption contradicts the code, stop and report rather than implementing on top of it.</p>" },
+ { "short":"MUST-CONFIRM", "label":"6 · MUST-CONFIRM stop",
+   "body":"<p>For every spec item marked MUST-CONFIRM: <strong>stop and ask the human</strong> for the authoritative data.</p><p style='margin-bottom:0'>Synthesising plausible values is a schema violation <em>even if every test passes</em> — because the tests would be derived from the same invented table. This is the one place the workflow explicitly prefers blocking to progress.</p>" },
+ { "short":"widening scan", "label":"7 · Public-type-change impact scan",
+   "body":"<p>Runs when the spec aliases, widens, or grows the variant set of a public type. For every such type, search the <em>whole module graph</em> — not just this change's diff — for pattern matches containing a catch-all arm.</p><p><strong>Why the whole graph:</strong> aliasing a type to a richer one changes the meaning of every downstream <code>case _ =&gt;</code> <em>without editing any file</em>. There is no diff to review.</p><p style='margin-bottom:0'>Each site must be resolved — made exhaustive, explicitly rejecting, or justified — and recorded in the proof obligations.</p>" }
+]
+</script>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way · the baseline is a correctness device</div>
+  <p style="margin-bottom:0">
+    It looks like bookkeeping; it is the thing that makes four different rings
+    honest. Without a per-spec baseline, “the files this spec changed” is
+    undefined, so mutation mutates the wrong set, the adversarial reviewer reads
+    the wrong diff, and the dependency delta reports a library that a previous
+    spec added. Each of those failures is silent and produces a
+    <em>confident wrong number</em> in the checkpoint — the failure mode this
+    workflow fears most.
+  </p>
+</div>
+
+<h2>Gate tiering</h2>
+
+<p>
+  Steps 1 and 2 each end in a human stop (chapter 6). One concession exists:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Tier</th><th>Allowed when</th><th>What changes</th></tr></thead>
+  <tbody>
+    <tr><td><code>separate</code> (default)</td><td>anything else</td><td>two stops: contract, then oracle</td></tr>
+    <tr><td><code>combined</code></td><td>complexity = <em>simple</em> AND proposal risk = <em>low</em></td>
+        <td>one stop: contract and oracle presented together after step 2</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Both steps still execute in full — tiering changes how many times the human
+  is interrupted, never what is produced. The tier is recorded per spec in
+  implementation-order.md, so it is a decision made deliberately at planning
+  time rather than a shortcut taken under pressure at 5pm.
+</p>
+
+<h2>Step 12 · The four deltas</h2>
+
+<p>
+  After the rings pass, before the checkpoint, four things are reconciled.
+  This step is where scope creep is caught, and it is almost entirely
+  mechanical.
+</p>
+
+<h3>1 · Concept delta — the scope-creep check</h3>
+
+<pre data-lang="md"><code>new public surface == previous inventory
+                    + Concepts Introduced (from the spec)
+                    + approved extensions</code></pre>
+
+<p>
+  Computed by re-running the scanner and diffing against the step-0 snapshot.
+  Anything extra is either added to the spec <em>with human approval</em>, or
+  removed. This is what stops “while I was in there” from accumulating a
+  public API nobody designed.
+</p>
+
+<h3>2 · Removal audit</h3>
+
+<p>
+  For every field or type <em>removed</em>, find now-orphaned dependents:
+  helper factories, opaque adapters, extension methods that existed only to
+  serve the removed member. Each must be deleted in this change or explicitly
+  retained with rationale.
+</p>
+
+<div class="box caution">
+  <div class="box-title">Why lint cannot do this for you</div>
+  <p style="margin-bottom:0">
+    <code>RemoveUnused</code> does not flag <em>public</em> members — it
+    cannot know whether an external consumer uses them. So a helper whose only
+    caller you just deleted compiles forever as dead public API, and the next
+    engineer reads it as an intentional part of the design. The audit is
+    mandatory precisely because the compiler is structurally silent here.
+  </p>
+</div>
+
+<h3>3 · Build-dependency delta</h3>
+
+<p>
+  <code>git diff &lt;baseline&gt; -- build.sbt project/</code>. Any new library
+  dependency is an unreviewed behaviour source and must be named in the
+  proposal or design, or approved at the checkpoint. The concept delta pins
+  the <em>type</em> surface; this pins the <em>dependency</em> surface.
+</p>
+
+<h3>4 · Registry and inventory update</h3>
+
+<p>
+  New concepts are appended to the project inventory <em>with provenance</em>
+  (<code>spec:&lt;change&gt;/&lt;spec&gt;</code>), using actual source details
+  rather than planned ones. If the spec altered a registry concept's actions,
+  state or synchronizations, the concept file is updated now and
+  <code>registry-check.sh</code> must pass again — <strong>an implementation
+  whose concept files are stale is not complete</strong>.
+</p>
+
+<h2>Step 13 · The checkpoint</h2>
+
+<p>
+  Mark progress, regenerate <code>tasks.md</code> from the progress file,
+  <strong>commit the spec</strong>, then present a fixed structure:
+</p>
+
+<pre data-lang="md"><code>## ✓ Spec 2/5 complete: cross-run-memory-example
+
+**Commit:** a1b2c3d (baseline was 9f8e7d6)
+**Files changed:** …
+**Rings:** R0 ✅ R1 ✅ R2 ⏭ R3 ✅ R4 ⏭ R8 ✅ R5 ✅ R6 ⏭ R7 ⏭ R9 ⏭
+**Oracle polarity:** 11 red→green confirmed, 3 green-by-design held
+**Cross-module regression:** adk4s-orchestration, adk4s-examples — pass
+**Exhaustiveness escalation:** -Wconf active
+**Adversarial review:** PASS (fresh-context: yes)
+**Proof obligations:** all enforced except 3 manually-reviewed: …
+**Concepts added to inventory:** FileBackedAgentMemory, StoragePath
+**Concept registry files updated:** memory-aware-runner.md
+**Concept delta (scanner diff):** exactly as committed
+**Build-dependency delta:** none
+**Design decisions made:** …
+
+⏸  Waiting for your review before starting spec 3: …</code></pre>
+
+<p>
+  Two things about this format are worth noticing. First, it is
+  <strong>fixed</strong>: the same fields every time, so a reader learns where
+  to look and notices an empty field. Second, it foregrounds
+  <em>what was not mechanically enforced</em> — skipped rings, manually-reviewed
+  obligations, PARTIAL verdicts. The checkpoint is optimised for the human to
+  find the soft spots quickly, not to look impressive.
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule · the commit is the checkpoint's identity</div>
+  <p style="margin-bottom:0">
+    Committing at step 13 is not a convenience. It (a) makes every per-spec
+    diff exact, (b) gives the next spec its baseline, (c) makes the work
+    bisectable, and (d) means an approved checkpoint refers to an immutable
+    state rather than a working tree that keeps moving. If a project forbids
+    per-spec commits, an alternative baseline mechanism must be recorded in the
+    capability profile — but a baseline there must be.
+  </p>
+</div>
+
+<h2>When the human asks for changes</h2>
+
+<p>
+  The re-run rules are precise, and they matter because “just re-run
+  everything” is expensive and “just re-run the tests” is wrong:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Change requested</th><th>Re-run from</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>Source change</td><td>Ring 0</td><td>and <strong>always</strong> Ring 8, then Ring 5 — mutation must see final code</td></tr>
+    <tr><td>New test only</td><td>Ring 3</td><td>oracle changed → re-present the oracle gate</td></tr>
+    <tr><td>Package move</td><td>Ring 2</td><td>layer rules may now be violated</td></tr>
+    <tr><td>Serialization change</td><td>Ring 4 included</td><td>fixtures must still decode</td></tr>
+    <tr><td>Contract signature change</td><td>gate 1</td><td>re-present the typed contract for approval first</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Then the spec's commit is amended and the checkpoint re-presented. The rule
+  underneath all of these: <em>any artifact that was approved and has now
+  changed must be re-approved</em>.
+</p>
+
+<h2>Failure handling</h2>
+
+<p>
+  The loop specifies what to do when things go wrong, which is what keeps an
+  agent from improvising:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Situation</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td>Dirty tree at step 0</td><td>STOP, resolve with human</td></tr>
+    <tr><td>Proof obligation with no mechanism</td><td>STOP, fix the spec</td></tr>
+    <tr><td>Concept missing from inventory</td><td>STOP, ask which of three causes applies</td></tr>
+    <tr><td>MUST-CONFIRM item</td><td>STOP, ask for authoritative data</td></tr>
+    <tr><td>RED test passes before implementation</td><td>broken oracle — fix before the gate</td></tr>
+    <tr><td>Ring 0 fails after 3 iterations</td><td>STOP, present the errors</td></tr>
+    <tr><td>Property falsified after 3 fixes</td><td>STOP, present counterexample <em>and seed</em></td></tr>
+    <tr><td>Concurrency test flakes</td><td>Ring 3 FAILURE — fix the race, never re-run away</td></tr>
+    <tr><td>Ring 8 FAIL</td><td>fix before Ring 5; re-run affected rings</td></tr>
+    <tr><td>Unapproved new build dependency</td><td>remove, or get approval at checkpoint</td></tr>
+    <tr><td>Two specs modify the same file</td><td>STOP, ask the human</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box insight">
+  <div class="box-title">Why so many explicit STOPs</div>
+  <p style="margin-bottom:0">
+    An agent's default behaviour under uncertainty is to <em>proceed
+    plausibly</em> — pick the likeliest interpretation and continue, because
+    that is what generates fluent output. Every STOP above marks a place where
+    proceeding plausibly produces work that looks finished and is built on an
+    unverified assumption. Naming them explicitly converts the default from
+    “guess and continue” into “ask”, which is the single highest-leverage
+    change you can make to an agentic workflow.
+  </p>
+</div>
+
+<h2>The loop as an economic system</h2>
+
+<div class="tabs">
+  <div class="tab-bar" role="tablist">
+    <button role="tab" aria-selected="true">Attention as the scarce resource</button>
+    <button role="tab" aria-selected="false">Batch size and feedback</button>
+  </div>
+  <div class="tab-panel" data-active="true">
+    <p>Machine time is cheap and getting cheaper; human review attention is
+    fixed and expensive. Every design choice in this loop follows from that
+    asymmetry: mechanical checks run first and unattended, humans are consulted
+    at three points chosen for leverage, tiering removes stops where risk is
+    low, and the checkpoint format foregrounds exactly the residual risks a
+    human must judge.</p>
+    <p style="margin-bottom:0">The failure mode being avoided is <em>review
+    fatigue</em>: ask for approval too often on things too trivial and you
+    train the reviewer to approve reflexively — which silently deletes all
+    three gates at once.</p>
+  </div>
+  <div class="tab-panel">
+    <p>Lean and continuous-delivery practice says: small batches, fast
+    feedback, stop the line on defect. One spec per loop is a batch size of
+    one. The three gates are the andon cord. The rings are the automated
+    inspection stations, ordered cheapest-first so defects are caught before
+    value is added on top of them.</p>
+    <p style="margin-bottom:0">The per-spec commit is what makes the batch
+    real: an amendable, bisectable unit that either passed everything or is
+    still open. Without it you have a large batch wearing the costume of a
+    small one.</p>
+  </div>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q8"></div>
+<script type="application/json" id="q8">
+[
+  {
+    "q": "Spec 3 begins with spec 2's work uncommitted in the tree. What breaks?",
+    "options": [
+      "Nothing, as long as tests pass",
+      "Every per-spec diff: mutation targets spec 2's files too, the adversarial reviewer reads the wrong diff, and the concept and dependency deltas attribute spec 2's changes to spec 3",
+      "Only the commit message",
+      "The type inventory"
+    ],
+    "answer": 1,
+    "why": "The baseline defines 'the files this spec changed'. With a dirty tree, four separate mechanisms silently compute the wrong set — and each still reports a confident number in the checkpoint. That is why the clean-tree check is step 0 item 1, before anything else."
+  },
+  {
+    "q": "During step 0's registry gate you find that a spec relies on a state field that the fold never populates. What does the workflow require?",
+    "options": [
+      "Implement it anyway and add the field to the fold",
+      "STOP and report the discrepancy rather than implementing on top of a false assumption",
+      "Remove the field from the concept file",
+      "Note it in the checkpoint and continue"
+    ],
+    "answer": 1,
+    "why": "A field on the model shape that no fold writes is not available, whatever the type says. Building on it produces code that compiles, passes tests written from the same wrong assumption, and is always empty at runtime. The gate exists to catch exactly this before effort is spent."
+  },
+  {
+    "q": "A reviewer asks for a small change to a private helper after the checkpoint. Which rings re-run?",
+    "options": [
+      "Only Ring 3",
+      "From Ring 0, and always Ring 8 — then Ring 5, because mutation must measure the final suite",
+      "None; it is private",
+      "Only Ring 8"
+    ],
+    "answer": 1,
+    "why": "Any source change re-enters at Ring 0 and always re-triggers the adversarial review — private helpers are exactly where chapter 1's defect lived. Ring 5 follows because its score describes a specific code+suite pair; a code change invalidates it."
+  },
+  {
+    "q": "Why does the checkpoint list manually-reviewed obligations and skipped rings so prominently?",
+    "options": [
+      "For audit compliance",
+      "Because those are precisely the claims no machine is enforcing — the human's judgement is the mechanism, so they must see the list every time",
+      "To make the report longer",
+      "Because the schema requires a fixed length"
+    ],
+    "answer": 1,
+    "why": "Everything else in the checkpoint is a machine's verdict. The manually-reviewed rows and skipped rings are where the workflow is explicitly relying on a person — so hiding them would convert a known, accepted risk into an unknown one."
+  }
+]
+</script>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>Why the baseline SHA is a correctness device, not bookkeeping.</li>
+    <li>All four deltas reconciled at step 12 and the bug class each catches.</li>
+    <li>Why the removal audit cannot be delegated to lint.</li>
+    <li>What the checkpoint deliberately foregrounds, and why.</li>
+    <li>Which rings re-run after a source change, and why Ring 5 must be last.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="07-rings.html"><span class="dir">← Chapter 7</span> The rings</a>
+  <a class="next" href="09-tooling.html"><span class="dir">Chapter 9 →</span> The tooling</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

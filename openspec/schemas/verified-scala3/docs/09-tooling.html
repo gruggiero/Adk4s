@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9 · The tooling — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a class="current" href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 9 · Tools</div>
+<h1>The tooling</h1>
+<p class="lede">
+  What is mechanical, what is judgement, and — the question that shapes every
+  tool here — <em>where must this be able to run?</em> The answer to that last
+  one explains why some checks are 200 lines of bash while others are a
+  language server.
+</p>
+
+<h2>The portability constraint</h2>
+
+<p>
+  Before any individual tool, the constraint that determines their design:
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule · the gate checks must run anywhere</div>
+  <p style="margin-bottom:0">
+    <code>registry-check.sh</code>, <code>spec-lint.sh</code> and
+    <code>danger-scan.sh</code> use <strong>bash and <code>git grep</code>
+    only</strong> — no JVM, no network, no artifact repository. They run on a
+    restricted CI runner that cannot reach Maven Central. Portability
+    <em>is</em> a correctness property for a gate: a check that only runs on a
+    developer's laptop is a check that stops running.
+  </p>
+</div>
+
+<p>
+  Tools that need a compiler or an index (the scanner, the semantic recipes)
+  are workstation-grade and therefore <em>advisory</em> — they make the agent
+  and the human faster, but no gate depends on them. Keep that distinction
+  clear as you read: it is the difference between a tool you may lose and a
+  tool whose absence blocks a merge.
+</p>
+
+<h2>The mechanical gate checks</h2>
+
+<h3>registry-check.sh — three passes over the behavioural registry</h3>
+
+<pre data-lang="bash"><code>$ scanner/registry-check.sh .
+registry-check: OK (611 implementation-map tokens verified,
+                    3 spec concept references checked,
+                    2 weak binding(s) to tighten)</code></pre>
+
+<ol>
+  <li><strong>Symbols.</strong> Every backticked identifier in every
+      Implementation map still exists. When a row cites a file <em>and</em>
+      symbols, the symbols are checked <em>inside that file</em>; a symbol that
+      survives elsewhere is reported as a <em>weak binding</em> — a warning,
+      not a failure, because rows legitimately mix an algebra's file with its
+      implementations' symbols.</li>
+  <li><strong>Fold fields.</strong> <code>maps f1, f2, …</code> declarations
+      are checked against the fold's source — the machine check for
+      declared-but-never-folded state.</li>
+  <li><strong>Spec references.</strong> Every <code>Concept/action</code> cited
+      by an active spec must be declared, and the action must appear in that
+      concept's <code>actions</code> block — not merely somewhere in its prose.
+      Concepts a spec marks as <em>new</em> are skipped until they exist.</li>
+</ol>
+
+<h3>spec-lint.sh — the mechanical subset of the spec rules</h3>
+
+<p>
+  You have used its logic twice already (chapters 3 and 5 embed a port of it).
+  Seven FAIL checks and four warnings:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Check</th><th>Fires when</th></tr></thead>
+  <tbody>
+    <tr><td><span class="chip">F1</span></td><td>requirement has no SHALL/MUST before its first <code>**Given**</code></td></tr>
+    <tr><td><span class="chip">F2</span></td><td>a negative requirement (only/never/must not — in title <em>or</em> body) has no scenario</td></tr>
+    <tr><td><span class="chip">F3</span></td><td>property without a <code>**Generator strategy**</code> line</td></tr>
+    <tr><td><span class="chip">F4</span></td><td>requirements exist but no Proof Obligations section</td></tr>
+    <tr><td><span class="chip">F5</span></td><td>temporal property missing trigger or response event</td></tr>
+    <tr><td><span class="chip">F6</span></td><td>obligation Source names nothing resolvable</td></tr>
+    <tr><td><span class="chip">F7</span></td><td>a requirement no obligation names — unenforced</td></tr>
+    <tr><td><span class="chip">W1–W4</span></td><td>vague words · row-count shortfall · unconfirmed adversarial scenario · positional references</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  The judgement checks — observability, testability, altitude, type-feasibility
+  — stay in the artifact instruction for a human or agent to apply. The script
+  does not pretend to do them, which is why its clean run is meaningful.
+</p>
+
+<h3>danger-scan.sh — Ring 1's portable echo</h3>
+
+<pre data-lang="bash"><code>$ scanner/danger-scan.sh &lt;baseline-SHA&gt; [--also &lt;importers&gt;]
+danger-scan: adk4s-core/src/main/scala/.../ToolsNode.scala
+  [catch-all] 160:    case other =&gt; Some(ToolExecutionFailure(input, other))
+  [unsafe-get] 88:    val cfg = config.get</code></pre>
+
+<p>
+  Scans the spec's production diff for the dangerous patterns from chapter 7.
+  Each hit is removed or justified with a same-line
+  <code>// danger-scan:allow &lt;reason&gt;</code>, so “clean” is the script
+  exiting 0. Where the compiler can do better — <code>OptionPartial</code>
+  distinguishing <code>opt.get</code> from <code>map.get(k)</code> — prefer the
+  compiler; this exists for portability and for patterns no rule expresses.
+</p>
+
+<h2>The concept scanner</h2>
+
+<p>
+  Builds the type inventory by <strong>parsing</strong> sources with Scalameta.
+  Two bugs in its history are worth carrying as lessons.
+</p>
+
+<div class="two-col">
+  <div class="box danger">
+    <div class="box-title">Bug 1 · the silent empty scan</div>
+    <p style="margin-bottom:0">
+      It looked for <code>src/main/scala</code> at the project root. On a
+      multi-module build (<code>adk4s-core/src/…</code>) it found
+      <strong>zero</strong> concepts and reported success. An empty result that
+      looks like an empty project is worse than a crash.
+      <em>Fix:</em> discover every <code>src/</code> root in the repo.
+    </p>
+  </div>
+  <div class="box danger">
+    <div class="box-title">Bug 2 · prose as types</div>
+    <p style="margin-bottom:0">
+      Regex extraction catalogued <em>consolidates</em>, <em>definitions</em>,
+      <em>prefixing</em>, <em>value</em>, <em>values</em> as sealed types —
+      words appearing near “sealed” in comments — and missed nested
+      declarations entirely.
+      <em>Fix:</em> parse; a comment is not a declaration.
+    </p>
+  </div>
+</div>
+
+<p>
+  Today it reports 469 accurate rows on this repository with zero parse
+  failures, qualifies nested declarations (<code>RunnableOps.FallbackSemantic</code>)
+  the way Metals and SemanticDB name them, enumerates sealed-trait variants,
+  links service-trait implementations across files including anonymous ones,
+  and — importantly — <strong>counts and reports files it could not
+  parse</strong>. A nonzero parse-failure count means an incomplete scan, not a
+  clean one.
+</p>
+
+<h2>Semantic code intelligence</h2>
+
+<p>
+  The workflow's repeated searches — find references, inspect a symbol, scan
+  for downstream catch-alls — are exactly what text search does worst. On this
+  repository, roughly <strong>31% of <code>git grep</code> hits</strong> for a
+  type name were comments or strings, and grep cannot distinguish this
+  project's <code>AgentEvent</code> from a dependency's identically-named one.
+</p>
+
+<p>
+  The answer is a headless <a href="https://scalameta.org/metals/docs/features/mcp/">Metals</a>
+  language server driven from shell scripts, so the recipes are versioned with
+  the schema and work from any agent:
+</p>
+
+<pre data-lang="bash"><code>$ scanner/metals-start.sh              # per project: free port, JDK check,
+                                      # writes .metals/mcp.url for discovery
+$ scanner/metals-call.sh resolve AgentEvent
+org.adk4s.core.interrupt.AgentEvent
+org.llm4s.agent.streaming.AgentEvent          # ← grep would conflate these
+
+$ scanner/impact-scan.sh org.adk4s.core.interrupt.AgentEvent
+  reference set: 67 refs in 10 files — semantic (Metals get-usages)
+  catch-all match arms near a usage:
+    …/EventStreamExample.scala:89   case other =&gt;   (usage at line 72)</code></pre>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Recipe</th><th>Workflow step</th><th>What it composes</th></tr></thead>
+  <tbody>
+    <tr><td><code>impact-scan.sh</code></td><td>step 0 widening scan</td>
+        <td>compiler-resolved reference set + syntactic catch-all detection, digested</td></tr>
+    <tr><td><code>removal-audit.sh</code></td><td>step 12 removal audit</td>
+        <td><code>--suggest</code> lists removals from the baseline diff; per-symbol verdicts (<em>orphan-candidate</em> = self-references only)</td></tr>
+    <tr><td><code>metals-call.sh</code></td><td>anywhere</td>
+        <td>bridge: <code>resolve</code>, <code>inspect</code>, <code>get-usages</code>, <code>get-docs</code>, <code>compile-file</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box caution">
+  <div class="box-title">Two rules that keep semantic tools honest</div>
+  <p>
+    <strong>Freshness.</strong> A semantic answer comes from an <em>index</em>,
+    and a stale index is worse than grep — grep's failure mode is noisy, an
+    index's is silent and confident. Trust semantic answers only after a
+    successful compile; during pre-implementation phases (drafting a contract
+    against code that does not exist), the syntactic tools are the honest ones.
+  </p>
+  <p style="margin-bottom:0">
+    <strong>Resolve first.</strong> <code>get-usages</code> on an unresolvable
+    name silently degrades to <em>package</em> usages — a flood of line-1 hits
+    that looks like a huge reference set. The recipes resolve names first and
+    guard against that degradation; do the same for ad-hoc calls.
+  </p>
+</div>
+
+<p>
+  Every recipe degrades to <code>git grep</code> on its own when no endpoint is
+  running, and says so in its output. Semantic search is an accelerator, never
+  a dependency — which is the same principle as the portability rule, applied
+  to a different axis.
+</p>
+
+<h2>The artifact graph (prototype)</h2>
+
+<p>
+  The workflow already <em>is</em> a graph — concepts declare actions, specs
+  cite concepts, obligations name requirements, artifacts enforce them — but
+  the gate checks verify those edges <strong>pairwise</strong>. The prototype
+  makes the graph explicit so it can be queried transitively:
+</p>
+
+<pre data-lang="bash"><code>$ scanner/openspec-graph.py impact MemoryAwareRunner
+  syncs defined: RecallToContext, WriteEpisode
+  add-cross-run-memory-example/cross-run-memory-example
+    ✓ R1: File-backed memory persists episodes across process boundaries
+        3 obligation(s) -&gt; FileBackedAgentMemorySpec, spec §"Non-goals"
+    …
+  reach: 1 spec, 8 requirements, 19 obligations, 8 enforcing artifacts
+
+$ scanner/openspec-graph.py obligations
+  verdict: PASS — every requirement reaches an artifact</code></pre>
+
+<p>
+  Its first run found the schema gap that became the Source-format mandate in
+  chapter 5. It is Python, so it stays advisory — the same reachability check
+  now also exists as F7 in the portable linter, which is the version that
+  gates.
+</p>
+
+<h2>Mechanical vs judgement — the honest split</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Fully mechanical</th><th>Judgement, tool-assisted</th><th>Human only</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>
+        Source format (F6)<br>
+        Requirement reachability (F7)<br>
+        Registry symbol drift<br>
+        Fold-field declarations<br>
+        Exhaustiveness (Ring 0)<br>
+        Mutation score<br>
+        Concept &amp; dependency deltas
+      </td>
+      <td>
+        Observability of a <em>Then</em><br>
+        Testability with this stack<br>
+        Whether a property is vacuous<br>
+        Adversarial review verdicts<br>
+        Equivalent-mutant judgements<br>
+        Ring selection
+      </td>
+      <td>
+        Is the requirement the <em>right</em> one?<br>
+        Is this risk acceptable?<br>
+        Is the design the right shape?<br>
+        MUST-CONFIRM data<br>
+        Accepting PARTIAL verdicts
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  The third column is chapter 1's <em>adequacy</em> row, and no tool in this
+  chapter touches it. The workflow's goal is not to eliminate that column — it
+  is to shrink the first two so ruthlessly that human attention is spent
+  entirely on the third.
+</p>
+
+<h2>Setup, briefly</h2>
+
+<pre data-lang="bash"><code># gate checks — nothing to install
+$ openspec/schemas/verified-scala3/scanner/spec-lint.sh openspec/changes/&lt;change&gt;
+$ openspec/schemas/verified-scala3/scanner/registry-check.sh .
+
+# scanner (needs scala-cli)
+$ scanner/scan.sh . --output openspec/concept-inventory.md    # create
+$ scanner/scan.sh . --output /tmp/scan.md                     # verify: diff, never overwrite
+
+# semantic recipes (needs coursier + JDK 17+), once per project
+$ cs install metals-mcp && scanner/metals-start.sh
+
+# agent skills into .claude/ .pi/ .devin/
+$ scanner/install-skills.sh</code></pre>
+
+<p>
+  Wire <code>registry-check.sh</code> and <code>spec-lint.sh</code> into CI —
+  ready-made templates for GitHub Actions, GitLab and Azure are in the
+  schema's <code>ci/</code> directory.
+</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q9"></div>
+<script type="application/json" id="q9">
+[
+  {
+    "q": "Why are the gate checks written in bash and git grep rather than as a Scala tool?",
+    "options": [
+      "Bash is faster",
+      "They must run on restricted CI runners with no JVM and no artifact-repository access — a check that only runs locally stops running",
+      "The team dislikes Scala",
+      "To avoid compilation time"
+    ],
+    "answer": 1,
+    "why": "Portability is a correctness property for a gate. The tools that need a compiler or index are deliberately advisory: they speed people up, but no merge depends on them, so losing them degrades convenience rather than enforcement."
+  },
+  {
+    "q": "The scanner reports 3 files that failed to parse. How should the result be treated?",
+    "options": [
+      "As a clean scan minus three files",
+      "As an INCOMPLETE scan — unparsed files may contain concepts, so fall back to a manual scan for those files",
+      "Ignore it; parse errors are usually generated code",
+      "Delete the offending files"
+    ],
+    "answer": 1,
+    "why": "Same principle as the silent-empty-scan bug: a tool that hides what it could not process produces confident, incomplete output. The count is reported precisely so it can be treated as a gap rather than silence."
+  },
+  {
+    "q": "You run `get-usages` on a symbol and get 2,056 references across 217 files, most at line 1. What happened?",
+    "options": [
+      "The symbol really is used everywhere",
+      "The name did not resolve and the query silently degraded to PACKAGE usages — resolve the canonical name first",
+      "The index is corrupted",
+      "Line 1 references are imports, which is normal"
+    ],
+    "answer": 1,
+    "why": "This is the semantic tools' characteristic silent failure: an unresolvable name degrades to its package, and the flood of line-1 (package/import) hits is the fingerprint. Nested symbols are `Outer.Inner` and opaque types live in a synthetic package object — hence the resolve-first rule and the guard in the recipes."
+  },
+  {
+    "q": "Which of these could NOT be made mechanical, even in principle?",
+    "options": [
+      "Checking that every requirement is named by an obligation",
+      "Checking that a Then names an observable rather than an intention",
+      "Deciding whether the requirement is the one the customer actually needs",
+      "Checking that a registry symbol still exists in the source"
+    ],
+    "answer": 2,
+    "why": "Adequacy — whether the spec says what we actually wanted — has no internal referent to check against, so no tool can settle it. The other three are all mechanised already (F7, registry pass 1) or plausibly mechanisable with semantic analysis; observability sits in the judgement column today mainly because natural language makes it hard, not impossible."
+  }
+]
+</script>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>Why gate checks are dependency-free and semantic tools are advisory.</li>
+    <li>The three passes of registry-check and the seven spec-lint FAIL codes.</li>
+    <li>The two scanner bugs and the general lesson about silent success.</li>
+    <li>The freshness and resolve-first rules for semantic queries.</li>
+    <li>Which column of the mechanical/judgement/human split can never shrink.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="08-apply-loop.html"><span class="dir">← Chapter 8</span> The apply loop</a>
+  <a class="next" href="10-practice.html"><span class="dir">Chapter 10 →</span> In practice</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7 · The verification rings — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a class="current" href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 7 · Depth</div>
+<h1>The verification rings</h1>
+<p class="lede">
+  Ten mechanisms, each catching a class of defect the others structurally
+  cannot. This chapter is what each one actually detects, what it costs, how
+  it fails, and why the execution order is what it is.
+</p>
+
+<h2>The organising principle</h2>
+
+<p>
+  Rings are numbered by <strong>fundamentality</strong> — how close to the
+  metal the check is — and executed in an order chosen by
+  <strong>economics</strong>. Those differ, and the difference is deliberate:
+</p>
+
+<pre data-lang="md"><code>numbering    0 compile · 1 lint · 2 architecture · 3 tests · 4 compat
+             5 mutation · 6 formal · 7 model · 8 adversarial · 9 telemetry
+
+execution    0 → 1 → 2 → 3 → 4 → 8 → 5 → 6/7 → 9
+                                  ↑
+                    cheap, changes code, adds tests — so it must
+                    precede mutation, which measures the final suite</code></pre>
+
+<p>
+  Each ring answers a question no earlier ring can. Click through them:
+</p>
+
+<div data-pipeline="rings"></div>
+<script type="application/json" id="rings">
+[
+ { "short":"R0 compile", "label":"Ring 0 · Compilation",
+   "body":"<p><strong>Catches:</strong> type errors, arity and variance mistakes, unused values, discarded effects, and — critically — <em>inexhaustive matches over sealed types</em>.</p><p><strong>Cost:</strong> seconds. The cheapest evidence you will ever buy.</p><p><strong>The rule that makes it bite:</strong> if the project does not run with fatal warnings, Ring 0 must escalate exhaustiveness warnings to errors (<code>-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e</code>). Otherwise the workflow's no-catch-all rules are unenforceable — an inexhaustive match merely warns, and warnings scroll past.</p><p style='margin-bottom:0'><strong>Blind to:</strong> everything about values. A function returning the wrong constant type-checks perfectly.</p>" },
+
+ { "short":"R1 lint", "label":"Ring 1 · Lint + dangerous patterns",
+   "body":"<p><strong>Catches:</strong> two different things. Static rules (Scalafix <code>DisableSyntax</code>, WartRemover) ban <code>var</code>, <code>null</code>, <code>throw</code>, <code>return</code>, <code>while</code>, unsafe <code>.get</code>, unsafe <code>head</code>/<code>tail</code>. A mechanical diff scan then flags catch-all arms, casts, <code>@unchecked</code>, <code>Await</code>, <code>Thread.sleep</code>, swallowed <code>NonFatal</code>, and comments claiming “unreachable”.</p><p><strong>Cost:</strong> seconds to a minute.</p><p><strong>Two-tier design:</strong> where the compiler can decide with type knowledge, prefer it — WartRemover's <code>OptionPartial</code> distinguishes <code>opt.get</code> from <code>map.get(k)</code>, which no text scan can. The scan exists as the portable echo for restricted CI and for patterns no rule expresses.</p><p style='margin-bottom:0'><strong>Every hit is removed or justified in place</strong> (<code>// danger-scan:allow &lt;reason&gt;</code>), so “clean” means a script exited 0, not that someone remembers looking.</p>" },
+
+ { "short":"R2 arch", "label":"Ring 2 · Architecture",
+   "body":"<p><strong>Catches:</strong> layer violations — pure domain importing the actor framework, HTTP, messaging or a database client; unsealed domain traits; raw <code>String</code>/<code>Int</code> in domain APIs; service methods not returning the project's effect type; conversions that map an unrecognised variant to a valid domain value.</p><p><strong>Cost:</strong> a lint pass, once rules exist.</p><p><strong>Why it is a separate ring:</strong> these are defects of <em>structure</em>, invisible to tests. A domain object that imports a Kafka client passes every test and has permanently coupled your core to your transport. Architecture erosion is monotonic — it only ever gets worse — so the check must be continuous.</p><p style='margin-bottom:0'><strong>Honest status:</strong> when custom rules are not installed, this ring degrades to advisory review, and the capability profile must say so.</p>" },
+
+ { "short":"R3 tests", "label":"Ring 3 · Property &amp; scenario tests — MANDATORY",
+   "body":"<p><strong>Catches:</strong> behavioural defects, over a domain of inputs rather than a handful of examples.</p><p><strong>Cost:</strong> the bulk of engineering time. This is where the work is.</p><p><strong>Contents:</strong> one test per scenario; one property per invariant with its declared generator; model-based properties where the stack makes them relevant (event-sourcing replay equals live handling, messaging ingestion semantics, DSL desugaring laws, serialization round-trips); compile-negative assertions.</p><p><strong>Also in this ring:</strong> polarity confirmation (every RED test went green), flake discipline (concurrency-tagged tests run 20×; any intermittent failure is a Ring 3 failure, never noise), and <em>cross-module regression</em> — running dependent modules' suites, because a core change can break downstream with no type-widening involved.</p><p style='margin-bottom:0'><strong>Waivers:</strong> docs-only, formatting-only, build-metadata-only, test-only. Refactors are <em>not</em> waived — they need regression tests proving preservation.</p>" },
+
+ { "short":"R4 compat", "label":"Ring 4 · Wire &amp; persistence compatibility",
+   "body":"<p><strong>Catches:</strong> changes that are correct in isolation and catastrophic in context — a field rename that makes yesterday's persisted events undecodable, a JSON shape change that breaks a deployed peer.</p><p><strong>Cost:</strong> low once fixtures exist.</p><p><strong>Checks:</strong> round-trip per format (<code>decode(encode(x)) == Right(x)</code>), <em>old fixtures still decode to expected values</em>, snapshot compatibility, unknown/missing-field behaviour as specified.</p><p style='margin-bottom:0'><strong>The quiet best idea:</strong> if fixtures do not exist yet, create them now from current encodings. The ring pays for itself on the <em>next</em> change, and there is no other moment when writing them is cheap.</p>" },
+
+ { "short":"R8 adversarial ⚔", "label":"Ring 8 · Adversarial spec-compliance review — MANDATORY",
+   "body":"<p><strong>Catches:</strong> the failure this whole workflow exists for — code that passes every test while violating the English spec. Silent fallback mappings, catch-alls in domain logic, invalid states constructible through public APIs, violating private helpers.</p><p><strong>Cost:</strong> minutes of reading. Cheap.</p><p><strong>Fresh-context mandate:</strong> the reviewer's only inputs are the spec, the approved contract, and the diff against the baseline — explicitly <em>not</em> the conversation that produced the code. Self-review by the author's context is the confirmation bias this ring exists to defeat.</p><p><strong>Method:</strong> requirement by requirement, ask (1) does the code do this in all branches, not just tested ones; (2) could it pass current tests while violating this; (3) can a public API construct a forbidden state via a direct path; (4) are negative paths exercised. Verdict per requirement: PASS / PARTIAL / FAIL.</p><p style='margin-bottom:0'><strong>Fix order:</strong> type-level prevention, then smart constructor or explicit rejection, then a targeted test. <em>Never</em> “add a defensive fallback” — silent mapping to valid behaviour is the bug, not the fix.</p>" },
+
+ { "short":"R5 mutation", "label":"Ring 5 · Mutation testing",
+   "body":"<p><strong>Catches:</strong> tests that execute code without meaningfully asserting on it. A mutation tool perturbs your production code — flips a comparison, changes a constant, removes a call — and asks whether any test notices. A surviving mutant is a hole in your suite made visible.</p><p><strong>Cost:</strong> the slowest ring; hence dynamic targeting.</p><p><strong>Targeting:</strong> mutate exactly the files this spec changed (<code>git diff --name-only &lt;baseline&gt;</code>) — never a fixed list in the config, which silently exempts everything outside it. Thresholds by criticality: pure domain 90–95%, effectful adapters 80–90%, generated/wiring lower or skipped explicitly.</p><p style='margin-bottom:0'><strong>Every surviving mutant</strong> is killed by a new test, marked equivalent with an explanation, or excluded with rationale — recorded either way.</p>" },
+
+ { "short":"R6 formal", "label":"Ring 6 · Formal verification",
+   "body":"<p><strong>Catches:</strong> violated pre/postconditions <em>for all inputs</em> — not for the inputs a generator happened to produce. Where a property test samples, a prover quantifies.</p><p><strong>Cost:</strong> high, and it constrains how you write code (a pure subset of the language).</p><p><strong>Good candidates:</strong> truth tables and three-valued logic, interval and count semantics, desugaring on small ASTs, totality of pure validators, pure state transitions, money arithmetic, monotonicity and conservation laws.</p><p style='margin-bottom:0'><strong>Direction of fix:</strong> when a verification condition fails, the implementation changes to satisfy the contract — never the contract weakened to fit the implementation. That inversion is the whole discipline.</p>" },
+
+ { "short":"R7 model", "label":"Ring 7 · Model checking",
+   "body":"<p><strong>Catches:</strong> distributed and concurrent invariants that unit tests structurally cannot establish — event ordering, at-least-once delivery, idempotency, <em>replay equals live state</em>, “response emitted only after persistence”, session lifecycles under partition.</p><p><strong>Cost:</strong> high; requires modelling the system separately (TLA+ / Apalache).</p><p><strong>Why tests cannot do this:</strong> a test explores the interleavings that happened to occur. A model checker explores all of them within its bounds, which is precisely where these bugs live.</p><p style='margin-bottom:0'><strong>When unavailable:</strong> the invariant is not dropped — it becomes an explicit manually-reviewed proof obligation, visible at the checkpoint.</p>" },
+
+ { "short":"R9 telemetry", "label":"Ring 9 · Telemetry &amp; runtime verification",
+   "body":"<p><strong>Catches:</strong> temporal properties violated in production — “when a tool call is requested, a completion or an error event must follow”. The last line of defence, after the code is live.</p><p><strong>Cost:</strong> instrumentation plus a monitoring stack.</p><p><strong>Method:</strong> spans and events with domain attributes, a runtime monitor generated from the EARS pattern the spec declared, and offline tests feeding the monitor <em>valid and invalid</em> traces to assert its verdicts — a monitor nobody tested is a monitor that reports nothing.</p><p style='margin-bottom:0'><strong>The feedback loop:</strong> a production violation yields a captured trace fixture → a regression test → a candidate change. That is how a runtime finding is converted into permanent, cheap evidence.</p>" }
+]
+</script>
+
+<h2>Why this particular order</h2>
+
+<p>
+  Three constraints determine it, and once you see them the sequence is forced:
+</p>
+
+<ol>
+  <li><strong>Prerequisite.</strong> Ring 3 cannot run before Ring 0 — the
+      tests must compile. Ring 5 mutates code that must already pass its
+      tests, or every mutant “survives” meaninglessly.</li>
+  <li><strong>Cost gradient.</strong> Cheap, fast, deterministic checks first;
+      a defect that Ring 0 can catch should never reach Ring 5.</li>
+  <li><strong>Stability.</strong> A ring that <em>changes code</em> must
+      precede rings whose results describe the final code. This is the whole
+      argument for 8 before 5.</li>
+</ol>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way · the ordering bug that existed</div>
+  <p style="margin-bottom:0">
+    Earlier versions ran mutation → formal → adversarial, in numeric order.
+    The result: adversarial review would add two tests, which is its normal
+    outcome — and the mutation score in the checkpoint now described a suite
+    that no longer existed. Either you re-ran the slowest ring, or you filed a
+    number you knew was stale. Moving Ring 8 earlier fixed both, and cost
+    nothing: reading is cheap.
+  </p>
+</div>
+
+<h2>What each ring is blind to</h2>
+
+<p>
+  This table is the most useful thing in the chapter. Defence in depth only
+  works if the layers have <em>different</em> holes:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Ring</th><th>Structurally cannot see</th></tr></thead>
+  <tbody>
+    <tr><td>0 compile</td><td>any wrong value; any wrong logic that type-checks</td></tr>
+    <tr><td>1 lint</td><td>whether the code does the right thing; only shapes</td></tr>
+    <tr><td>2 architecture</td><td>behaviour entirely; a perfectly layered wrong answer passes</td></tr>
+    <tr><td>3 tests</td><td>requirements nobody wrote a test for; unsampled inputs; unexplored interleavings</td></tr>
+    <tr><td>4 compatibility</td><td>whether the <em>new</em> behaviour is correct — only that the old shape survives</td></tr>
+    <tr><td>5 mutation</td><td>missing requirements — it measures the suite against the code, never against the spec</td></tr>
+    <tr><td>6 formal</td><td>anything effectful, and whether the contract itself is the right one</td></tr>
+    <tr><td>7 model checking</td><td>the gap between the model and the actual implementation</td></tr>
+    <tr><td>8 adversarial review</td><td>what a human reader misses: subtle arithmetic, rare interleavings, scale</td></tr>
+    <tr><td>9 telemetry</td><td>anything that has not happened in production yet</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Read row 5 twice. <strong>Mutation testing cannot detect a missing
+  requirement</strong> — it perturbs code that exists and asks if tests notice.
+  If the spec forgot a rule, there is no code to mutate, no test to fail, and a
+  95% mutation score. This is exactly why the workflow anchors everything to a
+  reviewed spec: no amount of test-quality measurement can find what nobody
+  specified.
+</p>
+
+<h2>Two hypotheses behind mutation testing</h2>
+
+<div class="box history">
+  <div class="box-title">Prior art</div>
+  <p>
+    Mutation testing rests on two assumptions worth knowing, because they tell
+    you when it works. The <strong>competent programmer hypothesis</strong>:
+    programs are written by competent people, so real faults are usually small
+    deviations from correct code — which is what mutation operators simulate.
+    The <strong>coupling effect</strong>: tests that detect simple faults also
+    tend to detect complex faults built from them.
+  </p>
+  <p style="margin-bottom:0">
+    Empirical work supports both well enough that mutation score correlates
+    with real fault detection better than coverage does — which is the practical
+    claim that matters.
+    <a href="http://crestweb.cs.ucl.ac.uk/resources/mutation_testing_repository/theory.php">UCL CREST mutation testing theory</a>.
+  </p>
+</div>
+
+<p>
+  The honest caveat: <em>equivalent mutants</em>. Some mutations produce
+  semantically identical programs, so no test can kill them; deciding
+  equivalence is undecidable in general. That is why the workflow requires each
+  survivor be killed, <strong>marked equivalent with an explanation</strong>, or
+  excluded with rationale — the judgement is recorded, not hidden in a
+  threshold.
+</p>
+
+<h2>Choosing rings for a change</h2>
+
+<p>
+  The proposal declares which rings apply. Some heuristics that hold up:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>If the change…</th><th>Then…</th></tr></thead>
+  <tbody>
+    <tr><td>touches serialization, persisted events, or wire formats</td><td>Ring 4 is required, no judgement call</td></tr>
+    <tr><td>contains pure computation with real semantics (evaluators, arithmetic, desugaring)</td><td>Ring 6 is worth its cost; this is where provers shine</td></tr>
+    <tr><td>involves ordering, retries, idempotency or replay</td><td>Ring 7 if tooling exists — otherwise an explicit manual obligation, never silence</td></tr>
+    <tr><td>is a pure internal refactor</td><td>Rings 0,1,2,3,8 with behaviour-preservation tests; minimal typed contract</td></tr>
+    <tr><td>changes an LLM- or caller-facing surface</td><td>Ring 3 must assert what the consumer <em>observes</em> (parameter schema, not just presence)</td></tr>
+    <tr><td>is docs-only or formatting-only</td><td>Rings 0,1 — and a stated Ring 3 waiver with rationale</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box caution">
+  <div class="box-title">The most common mistake in ring selection</div>
+  <p style="margin-bottom:0">
+    Skipping Ring 4 on a change that “only adds a field”. Adding a field to a
+    persisted event is a compatibility change: old readers meet an unknown
+    field, new readers meet its absence in old data. Both behaviours must be
+    specified. This is the single most common source of “worked in dev,
+    corrupted in prod”.
+  </p>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q7"></div>
+<script type="application/json" id="q7">
+[
+  {
+    "q": "Your mutation score is 96% and all tests pass, but the feature is missing a rule the customer asked for. Which ring would have caught it?",
+    "options": [
+      "Ring 5 — a higher threshold",
+      "None of the code-facing rings: a missing requirement has no code to mutate and no test to fail. It is caught upstream — spec lint (is the claim written?) and Ring 8 (does the code satisfy every requirement?)",
+      "Ring 6, by proving the postcondition",
+      "Ring 0 with stricter flags"
+    ],
+    "answer": 1,
+    "why": "Mutation measures the suite against the code that exists. If nobody wrote the requirement, every code-facing ring is silent — which is precisely why the workflow anchors to a reviewed spec and makes Ring 8 walk requirement-by-requirement rather than diff-by-diff."
+  },
+  {
+    "q": "Why must Ring 8 run in a fresh context rather than by the agent that wrote the code?",
+    "options": [
+      "To parallelise the work",
+      "Because the author's context contains the intent, and a reviewer who knows what the code was MEANT to do reads that intent into it — the same correlated-failure problem from chapter 1",
+      "Because the schema forbids agents reviewing code",
+      "To avoid rate limits"
+    ],
+    "answer": 1,
+    "why": "A reviewer holding the implementation's mental model sees the intended behaviour rather than the written behaviour. Restricting inputs to spec + contract + diff restores the independence that makes the review evidence rather than a second opinion from the same head."
+  },
+  {
+    "q": "A concurrency test fails once in twenty runs. What does the workflow require?",
+    "options": [
+      "Mark it flaky and retry in CI",
+      "Treat it as a Ring 3 FAILURE and fix the race — recording the seed or interleaving",
+      "Delete the test",
+      "Increase the timeout"
+    ],
+    "answer": 1,
+    "why": "A test that passes 19/20 is a race condition with a 5% detection rate, not noise. Muting it discards the only evidence you have. This is also why concurrency scenarios must use a deterministic test kit and assert ordering or final state rather than wall-clock timing."
+  },
+  {
+    "q": "Ring 6 reports a failed verification condition on a pure function. What is the correct response?",
+    "options": [
+      "Weaken the postcondition until it verifies",
+      "Fix the implementation to satisfy the contract — the contract came from the spec",
+      "Disable Ring 6 for that module",
+      "Add a runtime check instead"
+    ],
+    "answer": 1,
+    "why": "The contract is derived from the spec's Formal Contracts section, which was reviewed. Weakening it to fit the code is the same move as loosening an assertion in chapter 6 — it converts a finding into a silence. If the contract really is wrong, that is a spec change, re-approved at the gate."
+  }
+]
+</script>
+
+<h2>Further reading</h2>
+
+<ul class="refs">
+  <li><a href="http://crestweb.cs.ucl.ac.uk/resources/mutation_testing_repository/theory.php">Mutation testing: theory</a>
+    <span class="rsrc">UCL CREST — competent programmer hypothesis, coupling effect, equivalent mutants.</span></li>
+  <li><a href="https://stainless.epfl.ch/">Stainless</a>
+    <span class="rsrc">The Scala verifier behind Ring 6 in this project; see its PureScala subset for what “pure enough to prove” means.</span></li>
+  <li><a href="https://lamport.azurewebsites.net/tla/tla.html">TLA+</a>
+    <span class="rsrc">Lamport's specification language for Ring 7 — and the classic argument for modelling concurrent designs before building them.</span></li>
+  <li><a href="https://en.wikipedia.org/wiki/Swiss_cheese_model">The Swiss cheese model</a>
+    <span class="rsrc">Reason's accident-causation model — why differently-holed layers beat thicker ones.</span></li>
+</ul>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>Why numbering and execution order differ, and the three constraints that fix the order.</li>
+    <li>What each ring is <em>blind</em> to — especially Ring 5 and missing requirements.</li>
+    <li>Why Ring 8 must run in a fresh context and before Rings 5/6/7.</li>
+    <li>Why an intermittent concurrency failure is a defect, not noise.</li>
+    <li>What happens to an invariant when Ring 7 tooling is unavailable.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="06-contract-oracle.html"><span class="dir">← Chapter 6</span> Contract &amp; oracle</a>
+  <a class="next" href="08-apply-loop.html"><span class="dir">Chapter 8 →</span> The apply loop</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>
