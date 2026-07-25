@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>verified-scala3 — the workflow tutorial</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a class="current" href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">A tutorial in ten chapters</div>
+<h1>Building software that is correct on purpose</h1>
+<p class="lede">
+  You are an experienced Scala engineer. You know types, property tests, and
+  effect systems. What you may not yet have is a <em>method</em> that makes an
+  LLM-assisted codebase demonstrably correct rather than plausibly correct.
+  That is what <code>verified-scala3</code> is, and this tutorial teaches it
+  from first principles.
+</p>
+
+<div class="meta">
+  Schema version 8 · Reading time ≈ 3–4 hours end to end · Interactive:
+  every chapter has drills, and chapters 3 and 5 embed a working port of the
+  real <code>spec-lint.sh</code> you can paste specs into.
+</div>
+
+<h2>The thesis, in one paragraph</h2>
+
+<p>
+  A passing test suite is not evidence that code matches its specification —
+  it is evidence that code matches <em>its tests</em>. Those are the same
+  thing only when the tests were derived from the specification by someone
+  who could not see the implementation. When an agent writes the code and
+  then writes the tests, that condition is violated in the worst possible
+  way: the tests inherit the implementation's misunderstandings and then
+  certify them green. <strong>verified-scala3 is a workflow whose entire
+  purpose is to restore the independence of the oracle</strong> — and then to
+  stack additional, mutually-independent forms of evidence on top of it,
+  cheapest and strongest first.
+</p>
+
+<div class="box insight">
+  <div class="box-title">The shape of the idea</div>
+  <p style="margin-bottom:0">
+    Everything in this workflow is an answer to one question:
+    <em>“what would have to be true for me to believe this code is right,
+    and how do I check that mechanically rather than by feeling?”</em>
+    Types, specs, obligations, rings, gates — every artifact you will meet is
+    a different answer to that question, arranged so that they fail
+    independently.
+  </p>
+</div>
+
+<h2>Who this is for</h2>
+
+<p>
+  The intended reader is a <strong>strong Scala 3 developer who is new to
+  specification-driven, verification-first development</strong>. You should
+  be comfortable with sealed traits and exhaustive matching, opaque types,
+  <code>cats-effect</code> or an equivalent, and at least the idea of
+  property-based testing. You do <em>not</em> need any prior exposure to
+  formal methods, requirements engineering, OpenSpec, or agentic workflows —
+  all of that is built up here from zero.
+</p>
+
+<div class="two-col">
+  <div class="box win">
+    <div class="box-title">After chapter 5 you can</div>
+    <ul style="margin-bottom:0">
+      <li>write a spec whose every claim has a named, ranked defence</li>
+      <li>read a proof-obligation table and see what it does <em>not</em> guarantee</li>
+      <li>run the mechanical lints and interpret F1–F7</li>
+    </ul>
+  </div>
+  <div class="box win">
+    <div class="box-title">After chapter 10 you can</div>
+    <ul style="margin-bottom:0">
+      <li>run a change end to end through the ring pipeline</li>
+      <li>adopt the workflow in a project that has never used it</li>
+      <li>tell which rings are earning their cost in your codebase</li>
+    </ul>
+  </div>
+</div>
+
+<h2>How to read it</h2>
+
+<p>
+  The chapters build strictly. Chapter <em>n</em> assumes <em>n−1</em>, and
+  the interactive drills get harder in the same order. Three routes:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Route</th><th>Chapters</th><th>Good for</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Full</strong></td><td>1 → 10, in order</td>
+      <td>Mastery. Every concept, every viewpoint, every drill.</td></tr>
+    <tr><td><strong>Fast track</strong></td><td>1, 2, 5, 8, 10</td>
+      <td>You need to run a change this week and will backfill the theory.</td></tr>
+    <tr><td><strong>Reference</strong></td><td>any, via the sidebar</td>
+      <td>You know the workflow and want the precise rule for one artifact.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>The chapters</h2>
+
+<div class="cards">
+
+  <a class="card" href="01-why.html">
+    <span class="cnum">CHAPTER 1</span>
+    <h3>Why green tests lie</h3>
+    <p>The test oracle problem, the self-confirming-test failure mode, and the
+       real bug that motivated this workflow — all tests green, semantics
+       silently wrong. Includes a “spot the defect” drill.</p>
+    <span class="ctime">≈ 20 min · foundations</span>
+  </a>
+
+  <a class="card" href="02-map.html">
+    <span class="cnum">CHAPTER 2</span>
+    <h3>The map</h3>
+    <p>The whole workflow at a glance: eight planning artifacts, a fourteen-step
+       apply loop, ten verification rings. Clickable pipeline; know the skeleton
+       before the organs.</p>
+    <span class="ctime">≈ 25 min · orientation</span>
+  </a>
+
+  <a class="card" href="03-specs.html">
+    <span class="cnum">CHAPTER 3</span>
+    <h3>Writing specs that can be verified</h3>
+    <p>Requirements, SHALL/MUST, Given/When/Then, observability, the adversarial
+       rule, MUST-CONFIRM, altitude. EARS as prior art. Live requirement linter.</p>
+    <span class="ctime">≈ 35 min · core skill</span>
+  </a>
+
+  <a class="card" href="04-concepts.html">
+    <span class="cnum">CHAPTER 4</span>
+    <h3>The two ledgers</h3>
+    <p>Behavioural concepts (Meng &amp; Jackson) versus the type inventory:
+       why a workflow needs both, how implementation maps survive refactors,
+       and what provenance buys you.</p>
+    <span class="ctime">≈ 30 min · architecture</span>
+  </a>
+
+  <a class="card" href="05-obligations.html">
+    <span class="cnum">CHAPTER 5</span>
+    <h3>Proof obligations</h3>
+    <p>The heart of the workflow: a ledger of why each claim cannot quietly
+       become false. The mechanism ladder, reachability, F6/F7 — with the real
+       lint engine embedded.</p>
+    <span class="ctime">≈ 40 min · the keystone</span>
+  </a>
+
+  <a class="card" href="06-contract-oracle.html">
+    <span class="cnum">CHAPTER 6</span>
+    <h3>Typed contract &amp; test oracle</h3>
+    <p>The two human gates. Why types come before tests and tests before code;
+       oracle polarity (red / green-by-design); generator faithfulness; the
+       contract as a permanent API assertion.</p>
+    <span class="ctime">≈ 35 min · the gates</span>
+  </a>
+
+  <a class="card" href="07-rings.html">
+    <span class="cnum">CHAPTER 7</span>
+    <h3>The verification rings</h3>
+    <p>Rings 0–9 in depth: compile, lint, architecture, property tests,
+       compatibility, adversarial review, mutation, formal, model checking,
+       telemetry — and why the order is what it is.</p>
+    <span class="ctime">≈ 45 min · depth</span>
+  </a>
+
+  <a class="card" href="08-apply-loop.html">
+    <span class="cnum">CHAPTER 8</span>
+    <h3>The apply loop</h3>
+    <p>One spec at a time: baselines, the two inner gates, gate tiering,
+       cross-module regression, flake discipline, concept and dependency
+       deltas, and the checkpoint that stops the machine.</p>
+    <span class="ctime">≈ 35 min · operations</span>
+  </a>
+
+  <a class="card" href="09-tooling.html">
+    <span class="cnum">CHAPTER 9</span>
+    <h3>The tooling</h3>
+    <p>What is mechanical and what is judgement: the scanners, the semantic
+       code-intelligence recipes, the artifact graph — and the portability
+       constraint that shapes all of them.</p>
+    <span class="ctime">≈ 30 min · tools</span>
+  </a>
+
+  <a class="card" href="10-practice.html">
+    <span class="cnum">CHAPTER 10</span>
+    <h3>In practice</h3>
+    <p>A real change end to end with its real artifacts and real lint output,
+       an anti-pattern catalogue, an adoption path for a project starting from
+       nothing, and the honest limits.</p>
+    <span class="ctime">≈ 40 min · synthesis</span>
+  </a>
+
+</div>
+
+<h2>Conventions in these pages</h2>
+
+<p>Callouts carry meaning; learn the five you will meet constantly:</p>
+
+<div class="box rule">
+  <div class="box-title">Rule</div>
+  <p style="margin-bottom:0">A binding rule of the workflow. If you break it, some
+  machine check or human gate is supposed to catch you. These are quoted from the
+  schema, not invented for the tutorial.</p>
+</div>
+
+<div class="box danger">
+  <div class="box-title">Failure mode</div>
+  <p style="margin-bottom:0">A specific way projects get this wrong — usually one
+  that produces green builds and false confidence, which is the only kind of
+  wrong this workflow really fears.</p>
+</div>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way</div>
+  <p style="margin-bottom:0">The reasoning behind a rule. You can follow the workflow
+  without these; you cannot <em>adapt</em> it without them.</p>
+</div>
+
+<div class="box analogy">
+  <div class="box-title">Analogy</div>
+  <p style="margin-bottom:0">A bridge from something you already know — accounting,
+  surveying, aviation, science — to the concept at hand.</p>
+</div>
+
+<div class="box history">
+  <div class="box-title">Prior art</div>
+  <p style="margin-bottom:0">Where the idea comes from in the literature, with a
+  citation you can follow. Almost nothing here is new; the contribution is the
+  assembly.</p>
+</div>
+
+<p>
+  You will also meet <strong>deep dives</strong> (collapsed by default — skip
+  them on a first pass), <strong>viewpoint tabs</strong> that explain the same
+  concept from two or three angles, and <strong>drills</strong> that ask you
+  to find the bug before the text tells you where it is. Do the drills. The
+  entire discipline is a trained reflex for noticing what looks fine.
+</p>
+
+<h2>One page you may want open alongside</h2>
+
+<p>
+  This tutorial teaches the workflow; the workflow itself lives in
+  <code>openspec/schemas/verified-scala3/</code> next to these docs —
+  <code>schema.yaml</code> (the rules), <code>templates/</code> (the artifact
+  skeletons), <code>scanner/</code> (the mechanical checks), and
+  <code>skills/</code> (the agent instructions). Where a chapter states a
+  rule, it is quoting one of those files, and you can go read the original.
+</p>
+
+<div class="checkpoint">
+  <h4>Before you start chapter 1</h4>
+  <ul>
+    <li>You do <em>not</em> need the tooling installed to read — every drill runs in the page.</li>
+    <li>If you want to run the real checks as you go, you need <code>bash</code>, <code>git</code>,
+        and optionally <code>scala-cli</code>; chapter 9 covers setup.</li>
+    <li>Keep a real change of your own in mind. The material lands much harder
+        when you are mentally applying it to code you know.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <span></span>
+  <a class="next" href="01-why.html">
+    <span class="dir">Chapter 1 →</span>
+    Why green tests lie
+  </a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

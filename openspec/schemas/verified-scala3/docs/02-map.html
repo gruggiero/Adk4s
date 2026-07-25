@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2 · The map — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a class="current" href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 2 · Orientation</div>
+<h1>The map</h1>
+<p class="lede">
+  The whole workflow, once, at low resolution — so that when later chapters
+  zoom in you always know which organ you are looking at and what it is
+  connected to. Nothing here is deep. Everything here is load-bearing.
+</p>
+
+<h2>Three layers, one loop</h2>
+
+<p>
+  verified-scala3 has exactly three moving parts, and confusion almost always
+  comes from mixing them up:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Layer</th><th>What it is</th><th>When it runs</th><th>Chapter</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Artifacts</strong></td>
+      <td>Eight documents produced <em>before any code is written</em>, each a
+          prerequisite of the next.</td>
+      <td>Once per <em>change</em>.</td>
+      <td>3, 4, 5</td>
+    </tr>
+    <tr>
+      <td><strong>The apply loop</strong></td>
+      <td>Fourteen steps (0–13) that take one spec from concept check to
+          committed, verified code.</td>
+      <td>Once per <em>spec</em>, repeated.</td>
+      <td>6, 8</td>
+    </tr>
+    <tr>
+      <td><strong>The rings</strong></td>
+      <td>Ten independent verification mechanisms, 0–9, invoked from inside
+          the loop.</td>
+      <td>Per spec, conditionally.</td>
+      <td>7</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way</div>
+  <p style="margin-bottom:0">
+    The nesting is deliberate: <strong>a change contains specs; a spec
+    traverses rings.</strong> This is what makes the method survive real
+    projects — the unit of human approval is one spec, not one pull request
+    with fourteen files, and the unit of verification is one mechanism, not
+    “did CI go green”. When something fails you know exactly which spec and
+    which ring, and the blast radius is one commit.
+  </p>
+</div>
+
+<h2>Vocabulary you need immediately</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Term</th><th>Meaning in this workflow</th></tr></thead>
+  <tbody>
+    <tr><td><span class="chip">change</span></td>
+      <td>A unit of work with a directory under <code>openspec/changes/&lt;name&gt;/</code>
+          holding its artifacts. Roughly “a feature”, but scoped by capability rather than by ticket.</td></tr>
+    <tr><td><span class="chip">spec</span></td>
+      <td>A <em>delta</em> specification for one capability:
+          <code>specs/&lt;capability&gt;/spec.md</code>. A change has one or more.
+          Delta means it states what is ADDED/MODIFIED/REMOVED, not the whole world.</td></tr>
+    <tr><td><span class="chip">requirement</span></td>
+      <td>One normative claim inside a spec, with SHALL/MUST and Given/When/Then, plus scenarios.</td></tr>
+    <tr><td><span class="chip">concept</span></td>
+      <td>Overloaded on purpose, and chapter 4 untangles it: a <em>behavioural</em> concept
+          (a named unit of user-facing behaviour) or a <em>type</em> concept (an entry in the type inventory).</td></tr>
+    <tr><td><span class="chip">proof obligation</span></td>
+      <td>A row binding one claim to the mechanism that keeps it true. Chapter 5.</td></tr>
+    <tr><td><span class="chip">ring</span></td>
+      <td>One verification mechanism, numbered 0–9, cheapest and most fundamental first.</td></tr>
+    <tr><td><span class="chip">gate</span></td>
+      <td>A mandatory stop where a human approves before work continues. Three per spec.</td></tr>
+    <tr><td><span class="chip">baseline</span></td>
+      <td>The commit SHA a spec starts from. Every diff the workflow computes is against it.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Layer 1 · The artifacts</h2>
+
+<p>
+  Eight documents, each requiring the ones before it. Click through them —
+  the order is the argument.
+</p>
+
+<div data-pipeline="artifacts"></div>
+<script type="application/json" id="artifacts">
+[
+  { "short": "proposal", "label": "1 · proposal.md",
+    "body": "<p><strong>Intent, scope, and the verification budget.</strong> Beyond why-and-what, it must declare: which rings apply to this change; a <em>correctness risk level</em> (low/medium/high) with justification; the concepts it will reuse and introduce; and a typed-contract decision per spec (full / minimal / human-approved waiver).</p><p style='margin-bottom:0'>The risk level is not decoration — combined with per-spec complexity it decides how many human gates you get (chapter 8).</p>" },
+  { "short": "capability-check", "label": "2 · capability-check.md → openspec/capability-profile.md",
+    "body": "<p><strong>What stack do we actually have?</strong> Detected, never assumed: Scala version, modules, test framework, property library, effect system, mutation/formal/telemetry tooling, active lint rules, exact compile commands.</p><p style='margin-bottom:0'>The profile is a <em>project-scoped living document</em>; each change writes a thin check report that verifies and refreshes it. Everything downstream — which test framework the oracle uses, which rings are even available — reads from here. Assuming a stack is treated as a correctness bug in the workflow itself.</p>" },
+  { "short": "inventory-check", "label": "3 · inventory-check.md → openspec/concept-inventory.md",
+    "body": "<p><strong>What types already exist?</strong> A living catalogue of opaque types, sealed traits and enums with their variants, case classes, service traits with their implementations, IDL models and property generators — each with provenance recording which spec introduced it.</p><p style='margin-bottom:0'>Its job is to stop the agent creating a fifth <code>UserId</code>. Chapter 4.</p>" },
+  { "short": "specs", "label": "4 · specs/**/spec.md",
+    "body": "<p><strong>The claims.</strong> One file per capability: requirements in Given/When/Then with a normative SHALL/MUST opener, scenarios including error and adversarial paths, Ring 3 properties with declared generator strategies, compile-negative obligations, and the proof-obligations table.</p><p style='margin-bottom:0'>This is the oracle everything downstream is derived from. Chapter 3.</p>" },
+  { "short": "spec-lint", "label": "5 · spec-lint.md",
+    "body": "<p><strong>Fail fast on ambiguity.</strong> Eighteen checks over every spec — some mechanical (a shell script: SHALL/MUST placement, generator strategies, obligation source format, requirement reachability), some judgement (observability, testability, altitude).</p><p style='margin-bottom:0'>A FAIL blocks the entire change from proceeding to design. The reasoning: a spec too vague to implement safely is cheaper to fix now than after an agent has confidently built on it.</p>" },
+  { "short": "design", "label": "6 · design.md",
+    "body": "<p><strong>How, structurally.</strong> Package layout and layer rules, effect boundaries (what is pure enough for Ring 6), the invalid-state prevention ladder applied to each invariant, refined-type strategy, error algebra, compatibility story, and a per-module map of which rings apply.</p><p style='margin-bottom:0'>Design is where “make illegal states unrepresentable” becomes a specific decision per invariant, ranked.</p>" },
+  { "short": "impl-order", "label": "7 · implementation-order.md",
+    "body": "<p><strong>The sequence.</strong> A topological sort of specs by concept dependency — a spec that introduces a type must precede one that uses it. Records per spec: complexity, applicable rings, expected changed files (for mutation targeting), typed-contract requirement, and the human gate tier.</p><p style='margin-bottom:0'>The apply phase follows this order exactly. No batching, no reordering on a hunch.</p>" },
+  { "short": "tasks", "label": "8 · tasks.md",
+    "body": "<p><strong>Progress the CLI can read.</strong> A checkbox list mirroring the sequence, so stock OpenSpec tooling reports progress.</p><p style='margin-bottom:0'>Derived output: it is regenerated from <code>implementation-progress.md</code> at each checkpoint rather than hand-maintained in parallel — two hand-maintained trackers always drift.</p>" }
+]
+</script>
+
+<div class="box rule">
+  <div class="box-title">Rule · nothing skips ahead</div>
+  <p style="margin-bottom:0">
+    Each artifact declares its prerequisites and the workflow enforces them.
+    You cannot write specs without a capability profile (you would be guessing
+    at the stack), cannot produce an implementation order while any spec is
+    FAIL, and cannot start coding without a complete proof-obligations table.
+  </p>
+</div>
+
+<h2>Layer 2 · The apply loop</h2>
+
+<p>
+  Then, one spec at a time, fourteen steps. Three of them stop dead and wait
+  for a human. Click any step:
+</p>
+
+<div data-pipeline="steps"></div>
+<script type="application/json" id="steps">
+[
+  { "short": "0 baseline", "label": "Step 0 · Baseline + concept check",
+    "body": "<p>Tree must be clean; record <code>git rev-parse HEAD</code> as the <strong>baseline SHA</strong> — every later diff is measured from it. Snapshot the type inventory. Verify every concept the spec claims to reuse actually exists and will be imported, not recreated. Verify the proof-obligations table is complete — <strong>if not, STOP</strong>. If a public type's variant set is widening, run the impact scan for downstream catch-alls.</p><p style='margin-bottom:0'>This is where the chapter-1 bug would have been caught before it existed.</p>" },
+  { "short": "1 contract ⏸", "label": "Step 1 · Typed contract — HUMAN GATE",
+    "body": "<p>Write the types, signatures, error algebra and smart constructors with <code>???</code> bodies — and compile them <em>for real</em>, in the owning module's test sources, against the real classpath. Files under <code>openspec/changes/</code> are not compiled by sbt and would give false confidence.</p><p style='margin-bottom:0'><strong>Stop. A human reviews types before behaviour exists.</strong> Reviewing a type surface takes minutes; reviewing a finished implementation built on the wrong types takes hours and usually ends in agreement anyway.</p>" },
+  { "short": "2 oracle ⏸", "label": "Step 2 · Test oracle — HUMAN GATE",
+    "body": "<p>Write the tests <em>now</em>, from the spec and the approved contract only, before any implementation exists. Then run them once and classify each: <strong>RED</strong> (asserts new behaviour, must fail now) or <strong>GREEN-BY-DESIGN</strong> (regression tests for a refactor, must pass against the old code).</p><p style='margin-bottom:0'>A red test that passes before implementation is a broken oracle. <strong>Stop for approval.</strong> Chapter 6.</p>" },
+  { "short": "3 R0", "label": "Step 3 · Ring 0 — implementation + compilation",
+    "body": "<p>Now write the code, keeping approved signatures exactly. Promote declarations into main sources; the contract file becomes a permanent API-conformance assertion rather than being deleted. Exhaustiveness warnings are escalated to errors. Max 3 fix iterations, then stop and show the human.</p>" },
+  { "short": "4 R1", "label": "Step 4 · Ring 1 — lint + dangerous patterns",
+    "body": "<p>Scalafix, formatter, WartRemover — plus a mechanical scan of the diff for <code>.get</code>, unsafe <code>head</code>, catch-all arms, casts, <code>Await</code>, swallowed errors, and “unreachable” comments. Each hit is removed or justified in-line.</p>" },
+  { "short": "5 R2", "label": "Step 5 · Ring 2 — architecture",
+    "body": "<p>Layer rules from design.md: pure domain must not import the actor framework, HTTP, messaging or database clients; domain traits sealed; effect discipline; no raw primitives in domain APIs. Violations are fixed structurally, not with a suppression.</p>" },
+  { "short": "6 R3", "label": "Step 6 · Ring 3 — run the oracle",
+    "body": "<p>Run the tests written in step 2. A falsified property means fix the <em>implementation</em> — never the property, never its generators. Record the seed. Then: confirm polarity (every RED test went green), run concurrency-tagged tests 20× (flake discipline), and run every dependent module's suite (cross-module regression).</p><p style='margin-bottom:0'>Mandatory for every code-changing spec; refactors need regression tests proving behaviour preservation.</p>" },
+  { "short": "7 R4", "label": "Step 7 · Ring 4 — wire/persistence compatibility",
+    "body": "<p>If serialization, persisted events, snapshots or message payloads are touched: round-trip laws per format, old fixtures still decode, unknown/missing-field behaviour as specified. If fixtures don't exist yet, create them now as the baseline for future changes.</p>" },
+  { "short": "8 R8 ⚔", "label": "Step 8 · Ring 8 — adversarial review",
+    "body": "<p>A reviewer with <strong>no implementation context</strong> — fresh session, inputs limited to spec + contract + diff — tries to prove the code violates the spec while passing the tests. Verdict per requirement: PASS / PARTIAL / FAIL.</p><p style='margin-bottom:0'>Deliberately placed <em>before</em> the expensive rings: it is cheap, it frequently changes code, and mutation must run on final code.</p>" },
+  { "short": "9 R5", "label": "Step 9 · Ring 5 — mutation testing",
+    "body": "<p>Mutate exactly the files this spec changed (diffed from the baseline SHA — never a fixed list in the config, which would silently exempt everything else). Every surviving mutant is killed by a new test, marked equivalent with an explanation, or excluded with rationale.</p>" },
+  { "short": "10 R6/7", "label": "Step 10 · Rings 6 &amp; 7 — formal / model checking",
+    "body": "<p>For pure modules with declared contracts: run the prover, fix the implementation to satisfy the contract rather than weakening the contract. For distributed invariants unit tests cannot establish (ordering, idempotency, replay-equals-live): model-check, or record the invariant as an explicit manually-reviewed obligation.</p>" },
+  { "short": "11 R9", "label": "Step 11 · Ring 9 — telemetry",
+    "body": "<p>Only when temporal properties exist and the telemetry stack is present: instrument spans, generate a runtime monitor from the EARS pattern, test the monitor against valid and invalid traces, and wire the loop from production violation back to a regression test.</p>" },
+  { "short": "12 deltas", "label": "Step 12 · Concept delta + dependency delta + inventory",
+    "body": "<p>Re-scan the type inventory and diff against the step-0 snapshot: the difference <em>is</em> the concept delta and must match what the spec committed to introduce — anything extra is scope creep and must be removed or approved. Audit removals for orphaned helpers. Diff the build files: a new library dependency is an unreviewed behaviour source. Then append new concepts with provenance.</p>" },
+  { "short": "13 checkpoint ⏸", "label": "Step 13 · Checkpoint — HUMAN GATE",
+    "body": "<p>Mark progress, regenerate tasks.md, <strong>commit this spec</strong> (its durable identity and the next spec's baseline), then present a fixed summary: rings with results, oracle polarity, cross-module regression, adversarial verdicts, proof obligations, concept and dependency deltas, design decisions.</p><p style='margin-bottom:0'><strong>Then stop and wait.</strong> Approval of the previous spec never carries forward.</p>" }
+]
+</script>
+
+<div class="box danger">
+  <div class="box-title">Failure mode · “I'll just do the next one, it's simple”</div>
+  <p style="margin-bottom:0">
+    The schema names this in capital letters because it is the most common way
+    the discipline dissolves. One spec, one checkpoint, one approval. The
+    reason is not ceremony: it is that a checkpoint is where a <em>human</em>
+    supplies the adequacy judgement no mechanism can (chapter 1's third row),
+    and batching four specs into one review reliably means three of them are
+    approved unread.
+  </p>
+</div>
+
+<h2>Layer 3 · The rings</h2>
+
+<p>
+  Rings are numbered by <em>fundamentality</em>, not by execution order —
+  a distinction that trips up everyone once. Ring 0 is the compiler; ring 9
+  is production telemetry.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Ring</th><th>Mechanism</th><th>Catches</th><th>Applies</th></tr></thead>
+  <tbody>
+    <tr><td><strong>0</strong></td><td>Compilation</td><td>type errors, inexhaustive matches (escalated to errors)</td><td>always</td></tr>
+    <tr><td><strong>1</strong></td><td>Lint + dangerous-pattern scan</td><td><code>var</code>, <code>null</code>, throws, unsafe <code>.get</code>, catch-alls, casts</td><td>always</td></tr>
+    <tr><td><strong>2</strong></td><td>Architecture rules</td><td>layer violations, unsealed domain types, raw primitives at boundaries</td><td>when configured</td></tr>
+    <tr><td><strong>3</strong></td><td>Property &amp; scenario tests</td><td>behavioural defects over a domain of inputs</td><td><strong>mandatory</strong></td></tr>
+    <tr><td><strong>4</strong></td><td>Wire/persistence compatibility</td><td>breaking a format that old data or peers depend on</td><td>if serialization touched</td></tr>
+    <tr><td><strong>5</strong></td><td>Mutation testing</td><td>tests that execute code without asserting anything meaningful</td><td>if tooling present</td></tr>
+    <tr><td><strong>6</strong></td><td>Formal verification</td><td>violated pre/postconditions on pure functions, for all inputs</td><td>pure modules</td></tr>
+    <tr><td><strong>7</strong></td><td>Model checking</td><td>distributed invariants: ordering, idempotency, replay equivalence</td><td>optional</td></tr>
+    <tr><td><strong>8</strong></td><td>Adversarial review</td><td>code that passes the tests while violating the spec</td><td><strong>mandatory</strong></td></tr>
+    <tr><td><strong>9</strong></td><td>Telemetry / runtime monitors</td><td>temporal properties violated in production</td><td>if stack present</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Execution order inside the loop is
+  <code>0 → 1 → 2 → 3 → 4 → <strong>8</strong> → 5 → 6/7 → 9</code>.
+  Ring 8 jumps the queue for a reason you can now predict: it is cheap and it
+  changes code, so running it before mutation means mutation measures the
+  final suite instead of a suite that is about to change. Chapter 7.
+</p>
+
+<div class="box analogy">
+  <div class="box-title">Analogy · the Swiss cheese model</div>
+  <p style="margin-bottom:0">
+    James Reason's model of accident causation: each defence layer has holes,
+    and an accident requires the holes to line up. Adding a <em>thicker</em>
+    slice of the same cheese does not help — the holes are in the same places.
+    Adding a <em>different</em> cheese does. Ten rings are ten differently-holed
+    slices: the compiler cannot see a wrong constant, mutation cannot see a
+    missing requirement, the adversarial reviewer cannot see a race condition,
+    the model checker cannot see an ugly API. Each covers what its neighbours
+    structurally cannot.
+  </p>
+</div>
+
+<h2>How a change actually flows</h2>
+
+<pre data-lang="md"><code>PLAN (once per change)
+  proposal → capability-check → inventory-check → specs → spec-lint
+           → design → implementation-order → tasks
+                                    │
+                                    ▼
+APPLY (per spec, in order)
+  ┌──────────────────────────────────────────────────────────┐
+  │ 0 baseline+concepts → 1 CONTRACT ⏸ → 2 ORACLE ⏸          │
+  │ → 3 R0 → 4 R1 → 5 R2 → 6 R3 → 7 R4                       │
+  │ → 8 R8(fresh eyes) → 9 R5 → 10 R6/7 → 11 R9              │
+  │ → 12 deltas → 13 CHECKPOINT ⏸ + commit                   │
+  └──────────────────────────────────────────────────────────┘
+        repeat for next spec, baseline = previous commit
+                                    │
+                                    ▼
+ARCHIVE  specs merged into the project's living documents</code></pre>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way · the shape of the cost curve</div>
+  <p style="margin-bottom:0">
+    Read the apply loop left to right and notice the cost gradient. Steps 0–2
+    are cheap thinking. Steps 3–6 are ordinary development. Steps 8–11 are
+    expensive machine time and scarce human attention. A defect caught at
+    step 0 costs a sentence; the same defect caught at step 9 costs a full
+    re-run of every ring after the fix. This is the classic
+    <em>defect-cost-escalation</em> curve, and the entire ordering of this
+    workflow is an attempt to shift detection leftward — which is also why the
+    two inner gates sit before implementation rather than after.
+  </p>
+</div>
+
+<h2>Where the humans are</h2>
+
+<p>
+  Exactly three stops per spec, and they are not evenly weighted:
+</p>
+
+<ol>
+  <li><strong>After the typed contract</strong> — “are these the right types,
+      signatures and errors?” Cheapest possible moment to be wrong.</li>
+  <li><strong>After the test oracle</strong> — “do these tests actually
+      encode the spec, and has each one been seen to fail?”</li>
+  <li><strong>At the checkpoint</strong> — “is this spec genuinely done, and
+      do I accept the residual risks it lists?”</li>
+</ol>
+
+<p>
+  On a simple, low-risk spec the first two may be <em>tiered</em> into a
+  single presentation — both steps still execute in full, but the human stops
+  once. That is a deliberate concession to attention economics: a gate a human
+  has stopped reading is worse than no gate, because it produces a record of
+  approval that never happened. Chapter 8.
+</p>
+
+<h2>What you are not being asked to do</h2>
+
+<p>
+  A common first reaction is “this is enormous”. Note what is
+  <em>conditional</em>:
+</p>
+
+<ul>
+  <li>Rings 4, 5, 6, 7, 9 apply only when relevant and available — a typical
+      pure-logic change runs 0, 1, 2, 3, 8.</li>
+  <li>The behavioural concept registry (chapter 4) is optional; every rule
+      that depends on it is conditional on the directory existing.</li>
+  <li>The typed contract can be <em>minimal</em> for a pure refactor.</li>
+  <li>Missing tooling never silently degrades the claim — it is recorded as a
+      skipped ring with a stated correctness impact, or converted into a
+      manually-reviewed obligation.</li>
+</ul>
+
+<p>
+  What is <strong>never</strong> conditional: Ring 0, Ring 1, Ring 3, Ring 8,
+  the typed contract for code-changing specs, the proof-obligations table, and
+  the checkpoint.
+</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q2"></div>
+<script type="application/json" id="q2">
+[
+  {
+    "q": "A change has three specs. How many typed-contract gates does it have?",
+    "options": ["One — the contract covers the change", "Three — one per spec", "Three, unless the specs are simple and low risk, in which case fewer stops but the same work"],
+    "answer": 2,
+    "why": "The loop runs per spec, so each spec produces and compiles its own typed contract. Gate TIERING can merge the contract and oracle presentations into one stop for a simple + low-risk spec, but both steps are still executed in full — tiering changes how many times the human is interrupted, never what is produced."
+  },
+  {
+    "q": "Why does Ring 8 (adversarial review) run before Ring 5 (mutation) even though 5 < 8?",
+    "options": [
+      "Because mutation testing is unreliable",
+      "Because ring numbers indicate fundamentality, not order — and review is cheap, changes code, and adds tests, so mutation should measure the final suite",
+      "Because Ring 8 requires the mutation report as input",
+      "Because Ring 5 is optional"
+    ],
+    "answer": 1,
+    "why": "Numbering is by fundamentality; execution order is chosen for economics. Review frequently adds tests, and those tests kill mutants — so running review first means the mutation score you record describes the suite you actually ship, and you pay for the expensive ring once."
+  },
+  {
+    "q": "The mutation tool is not installed. What does the workflow require?",
+    "options": [
+      "Block the change until it is installed",
+      "Silently skip Ring 5",
+      "Skip Ring 5 but record it explicitly with its correctness impact",
+      "Substitute extra unit tests and mark Ring 5 as passed"
+    ],
+    "answer": 2,
+    "why": "Absent tooling is recorded, never hidden: skipped with a stated impact (and optionally a weaker fallback signal like line coverage). The invariant is that the artifact never claims evidence that does not exist — the same reason a missing model checker becomes an explicit manually-reviewed obligation instead of a silent omission."
+  },
+  {
+    "q": "Where does the baseline SHA come from and what is it for?",
+    "options": [
+      "The last release tag; it identifies the version",
+      "HEAD at the start of each spec; every diff the workflow computes — danger scan, mutation targeting, review scope, concept delta — is measured from it",
+      "The main branch; it is used for merging",
+      "It is generated randomly to name the checkpoint"
+    ],
+    "answer": 1,
+    "why": "Recorded at step 0 on a clean tree, and made exact by the per-spec commit at step 13. Without it, from spec 2 onward every 'the files this spec changed' computation silently includes the previous specs' changes — which would quietly corrupt mutation targeting and the adversarial review's scope."
+  }
+]
+</script>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>The three layers and which repeats inside which.</li>
+    <li>Roughly what each of the eight artifacts is for, and why the order is forced.</li>
+    <li>The three human gates and what question each answers.</li>
+    <li>Why ring numbering and ring execution order differ.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="01-why.html"><span class="dir">← Chapter 1</span> Why green tests lie</a>
+  <a class="next" href="03-specs.html"><span class="dir">Chapter 3 →</span> Writing specs that can be verified</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1 · Why green tests lie — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a class="current" href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 1 · Foundations</div>
+<h1>Why green tests lie</h1>
+<p class="lede">
+  Before any of the machinery makes sense, you need to feel the problem it
+  solves — not as a slogan, but as a specific, ordinary bug that a competent
+  engineer ships on a Tuesday with a fully green build.
+</p>
+
+<h2>A bug that passed every test</h2>
+
+<p>
+  This is a real defect from the codebase this workflow was built for. A
+  domain-specific language has comparison operators. Some are <em>ordering</em>
+  operators (<code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>,
+  <code>&gt;=</code>); some are <em>set</em> operators (<code>IN</code>);
+  some are <em>range</em> operators (<code>BETWEEN</code>). Deep in the
+  evaluator, a private helper converts the broad operator enum into the
+  narrower one an ordering comparison needs.
+</p>
+
+<div class="drill" data-done="That last one is the bug. Everything else is a red herring — and that is exactly what makes it hard: four of the five things that look suspicious are fine.">
+  <p class="footnote">
+    <strong>Drill.</strong> Click anything you think is the defect. There is
+    exactly one. The full test suite is green.
+  </p>
+<pre data-lang="scala"><code>enum CmpOp:
+  case LT, LTE, GT, GTE, IN, BETWEEN
+
+enum OrderOp:
+  case LT, LTE, GT, GTE
+
+private def cmpOpToOrderOp(op: CmpOp): OrderOp =
+  op match
+    case CmpOp.LT    =&gt; OrderOp.LT
+    case CmpOp.LTE   =&gt; OrderOp.LTE
+    case CmpOp.GT    =&gt; OrderOp.GT
+    case <span class="hot" data-why="Mapping GTE to GTE is correct and unremarkable. Correct mappings are not defects, however closely you stare at them.">CmpOp.GTE   =&gt; OrderOp.GTE</span>
+    case <span class="hot" data-bug data-why="Here it is. <code>IN</code> and <code>BETWEEN</code> are not ordering operators at all — but rather than being rejected, they are silently mapped to <code>LTE</code>. Every input produces a valid-looking <code>OrderOp</code>, so nothing throws, nothing logs, and no test that only checks the four ordering operators will ever notice. The evaluator now quietly answers the wrong question for <code>IN</code>.">other       =&gt; OrderOp.LTE</span>
+
+def evaluate(expr: Expr, row: Row): Boolean =
+  expr match
+    case Expr.Compare(field, op, value) =&gt;
+      <span class="hot" data-why="Delegating to a helper is not a defect. The problem is what the helper does with inputs it should refuse — not the fact that it is called.">compareWith(cmpOpToOrderOp(op), row(field), value)</span>
+    case Expr.And(l, r) =&gt; <span class="hot" data-why="Short-circuit evaluation of a conjunction is standard and matches the language semantics. Not a defect.">evaluate(l, row) &amp;&amp; evaluate(r, row)</span>
+    case Expr.Count(child, bound, op, n) =&gt;
+      <span class="hot" data-why="Counting children then comparing is the intended semantics for a count expression. The bug is upstream, in what the operator conversion accepts.">countMatches(child, row) |&gt; compareCount(op, n)</span>
+</code></pre>
+  <div class="drill-status" style="margin:.6rem 0; font-size:.85rem;"></div>
+  <div class="drill-notes"></div>
+</div>
+
+<p>
+  The suite was green because every test used an ordering operator. Why would
+  you write <code>evaluate(Compare(x, IN, ...))</code> when <code>IN</code>
+  belongs to a different code path? The tests covered the intended usage
+  perfectly — and the defect lives precisely where intended usage never goes.
+</p>
+
+<div class="box danger">
+  <div class="box-title">The failure mode, named</div>
+  <p>
+    A <strong>catch-all that maps an unrecognised input to a valid output</strong>
+    is the single most dangerous line in a codebase, because it converts a
+    crash — loud, immediate, findable — into a wrong answer, which is silent
+    and can persist for years. Note that the compiler was <em>happy</em>: the
+    match is exhaustive. Note that the types were <em>satisfied</em>:
+    <code>OrderOp.LTE</code> is a perfectly good <code>OrderOp</code>. Note that
+    the tests were <em>green</em>.
+  </p>
+  <p style="margin-bottom:0">
+    Chapter 7 shows the three separate mechanisms this workflow uses to make
+    that line impossible to ship, and chapter 3 shows the spec rule that would
+    have forced the question to be answered before any code was written.
+  </p>
+</div>
+
+<h2>The oracle problem</h2>
+
+<p>
+  What you just experienced has a name in the literature. To decide whether a
+  test passed, something must know the <em>right answer</em>. That something
+  is called the <strong>test oracle</strong>. Barr, Harman, McMinn, Shahbaz and
+  Yoo define the oracle problem as the challenge of “distinguishing the
+  corresponding desired, correct behaviour from potentially incorrect
+  behaviour” for a given input — and their survey is essentially a catalogue of
+  the imperfect ways we approximate an oracle when we do not have a perfect one.
+</p>
+
+<div class="box history">
+  <div class="box-title">Prior art</div>
+  <p style="margin-bottom:0">
+    Barr, E. T., Harman, M., McMinn, P., Shahbaz, M., &amp; Yoo, S.,
+    <em>“The Oracle Problem in Software Testing: A Survey”</em>,
+    IEEE Transactions on Software Engineering 41(5), 2015.
+    <a href="https://ieeexplore.ieee.org/document/6963470/">IEEE</a> ·
+    <a href="https://eecs481.org/readings/testoracles.pdf">free PDF</a>.
+    Their taxonomy — specified oracles, derived oracles, implicit oracles,
+    and the human as oracle of last resort — maps almost one-to-one onto the
+    enforcement mechanisms you will meet in chapter 5.
+  </p>
+</div>
+
+<p>
+  Here is the uncomfortable part. When <em>you</em> write a test, you are the
+  oracle: you decide the expected value. Your knowledge of the right answer
+  comes from the specification, from the domain, from a conversation — from
+  somewhere <em>outside the implementation</em>. That outsideness is the whole
+  value. A test written by someone who has just read the implementation and is
+  asking “what does this do?” instead of “what should this do?” is not an
+  oracle at all. It is a <strong>mirror</strong>.
+</p>
+
+<div class="box analogy">
+  <div class="box-title">Analogy · the surveyor's benchmark</div>
+  <p style="margin-bottom:0">
+    A surveyor measuring a building's height does not measure it against
+    itself. They measure against a <em>benchmark</em> — a brass plate whose
+    elevation was established independently, ideally by someone else, ideally
+    long ago. If the benchmark were derived from the building, every
+    measurement would be self-consistent and meaningless. A test suite derived
+    from the implementation is a benchmark chiselled into the wall of the
+    building it is meant to measure.
+  </p>
+</div>
+
+<h2>Three different things we call “correct”</h2>
+
+<p>
+  Most confusion in this area comes from collapsing three genuinely different
+  claims into one word. Keep them apart and much of this workflow becomes
+  obvious.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Claim</th><th>Means</th><th>Checked by</th><th>Fails when</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Consistent</strong></td>
+      <td>The code does what its tests say.</td>
+      <td>The test suite.</td>
+      <td>Almost never — this is the claim that is easy to make true.</td>
+    </tr>
+    <tr>
+      <td><strong>Conformant</strong></td>
+      <td>The code does what the <em>specification</em> says.</td>
+      <td>Tests <em>derived from the spec</em>, types, proofs, review.</td>
+      <td>Whenever the tests were derived from the code instead.</td>
+    </tr>
+    <tr>
+      <td><strong>Adequate</strong></td>
+      <td>The specification says what we actually <em>wanted</em>.</td>
+      <td>Humans, examples, prototypes, production feedback.</td>
+      <td>Whenever the spec is confidently wrong.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  This workflow attacks the middle row with everything it has, and is honest
+  that it cannot solve the third. Chapter 5's proof obligations are literally
+  a ledger of conformance evidence; the human gates in chapter 6 and the
+  checkpoint in chapter 8 are where adequacy gets its say.
+</p>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way</div>
+  <p style="margin-bottom:0">
+    Notice what follows from the table: <em>adding more tests cannot move you
+    from consistent to conformant.</em> If the tests come from the same place
+    the code came from, a thousand of them buy you exactly as much conformance
+    evidence as one. What moves you is <strong>independence</strong> — a
+    different source, a different mechanism, a different person, a different
+    moment in time. Every ring in chapter 7 is a different axis of independence,
+    which is why the workflow stacks them rather than doubling down on any one.
+  </p>
+</div>
+
+<h2>Why LLM assistance makes this acute</h2>
+
+<p>
+  The mirror problem is old — TDD's insistence on writing the test first is a
+  30-year-old answer to it. What is new is the <em>rate</em> and the
+  <em>correlation</em>.
+</p>
+
+<p>
+  When an agent implements a feature and then writes tests for it, it is
+  grading its own work, using the same understanding that produced the code.
+  If it misread the spec, the tests encode the misreading and turn it green.
+  The mistakes are not independent; they are <strong>perfectly
+  correlated</strong>, because they have a single cause. And it happens at a
+  speed no review cadence was designed for.
+</p>
+
+<div class="box history">
+  <div class="box-title">Prior art · recent evidence</div>
+  <p style="margin-bottom:0">
+    A 2026 study of agents resolving real GitHub issues found the volume of
+    agent-written tests correlated only weakly with whether the issue was
+    actually resolved, and that a large share of what agents called “tests”
+    were closer to value-revealing print statements than assertions
+    (<a href="https://arxiv.org/pdf/2602.07900">arXiv:2602.07900</a>). The
+    spec-driven development literature converges on the same remedy: if the
+    test exists first, written against a specification the agent did not
+    author, the agent must conform to an external target rather than validate
+    its own output (<a href="https://arxiv.org/html/2602.00180v1">arXiv:2602.00180</a>).
+  </p>
+</div>
+
+<div class="tabs">
+  <div class="tab-bar" role="tablist">
+    <button role="tab" aria-selected="true">The engineer's view</button>
+    <button role="tab" aria-selected="false">The statistician's view</button>
+    <button role="tab" aria-selected="false">The security view</button>
+  </div>
+  <div class="tab-panel" data-active="true">
+    <p>You have always known not to write the test after the fact “to make
+    coverage go up”. The agent does exactly that, tirelessly, at 200 lines a
+    minute, and its version is more convincing because it is well-formatted and
+    thorough-looking. Your existing instinct is right; it just needs to be
+    turned into a rule a machine can enforce, because your review bandwidth is
+    now the bottleneck.</p>
+    <p style="margin-bottom:0">The workflow's answer: tests are written from
+    the spec <em>before</em> the implementation exists (chapter 6), and each
+    one must be <em>seen to fail</em> before it is trusted.</p>
+  </div>
+  <div class="tab-panel">
+    <p>Two error sources are useful only if their failures are independent.
+    Redundancy with correlated failure modes buys nothing — the classic
+    result from reliability engineering, and the reason N-version programming
+    disappointed: independently written implementations still failed together
+    on the hard inputs.</p>
+    <p style="margin-bottom:0">Code and tests from one agent in one session
+    have a correlation coefficient close to 1. Every device in this workflow —
+    spec-first tests, fresh-context adversarial review, mutation, formal
+    proof, human gates — is an attempt to <em>decorrelate</em> the evidence,
+    not merely to add more of it.</p>
+  </div>
+  <div class="tab-panel">
+    <p>Security engineering already assumes the artefact under review may be
+    subtly, deliberately wrong, and that a reviewer with the author's mental
+    model will not see it. Hence adversarial review by someone else, hence
+    defence in depth, hence “assume breach”.</p>
+    <p style="margin-bottom:0">Ring 8 (chapter 7) is that discipline applied
+    to correctness: a reviewer with <em>no implementation context</em> whose
+    job is to prove the code violates the spec while passing the tests. Not to
+    check that it works — to try to show it doesn't.</p>
+  </div>
+</div>
+
+<h2>What independence actually costs</h2>
+
+<p>
+  If independence is the goal, why doesn't everyone have it? Because each
+  independent source of evidence costs something real, and the costs are
+  paid at different times by different people:
+</p>
+
+<ul>
+  <li><strong>Writing the spec first</strong> costs thinking before typing —
+      the most expensive kind of work, and the easiest to skip when the code
+      “is basically obvious”.</li>
+  <li><strong>Writing tests from the spec</strong> costs the convenience of
+      writing tests against an API you can already see and run.</li>
+  <li><strong>A second reviewer without context</strong> costs a context
+      switch and duplicated reading.</li>
+  <li><strong>Mutation, formal proof, model checking</strong> cost machine
+      time and, worse, engineer patience.</li>
+</ul>
+
+<p>
+  A workflow that ignores those costs gets abandoned in week three. So this
+  one prices them explicitly: rings are <em>conditional</em> (chapter 7),
+  human gates are <em>tiered</em> by risk (chapter 8), and the expensive
+  evidence runs last, on final code, so it is never paid twice. Watch for
+  that pattern — it is the difference between a method and a wish.
+</p>
+
+<h2>The workflow's answer, in one sentence</h2>
+
+<div class="box rule">
+  <div class="box-title">The core commitment</div>
+  <p style="margin-bottom:0">
+    <em>Types and tests are designed BEFORE implementation so they act as an
+    oracle derived from the specification, not a mirror of the generated
+    code</em> — and every claim the spec makes carries an explicit, ranked
+    record of which mechanism keeps it honest.
+  </p>
+</div>
+
+<p>
+  Everything else — eight planning artifacts, fourteen apply steps, ten rings,
+  half a dozen scanners — is machinery for making that sentence true under
+  realistic conditions: on a multi-module build, with an agent doing the
+  typing, at a speed where nobody can read everything.
+</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q1"></div>
+<script type="application/json" id="q1">
+[
+  {
+    "q": "A colleague adds 40 tests to a module after implementing it. Coverage goes from 61% to 94%, all green. What has been demonstrated?",
+    "options": [
+      "The module is now substantially more likely to be correct",
+      "The module is more thoroughly consistent with its own behaviour, which is not the same as conformance",
+      "Nothing at all — coverage is meaningless",
+      "The module conforms to its specification"
+    ],
+    "answer": 1,
+    "why": "Coverage measures how much of the code the tests execute, and post-hoc tests inherit the implementation's understanding. That is real value for regression protection — you will notice if this behaviour changes tomorrow — but it is evidence of consistency, not conformance. Nothing in the exercise consulted the specification."
+  },
+  {
+    "q": "Which of these is NOT a way of buying independence between the code and the evidence about it?",
+    "options": [
+      "Writing the property test from the spec before the implementation exists",
+      "Having a reviewer examine the diff with no access to the implementation conversation",
+      "Running the existing test suite a second time in a different order",
+      "Proving a postcondition with a solver that never saw the tests"
+    ],
+    "answer": 2,
+    "why": "Re-running the same suite yields the same oracle, so it adds no independent evidence about conformance. (Re-running is not useless — repeat runs catch flaky, order-dependent tests, which chapter 8 mandates for concurrency — but that is a different property: determinism, not correctness.)"
+  },
+  {
+    "q": "In the drill, why did exhaustive pattern matching fail to prevent the bug?",
+    "options": [
+      "Because the match was not actually exhaustive",
+      "Because the catch-all arm made it exhaustive while discarding the distinction the domain cared about",
+      "Because Scala 3 does not check enum exhaustiveness",
+      "Because the enum had too many cases"
+    ],
+    "answer": 1,
+    "why": "A catch-all satisfies the compiler precisely by refusing to distinguish cases. Exhaustiveness checking is powerful, but only if you let it work: chapter 7 escalates inexhaustive matches to compile errors, and chapter 3's design rules push you to split a broad enum into narrow algebras so the illegal call cannot be written at all."
+  }
+]
+</script>
+
+<h2>Further reading</h2>
+
+<ul class="refs">
+  <li><a href="https://eecs481.org/readings/testoracles.pdf">The Oracle Problem in Software Testing: A Survey</a>
+    <span class="rsrc">Barr et al., IEEE TSE 41(5), 2015 — the canonical taxonomy of test oracles.</span></li>
+  <li><a href="https://arxiv.org/pdf/2602.07900">Rethinking the Value of Agent-Generated Tests</a>
+    <span class="rsrc">2026 — empirical study of what agent-written tests actually assert.</span></li>
+  <li><a href="https://arxiv.org/html/2602.00180v1">Spec-Driven Development: From Code to Contract in the Age of AI Coding Assistants</a>
+    <span class="rsrc">2026 — the broader movement this workflow belongs to.</span></li>
+  <li><a href="https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/">Parse, don't validate</a>
+    <span class="rsrc">Alexis King, 2019 — the type-level counterpart to “no catch-alls”, and required reading before chapter 3's design rules.</span></li>
+</ul>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>What a test oracle is, and why a post-hoc test is not one.</li>
+    <li>The difference between <em>consistent</em>, <em>conformant</em> and <em>adequate</em>.</li>
+    <li>Why adding tests cannot substitute for independence.</li>
+    <li>Why a catch-all returning a valid value is worse than a crash.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="index.html"><span class="dir">← Back</span> Start here</a>
+  <a class="next" href="02-map.html"><span class="dir">Chapter 2 →</span> The map</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

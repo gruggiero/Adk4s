@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3 · Writing specs that can be verified — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a class="current" href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 3 · Core skill</div>
+<h1>Writing specs that can be verified</h1>
+<p class="lede">
+  A specification in this workflow is not documentation. It is the
+  <em>oracle</em> — the external source of truth that tests, types and reviews
+  are all derived from. That job imposes requirements on how it is written,
+  and most of this chapter is those requirements and why each one exists.
+</p>
+
+<h2>What kind of document is this?</h2>
+
+<p>
+  Three properties distinguish a verified-scala3 spec from the design doc you
+  are used to.
+</p>
+
+<p>
+  <strong>It is a delta.</strong> Sections are headed <code>## ADDED
+  Requirements</code>, <code>## MODIFIED Requirements</code>,
+  <code>## REMOVED Requirements</code>. You describe the change to the world,
+  not the world. This keeps specs small enough to verify exhaustively, and it
+  makes review answer the right question — “is this change correct?” rather
+  than “is this 40-page document still accurate?”
+</p>
+
+<p>
+  <strong>It is per-capability.</strong> One file per capability under
+  <code>specs/&lt;capability&gt;/spec.md</code>. A capability is a coherent
+  slice of behaviour that can be implemented and verified independently, which
+  is also the unit of the apply loop and of human approval.
+</p>
+
+<p>
+  <strong>It is machine-checked.</strong> Eighteen lint checks run over it,
+  seven of them mechanically. A spec that fails blocks the whole change from
+  proceeding. This is unusual and it is the point: prose that cannot be
+  checked is prose that quietly drifts from the code.
+</p>
+
+<h2>Anatomy of a spec file</h2>
+
+<p>The sections, in order, and which are optional:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Section</th><th>Contains</th><th>Required?</th></tr></thead>
+  <tbody>
+    <tr><td><code>## Concepts Used (behavioral)</code></td><td>Registry concepts this spec touches, as <code>Concept</code> or <code>Concept/action</code></td><td>if a registry exists (ch 4)</td></tr>
+    <tr><td><code>## Concepts Used (from inventory)</code></td><td>Existing types this spec will import — never recreate</td><td>yes</td></tr>
+    <tr><td><code>## Concepts Introduced (new)</code></td><td>New types/traits/enums/operations. A <em>commitment</em>: step 12 verifies exactly these and nothing more</td><td>yes</td></tr>
+    <tr><td><code>## ADDED Requirements</code></td><td>The claims, each with scenarios</td><td>yes</td></tr>
+    <tr><td><code>## Properties (Ring 3)</code></td><td>Invariants as English + <code>forAll</code>, each with a generator strategy</td><td>yes for code changes</td></tr>
+    <tr><td><code>## Compile-Negative Obligations</code></td><td>Things that must not compile</td><td>if anything is type-forbidden</td></tr>
+    <tr><td><code>## Formal Contracts (Ring 6)</code></td><td><code>require</code>/<code>ensuring</code> sketches for pure functions</td><td>if Ring 6 applies</td></tr>
+    <tr><td><code>## Temporal Properties (Ring 9)</code></td><td>EARS patterns with trigger and response events</td><td>if Ring 9 applies</td></tr>
+    <tr><td><code>## Proof Obligations</code></td><td>The verification ledger (chapter 5)</td><td><strong>always</strong></td></tr>
+    <tr><td><code>## Implementation Anchors</code></td><td>The one place code identifiers may appear, when a registry exists</td><td>optional</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>The requirement — the atom of a spec</h2>
+
+<p>Every requirement has the same three-part shape:</p>
+
+<pre data-lang="md"><code>### Requirement: Frozen episodes are never returned by recall
+
+The system SHALL exclude episodes whose frozen flag is set from every
+recall result.                          ← 1. normative statement (SHALL/MUST)
+
+**Given** a memory containing one frozen and one unfrozen episode
+**When**  recall is called with a query matching both
+**Then**  only the unfrozen episode is returned
+                                        ← 2. the claim, in observable form
+
+#### Scenario: Frozen episode is excluded even when it scores highest
+
+**Given** a frozen episode scoring 0.99 and an unfrozen one scoring 0.10
+**When**  recall("blue", k = 2) is called
+**Then**  the result contains only the unfrozen episode
+                                        ← 3. scenarios: concrete, testable</code></pre>
+
+<h3>Part 1 · the normative statement</h3>
+
+<p>
+  A single sentence containing <strong>SHALL</strong> or <strong>MUST</strong>,
+  placed between the heading and the first <code>**Given**</code>. This is
+  mechanically checked (lint <span class="chip">F1</span>) and also required
+  by <code>openspec validate --strict</code>.
+</p>
+
+<div class="box history">
+  <div class="box-title">Prior art · why SHALL</div>
+  <p>
+    The modal-verb convention comes from RFC 2119 and from systems and
+    aerospace requirements engineering, where “shall” marks a binding
+    obligation and “should” marks a recommendation. The discipline it enforces
+    is subtle but real: you cannot write a SHALL sentence without deciding
+    <em>who</em> is obliged to do <em>what</em>. Sentences like “the cache is
+    updated” — passive, agentless — do not survive the transformation.
+  </p>
+  <p style="margin-bottom:0">
+    The closest relative is <strong>EARS</strong> (Easy Approach to Requirements
+    Syntax), developed by Alistair Mavin and colleagues at Rolls-Royce while
+    analysing airworthiness regulations for jet-engine control, published at
+    RE'09. EARS constrains requirements to a handful of templates:
+    <em>ubiquitous</em> (“The &lt;system&gt; shall …”), <em>event-driven</em>
+    (“When &lt;trigger&gt;, the &lt;system&gt; shall …”), <em>state-driven</em>
+    (“While &lt;state&gt;, …”), <em>unwanted behaviour</em> (“If &lt;condition&gt;,
+    then …”), and <em>optional feature</em>.
+    <a href="https://ccy05327.github.io/SDD/08-PDF/Easy%20Approach%20to%20Requirements%20Syntax%20(EARS).pdf">Original paper (PDF)</a>.
+  </p>
+</div>
+
+<p>
+  This workflow uses EARS directly for Ring 9 temporal properties, and its
+  general spirit — a fixed grammar removes ambiguity cheaply — everywhere else.
+  Given/When/Then is essentially EARS's event-driven pattern decomposed into
+  labelled parts, which is why the two feel so similar.
+</p>
+
+<h3>Part 2 · Given / When / Then</h3>
+
+<p>
+  Precondition, trigger, outcome. The rule that does the real work is about
+  the <em>Then</em>:
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule · every Then must be observable</div>
+  <p style="margin-bottom:0">
+    A <em>Then</em> names a return value, a persisted event, an emitted
+    message, or an error value — something a test can look at from outside.
+    “The system handles it correctly” is a FAIL. “The cache is warmed” is a
+    FAIL unless warmth is observable. If you cannot say how you would see it,
+    you cannot say whether it happened.
+  </p>
+</div>
+
+<div class="box analogy">
+  <div class="box-title">Analogy · operationalisation in science</div>
+  <p style="margin-bottom:0">
+    An experimental psychologist may not write “subjects became anxious”; they
+    write “subjects' self-reported anxiety on the STAI scale increased by ≥ 8
+    points”. The construct is turned into a measurement procedure. The
+    observability rule is exactly operationalisation: an unobservable
+    <em>Then</em> is an unfalsifiable hypothesis, and an unfalsifiable
+    hypothesis cannot function as an oracle.
+  </p>
+</div>
+
+<h3>Part 3 · scenarios</h3>
+
+<p>
+  Concrete instances with real values. Each becomes one test, named after the
+  scenario heading, in step 2 of the apply loop. The schema expects at least a
+  happy path plus an error or edge case; several rules below force particular
+  scenarios to exist.
+</p>
+
+<h2>The seven rules that catch real defects</h2>
+
+<p>
+  These are the spec rules that exist because something went wrong. Each one is
+  a scar.
+</p>
+
+<h3>1 · No vague words</h3>
+
+<p>
+  <code>valid</code>, <code>correct</code>, <code>fast</code>,
+  <code>reasonable</code>, <code>appropriate</code> — flagged by the linter
+  (<span class="chip">W1</span>) unless a concrete definition sits next to
+  them. “Returns valid results” names nothing an oracle can check; every
+  reader supplies their own definition, and the agent supplies the one that
+  makes its implementation pass.
+</p>
+
+<h3>2 · Every error path specified</h3>
+
+<p>
+  If a requirement can fail, the spec says what failure looks like. Unspecified
+  failure behaviour is where fallbacks breed — and chapter 1 showed what a
+  fallback costs.
+</p>
+
+<h3>3 · The adversarial rule</h3>
+
+<div class="box rule">
+  <div class="box-title">Rule · negative requirements need forbidden inputs</div>
+  <p style="margin-bottom:0">
+    Every requirement containing <strong>only</strong>, <strong>never</strong>
+    or <strong>must not</strong> must have at least one scenario whose
+    <em>input</em> the requirement forbids. Positive examples alone do not pin
+    a negative requirement (lint <span class="chip">F2</span> /
+    <span class="chip">W3</span>).
+  </p>
+</div>
+
+<p>
+  “Frozen episodes are never returned” is satisfied by an implementation that
+  returns nothing at all. Only a scenario that feeds in a frozen episode
+  <em>which would otherwise rank first</em> distinguishes the correct
+  implementation from the lazy one. This is Popper's asymmetry in miniature:
+  universal negatives are refuted by instances, not confirmed by absence.
+</p>
+
+<h3>4 · MUST-CONFIRM for external data</h3>
+
+<p>
+  Any classification table, code mapping or value domain whose authority lives
+  outside the repo is marked <code>MUST-CONFIRM — do not invent</code> with a
+  pointer to the real source. The apply phase then <em>stops and asks</em>.
+</p>
+
+<div class="box danger">
+  <div class="box-title">Failure mode · plausible fabrication</div>
+  <p style="margin-bottom:0">
+    Asked for a spec involving, say, ISO currency minor units or a regulatory
+    status-code table, a language model will produce a beautifully formatted,
+    entirely plausible, partially wrong table — and every test derived from it
+    will pass, because the tests come from the same table. This is the
+    consistent-but-not-conformant trap in its purest form: the whole stack
+    agrees with itself and disagrees with reality. MUST-CONFIRM is the marker
+    that converts a silent invention into a blocking question.
+  </p>
+</div>
+
+<h3>5 · Type-widening impact</h3>
+
+<p>
+  If a spec aliases a public type to a richer one, or otherwise grows its
+  reachable variant set, it must list every downstream pattern match with a
+  catch-all arm and state how each behaves for the new variants.
+</p>
+
+<p>
+  This is subtle enough to deserve emphasis: <strong>aliasing a type is an enum
+  extension even though no variant is added in source</strong>. No file changes,
+  no diff to review — and every <code>case _ =&gt;</code> downstream silently
+  starts absorbing cases it has never seen. It is chapter 1's bug arriving by
+  a route that leaves no fingerprints.
+</p>
+
+<h3>6 · Error-variant feasibility</h3>
+
+<p>
+  If a <em>Then</em> asserts that a specific error variant is returned, that
+  must be type-feasible against the producing API. A handler typed
+  <code>Either[String, R]</code> cannot return a structured
+  <code>ToolCallError</code>. Resolve it in the spec — amend the requirement or
+  the signature — rather than discovering it mid-implementation, where the
+  temptation is to weaken the test instead.
+</p>
+
+<h3>7 · Altitude and concurrency</h3>
+
+<p>
+  Two rules from later versions of the schema. <strong>Altitude</strong>
+  (when a behavioural registry exists): requirements use behavioural
+  vocabulary; module names, error classes and build commands go in
+  <code>## Implementation Anchors</code>, never inside a Given/When/Then — so
+  a refactor does not invalidate the spec (chapter 4).
+  <strong>Concurrency</strong>: a requirement about concurrent behaviour must
+  name a <em>deterministic observable</em> — an ordering guarantee, a final
+  state, an emitted-event set — never a wall-clock expectation like “within
+  100 ms”, which produces flaky tests that get muted, which is how
+  concurrency bugs survive.
+</p>
+
+<h2>Properties: the other half of the spec</h2>
+
+<p>
+  Scenarios pin specific points; properties pin the whole domain. Every
+  code-changing spec needs a <code>## Properties (Ring 3)</code> section, and
+  every property must declare its <strong>generator strategy</strong> (lint
+  <span class="chip">F3</span>).
+</p>
+
+<pre data-lang="md"><code>### Property: recall-ordering
+
+**Invariant**: for any memory and any query, returned hits are ordered
+by descending score.
+
+**Generator strategy**: genMemory — constructive, sizes 0..20, includes
+empty and all-equal-score cases — cover 20% "ties".
+
+```
+forAll(genMemory, genQuery) { (mem, q) =&gt;
+  val hits = mem.recall(q, k = 10)
+  hits.zip(hits.tail).forall((a, b) =&gt; a.score &gt;= b.score)
+}
+```</code></pre>
+
+<div class="box insight">
+  <div class="box-title">Why the generator strategy is mandatory</div>
+  <p>
+    A property is only as strong as the inputs it sees. <code>forAll</code>
+    over a generator that never produces an empty collection has not tested the
+    empty case, no matter how many thousand runs it makes — and the failure is
+    invisible, because the property passes.
+  </p>
+  <p style="margin-bottom:0">
+    So the spec declares: which generator, <em>constructive or filtered</em>
+    (constructive preferred — heavy filtering silently discards cases), which
+    edge cases it covers, and which classification labels make coverage visible.
+    Where the framework supports coverage <em>assertions</em> — Hedgehog's
+    <code>cover</code> fails the test when a label's percentage is unmet — a
+    conditioned property must carry one. That converts “I hope the interesting
+    case occurred” into a check.
+  </p>
+</div>
+
+<details class="dive">
+  <summary>Deep dive · why this project's stack uses Hedgehog, and what changes<span class="dive-tag">optional</span></summary>
+  <p>
+    ScalaCheck derives generators from an <code>Arbitrary</code> typeclass and
+    takes shrinkers as separate functions. Hedgehog has no typeclass —
+    generators are ordinary values you pass explicitly — and shrinking is
+    <em>integrated</em>: shrinks are derived from the generator, so they obey
+    the generator's invariants by construction.
+  </p>
+  <p>
+    That difference matters for this workflow. With separate shrinkers,
+    minimising a counterexample can produce a value your generator would never
+    have produced — an input that violates a domain invariant, sending you to
+    debug a case that cannot occur. Integrated shrinking cannot do that. The
+    trade-offs are real in both directions (integrated shrinking is slower and
+    sometimes yields larger counterexamples; Hedgehog makes you write every
+    generator by hand). See
+    <a href="https://well-typed.com/blog/2019/05/integrated-shrinking/">Well-Typed on integrated vs manual shrinking</a>
+    and <a href="https://frasertweedale.github.io/blog-fp/posts/2020-03-31-quickcheck-hedgehog.html">a migration report</a>.
+  </p>
+  <p style="margin-bottom:0">
+    The workflow itself is framework-agnostic: the capability profile records
+    what the project actually uses, and the oracle is generated for that. What
+    is <em>not</em> negotiable is that the strategy is declared in the spec, so
+    a reviewer can judge coverage before any test exists.
+  </p>
+</details>
+
+<h2>Try it: the real linter, in this page</h2>
+
+<p>
+  Below is a faithful JavaScript port of
+  <code>scanner/spec-lint.sh</code> — the same checks (F1–F7, W1–W4), the same
+  logic. Load the broken spec, run it, read the findings, then load the fixed
+  version and compare. Editing the text and re-running is the fastest way to
+  build intuition for what the rules actually catch.
+</p>
+
+<div class="widget" data-linter="lint-seed">
+  <div class="widget-head">
+    <span class="wtag">live</span>
+    <h4>spec-lint — running in your browser</h4>
+  </div>
+  <div class="widget-body">
+    <textarea class="editor" spellcheck="false" aria-label="spec source"></textarea>
+    <div class="btn-row">
+      <button class="btn" data-run type="button">Run spec-lint</button>
+      <button class="btn ghost" data-preset="preset-bad" type="button">Load broken spec</button>
+      <button class="btn ghost" data-preset="preset-good" type="button">Load fixed spec</button>
+    </div>
+    <div class="lint-out"></div>
+  </div>
+</div>
+
+<script type="text/plain" id="lint-seed">
+## ADDED Requirements
+
+### Requirement: Recall returns relevant episodes
+
+**Given** a memory containing episodes
+**When** recall is called with a query
+**Then** the correct episodes are returned
+
+#### Scenario: Happy path
+
+**Given** three episodes
+**When** recall("blue") is called
+**Then** the blue episode is first
+
+### Requirement: Recall never returns frozen episodes
+
+The system SHALL exclude frozen episodes from recall results.
+
+**Given** a memory with a frozen episode
+**When** recall is called
+**Then** the frozen episode is absent
+
+## Properties (Ring 3)
+
+### Property: recall-ordering
+
+**Invariant**: results are ordered by score descending
+
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Artifact |
+|------------|--------|-------------|----------|
+| Recall orders by score | Requirement + Property | property test | `MemorySpec` |
+</script>
+
+<script type="text/plain" id="preset-bad">
+## ADDED Requirements
+
+### Requirement: Recall returns relevant episodes
+
+**Given** a memory containing episodes
+**When** recall is called with a query
+**Then** the correct episodes are returned
+
+#### Scenario: Happy path
+
+**Given** three episodes
+**When** recall("blue") is called
+**Then** the blue episode is first
+
+### Requirement: Recall never returns frozen episodes
+
+The system SHALL exclude frozen episodes from recall results.
+
+**Given** a memory with a frozen episode
+**When** recall is called
+**Then** the frozen episode is absent
+
+## Properties (Ring 3)
+
+### Property: recall-ordering
+
+**Invariant**: results are ordered by score descending
+
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Artifact |
+|------------|--------|-------------|----------|
+| Recall orders by score | Requirement + Property | property test | `MemorySpec` |
+</script>
+
+<script type="text/plain" id="preset-good">
+## ADDED Requirements
+
+### Requirement: Recall returns episodes ordered by descending score
+
+The system SHALL return recall hits ordered by descending score, ties broken
+by most recent first.
+
+**Given** a memory containing episodes with distinct scores
+**When** recall is called with a query
+**Then** the returned list is ordered by descending score
+
+#### Scenario: Highest scoring episode first
+
+**Given** episodes scoring 0.9, 0.5 and 0.2 for the query "blue"
+**When** recall("blue", k = 3) is called
+**Then** the returned ids are [e1, e2, e3] in that order
+
+#### Scenario: Empty memory returns an empty list
+
+**Given** a memory with no episodes
+**When** recall("blue", k = 3) is called
+**Then** the result is an empty list and no error is raised
+
+### Requirement: Frozen episodes are never returned by recall
+
+The system SHALL exclude episodes whose frozen flag is set from every recall
+result.
+
+**Given** a memory containing one frozen and one unfrozen episode
+**When** recall is called with a query matching both
+**Then** the unfrozen episode alone is returned
+
+#### Scenario: Frozen episode is excluded even when it scores highest
+
+**Given** a frozen episode scoring 0.99 and an unfrozen one scoring 0.10 for "blue"
+**When** recall("blue", k = 2) is called
+**Then** the result contains the unfrozen episode alone
+
+## Properties (Ring 3)
+
+### Property: recall-ordering
+
+**Invariant**: for any memory and any query, returned hits are ordered by
+descending score
+
+**Generator strategy**: genMemory — constructive, sizes 0..20, includes empty
+and all-equal-score cases — cover 20% "ties"
+
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Artifact |
+|------------|--------|-------------|----------|
+| Hits ordered by descending score | Requirement: Recall returns episodes ordered by descending score + Property: recall-ordering | Hedgehog property | `MemorySpec` |
+| Empty memory yields an empty list, no error | Requirement: Recall returns episodes ordered by descending score + Scenario: Empty memory returns an empty list | scenario test | `MemorySpec` |
+| Frozen episodes excluded from every result | Requirement: Frozen episodes are never returned by recall | Hedgehog property | `MemorySpec` |
+| Frozen exclusion holds even at top score | Requirement: Frozen episodes are never returned by recall + Scenario: Frozen episode is excluded even when it scores highest | scenario test (adversarial) | `MemorySpec` |
+</script>
+
+<p>
+  Things worth noticing in the broken version:
+</p>
+
+<ul>
+  <li><span class="chip">F1</span> the first requirement has no SHALL/MUST —
+      it reads like documentation, not an obligation.</li>
+  <li><span class="chip">W1</span> “the correct episodes” — the word that
+      means whatever the implementer decides.</li>
+  <li><span class="chip">F2</span> the “never” requirement has <em>no
+      scenario at all</em>, so nothing forbids the lazy implementation.</li>
+  <li><span class="chip">F3</span> the property has no generator strategy —
+      unknown coverage.</li>
+  <li><span class="chip">F6</span> the obligation's Source says “Requirement +
+      Property”, naming neither. Chapter 5 explains why this is fatal.</li>
+  <li><span class="chip">F7</span> <em>both</em> requirements are unenforced:
+      no obligation names either of them.</li>
+</ul>
+
+<p>
+  The fixed version passes with a single <span class="chip">W3</span> —
+  the reminder to confirm that the negative requirement's scenario really does
+  feed it a forbidden input. It does: a frozen episode scoring 0.99.
+</p>
+
+<h2>Three ways to look at the same rules</h2>
+
+<div class="tabs">
+  <div class="tab-bar" role="tablist">
+    <button role="tab" aria-selected="true">As a type designer</button>
+    <button role="tab" aria-selected="false">As a tester</button>
+    <button role="tab" aria-selected="false">As a reviewer</button>
+  </div>
+  <div class="tab-panel" data-active="true">
+    <p>Read the rules as pressure toward <em>making illegal states
+    unrepresentable</em>. The observability rule pushes behaviour to the API
+    surface where types live. The type-widening rule is about variant sets.
+    The error-variant feasibility rule is literally type-checking the prose.</p>
+    <p style="margin-bottom:0">The spec is where you notice that an invariant
+    <em>could</em> be a type. Every time it can, the resulting proof obligation
+    climbs to the top of the mechanism ladder (chapter 5) and stops needing
+    tests at all — which is the cheapest verification there is.</p>
+  </div>
+  <div class="tab-panel">
+    <p>Read the spec as a test plan written before the code, because that is
+    exactly what step 2 turns it into: one test per scenario, one property per
+    invariant, one <code>assertDoesNotCompile</code> per compile-negative
+    obligation.</p>
+    <p style="margin-bottom:0">Every rule here removes an ambiguity that would
+    otherwise be resolved <em>at test-writing time</em> — which is precisely
+    when resolving it wrongly is invisible, because the test then agrees with
+    the code by construction.</p>
+  </div>
+  <div class="tab-panel">
+    <p>Read the rules as a checklist for the question “could I tell whether
+    this is implemented correctly?” If a <em>Then</em> is unobservable, no. If
+    a negative requirement has no forbidden-input scenario, no. If a table
+    came from nowhere, no.</p>
+    <p style="margin-bottom:0">This is why lint FAIL blocks the change:
+    review capacity is the scarcest resource in the loop, and an ambiguous
+    spec silently converts a five-minute review into an hour of archaeology —
+    or, more often, into an approval that did not really happen.</p>
+  </div>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q3"></div>
+<script type="application/json" id="q3">
+[
+  {
+    "q": "“**Then** the request is handled appropriately.” What is wrong, and which check fires?",
+    "options": [
+      "Nothing — it is concise",
+      "Unobservable outcome plus a vague word: W1 fires mechanically, and the human observability check should FAIL it",
+      "It is missing a Given",
+      "It should use MUST"
+    ],
+    "answer": 1,
+    "why": "Two defects in six words. 'Appropriately' is on the vague-word list (W1), and 'handled' names no observable — no return value, event, message or error. A test author must invent the meaning, and whatever they invent will match the implementation they can see."
+  },
+  {
+    "q": "A requirement says “The system SHALL only accept ULID identifiers.” It has one scenario: submitting a valid ULID succeeds. Verdict?",
+    "options": [
+      "Fine — the happy path is covered",
+      "F2/W3: a requirement containing 'only' needs a scenario whose input it forbids — e.g. a UUID being rejected",
+      "It needs a property test instead",
+      "It should not use 'only'"
+    ],
+    "answer": 1,
+    "why": "An implementation that accepts everything also passes the happy-path scenario. The word 'only' makes a universal negative claim, and universal negatives are pinned by the instances they forbid — here, a non-ULID that must be rejected."
+  },
+  {
+    "q": "A spec aliases the public type `Command` to the richer `AnyCommand`, which has four more variants. No source file's matches are edited. What does the workflow require?",
+    "options": [
+      "Nothing — no behaviour changed",
+      "A Type-Widening Impact subsection listing every downstream catch-all match and how each must behave for the new variants",
+      "A new spec for each variant",
+      "Only a note in the design document"
+    ],
+    "answer": 1,
+    "why": "The reachable variant set grew, so every downstream `case _ =>` silently changed meaning with no diff to review — chapter 1's bug arriving invisibly. The spec must enumerate those sites and decide each: exhaustive, explicit rejection, or justified catch-all, each recorded as a proof obligation."
+  },
+  {
+    "q": "Why must a concurrency requirement name a deterministic observable rather than a time bound?",
+    "options": [
+      "Because timing is hard to measure",
+      "Because a wall-clock assertion produces flaky tests, and flaky tests get muted — which is how concurrency bugs survive",
+      "Because the JVM has no clock",
+      "Because Ring 3 forbids timing"
+    ],
+    "answer": 1,
+    "why": "A test asserting 'within 100 ms' fails on a loaded CI box, gets marked flaky, and is eventually ignored or deleted — taking the real ordering guarantee with it. Naming the ordering, final state, or emitted-event set instead gives a claim that a deterministic test kit can settle the same way every run."
+  }
+]
+</script>
+
+<h2>Further reading</h2>
+
+<ul class="refs">
+  <li><a href="https://ccy05327.github.io/SDD/08-PDF/Easy%20Approach%20to%20Requirements%20Syntax%20(EARS).pdf">Easy Approach to Requirements Syntax (EARS)</a>
+    <span class="rsrc">Mavin et al., RE'09 — the five templates, and the clearest short argument for constrained requirement grammars.</span></li>
+  <li><a href="https://en.wikipedia.org/wiki/Easy_Approach_to_Requirements_Syntax">EARS overview</a>
+    <span class="rsrc">A quick reference for the patterns, useful when writing Ring 9 temporal properties.</span></li>
+  <li><a href="https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/">Parse, don't validate</a>
+    <span class="rsrc">Alexis King — the type-design counterpart to the observability and widening rules.</span></li>
+  <li><a href="https://well-typed.com/blog/2019/05/integrated-shrinking/">Integrated versus manual shrinking</a>
+    <span class="rsrc">Well-Typed — background for generator strategy choices.</span></li>
+</ul>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>Why a spec is a delta, per-capability, and machine-checked.</li>
+    <li>The three parts of a requirement and what each contributes.</li>
+    <li>What makes a <em>Then</em> observable, and why that matters for an oracle.</li>
+    <li>Why negative requirements need forbidden-input scenarios.</li>
+    <li>What a generator strategy declares and why its absence is a FAIL.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="02-map.html"><span class="dir">← Chapter 2</span> The map</a>
+  <a class="next" href="04-concepts.html"><span class="dir">Chapter 4 →</span> The two ledgers</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

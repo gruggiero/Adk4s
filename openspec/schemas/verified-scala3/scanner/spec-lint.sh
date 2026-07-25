@@ -88,6 +88,12 @@ while IFS= read -r spec; do
       req_lines[n_reqs] = NR
       req_line = NR; req_has_norm = 0; req_seen_given = 0
       req_negative = 0; req_scenarios = 0; in_po = 0
+      # negativity may live in the TITLE ("... are never returned ..."), not
+      # only in the body — scan both, or F2/W3 misses the commonest phrasing
+      tlow = tolower(req_name)
+      if (tlow ~ /(^|[^[:alnum:]])only([^[:alnum:]]|$)/ ||
+          tlow ~ /(^|[^[:alnum:]])never([^[:alnum:]]|$)/ ||
+          tlow ~ /must not/) req_negative = 1
       next
     }
     /^### Property:/ {
