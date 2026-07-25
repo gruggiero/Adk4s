@@ -764,39 +764,49 @@ forAll { (p: ToyProgram) =>
 
 | Obligation | Source | Enforcement | Artifact |
 |------------|--------|-------------|----------|
-| `optimizable-surface/predictors` returns declaration order | Requirement + Property: predictors-declaration-order | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/predictors` recurses into sub-programs (SubtreeDerivation) | Requirement + Property: nested-recursion-paths | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/predictors` recurses into collections (CollectionDerivation) | Requirement + Property: collection-recursion-paths | Hedgehog property | `OptimizableSpec.scala` |
-| Non-predictor fields absent from `optimizable-surface/predictors` | Requirement + Property: predictors-declaration-order | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/update` is pure (input unchanged) | Requirement + Property: update-purity | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/update` changes only the targeted predictor | Requirement + Property: update-only-target | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/update` raises unknown-path error for non-enumerated paths | Requirement + Scenario: Unknown path raises an error | scenario test | `OptimizableSpec.scala` |
-| `optimizable-surface/updateEither` returns unknown-path error for bad paths | Requirement + Property: updateEither-unknown-path-error | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/updateEither` returns frozen-path error for frozen paths | Requirement + Property: updateEither-frozen-path-error | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/updateEither` returns updated program for valid unfrozen paths | Requirement + Scenario: Valid unfrozen path returns the updated program | scenario test | `OptimizableSpec.scala` |
-| `optimizable-surface/updateAll` skips frozen predictors | Requirement + Property: updateAll-skips-frozen | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/updateAll` preserves path set | Requirement + Property: updateAll-path-set-preserved | Hedgehog property | `OptimizableSpec.scala` |
-| `optimizable-surface/updateAll` is a no-op when all frozen | Requirement + Scenario: All frozen — updateAll is a no-op | scenario test | `OptimizableSpec.scala` |
-| Frozen predictors remain readable via `optimizable-surface/predictors` | Requirement + Property: frozen-still-readable | Hedgehog property | `OptimizableSpec.scala` |
-| Round-trip identity: `optimizable-surface/update` with identity returns equal program | Requirement + Property: round-trip-identity | Hedgehog property | `OptimizableSpec.scala` |
-| Leaf-predictor capability state/withState round-trip | Requirement + Scenario: Replacing state produces a new predictor | scenario test | `Predict0Spec.scala` |
-| Placeholder predictor carries state but does not render demos | Requirement + Scenario: Placeholder state is serializable-ready | scenario test | `Predict0Spec.scala` |
-| Error ADT is exhaustive (no catch-all) | Requirement + Compile-Negative | compile-negative test + exhaustiveness escalation (Ring 0) | `OptimizableSpec.scala` |
-| Error ADT stands alone (not core error hierarchy) | Requirement + Compile-Negative | manual review (Ring 8) | adversarial review |
-| `optimizable-surface/derived` works with no hand-written instance | Requirement + Scenario: Derivation requires no hand-written instance | scenario test (summonInline) | `OptimizableSpec.scala` |
-| Two toy optimizers compile same program via one optimizable-surface | Requirement + Scenarios | scenario test | `ToyOptimizerSpec.scala` |
-| Instruction-rewriting optimizer uppercases non-frozen instructions | Requirement + Scenario | scenario test | `ToyOptimizerSpec.scala` |
-| Demo-injecting optimizer appends a demo to non-frozen predictors | Requirement + Scenario | scenario test | `ToyOptimizerSpec.scala` |
-| Both toy optimizers leave frozen predictors untouched | Requirement + Scenario | scenario test | `ToyOptimizerSpec.scala` |
-| Optimizer laws purity law | Requirement + Property: optimizer-laws-purity | Hedgehog property | `OptimizerLawsSpec.scala` |
-| Optimizer laws frozen-preserved law | Requirement + Property: optimizer-laws-frozen-preserved | Hedgehog property | `OptimizerLawsSpec.scala` |
-| Optimizer laws path-set-preserved law | Requirement + Property: optimizer-laws-path-set-preserved | Hedgehog property | `OptimizerLawsSpec.scala` |
-| Optimizer laws fail for a structure-mutating optimizer | Requirement + Scenario: Laws fail for an optimizer that mutates structure | scenario test (negative) | `OptimizerLawsSpec.scala` |
-| Optimizer laws fail for a student-mutating optimizer | Requirement + Scenario: Laws fail for an optimizer that mutates the student | scenario test (negative) | `OptimizerLawsSpec.scala` |
-| Optimize module compiles independently | Requirement + Scenario: Module compiles independently | build verification (compile the module in isolation) | build verification |
-| Optimize module has no forbidden dependencies | Requirement + Scenario: Module has no forbidden dependencies | dependency-tree inspection + manual review (Ring 8) | adversarial review |
-| PredictorPath is distinct from FieldPath (different domain) | Concepts Used + inventory-check | manual review (Ring 8) | adversarial review |
-| Collection-nested predictor round-trips | Exit criterion (Phase 0 plan) + Property: round-trip-identity on collection-nested | Hedgehog property | `OptimizableSpec.scala` |
+| Predictor-state exposes instructions, demos and frozen flag as read data | Requirement: predictor-state is pure immutable data | scenario test | `Predict0Spec.scala` |
+| Default predictor-state is empty instructions, no demos, not frozen | Requirement: predictor-state is pure immutable data + Scenario: Default predictor-state | scenario test | `Predict0Spec.scala` |
+| A frozen predictor-state is constructible (freezing is data, not a type) | Requirement: predictor-state is pure immutable data + Scenario: Frozen predictor-state is constructible | scenario test | `Predict0Spec.scala` |
+| Predictor path renders dot-joined, outermost segment first | Requirement: predictor path addressing | scenario test | `OptimizableSpec.scala` |
+| Single-segment and collection-index paths render without separators/indices lost | Requirement: predictor path addressing + Scenario: Single-segment path + Scenario: Collection-index segment | scenario test | `OptimizableSpec.scala` |
+| Empty path renders to the empty string and is never returned by `optimizable-surface/predictors` | Requirement: predictor path addressing + Scenario: Empty path | scenario test | `OptimizableSpec.scala` |
+| `optimizable-surface/predictors` returns declaration order | Requirement: optimizable-surface/predictors enumerates in declaration order + Property: predictors-declaration-order | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/predictors` recurses into sub-programs (SubtreeDerivation) | Requirement: optimizable-surface/predictors recurses into nested sub-programs and collections + Property: nested-recursion-paths | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/predictors` recurses into collections (CollectionDerivation) | Requirement: optimizable-surface/predictors recurses into nested sub-programs and collections + Property: collection-recursion-paths | Hedgehog property | `OptimizableSpec.scala` |
+| Non-predictor fields absent from `optimizable-surface/predictors` | Requirement: optimizable-surface/predictors enumerates in declaration order + Property: predictors-declaration-order | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/update` is pure (input unchanged) | Requirement: optimizable-surface/update is pure + Property: update-purity | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/update` changes only the targeted predictor | Requirement: optimizable-surface/update is pure + Property: update-only-target | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/update` raises unknown-path error for non-enumerated paths | Requirement: optimizable-surface/update is pure + Scenario: Unknown path raises an error | scenario test | `OptimizableSpec.scala` |
+| `optimizable-surface/updateEither` returns unknown-path error for bad paths | Requirement: optimizable-surface/updateEither returns typed errors + Property: updateEither-unknown-path-error | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/updateEither` returns frozen-path error for frozen paths | Requirement: optimizable-surface/updateEither returns typed errors + Property: updateEither-frozen-path-error | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/updateEither` returns updated program for valid unfrozen paths | Requirement: optimizable-surface/updateEither returns typed errors + Scenario: Valid unfrozen path returns the updated program | scenario test | `OptimizableSpec.scala` |
+| `optimizable-surface/updateAll` skips frozen predictors | Requirement: optimizable-surface/updateAll skips frozen predictors + Property: updateAll-skips-frozen | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/updateAll` preserves path set | Requirement: optimizable-surface/updateAll skips frozen predictors + Property: updateAll-path-set-preserved | Hedgehog property | `OptimizableSpec.scala` |
+| `optimizable-surface/updateAll` is a no-op when all frozen | Requirement: optimizable-surface/updateAll skips frozen predictors + Scenario: All frozen — updateAll is a no-op | scenario test | `OptimizableSpec.scala` |
+| Frozen predictors remain readable via `optimizable-surface/predictors` | Requirement: Frozen predictors remain readable via optimizable-surface/predictors + Property: frozen-still-readable | Hedgehog property | `OptimizableSpec.scala` |
+| Round-trip identity: `optimizable-surface/update` with identity returns equal program | Requirement: Round-trip identity law + Property: round-trip-identity | Hedgehog property | `OptimizableSpec.scala` |
+| Leaf-predictor capability state/withState round-trip | Requirement: Leaf-predictor capability + Scenario: Replacing state produces a new predictor | scenario test | `Predict0Spec.scala` |
+| Placeholder predictor carries state but does not render demos | Requirement: Placeholder predictor wraps StructuredLLM/completeTemplate + Scenario: Placeholder state is serializable-ready | scenario test | `Predict0Spec.scala` |
+| Unknown-path and frozen-path errors carry the offending path | Requirement: Typed error ADT for update failures + Scenario: Unknown-path error carries the offending path + Scenario: Frozen-path error carries the offending path | scenario test | `OptimizableSpec.scala` |
+| Error ADT is exhaustive (no catch-all) | Requirement: Typed error ADT for update failures + Compile-Negative: catch-all arm over the error ADT | compile-negative test + exhaustiveness escalation (Ring 0) | `OptimizableSpec.scala` |
+| Error ADT stands alone (not core error hierarchy) | Requirement: Typed error ADT for update failures + Compile-Negative: error ADT extending the core hierarchy | manual review (Ring 8) | adversarial review |
+| `optimizable-surface/derived` works with no hand-written instance | Requirement: optimizable-surface/derived via structural derivation + Scenario: Derivation requires no hand-written instance | scenario test (summonInline) | `OptimizableSpec.scala` |
+| Derivation covers a mixed program (leaf + nested + collection fields) | Requirement: optimizable-surface/derived via structural derivation + Scenario: Derivation for a mixed program | scenario test | `OptimizableSpec.scala` |
+| Two toy optimizers compile same program via one optimizable-surface | Requirement: Two toy optimizers compile the same program through one optimizable-surface instance | scenario test | `ToyOptimizerSpec.scala` |
+| Instruction-rewriting optimizer uppercases non-frozen instructions | Requirement: Two toy optimizers compile the same program through one optimizable-surface instance + Scenario: Instruction-rewriting optimizer uppercases instructions | scenario test | `ToyOptimizerSpec.scala` |
+| Demo-injecting optimizer appends a demo to non-frozen predictors | Requirement: Two toy optimizers compile the same program through one optimizable-surface instance + Scenario: Demo-injecting optimizer appends a demo | scenario test | `ToyOptimizerSpec.scala` |
+| Both toy optimizers leave frozen predictors untouched | Requirement: Two toy optimizers compile the same program through one optimizable-surface instance + Scenario: Both toy optimizers leave frozen predictors untouched | scenario test | `ToyOptimizerSpec.scala` |
+| Optimizer laws purity law | Requirement: Optimizer laws testkit + Property: optimizer-laws-purity | Hedgehog property | `OptimizerLawsSpec.scala` |
+| Optimizer laws frozen-preserved law | Requirement: Optimizer laws testkit + Property: optimizer-laws-frozen-preserved | Hedgehog property | `OptimizerLawsSpec.scala` |
+| Optimizer laws path-set-preserved law | Requirement: Optimizer laws testkit + Property: optimizer-laws-path-set-preserved | Hedgehog property | `OptimizerLawsSpec.scala` |
+| Laws pass for both toy optimizers | Requirement: Optimizer laws testkit + Scenario: Laws pass for the instruction-rewriting optimizer + Scenario: Laws pass for the demo-injecting optimizer | scenario test | `OptimizerLawsSpec.scala` |
+| Optimizer laws fail for a structure-mutating optimizer | Requirement: Optimizer laws testkit + Scenario: Laws fail for an optimizer that mutates structure | scenario test (negative) | `OptimizerLawsSpec.scala` |
+| Optimizer laws fail for a student-mutating optimizer | Requirement: Optimizer laws testkit + Scenario: Laws fail for an optimizer that mutates the student | scenario test (negative) | `OptimizerLawsSpec.scala` |
+| Optimize module compiles independently | Requirement: Optimize module skeleton + Scenario: Module compiles independently | build verification (compile the module in isolation) | build verification |
+| Optimize module tests pass | Requirement: Optimize module skeleton + Scenario: Module tests pass | module test run | build verification |
+| Optimize module has no forbidden dependencies | Requirement: Optimize module skeleton + Scenario: Module has no forbidden dependencies | dependency-tree inspection + manual review (Ring 8) | adversarial review |
+| PredictorPath is distinct from FieldPath (different domain) | Requirement: predictor path addressing + Criterion: inventory-check concept separation | manual review (Ring 8) | adversarial review |
+| Collection-nested predictor round-trips | Requirement: optimizable-surface/predictors recurses into nested sub-programs and collections + Property: round-trip-identity on collection-nested + Criterion: Phase 0 exit | Hedgehog property | `OptimizableSpec.scala` |
 
 ## Implementation Anchors
 
