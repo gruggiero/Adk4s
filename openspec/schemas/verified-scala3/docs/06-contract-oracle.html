@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>6 · Typed contract &amp; test oracle — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a class="current" href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 6 · The gates</div>
+<h1>Typed contract &amp; test oracle</h1>
+<p class="lede">
+  Two artifacts stand between a lint-clean spec and any implementation, each
+  followed by a human stop. They exist because the two cheapest moments to be
+  wrong are <em>before the types are fixed</em> and <em>before the tests can
+  see the code</em>.
+</p>
+
+<h2>Why these two, in this order</h2>
+
+<p>
+  Think about what an implementation can silently get wrong, and when each
+  error becomes expensive to fix:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Wrong thing</th><th>Cost if caught at contract time</th><th>Cost if caught after implementation</th></tr></thead>
+  <tbody>
+    <tr><td>The error type cannot express the specified failure</td><td>edit one signature</td><td>rewrite every call site and every test that asserted the wrong error</td></tr>
+    <tr><td>A concept was recreated instead of imported</td><td>delete a declaration</td><td>migrate, deprecate, write conversions, live with both</td></tr>
+    <tr><td>The tests encode the implementation's misreading</td><td>—</td><td>never caught; ships green</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  The third row is the one with no recovery, which is why the oracle gate
+  exists at all. The order — types, then tests, then code — follows from
+  dependency: tests must compile against <em>something</em>, and if that
+  something is the implementation, the tests inherit its shape. Compiling them
+  against a contract of <code>???</code> bodies breaks that inheritance while
+  still giving the type-checker's help.
+</p>
+
+<h2>Step 1 · The typed contract</h2>
+
+<p>
+  A compile-only file containing the change's type-level commitments, with no
+  behaviour at all:
+</p>
+
+<pre data-lang="scala"><code>// adk4s-memory-api/src/test/scala/org/adk4s/memory/typecontract/
+//   FileBackedMemoryTypeContract.scala
+
+import org.adk4s.memory.{ Episode, MemoryHit, TemporalScope }  // reused, not recreated
+
+opaque type StoragePath = String
+object StoragePath:
+  def parse(raw: String): Either[MemoryError, StoragePath] = ???   // smart constructor
+  extension (p: StoragePath) def value: String = p
+
+enum MemoryError:                       // the error algebra, decided up front
+  case StorageUnreadable(path: StoragePath, cause: String)
+  case MalformedRecord(line: Int)
+
+trait FileBackedAgentMemory[F[_]]:
+  def remember(e: Episode): F[Either[MemoryError, Unit]] = ???
+  def recall(q: String, k: Int, scope: Option[TemporalScope]): F[List[MemoryHit]] = ???</code></pre>
+
+<div class="box rule">
+  <div class="box-title">Rule · placement is what makes it real</div>
+  <p style="margin-bottom:0">
+    The contract lives in the owning module's <strong>test sources</strong>, so
+    <code>sbt &lt;module&gt;/Test/compile</code> compiles it against the real
+    project classpath. Files under <code>openspec/changes/…</code> are
+    <em>not</em> part of the sbt source graph: writing the contract there
+    produces a document that looks type-checked and is not. That is a false
+    confidence generator, and the schema calls it out by name.
+  </p>
+</div>
+
+<p>
+  Compiling it is not ceremony. It is the step that catches: a package that
+  doesn't exist, a concept whose real signature differs from the inventory's
+  claim, a method name already taken, an error enum that cannot represent what
+  the spec demands, a variance or higher-kinded mistake. All of these are
+  cheap now and expensive later.
+</p>
+
+<h3>What the human is asked at gate 1</h3>
+
+<p>
+  Not “is this code right?” — there is no code. The questions are: are these
+  the right <em>concepts</em>? Is the error algebra complete and at the right
+  granularity? Are the signatures honest about effects and failure? Does
+  anything here duplicate something that exists?
+</p>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way · reviewing a surface, not a solution</div>
+  <p style="margin-bottom:0">
+    A type surface is small, dense in decisions, and readable in minutes. A
+    finished implementation is large, mostly mechanical, and reviewers
+    unconsciously optimise for “does it look plausible” rather than “is this
+    the right shape”. Worse, by then the reviewer faces sunk cost: rejecting
+    the type design means discarding working code, so the reviewer rationalises.
+    Gate 1 buys the decision before the cost exists.
+  </p>
+</div>
+
+<h3>After approval: the contract becomes a permanent assertion</h3>
+
+<p>
+  Once implementation lands, declarations are promoted into main sources —
+  and the contract file is <em>not</em> deleted. It is converted into an API
+  conformance assertion:
+</p>
+
+<pre data-lang="scala"><code>// signatures pinned exactly as approved — zero runtime cost,
+// breaks Test/compile the day someone drifts
+val rememberSig: Episode =&gt; IO[Either[MemoryError, Unit]] =
+  memory.remember
+
+val recallSig: (String, Int, Option[TemporalScope]) =&gt; IO[List[MemoryHit]] =
+  memory.recall
+
+// plus the compile-negative obligations from the spec
+compileErrors("""StoragePath("")""")   // must not construct directly</code></pre>
+
+<p>
+  “Keep the approved signatures” goes from prose nobody re-checks to a
+  compiler-enforced fact. If someone later adds a parameter or widens a return
+  type, the build fails in the file whose entire purpose is to notice.
+</p>
+
+<h2>Step 2 · The test oracle</h2>
+
+<p>
+  Now the tests — written from the spec and the approved contract
+  <strong>only</strong>, before any implementation exists.
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule · derived from the spec, never from bodies</div>
+  <p style="margin-bottom:0">
+    One test per scenario, named after the scenario heading. One property per
+    declared invariant, using the generator strategy the spec declared.
+    Model-based tests where the spec declares them. Compile-negative
+    obligations become <code>assertDoesNotCompile</code> / <code>compileErrors</code>.
+    Every test cites its source:
+    <code>// spec: &lt;name&gt; — Scenario: &lt;heading&gt;</code>. Reading
+    implementation method bodies to decide what to assert is forbidden, even
+    when retro-fitting.
+  </p>
+</div>
+
+<div class="box analogy">
+  <div class="box-title">Analogy · pre-registration</div>
+  <p style="margin-bottom:0">
+    Empirical science had a crisis with results that would not replicate. A
+    major cause was analysing data first and forming the hypothesis after —
+    <em>HARKing</em> — which turns noise into a finding while feeling like
+    discovery. The remedy was <strong>pre-registration</strong>: publish the
+    hypothesis and the analysis plan before collecting data, so the prediction
+    cannot be quietly reshaped to fit what you saw. The test oracle is
+    pre-registration for software. Writing tests after the implementation is
+    HARKing with a green checkmark.
+  </p>
+</div>
+
+<h3>Oracle polarity — proving the oracle can fail</h3>
+
+<p>
+  Here is the check most teams have never seen, and it costs one test run.
+  After the oracle compiles, <em>run it</em> — before any implementation —
+  and classify every test:
+</p>
+
+<div class="two-col">
+  <div class="box danger">
+    <div class="box-title">RED</div>
+    <p style="margin-bottom:0">
+      Asserts new behaviour. <strong>Must fail now.</strong> A red-classified
+      test that passes before the implementation exists is proving nothing:
+      it is vacuous, tautological, or asserting behaviour that already existed.
+      Fix it <em>before</em> the gate.
+    </p>
+  </div>
+  <div class="box win">
+    <div class="box-title">GREEN-BY-DESIGN</div>
+    <p style="margin-bottom:0">
+      Behaviour-preservation tests for a refactor. <strong>Must pass now</strong>,
+      against the old code, and still pass after. Their pre-implementation pass
+      <em>is</em> their evidential value — it proves they describe the
+      behaviour being preserved rather than the behaviour being written.
+    </p>
+  </div>
+</div>
+
+<p>
+  A test that cannot be classified does not enter the oracle. The polarity
+  table (<code>| Test | Polarity | Pre-impl result |</code>) is part of the
+  gate presentation, and step 6 confirms every RED went green.
+</p>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way</div>
+  <p>
+    “Tests fail first” is TDD folklore, usually honoured in spirit. This
+    workflow makes it a recorded artifact for a specific reason: an agent
+    writing 40 tests in one pass will occasionally write one that asserts
+    nothing (<code>assert(result != null)</code>), one that tests a helper
+    rather than the requirement, and one that duplicates an existing test. All
+    three are green from birth. Nothing else in the pipeline notices — mutation
+    testing comes closest but runs much later and only over changed production
+    files.
+  </p>
+  <p style="margin-bottom:0">
+    Making <em>redness</em> an explicit, per-test claim converts a silent
+    class of dead tests into a gate failure at the cheapest possible moment.
+  </p>
+</div>
+
+<h3>Faithfulness: two ways an oracle gets quietly weakened</h3>
+
+<p>
+  Once implementation begins, the oracle is under pressure — every failing
+  test is friction. The schema names both forms of tampering:
+</p>
+
+<p>
+  <strong>Oracle faithfulness.</strong> A test asserting a spec-named error
+  variant must assert <em>that variant, exactly</em>. Loosening it to
+  <code>.toString.contains("frozen")</code> or an <code>||</code> of substring
+  checks is forbidden. If the implementation cannot produce the named variant,
+  the <em>spec or the signature</em> changes — re-approved at the gate — never
+  the oracle. Substring checks are legitimate only for human-readable message
+  text, never as a substitute for a structured variant.
+</p>
+
+<p>
+  <strong>Generator faithfulness.</strong> Generators are <em>part of</em> the
+  approved oracle. Narrowing one after approval — adding a filter, tightening
+  a <code>Range</code>, dropping an edge case, swapping a constructive
+  generator for a narrower one — is tampering exactly like loosening an
+  assertion, and needs re-approval.
+</p>
+
+<div class="box danger">
+  <div class="box-title">Failure mode · the property that stopped seeing the bug</div>
+  <p style="margin-bottom:0">
+    A property fails on the empty list. The tempting fix is one character:
+    <code>genList.filter(_.nonEmpty)</code>. The property text is unchanged,
+    the suite goes green, the reviewer sees a passing test whose description
+    still claims “for any list”. Nothing in a diff review looks wrong. This is
+    why the rule is stated at the level of <em>the oracle</em> rather than
+    <em>assertions</em>: the generator is half the claim.
+  </p>
+</div>
+
+<h3>Which of these edits is tampering?</h3>
+
+<div class="quiz" data-quiz="qt"></div>
+<script type="application/json" id="qt">
+[
+  {
+    "q": "The spec says recall returns `Left(MemoryError.StorageUnreadable(path, cause))`. The implementation returns a generic error. The test is edited to `assert(result.isLeft)`. Verdict?",
+    "options": [
+      "Fine — the test still checks failure",
+      "Tampering: the spec named a structured variant. Either the implementation produces it, or the spec/signature changes and is re-approved at the gate",
+      "Fine if a TODO is added",
+      "Fine — error variants are implementation details"
+    ],
+    "answer": 1,
+    "why": "`isLeft` passes for any failure, including the wrong one — precisely the distinction the requirement exists to make. The oracle is the approved artifact; when reality disagrees with it, the resolution is a re-approved change to the spec, not a quiet loosening of the test."
+  },
+  {
+    "q": "A property `forAll(genEpisodes)` fails on an all-equal-scores case. The engineer changes the generator to produce distinct scores only. Verdict?",
+    "options": [
+      "Fine — ties are an edge case",
+      "Tampering: narrowing an approved generator silently shrinks the claim while the property text still says 'for any'",
+      "Fine if the property text is also updated",
+      "Fine — generators are test infrastructure, not the oracle"
+    ],
+    "answer": 1,
+    "why": "Generator faithfulness. The failure is telling you the specification for ties is unclear or the implementation is wrong; either is a real finding. Narrowing the generator answers a question nobody asked and leaves a property whose description over-claims what it tests."
+  },
+  {
+    "q": "During step 2 (before implementation), a new test passes immediately. It was classified RED. What now?",
+    "options": [
+      "Great — the behaviour already works, move on",
+      "Investigate: a RED test that passes pre-implementation is vacuous, tautological, or asserting pre-existing behaviour — fix it before the gate",
+      "Reclassify it as GREEN-BY-DESIGN",
+      "Delete it"
+    ],
+    "answer": 1,
+    "why": "It is proving nothing about the new behaviour. Reclassifying is only honest if the test really is a behaviour-preservation test for a refactor — 'it passed, so let's call it green-by-design' is how the polarity check gets neutered into a formality."
+  }
+]
+</script>
+
+<h3>The three coverage tables</h3>
+
+<p>The oracle gate presents three cross-references, re-verified at step 6:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Table</th><th>Binds</th><th>Catches</th></tr></thead>
+  <tbody>
+    <tr><td><strong>A</strong></td><td>Requirement / Scenario ↔ Test</td><td>a scenario nobody implemented</td></tr>
+    <tr><td><strong>B</strong></td><td>Concept ↔ Test reference</td>
+        <td>a concept the spec claims to use or introduce that appears in no
+            executable test code — <em>comments do not count</em></td></tr>
+    <tr><td><strong>C</strong></td><td>Proof obligation ↔ Test</td>
+        <td>an obligation whose declared mechanism is a test, with no test</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Table C is where chapter 5's ledger becomes executable: every obligation
+  saying “property test” must now name the property. At step 6, zero ❌ rows
+  may remain.
+</p>
+
+<h3>Concurrency deserves its own rule</h3>
+
+<p>
+  Scenarios involving concurrency, timeouts, cancellation or interruption use
+  the detected <em>deterministic</em> test kit — for cats-effect,
+  <code>TestControl</code>, which runs an <code>IO</code> program against a
+  simulated clock so “after 30 seconds” is instant and exact. Assertions name
+  deterministic observables: ordering, final state, emitted-event set. Never
+  wall-clock timing.
+</p>
+
+<p>
+  These tests are also <em>tagged</em>, because step 6 runs them twenty times.
+  A test that passes 19 times out of 20 is not a flaky test; it is a race
+  condition with a 5% detection rate, and the workflow treats an intermittent
+  failure as a Ring 3 failure to fix — never as noise to re-run away.
+</p>
+
+<h2>Where TDD ends and this begins</h2>
+
+<div class="tabs">
+  <div class="tab-bar" role="tablist">
+    <button role="tab" aria-selected="true">Compared to TDD</button>
+    <button role="tab" aria-selected="false">Compared to design-by-contract</button>
+    <button role="tab" aria-selected="false">Compared to “types first”</button>
+  </div>
+  <div class="tab-panel" data-active="true">
+    <p>TDD's red-green-refactor gives you the discipline of failing first, but
+    the test's <em>content</em> comes from the developer's head, one example at
+    a time, interleaved with implementation. That interleaving is exactly the
+    correlation this workflow removes.</p>
+    <p style="margin-bottom:0">Differences: the source is a reviewed spec, not
+    an idea; the whole oracle is written and approved in one batch before any
+    code; redness is a recorded classification, not a moment; and generators
+    plus obligations extend coverage from examples to domains. TDD is the
+    ancestor; this is TDD with the oracle externalised and audited.</p>
+  </div>
+  <div class="tab-panel">
+    <p>Design by contract (Eiffel, and <code>require</code>/<code>ensuring</code>
+    in Scala) puts pre- and postconditions <em>in</em> the code, checked at
+    runtime or by a prover. The typed contract here is a different animal: it
+    fixes the type surface before behaviour exists.</p>
+    <p style="margin-bottom:0">They compose — Ring 6 takes the spec's Formal
+    Contracts section and turns exactly those pre/postconditions into
+    machine-checked proofs on pure functions. Think of the typed contract as
+    the <em>signature-level</em> contract and Ring 6 as the
+    <em>value-level</em> one.</p>
+  </div>
+  <div class="tab-panel">
+    <p>“Type-driven development” — sketch types, let them guide the
+    implementation — is close in spirit, and Idris-style development is its
+    purest form. What is added here is the <em>gate</em>: a human approves the
+    surface, and the surface is then pinned by a conformance assertion that
+    fails the build on drift.</p>
+    <p style="margin-bottom:0">Without the pin, type-first design decays
+    exactly the way documentation does: the sketch was right on Tuesday, the
+    implementation moved on Thursday, and nothing noticed.</p>
+  </div>
+</div>
+
+<h2>The economics of the two gates</h2>
+
+<p>
+  Three human stops per spec is a real tax, and the workflow prices it. On a
+  spec whose complexity is <em>simple</em> and whose proposal risk is
+  <em>low</em>, the two inner gates may be <strong>tiered</strong>: both steps
+  execute fully, but their outputs are presented together at one stop after
+  step 2. Everything else keeps two.
+</p>
+
+<div class="box insight">
+  <div class="box-title">Why tiering is a correctness feature, not a shortcut</div>
+  <p style="margin-bottom:0">
+    A gate the human has stopped reading is <em>worse</em> than no gate,
+    because it produces a durable record of an approval that never happened —
+    and later readers, including the agent, treat that record as evidence.
+    Spending attention where risk is concentrated keeps the remaining gates
+    real. This is the same reasoning that makes manual-review obligations
+    explicit rather than hidden: the workflow would rather show you a small
+    number of true signals than a large number of ceremonial ones.
+  </p>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q6"></div>
+<script type="application/json" id="q6">
+[
+  {
+    "q": "Why must the typed contract live in the module's test sources rather than in the change directory?",
+    "options": [
+      "So it is archived with the change",
+      "So `sbt <module>/Test/compile` genuinely compiles it against the real classpath — files under openspec/changes are not in the sbt source graph and would give false confidence",
+      "Because test sources are excluded from lint",
+      "To keep the main sources clean"
+    ],
+    "answer": 1,
+    "why": "An uncompiled contract looks type-checked and is not: wrong packages, stale signatures and impossible error algebras all survive. The whole value of this step is genuine compiler evidence at the earliest possible moment."
+  },
+  {
+    "q": "After implementation, what happens to the typed-contract file?",
+    "options": [
+      "It is deleted",
+      "It is archived with the change artifacts",
+      "It becomes a permanent API-conformance assertion — eta-expanded signature pins plus compile-negative checks — so later drift breaks Test/compile",
+      "It is copied into the main sources"
+    ],
+    "answer": 2,
+    "why": "Converting it into pins turns 'keep the approved signatures' from prose into a compiler-enforced fact at zero runtime cost. It is the same anti-drift move as the Implementation map in chapter 4: make the check mechanical, and it survives."
+  },
+  {
+    "q": "What is the evidential value of a GREEN-BY-DESIGN test passing before the implementation?",
+    "options": [
+      "None — passing tests prove nothing",
+      "It proves the test describes the behaviour being preserved rather than the behaviour being written — which is exactly what a refactor's regression test must do",
+      "It proves the refactor is complete",
+      "It means the test should be deleted"
+    ],
+    "answer": 1,
+    "why": "For behaviour preservation, passing against the OLD code is the point: it anchors the description to the existing behaviour. A regression test that only appears after the refactor could just as easily describe the new behaviour, which would make it useless as a preservation check."
+  }
+]
+</script>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>Why types come before tests and tests before code, in dependency terms.</li>
+    <li>Why contract placement in test sources is a correctness requirement.</li>
+    <li>What oracle polarity is and what a RED test passing early means.</li>
+    <li>Both forms of oracle tampering and why generators count as the oracle.</li>
+    <li>What the three coverage tables bind, and why table B excludes comments.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="05-obligations.html"><span class="dir">← Chapter 5</span> Proof obligations</a>
+  <a class="next" href="07-rings.html"><span class="dir">Chapter 7 →</span> The verification rings</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

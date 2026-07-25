@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4 · The two ledgers — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a class="current" href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 4 · Architecture of knowledge</div>
+<h1>The two ledgers</h1>
+<p class="lede">
+  A workflow that writes specs across months needs an answer to two different
+  questions: <em>“does this type already exist?”</em> and <em>“what is the
+  stable name for the behaviour I am changing?”</em> They sound similar. They
+  need completely different data structures, and conflating them is why most
+  documentation rots.
+</p>
+
+<h2>The problem: two kinds of forgetting</h2>
+
+<p>
+  Watch what goes wrong without either ledger. Both failures are mundane and
+  both compound.
+</p>
+
+<div class="two-col">
+  <div class="box danger">
+    <div class="box-title">Forgetting types</div>
+    <p style="margin-bottom:0">
+      Spec 7 needs an identifier for a run. There is already
+      <code>RunId</code> in <code>core.types</code>, but the agent doesn't
+      know, so it creates <code>RunIdentifier</code> in
+      <code>orchestration.model</code>. Six months later you have four
+      near-identical types, three conversion functions between them, and a
+      bug that lives in the conversion.
+    </p>
+  </div>
+  <div class="box danger">
+    <div class="box-title">Forgetting behaviour</div>
+    <p style="margin-bottom:0">
+      Spec 12 says “<code>AgentRunner.resume</code> must re-emit the
+      checkpoint event”. Later a refactor renames the class to
+      <code>ResumableRunner</code> and moves the method. The spec is now
+      <em>wrong</em> — it references a symbol that no longer exists — but
+      nothing tells you, because prose doesn't compile.
+    </p>
+  </div>
+</div>
+
+<p>
+  verified-scala3 keeps two ledgers, deliberately separate, each optimised for
+  one of these:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th></th><th>Type inventory</th><th>Behavioural registry</th></tr></thead>
+  <tbody>
+    <tr><td><strong>File</strong></td>
+      <td><code>openspec/concept-inventory.md</code></td>
+      <td><code>openspec/concepts/*.md</code></td></tr>
+    <tr><td><strong>Catalogues</strong></td><td><em>Types</em></td><td><em>Behaviour</em></td></tr>
+    <tr><td><strong>Answers</strong></td>
+      <td>“Does this type exist? Where? What are its variants and implementations?”</td>
+      <td>“What is this capability called, what can it do, and where is it realised?”</td></tr>
+    <tr><td><strong>Granularity</strong></td><td>one row per type</td><td>one file per concept</td></tr>
+    <tr><td><strong>Built by</strong></td><td>a parser, mechanically</td><td>a human/agent reading the code, once</td></tr>
+    <tr><td><strong>Required?</strong></td><td>yes</td><td>optional — every rule that uses it is conditional</td></tr>
+    <tr><td><strong>Read at</strong></td><td>step 0 (don't recreate), step 12 (delta)</td><td>spec writing, step 0 gate, step 12 update</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Ledger one · the type inventory</h2>
+
+<p>
+  A project-scoped living document listing every domain type: refined/opaque
+  types with their constraints, sealed traits and enums <em>with their
+  variants</em>, case classes with field types, service traits with their
+  methods <em>and their implementations</em>, IDL models, property generators.
+</p>
+
+<pre data-lang="md"><code>## Sealed Traits and Enums
+
+| Type | Kind | Variants | Package | Introduced By |
+|------|------|----------|---------|---------------|
+| `AgentEvent` | sealed trait | MessageOutput, ToolCallRequested, … | `org.adk4s.core.interrupt` | pre-existing |
+| `RunResult`  | sealed trait | Completed, Interrupted, Failed      | `org.adk4s.orchestration.agent` | pre-existing |
+
+## Service Traits
+
+| Trait | Type Param | Methods | Implementations | Package | Introduced By |
+|-------|-----------|---------|-----------------|---------|---------------|
+| `AgentMemory` | F[_] | remember, recall, rememberAll | FileBackedAgentMemory, InMemoryAgentMemory | `org.adk4s.memory` | spec:add-memory-api/store |</code></pre>
+
+<h3>Three properties that make it work</h3>
+
+<p>
+  <strong>It is project-scoped, not per-change.</strong> This sounds like
+  filing trivia; it is the difference between a living document and a dead
+  one. When each change kept its own copy, every new change re-scanned from
+  scratch and the <code>Introduced By</code> provenance — the audit trail
+  saying <em>which spec created this type</em> — was reset to “found by a
+  scan”. The knowledge died at every archive boundary.
+</p>
+
+<p>
+  <strong>It is verified, not regenerated.</strong> Each change writes a thin
+  <code>inventory-check.md</code> report that confirms rows still match the
+  code and fixes stale ones <em>preserving their provenance</em>. A
+  from-scratch rescan is forbidden precisely because it would overwrite
+  <code>spec:add-memory-api/store</code> with <code>scan:AgentMemory.scala</code>.
+</p>
+
+<p>
+  <strong>It is built by a parser.</strong> The scanner parses sources with
+  Scalameta rather than matching text, which matters more than it sounds.
+</p>
+
+<div class="box danger">
+  <div class="box-title">Failure mode · the regex inventory</div>
+  <p style="margin-bottom:0">
+    An earlier version of this scanner used regular expressions. It
+    catalogued the words <em>consolidates</em>, <em>definitions</em>,
+    <em>prefixing</em>, <em>value</em> and <em>values</em> as sealed types —
+    they appeared in comments after the word “sealed”. It also missed every
+    nested declaration and, on a multi-module build, silently found
+    <em>zero</em> concepts because it only looked at a top-level
+    <code>src/</code> that did not exist. A parser cannot make either mistake:
+    a comment is not a declaration, and a nested <code>enum</code> is a tree
+    node with a parent.
+  </p>
+</div>
+
+<details class="dive">
+  <summary>Deep dive · what “nested” means for naming<span class="dive-tag">optional</span></summary>
+  <p>
+    An enum declared inside an object is not called <code>FallbackSemantic</code>
+    by the compiler — it is <code>RunnableOps.FallbackSemantic</code>. The
+    scanner reports the qualified form, matching how Metals and SemanticDB name
+    it. That is not pedantry: it means an inventory row can be pasted directly
+    into a semantic query (chapter 9) and resolve. When the inventory and the
+    code-intelligence tools disagree about names, every automated cross-check
+    between them silently degrades.
+  </p>
+  <p style="margin-bottom:0">
+    Similarly, the <em>Implementations</em> column is built by linking
+    <code>extends</code> clauses <em>across files</em>, including anonymous
+    implementations (<code>new Retriever[F]: …</code> inside a factory), which
+    are reported as <code>MemoryRetriever (anonymous)</code>. A trait's
+    implementations are the first thing you need when a spec changes its
+    contract.
+  </p>
+</details>
+
+<h2>Ledger two · the behavioural registry</h2>
+
+<p>
+  The second ledger answers a question types cannot: <em>what does this system
+  do, in the user's vocabulary, independent of how it is currently built?</em>
+</p>
+
+<div class="box history">
+  <div class="box-title">Prior art · concept design</div>
+  <p style="margin-bottom:0">
+    The registry follows Meng &amp; Jackson,
+    <em>“What You See Is What It Does: A Structural Pattern for Legible
+    Software”</em> (<a href="https://arxiv.org/abs/2508.14511">arXiv:2508.14511</a>).
+    A <strong>concept</strong> is an independent unit of user-facing
+    functionality with a purpose, its own state, a set of actions, and an
+    operational principle. The pattern's sharpest rule: <em>concepts never
+    reference each other</em>. Cross-concept behaviour is expressed separately
+    as <strong>synchronizations</strong> — declarative <code>when / where /
+    then</code> rules. The lineage runs back through Jackson's problem frames
+    and Alloy; the modularity intuition will feel familiar from Parnas.
+  </p>
+</div>
+
+<p>Each concept is one markdown file with four parts:</p>
+
+<pre data-lang="md"><code>concept MemoryAwareRunner
+purpose
+    Decorate an AgentRunner with opt-in memory awareness: recall relevant
+    facts before each turn and persist new episodes after completed turns,
+    without changing the underlying runner's behavior when memory is absent.
+state
+    agentRunner: MemoryAwareRunner -&gt; AgentRunner
+    memory:      MemoryAwareRunner -&gt; Option[AgentMemory[IO]]
+    policy:      MemoryAwareRunner -&gt; MemoryPolicy
+actions
+    run [ messages: List[Message] ; maxSteps: Int ]
+        =&gt; [ result: RunResult.Completed(output, messages) ]
+    run [ messages ; maxSteps ]
+        =&gt; [ result: RunResult.Interrupted(checkpointId, signal) ]
+    resume [ checkpointId: String ; results ; maxSteps ] =&gt; [ result: RunResult ]
+operational principle
+    A caller constructs a MemoryAwareRunner with a runner, an optional
+    memory, and a policy. On run, the decorator first recalls the most
+    relevant facts for the latest user input; if recall yields hits, a
+    message with the rendered context is prepended before delegating…</code></pre>
+
+<p>Then, crucially:</p>
+
+<pre data-lang="md"><code>## Implementation map
+
+| Element | Code |
+|---|---|
+| state    | `MemoryAwareRunner.memory` (`adk4s-orchestration/…/MemoryAwareRunner.scala`) |
+| action `run` | `MemoryAwareRunner.run` → `MemoryHook.preTurn` → `postTurn` |
+| runtime host | `adk4s-orchestration` |</code></pre>
+
+<div class="box rule">
+  <div class="box-title">Rule · the Implementation map is the only place code identifiers live</div>
+  <p style="margin-bottom:0">
+    Specs reference behaviour as <code>Concept/action</code>. Class names,
+    method names and file paths appear in exactly one place per concept — the
+    Implementation map. A refactor therefore updates <em>one table</em>, not
+    every spec that ever mentioned the type.
+  </p>
+</div>
+
+<h3>Why this earns its keep: the altitude rule</h3>
+
+<p>
+  This is the payoff, and it is worth stating precisely. Compare two ways of
+  writing the same requirement:
+</p>
+
+<div class="two-col">
+  <div class="box danger">
+    <div class="box-title">Wrong altitude</div>
+    <p style="margin-bottom:0">
+      “When <code>MemoryAwareRunner.runWithEvents</code> calls
+      <code>MemoryHook.preTurn</code>, the returned
+      <code>fs2.Stream[IO, AgentEvent]</code> SHALL be forwarded unchanged.”
+    </p>
+  </div>
+  <div class="box win">
+    <div class="box-title">Right altitude</div>
+    <p style="margin-bottom:0">
+      “<code>MemoryAwareRunner/runWithEvents</code> SHALL forward the
+      underlying runner's event stream unchanged.” Implementation symbols go
+      in <code>## Implementation Anchors</code> at the bottom of the spec.
+    </p>
+  </div>
+</div>
+
+<p>
+  The first version is <em>wrong on the day someone renames the hook</em> — and
+  wrong silently, because nothing checks prose. The second stays true through
+  any refactor that preserves behaviour, which is what a refactor is by
+  definition. The archived spec still describes reality years later.
+</p>
+
+<div class="box analogy">
+  <div class="box-title">Analogy · the menu and the kitchen</div>
+  <p style="margin-bottom:0">
+    A restaurant menu says “slow-braised beef, 6 hours”. It does not say
+    “Marco puts the pot on the third burner”. When Marco leaves, the menu is
+    still correct; only the kitchen rota changes. The behavioural registry is
+    the menu; the Implementation map is the rota; the altitude rule is the
+    policy that keeps burner numbers off the menu. And the reason customers —
+    and specs — care: the promise is about what arrives, not who cooked it.
+  </p>
+</div>
+
+<h3>Synchronizations: behaviour that spans concepts</h3>
+
+<p>
+  Since concepts never reference each other, cross-concept behaviour lives in
+  named synchronizations:
+</p>
+
+<pre data-lang="md"><code>sync RecallToContext
+when   { MemoryAwareRunner/run: [ messages ] }
+where  { memory is present and policy.recallK &gt; 0 }
+then   { AgentMemory/recall: [ latestUserInput ; recallK ] }
+
+impl: `MemoryHook.preTurn` (`adk4s-orchestration/…/MemoryHook.scala`)
+Deviation: best-effort — a recall failure is logged and the turn proceeds.</code></pre>
+
+<p>
+  Note the <code>Deviation</code> line. The registry is
+  <strong>descriptive, not prescriptive</strong>: it records what the code
+  actually does, including where that violates the pattern's own ideals. A
+  registry that describes the system you wish you had is worse than none,
+  because it silently becomes a second source of truth that disagrees with
+  reality.
+</p>
+
+<h2>The machine check</h2>
+
+<p>
+  Prose ledgers rot. This one has <code>scanner/registry-check.sh</code> —
+  dependency-free bash and <code>git grep</code>, so it runs on any CI runner —
+  making three passes:
+</p>
+
+<ol>
+  <li><strong>Symbols.</strong> Every backticked identifier in every
+      Implementation map and <code>impl:</code> line still exists in the source
+      tree. A row citing a file that also names symbols gets those symbols
+      checked <em>inside that file</em>; a symbol that survives elsewhere is
+      reported as a weak binding to tighten, not a failure.</li>
+  <li><strong>Fold fields.</strong> A state row may declare exactly which
+      fields a fold populates (<code>maps f1, f2, …</code>); every listed field
+      must appear in that file. This catches the
+      <em>declared-but-never-folded</em> bug: a field present on the model
+      shape that no code ever writes.</li>
+  <li><strong>Spec references.</strong> Every <code>Concept/action</code>
+      cited by an active spec must be declared by a registry file, and the
+      action must appear in that concept's <code>actions</code> block —
+      not merely somewhere in the file's prose.</li>
+</ol>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way · the anti-drift argument</div>
+  <p style="margin-bottom:0">
+    Documentation decays because nothing forces it to move when the code
+    moves. The Implementation map inverts that: it is the <em>single</em>
+    binding between behaviour and code, so keeping it correct is one table's
+    worth of work, and a script fails the build when it is wrong. The cost of
+    accuracy drops below the cost of inaccuracy — and that, not discipline, is
+    what makes documentation survive.
+  </p>
+</div>
+
+<h2>Two ledgers, three viewpoints</h2>
+
+<div class="tabs">
+  <div class="tab-bar" role="tablist">
+    <button role="tab" aria-selected="true">Domain-driven design</button>
+    <button role="tab" aria-selected="false">Compiler engineering</button>
+    <button role="tab" aria-selected="false">Library maintenance</button>
+  </div>
+  <div class="tab-panel" data-active="true">
+    <p>If you know DDD, the behavioural registry is close to a
+    <em>ubiquitous language</em> made machine-checkable, and concepts resemble
+    bounded contexts scoped by user-facing purpose rather than by team.</p>
+    <p style="margin-bottom:0">The addition DDD lacks: an Implementation map
+    with a script that fails when the language and the code drift apart. The
+    ubiquitous language usually degrades into a glossary nobody updates —
+    for exactly the cost reason above.</p>
+  </div>
+  <div class="tab-panel">
+    <p>Think of the type inventory as a <em>symbol table</em> and the registry
+    as a <em>semantic model</em>. The inventory is derived mechanically and
+    answers name-resolution questions; the registry is authored and answers
+    intent questions.</p>
+    <p style="margin-bottom:0">Compilers keep both for the same reason this
+    workflow does: you cannot recover intent from a symbol table, and you
+    cannot resolve names from intent. The provenance column is the debug
+    info — expensive to reconstruct, cheap to carry.</p>
+  </div>
+  <div class="tab-panel">
+    <p>As a library maintainer you already keep these implicitly: a public API
+    surface (what may not break) and a changelog of behaviour (what changed
+    for users). The inventory is the first; the registry plus specs are the
+    second.</p>
+    <p style="margin-bottom:0">The workflow's contribution is making the
+    surface diffable — step 12 machine-diffs inventory snapshots to detect
+    unplanned public API growth, which is the scope-creep check that keeps
+    “while I was in there” out of your public types.</p>
+  </div>
+</div>
+
+<h2>When to adopt the registry</h2>
+
+<p>
+  The type inventory is mandatory; the behavioural registry is not, and the
+  honest guidance is:
+</p>
+
+<ul>
+  <li><strong>Adopt it</strong> when several specs touch the same behaviour
+      over time, when refactors regularly invalidate old specs, or when the
+      system has real domain vocabulary worth stabilising.</li>
+  <li><strong>Skip it</strong> for a small library with one obvious API
+      surface, or a short-lived project. Every registry-dependent rule
+      (altitude, the step 0 registry gate, the spec-reference lint) is
+      conditional on <code>openspec/concepts/</code> existing.</li>
+</ul>
+
+<p>
+  Bootstrapping is one-time: run the extraction skill against existing code,
+  which produces concepts from persistent command/event enums, state
+  structures, message consumers and transport entry points — and, valuably,
+  surfaces the deviations it finds along the way.
+</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q4"></div>
+<script type="application/json" id="q4">
+[
+  {
+    "q": "Why is the type inventory project-scoped rather than copied into each change?",
+    "options": [
+      "To save disk space",
+      "So provenance accumulates across changes — a per-change copy dies at archive time and forces every new change to re-scan and lose the 'introduced by spec X' trail",
+      "Because the OpenSpec CLI requires it",
+      "So that two changes cannot edit it simultaneously"
+    ],
+    "answer": 1,
+    "why": "The inventory's value is cumulative knowledge. When it was per-change, each new change re-scanned from scratch and had to excavate the archive to reconstruct which spec introduced what — and the provenance column degraded from spec attribution to 'found by a scan'."
+  },
+  {
+    "q": "A refactor renames `AgentRunner` to `Runner` and moves it to another package. With a behavioural registry in place, what must change?",
+    "options": [
+      "Every spec that mentioned AgentRunner",
+      "Only the concept file's Implementation map — specs reference AgentRunner/resume behaviourally and stay correct",
+      "Nothing at all",
+      "The type inventory only"
+    ],
+    "answer": 1,
+    "why": "That is precisely the altitude rule's payoff: code identifiers live in one table per concept. The inventory row also updates (it catalogues types), but no spec text needs touching — and registry-check.sh will fail the build if the map is left stale."
+  },
+  {
+    "q": "What class of bug does the 'maps f1, f2, …' fold-field check catch?",
+    "options": [
+      "Fields with the wrong type",
+      "A field that exists on the model shape but that no fold ever populates — declared state that is never actually written",
+      "Unused imports",
+      "Fields that are private"
+    ],
+    "answer": 1,
+    "why": "Declared-but-never-folded state. The model compiles, the field is readable, and it is silently always empty — a defect that types cannot catch because the type is inhabited by the empty value. Listing the fields a fold maps turns the claim into something a script can verify against the fold's source."
+  },
+  {
+    "q": "The registry describes a synchronization as 'best-effort — failure is logged and the caller still sees success', which violates the pattern's ideal. What should the registry say?",
+    "options": [
+      "Describe the transactional behaviour it should have",
+      "Record the deviation exactly as observed — the registry is descriptive, and an idealised registry becomes a second source of truth that disagrees with the code",
+      "Omit the synchronization",
+      "Mark the concept as invalid"
+    ],
+    "answer": 1,
+    "why": "Descriptive, not prescriptive. Recording the deviation makes it visible to spec authors who might otherwise assume atomicity — and creates an honest backlog item — whereas describing the system you wish you had produces confident, wrong documentation."
+  }
+]
+</script>
+
+<h2>Further reading</h2>
+
+<ul class="refs">
+  <li><a href="https://arxiv.org/abs/2508.14511">What You See Is What It Does: A Structural Pattern for Legible Software</a>
+    <span class="rsrc">Meng &amp; Jackson — concepts, synchronizations, and the independence rule the registry follows.</span></li>
+  <li><a href="https://en.wikipedia.org/wiki/Ubiquitous_language">Ubiquitous language</a>
+    <span class="rsrc">The DDD cousin of the registry, and a useful contrast: same goal, no machine check.</span></li>
+  <li><a href="https://scalameta.org/">Scalameta</a>
+    <span class="rsrc">The parser behind the inventory scanner — why trees beat regexes for this job.</span></li>
+</ul>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>Which ledger answers “does this type exist?” and which answers “what is this behaviour called?”</li>
+    <li>What the Implementation map is and why it is the only home for code identifiers.</li>
+    <li>What the altitude rule buys, in terms of specs surviving refactors.</li>
+    <li>The three passes of <code>registry-check.sh</code> and the bug class each catches.</li>
+    <li>Why the registry records deviations instead of ideals.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="03-specs.html"><span class="dir">← Chapter 3</span> Writing specs</a>
+  <a class="next" href="05-obligations.html"><span class="dir">Chapter 5 →</span> Proof obligations</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

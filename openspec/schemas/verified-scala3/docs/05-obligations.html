@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5 · Proof obligations — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a class="current" href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 5 · The keystone</div>
+<h1>Proof obligations</h1>
+<p class="lede">
+  If you learn one thing from this tutorial, learn this chapter. A proof
+  obligation is the workflow's answer to “how do you know?” — asked once per
+  claim, answered in writing, ranked by strength, and checked by a machine.
+</p>
+
+<h2>The core idea</h2>
+
+<p>
+  A spec makes claims. The central rule is that <strong>no claim may exist
+  without a declared mechanism that keeps it honest</strong>. Not “did we test
+  this?” but: <em>for every single thing this spec asserts, what prevents it
+  from being false, and where does that thing live?</em>
+</p>
+
+<p>
+  The pipeline names it as its own phase —
+  <code>spec → typed contract → proof obligations → test oracle →
+  implementation → verification</code> — sitting deliberately between what you
+  promise and what you build. That position is the whole trick: obligations
+  are chosen <em>before the implementation exists</em>, so they cannot be
+  retrofitted to whatever the code happened to do.
+</p>
+
+<div class="box history">
+  <div class="box-title">Prior art · the term is borrowed, precisely</div>
+  <p style="margin-bottom:0">
+    “Proof obligation” comes from formal methods — the B method, VDM, Event-B.
+    There, a tool generates obligations mechanically from your model (for each
+    operation, prove it preserves the invariant) and you <em>discharge</em>
+    each one with a proof. The activity is bookkeeping: enumerate everything
+    that must be shown, then show it, and know exactly what remains.
+    verified-scala3 borrows the structure but widens the notion of discharge:
+    a type, a test, a static rule, a proof, or an explicit human review all
+    count — provided the choice is <em>recorded</em>.
+  </p>
+</div>
+
+<div class="box analogy">
+  <div class="box-title">Analogy · the assurance case</div>
+  <p style="margin-bottom:0">
+    Safety-critical industries file a <strong>safety case</strong>: a
+    structured argument that a system is acceptably safe, decomposed into
+    claims, sub-claims, and the evidence attached to each (Goal Structuring
+    Notation formalises exactly this). Regulators do not ask “did it pass the
+    tests?”; they ask “show me the argument, and show me which evidence
+    supports which claim”. The proof-obligations table is a small assurance
+    case for one spec — and the F7 check in this chapter is the regulator
+    noticing that claim 3 has no evidence attached to it at all.
+  </p>
+</div>
+
+<h2>Anatomy of a row</h2>
+
+<pre data-lang="md"><code>| Obligation | Source | Enforcement | Artifact |</code></pre>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Column</th><th>Question it answers</th><th>Verified by</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Obligation</strong></td><td><em>What</em> must hold — the claim, one line</td><td>human</td></tr>
+    <tr><td><strong>Source</strong></td><td><em>Where the claim comes from</em> — which requirement, property or scenario</td><td><span class="chip">F6</span> <span class="chip">F7</span> mechanically</td></tr>
+    <tr><td><strong>Enforcement</strong></td><td><em>What mechanism</em> keeps it true</td><td>human + step 6</td></tr>
+    <tr><td><strong>Artifact</strong></td><td><em>Where that mechanism lives</em></td><td>not yet mechanical — see gaps</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>A real row, from a live change in this codebase — and the strongest tier:</p>
+
+<pre data-lang="md"><code>| Error ADT is exhaustive (no catch-all)
+| Requirement: Typed error ADT for update failures
+    + Compile-Negative: catch-all arm over the error ADT
+| compile-negative test + exhaustiveness escalation (Ring 0)
+| `OptimizableSpec.scala` |</code></pre>
+
+<p>
+  Read the Enforcement column: the mechanism is <em>the compiler</em>. Not a
+  test that checks the property, but a build configuration under which the
+  violating code cannot compile. That is what the top of the ladder looks like.
+</p>
+
+<h2>The mechanism ladder</h2>
+
+<p>
+  Mechanisms are ranked, strongest first, and the ranking is this workflow's
+  theory of correctness in nine lines:
+</p>
+
+<ol class="ladder">
+  <li class="top"><strong>Type system</strong> — invalid state unrepresentable. Cite the type <em>and</em> a compile-negative test.</li>
+  <li class="top"><strong>Smart constructor</strong> — rejected at construction. Cite the constructor and a rejection property.</li>
+  <li class="mid"><strong>Property / scenario test</strong> — falsifiable over a domain, or at a named point.</li>
+  <li class="mid"><strong>Compatibility fixture test</strong> (Ring 4) — old bytes still decode.</li>
+  <li class="mid"><strong>Static rule</strong> — Scalafix/WartRemover. Cite the rule.</li>
+  <li class="mid"><strong>Formal contract</strong> (Ring 6) / <strong>model check</strong> (Ring 7).</li>
+  <li class="low"><strong>Runtime monitor</strong> (Ring 9) — catches it in production, after the fact.</li>
+  <li class="low"><strong>Adversarial review</strong> (Ring 8) — a human looking for exactly this.</li>
+  <li class="low"><strong>Manual review</strong> — allowed, <em>but must say so explicitly</em>.</li>
+</ol>
+
+<p>Two things make this ladder load-bearing rather than decorative.</p>
+
+<p>
+  <strong>It mirrors the design ladder.</strong> The design artifact ranks
+  invalid-state prevention the same way: <em>impossible to express</em> &gt;
+  <em>rejected by smart constructor</em> &gt; <em>rejected by validator</em>
+  &gt; <em>reaches the evaluator and returns a fallback</em> &gt;
+  <em>silently maps to valid behaviour</em> ◄ forbidden. Choosing an
+  obligation is choosing where on that ladder you defend the claim. When you
+  find yourself writing “property test” for something a type could make
+  unrepresentable, that is a design smell surfacing at spec time — the
+  cheapest possible moment.
+</p>
+
+<p>
+  <strong>Manual review is legal but never invisible.</strong> It propagates
+  to the checkpoint summary (<code>Proof obligations: all enforced / &lt;list
+  of manually-reviewed ones&gt;</code>), so a spec leaning on human diligence
+  says so out loud, to the human approving it, every single time.
+</p>
+
+<div class="box insight">
+  <div class="box-title">Why it is designed this way · climbing is free later, expensive never</div>
+  <p style="margin-bottom:0">
+    Mechanisms high on the ladder cost more to <em>design</em> and less to
+    <em>maintain</em>: a type that makes a state unrepresentable never needs
+    re-running, never flakes, never gets muted, and protects code written years
+    later by people who never read the spec. A manual review protects exactly
+    one review. The ladder is an instruction to spend design effort where it
+    compounds — which is also why the workflow makes you name the tier
+    explicitly rather than letting “we'll test it” be the unexamined default.
+  </p>
+</div>
+
+<h2>How the table gets built</h2>
+
+<p>During the specs artifact, after requirements and properties are written:</p>
+
+<ol>
+  <li><strong>Enumerate every claim.</strong> Each requirement, each scenario,
+      each property, each invariant, each introduced type constraint, each
+      compile-negative obligation.</li>
+  <li><strong>Pick the strongest feasible mechanism</strong> for each. If
+      Ring 0 can catch it, do not write a test for it.</li>
+  <li><strong>Name the artifact</strong> that will carry it — usually not yet
+      existing. That is fine: it is a commitment the test oracle must fulfil
+      in step 2.</li>
+  <li><strong>Write the Source in the mandated format</strong> so the binding
+      is verifiable rather than plausible.</li>
+</ol>
+
+<h3>The Source format — and the audit that forced it</h3>
+
+<p>
+  This rule exists because of a specific discovery. An audit of real specs
+  across two projects found <em>three incompatible conventions</em> in the
+  Source column:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Found in the wild</th><th>Resolvable?</th></tr></thead>
+  <tbody>
+    <tr><td><code>Requirement 1, scenario 1</code></td><td>yes — by ordinal</td></tr>
+    <tr><td><code>R2 + Property 2</code></td><td>yes — shorthand ordinal</td></tr>
+    <tr><td><code>Requirement + Property: predictors-declaration-order</code></td>
+        <td><span class="tag-fail">no</span> — names a property but <em>no requirement at all</em></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  The third convention was used consistently across a 33-row table that looked
+  impeccable. Every row had a plausible source, an enforcement mechanism and an
+  artifact. And <em>not one requirement in that spec was provably enforced</em>,
+  because no obligation named a requirement. The old check — “does the table
+  have enough rows?” — passed happily.
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule · the mandated Source format</div>
+  <pre data-lang="md" class="tight" style="margin:.6rem 0 0"><code>Requirement: &lt;exact requirement title&gt;   ← PREFERRED: survives reordering
+Requirement N   |   RN                    ← allowed; POSITIONAL (warns: W4)
+
+Property: &lt;name&gt;  |  Property N          ← non-requirement sources are
+Scenario: &lt;heading&gt;  |  Invariant: &lt;n&gt;      equally valid, but the KIND
+Compile-Negative: &lt;what&gt;  |  Temporal: &lt;n&gt;  must be TYPED — the kind word
+Criterion: &lt;name&gt;  |  MUST-CONFIRM: &lt;what&gt;  followed by ":" or an ordinal</code></pre>
+  <p style="margin:.7rem 0 0">
+    Combine with <code>+</code>. A bare <code>Requirement</code> with no
+    identifier names nothing and FAILS <span class="chip">F6</span>.
+  </p>
+</div>
+
+<p>
+  Note the deliberate asymmetry, which trips people up once: an obligation
+  <em>may</em> legitimately source from a property rather than a requirement.
+  But <strong>no requirement may be left unnamed by all obligations</strong>.
+  Coverage flows one way only.
+</p>
+
+<h2>Reachability, not row counting</h2>
+
+<p>This is the conceptual upgrade that F7 represents.</p>
+
+<div class="two-col">
+  <div class="box danger">
+    <div class="box-title">Old check (weak)</div>
+    <p style="margin-bottom:0">
+      “The Proof Obligations table covers every requirement.” Verified by
+      counting: 33 rows ≥ 16 requirements, looks complete. Passes on a table
+      where four requirements are mentioned by nothing.
+    </p>
+  </div>
+  <div class="box win">
+    <div class="box-title">New check (F7)</div>
+    <p style="margin-bottom:0">
+      For each requirement, is there <em>at least one obligation that names
+      it</em>? A graph reachability question, answered per requirement. A table
+      with plenty of rows still fails if one requirement is unreachable.
+    </p>
+  </div>
+</div>
+
+<p>
+  When F7 was first run against the real specs it reported unenforced
+  requirements in a change that had passed every earlier review — among them
+  <em>“predictor-state is pure immutable data”</em>, a requirement with three
+  scenarios and precisely zero obligations. Not sloppiness: the table's rows
+  were all about behaviour (<code>update</code> is pure, <code>updateAll</code>
+  skips frozen), and the plain data-shape requirement fell through the gap
+  between them. Exactly the kind of thing human review misses because
+  everything present looks right.
+</p>
+
+<h2>Try it: obligations under the linter</h2>
+
+<p>
+  The same engine from chapter 3, seeded with an obligations-focused spec.
+  Run it, then try these edits and watch the verdict move:
+</p>
+
+<ul>
+  <li>Change a Source to bare <code>Requirement + Property</code> → <span class="chip">F6</span>.</li>
+  <li>Delete the row naming the second requirement → <span class="chip">F7</span>.</li>
+  <li>Replace the titles with <code>Requirement 1</code>/<code>Requirement 2</code>
+      → passes, but earns <span class="chip">W4</span>: positional references
+      break silently when requirements are reordered.</li>
+  <li>Renumber <code>Requirement 2</code> to <code>Requirement 9</code> →
+      <span class="chip">F6</span>, because the spec has no ninth requirement.</li>
+</ul>
+
+<div class="widget" data-linter="oblig-seed">
+  <div class="widget-head">
+    <span class="wtag">live</span>
+    <h4>Proof-obligation reachability — F6 / F7 / W4</h4>
+  </div>
+  <div class="widget-body">
+    <textarea class="editor" spellcheck="false" aria-label="spec source"></textarea>
+    <div class="btn-row">
+      <button class="btn" data-run type="button">Run spec-lint</button>
+      <button class="btn ghost" data-preset="oblig-seed" type="button">Reset</button>
+      <button class="btn ghost" data-preset="oblig-broken" type="button">Load the untyped-source version</button>
+    </div>
+    <div class="lint-out"></div>
+  </div>
+</div>
+
+<script type="text/plain" id="oblig-seed">
+## ADDED Requirements
+
+### Requirement: Recall returns episodes ordered by descending score
+
+The system SHALL return recall hits ordered by descending score.
+
+**Given** a memory containing episodes with distinct scores
+**When** recall is called
+**Then** the returned list is ordered by descending score
+
+#### Scenario: Empty memory returns an empty list
+
+**Given** a memory with no episodes
+**When** recall is called
+**Then** the result is an empty list and no error is raised
+
+### Requirement: Episode identifiers are opaque and non-empty
+
+The system SHALL represent episode identifiers as an opaque type that cannot
+be constructed from an empty string.
+
+**Given** an attempt to build an identifier from ""
+**When** the smart constructor is called
+**Then** it returns a Left describing the violated constraint
+
+#### Scenario: Empty identifier is rejected
+
+**Given** the input ""
+**When** EpisodeId.parse is called
+**Then** the result is a Left
+
+## Properties (Ring 3)
+
+### Property: recall-ordering
+
+**Invariant**: returned hits are ordered by descending score
+
+**Generator strategy**: genMemory — constructive, sizes 0..20, covers empty and tied scores
+
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Artifact |
+|------------|--------|-------------|----------|
+| Hits ordered by descending score | Requirement: Recall returns episodes ordered by descending score + Property: recall-ordering | Hedgehog property | `MemorySpec` |
+| Empty memory yields an empty list | Requirement: Recall returns episodes ordered by descending score + Scenario: Empty memory returns an empty list | scenario test | `MemorySpec` |
+| Empty identifier unrepresentable | Requirement: Episode identifiers are opaque and non-empty | opaque type + smart constructor + compile-negative test | `EpisodeIdSpec` |
+| Constructor rejects blank input | Requirement: Episode identifiers are opaque and non-empty + Scenario: Empty identifier is rejected | property test (rejection) | `EpisodeIdSpec` |
+</script>
+
+<script type="text/plain" id="oblig-broken">
+## ADDED Requirements
+
+### Requirement: Recall returns episodes ordered by descending score
+
+The system SHALL return recall hits ordered by descending score.
+
+**Given** a memory containing episodes with distinct scores
+**When** recall is called
+**Then** the returned list is ordered by descending score
+
+#### Scenario: Empty memory returns an empty list
+
+**Given** a memory with no episodes
+**When** recall is called
+**Then** the result is an empty list and no error is raised
+
+### Requirement: Episode identifiers are opaque and non-empty
+
+The system SHALL represent episode identifiers as an opaque type that cannot
+be constructed from an empty string.
+
+**Given** an attempt to build an identifier from ""
+**When** the smart constructor is called
+**Then** it returns a Left describing the violated constraint
+
+#### Scenario: Empty identifier is rejected
+
+**Given** the input ""
+**When** EpisodeId.parse is called
+**Then** the result is a Left
+
+## Properties (Ring 3)
+
+### Property: recall-ordering
+
+**Invariant**: returned hits are ordered by descending score
+
+**Generator strategy**: genMemory — constructive, sizes 0..20, covers empty and tied scores
+
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Artifact |
+|------------|--------|-------------|----------|
+| Hits ordered by descending score | Requirement + Property: recall-ordering | Hedgehog property | `MemorySpec` |
+| Empty memory yields an empty list | Requirement + Scenario | scenario test | `MemorySpec` |
+| Empty identifier unrepresentable | Requirement + Compile-Negative | opaque type + compile-negative test | `EpisodeIdSpec` |
+| Constructor rejects blank input | Requirement + Property | property test | `EpisodeIdSpec` |
+</script>
+
+<p>
+  The untyped-source version is the real-world failure: four well-written
+  obligations, four sensible mechanisms, and both requirements unenforced.
+  Note that <code>Requirement + Property: recall-ordering</code> passes F6 —
+  it <em>does</em> name a property, which is a legitimate source — and is
+  caught only by F7 noticing that no requirement was ever named. Two checks,
+  two different jobs.
+</p>
+
+<h2>What obligations guarantee — and what they do not</h2>
+
+<p>
+  Being precise here is what separates using this workflow from performing it.
+</p>
+
+<div class="box win">
+  <div class="box-title">The guarantee</div>
+  <p style="margin-bottom:0">
+    If the ledger is complete and each mechanism is real, then every claim in
+    the spec has a named, ranked defence, chosen before implementation, with
+    the weakest defences surfaced to a human at every checkpoint. Concretely,
+    it blocks chapter 1's failure mode: an implementation that satisfies its
+    tests while violating its spec — because what got enumerated was the
+    <em>spec's</em> claims, not the code's behaviour.
+  </p>
+</div>
+
+<div class="box caution">
+  <div class="box-title">Four things it does not guarantee</div>
+  <ul style="margin-bottom:0">
+    <li><strong>An obligation is a declaration, not a proof.</strong>
+      “Property test” in the Enforcement column does not mean the property is
+      strong, or even non-vacuous. Other machinery covers that: oracle
+      polarity (chapter 6), coverage assertions, and mutation (chapter 7).</li>
+    <li><strong>The Artifact column is unverified.</strong> Nothing yet checks
+      that <code>MemorySpec</code> exists, or that it asserts <em>that</em>
+      row. This is the largest remaining hole in the chain.</li>
+    <li><strong>Completeness ≠ correctness of the claims.</strong> A perfectly
+      enforced obligation faithfully protects a wrong requirement. That is
+      chapter 1's <em>adequacy</em> row, and only humans supply it.</li>
+    <li><strong>Manual-review rows are escape hatches by design.</strong>
+      Legal, visible, load-bearing only as far as the human is.</li>
+  </ul>
+</div>
+
+<h2>Where obligations are enforced</h2>
+
+<p>Five points, which is why the concept survives contact with an agent:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Point</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Authoring</strong> (specs)</td><td>rule 8 mandates the table and the Source format</td></tr>
+    <tr><td><strong>Spec lint</strong> (mechanical)</td>
+        <td><span class="chip">F4</span> section present ·
+            <span class="chip">F6</span> Source resolvable ·
+            <span class="chip">F7</span> every requirement named ·
+            <span class="chip">W2</span> row count · <span class="chip">W4</span> positional refs</td></tr>
+    <tr><td><strong>Spec lint</strong> (judgement)</td>
+        <td>check 12 (declared mechanism), 10 (unreachability claims), 15 (adversarial scenarios)</td></tr>
+    <tr><td><strong>Apply step 0</strong></td>
+        <td>“verify the table is complete… <strong>if not, STOP</strong>” — implementation cannot begin</td></tr>
+    <tr><td><strong>Apply steps 2, 6, 8, 13</strong></td>
+        <td>oracle table C binds obligations to tests · step 6 re-verifies with zero ❌ ·
+            Ring 8 asks whether declared enforcement really enforces ·
+            the checkpoint reports the manually-reviewed list to a human</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box insight">
+  <div class="box-title">Why five points and not one</div>
+  <p style="margin-bottom:0">
+    Each point catches what the others structurally cannot. Authoring catches
+    nothing (it is a rule, not a check). Lint catches format and reachability
+    but knows nothing about code. Step 0 catches an incomplete ledger before
+    effort is spent. Step 2 catches obligations that no test actually
+    implements. Ring 8 catches obligations whose declared mechanism is a
+    fiction. The checkpoint catches everything the machines allowed through, by
+    telling a human what was <em>not</em> mechanically enforced. Remove any one
+    and a specific class of hole opens.
+  </p>
+</div>
+
+<h2>The chain, end to end</h2>
+
+<pre data-lang="md"><code>concept (registry)              ← stable behavioural vocabulary (ch 4)
+   ▲ cites
+requirement ──has──▶ scenarios / properties
+   │
+   └── named by ──▶  OBLIGATION ──declares──▶  mechanism (ranked ladder)
+                          │
+                          └── cites ──▶  ARTIFACT ──▶ test / type / rule / review
+                                             │
+                                             └── executed by the rings (ch 7)
+
+verified today:  requirement → obligation   (F7)
+                 obligation  → source format (F6)
+                 obligation  → test          (steps 2 &amp; 6 cross-reference tables)
+NOT verified:    artifact    → the file existing and asserting it</code></pre>
+
+<details class="dive">
+  <summary>Deep dive · closing the last link<span class="dive-tag">roadmap</span></summary>
+  <p>
+    The artifact column is a string. Checking that <code>MemorySpec</code>
+    exists as a file, and that step 6's Requirement ↔ Test cross-reference
+    names the same suite, is mechanically feasible — the graph tool in chapter 9
+    already walks requirement → obligation → artifact and could resolve the
+    last hop against the filesystem.
+  </p>
+  <p style="margin-bottom:0">
+    Two related gaps: property names in <code>Property: X</code> sources are
+    checked as <em>typed</em> but not as <em>existing</em> (a typo passes), and
+    nothing forces a claim about an invalid state to use a tier-1 or tier-2
+    mechanism when one is available. A rule like “requirements containing
+    <em>never</em> or <em>cannot</em> must be enforced at the type level or
+    justify why not” is the natural next version.
+  </p>
+</details>
+
+<h2>Two viewpoints on the same table</h2>
+
+<div class="tabs">
+  <div class="tab-bar" role="tablist">
+    <button role="tab" aria-selected="true">As an accountant</button>
+    <button role="tab" aria-selected="false">As a hazard analyst</button>
+  </div>
+  <div class="tab-panel" data-active="true">
+    <p>Double-entry bookkeeping's power is not arithmetic — it is that every
+    entry must appear twice, in two independent places, so an omission shows up
+    as an imbalance rather than as nothing at all.</p>
+    <p style="margin-bottom:0">The obligations table is the same device: every
+    claim must appear both as a requirement and as an obligation naming it.
+    F7 is the trial balance. An unenforced requirement is not “a missing test”
+    — it is <em>books that do not balance</em>, and the whole point of the
+    convention is that the imbalance is visible without knowing the business.</p>
+  </div>
+  <div class="tab-panel">
+    <p>HAZOP and FMEA work by systematically walking a system and asking, for
+    each element, what could go wrong, how it would be detected, and what
+    mitigates it — recording every answer, including “nothing”, because a blank
+    mitigation column is the finding.</p>
+    <p style="margin-bottom:0">Reading the table this way makes its
+    manual-review rows feel different: they are not weak entries to be
+    embarrassed about, they are <em>accepted residual risk</em>, recorded and
+    signed off. What is dangerous is not a manual row; it is an
+    <em>unrecorded</em> one.</p>
+  </div>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q5"></div>
+<script type="application/json" id="q5">
+[
+  {
+    "q": "An obligation's Source reads `Property: replay-equals-live`. It names no requirement. Does spec-lint fail it?",
+    "options": [
+      "Yes — F6, because it does not name a requirement",
+      "No — a typed non-requirement source is legitimate; but F7 will fail if some requirement ends up named by nothing",
+      "Yes — F7, always",
+      "Only if the property does not exist"
+    ],
+    "answer": 1,
+    "why": "Obligations may legitimately derive from properties, invariants or compile-negative obligations — F6 only requires that the source be TYPED and name something. Coverage is one-directional: what F7 enforces is that no requirement is left unnamed by all obligations."
+  },
+  {
+    "q": "You are specifying: “An AccountId can never be blank.” Which enforcement should you reach for first?",
+    "options": [
+      "A property test generating blank strings and asserting rejection",
+      "An opaque type with a smart constructor — tier 1/2 — plus a compile-negative test that direct construction does not compile",
+      "Adversarial review",
+      "A runtime assertion at the API boundary"
+    ],
+    "answer": 1,
+    "why": "Climb the ladder as high as the claim allows. If the type makes a blank AccountId unrepresentable and construction goes through a smart constructor, the claim holds for all code forever — including code written later by people who never read this spec. The rejection property is still worth having; it is the second line, not the first."
+  },
+  {
+    "q": "A 40-row obligations table exists for a spec with 12 requirements, and W2 does not fire. What has been established about coverage?",
+    "options": [
+      "Every requirement is enforced",
+      "Nothing about coverage — row count is not reachability; F7 must confirm each requirement is named",
+      "The table is over-specified",
+      "At least 40 tests exist"
+    ],
+    "answer": 1,
+    "why": "This is precisely the trap that motivated F7. A real 33-row table across 16 requirements had four requirements named by nothing, and every row-counting check passed. Only per-requirement reachability answers the coverage question."
+  },
+  {
+    "q": "Why does the workflow prefer `Requirement: <exact title>` over `Requirement 3`?",
+    "options": [
+      "It is easier to read",
+      "Ordinals are positional — reordering requirements silently re-points every ordinal link, changing what the table claims without any edit",
+      "The linter cannot parse ordinals",
+      "Titles are shorter"
+    ],
+    "answer": 1,
+    "why": "Same failure family as the type-widening rule in chapter 3: a change with no visible diff silently alters meaning. Moving requirement 5 above requirement 3 re-points every 'Requirement 3' reference to a different claim. Ordinals remain legal but earn W4 as a standing reminder."
+  }
+]
+</script>
+
+<h2>Further reading</h2>
+
+<ul class="refs">
+  <li><a href="https://www.event-b.org/">Event-B and the Rodin platform</a>
+    <span class="rsrc">Where proof obligations are generated and discharged formally — the origin of the term and a useful contrast in rigour.</span></li>
+  <li><a href="https://scsc.uk/gsn">Goal Structuring Notation (assurance cases)</a>
+    <span class="rsrc">The safety-critical practice of arguing claims from evidence, which the obligations table miniaturises.</span></li>
+  <li><a href="https://eecs481.org/readings/testoracles.pdf">The Oracle Problem in Software Testing: A Survey</a>
+    <span class="rsrc">Barr et al. — its oracle taxonomy maps closely onto the mechanism ladder.</span></li>
+</ul>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>What each of the four columns is for, and which are machine-checked.</li>
+    <li>The mechanism ladder, and why climbing it pays compound interest.</li>
+    <li>The difference between F6 and F7, and why both are needed.</li>
+    <li>Why row counting is not coverage.</li>
+    <li>Four things a complete obligations table still does not guarantee.</li>
+  </ul>
+</div>
+
+<div class="chapter-nav">
+  <a href="04-concepts.html"><span class="dir">← Chapter 4</span> The two ledgers</a>
+  <a class="next" href="06-contract-oracle.html"><span class="dir">Chapter 6 →</span> Typed contract &amp; test oracle</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>
