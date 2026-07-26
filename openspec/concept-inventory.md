@@ -139,6 +139,7 @@
 | `EpisodeOutcome` | `entitiesExtracted: Int, relationshipsCreated: Int, edgesInvalidated: Int, processingTimeMs: Long, errors: List[String], episodeId: Option[String]` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (`postTurn` returns `F[List[EpisodeOutcome]]`) |
 | `MemoryHit` | `text: String, score: Double, validFrom: Option[Instant], validTo: Option[Instant], provenance: Option[String], payload: Map[String, String]` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (`preTurn` renders `List[MemoryHit]` into a context string) |
 | `TemporalScope` | `asOf: Instant` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (`MemoryPolicy.scope: Option[TemporalScope]`) |
+| `MemoryPolicy` | `recallK: Int, scope: Option[TemporalScope], writeUserInput: Boolean, writeAssistantOutput: Boolean, render: List[MemoryHit] => String` (private constructor; smart constructor enforces `recallK >= 0`) | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (`MemoryPolicy.default`, `policy.render`) |
 
 ## Service Traits
 
@@ -205,20 +206,32 @@
 | `AgentEventEmitter` | `fs2.concurrent.Queue`-backed emitter | Hierarchical event scoping via `scoped(RunStep)` | `org.adk4s.core.interrupt` | pre-existing — **REUSED by this change** (events spec emits `MemoryRecalled`/`MemoryWritten` through it) |
 | `CheckpointStore` | trait (`InMemoryCheckpointStore` for dev) | Persist interrupt/resume checkpoint state | `org.adk4s.orchestration.interrupt` | pre-existing — **REUSED** (decorator forwards; underlying `AgentRunner` owns it) |
 | `InMemoryAgentMemory[IO]` | `Ref[IO, Vector[Episode]]`-backed | Test double for `AgentMemory[IO]` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (hook tests use it as the memory) |
+| `MemoryHook` | final class (pure recall/remember wrapper over `Option[AgentMemory[IO]]`) | No-op when memory absent; `preTurn` recalls + renders, `postTurn` remembers per `MemoryPolicy` | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (used internally by `MemoryAwareRunner`) |
+| `MemoryAwareRunner` | final class (decorator over `AgentRunner`) | Runs `preTurn` before and `postTurn` after each turn; emits `MemoryRecalled`/`MemoryWritten` events; skips `postTurn` on `Interrupted`/`Failed` | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (`CrossRunMemoryExample` wraps `AgentRunner` with it) |
 
 ## Concepts This Change Will Introduce
 
 <!-- NEW concepts (not yet in the codebase). Recorded here so the apply phase
      does NOT re-create them and so later specs can reuse them. These become
-     "pre-existing" once implemented. -->
+     "pre-existing" once implemented.
+
+     The `add-cross-run-memory-example` change (this change) introduces only
+     application-edge types in `adk4s-examples`. Per the inventory policy
+     (see note under "Case Classes" above: "adk4s-examples case classes are
+     application-edge and omitted"), these are NOT added to the main tables.
+     They are recorded here for provenance so later specs know they exist and
+     where to find them. The previously-listed `MemoryPolicy` / `MemoryHook` /
+     `MemoryAwareRunner` / `MemoryRecalled` / `MemoryWritten` entries have
+     been moved to the main tables above as pre-existing (shipped by the
+     archived `2026-07-19-add-memory-orchestration-hook` change). -->
 
 | Type | Kind | Package | Introduced By |
 |------|------|---------|---------------|
-| `MemoryPolicy` | final case class | `org.adk4s.orchestration.memory` | spec:memory-orchestration-hook |
-| `MemoryHook` | final class | `org.adk4s.orchestration.memory` | spec:memory-orchestration-hook |
-| `MemoryAwareRunner` | final class (decorator) | `org.adk4s.orchestration.memory` | spec:memory-orchestration-hook |
-| `MemoryRecalled` | AgentEvent variant (final case class) | `org.adk4s.core.interrupt` | spec:memory-orchestration-events |
-| `MemoryWritten` | AgentEvent variant (final case class) | `org.adk4s.core.interrupt` | spec:memory-orchestration-events |
+| `FileBackedAgentMemory[F[_]]` | final class (`AgentMemory[F]` double, JSON-lines persistence) | `org.adk4s.examples.memory` | spec:add-cross-run-memory-example (application-edge — omitted from main tables per policy) |
+| `CrossRunMemoryExample` | `IOApp.Simple` object (CLI teach/recall/reset) | `org.adk4s.examples.memory` | spec:add-cross-run-memory-example (application-edge — omitted from main tables per policy) |
+| `MemoryRetrieverExample` | `IOApp.Simple` object (retriever seam demo) | `org.adk4s.examples.memory` | spec:add-cross-run-memory-example (application-edge — omitted from main tables per policy) |
+| JSON-lines `Episode` wire format | wire format (upickle `ReadWriter[Episode]`, one episode per line) | `org.adk4s.examples.memory` | spec:add-cross-run-memory-example (application-edge — omitted from main tables per policy) |
+| `adk4s-examples % Test → adk4s-memory-testkit` | build wiring (Test scope) | `build.sbt` | spec:add-cross-run-memory-example (recorded in capability-profile.md module graph) |
 
 ## Consistency Check
 

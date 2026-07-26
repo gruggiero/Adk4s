@@ -31,6 +31,7 @@
 
 ```
 adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models
+adk4s-examples % Test → adk4s-memory-testkit                (test-scope — FileBackedAgentMemorySpec laws; landed by archived 2026-07-26-add-cross-run-memory-example)
 adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api
 adk4s-memory-testkit → adk4s-memory-api                     (main-scope munit — behavioral laws)
 adk4s-memory-api → adk4s-core                               (for Retriever/Document/RetrieverConfig)
@@ -57,7 +58,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | LLM client | llm4s core | 0.3.4 (Maven Central) | `LLMClient`, `Conversation`, `Message` (`UserMessage`/`AssistantMessage`/`SystemMessage`/`ToolMessage`), `CompletionOptions`, `ToolFunction`, `ToolRegistry`, `Result[A]`. |
 | Workflow engine | workflows4s-core | 0.6.2 (Maven Central) | WIO monad, WorkflowContext, event sourcing. workflows4s-bpmn 0.6.2 in examples only. NOT touched by this change. |
 | Memory capability | adk4s-memory-api (project-local) | 0.1.0-SNAPSHOT | `AgentMemory[F]`, `Episode`, `SourceType`, `EpisodeOutcome`, `MemoryHit`, `TemporalScope`, `InMemoryAgentMemory`, `MemoryRetriever`. Shipped by archived `2026-07-05-add-memory-api` change. |
-| Memory laws | adk4s-memory-testkit (project-local) | 0.1.0-SNAPSHOT | `AgentMemoryLaws` in MAIN scope (munit main-scope). Downstream backends consume it as a regular dep. NOT used by this change (the hook calls `AgentMemory`, not the laws). |
+| Memory laws | adk4s-memory-testkit (project-local) | 0.1.0-SNAPSHOT | `AgentMemoryLaws` in MAIN scope (munit main-scope). Downstream backends consume it as a regular dep. Consumed by `adk4s-examples % Test` (FileBackedAgentMemorySpec) via the archived `2026-07-26-add-cross-run-memory-example` change. |
 | Configuration | typesafe-config | 1.4.9 | structured-llm, test-models. PureConfig NOT a dependency. |
 | Logging | logback-classic | 1.5.34 | examples only; slf4j transitive via llm4s |
 

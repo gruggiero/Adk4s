@@ -65,6 +65,6 @@
 7. README missing FileBackedAgentMemory row + orchestration snippet → added
 
 ### Concept delta + inventory update + checkpoint
-- [ ] append new concepts to openspec/concept-inventory.md
-- [ ] update openspec/capability-profile.md module graph
-- [ ] checkpoint
+- [x] append new concepts to openspec/concept-inventory.md
+- [x] update openspec/capability-profile.md module graph
+- [x] checkpoint
