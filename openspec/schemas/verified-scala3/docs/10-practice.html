@@ -264,16 +264,17 @@ $ scanner/openspec-graph.py obligations
   <li><strong>It cannot tell you the requirement is wrong.</strong> Chapter 1's
       <em>adequacy</em> row is untouched. A perfectly enforced obligation
       faithfully protects a mistaken claim, and no ring will ever object.</li>
-  <li><strong>The artifact column is unverified.</strong> Nothing yet checks
-      that the named test suite exists and asserts that row. The last link in
-      chapter 5's chain remains open.</li>
-  <li><strong>Property names are unchecked.</strong> <code>Property: recall-orderng</code>
-      with a typo passes F6 as a typed source and binds to nothing.</li>
-  <li><strong>Mechanism strength is advice, not a check.</strong> Nothing
-      forces a claim about an invalid state to use a type when a type is
-      available.</li>
-  <li><strong>Ordinal references remain legal</strong> (W4), so reordering
-      requirements can still silently re-point a link in specs that use them.</li>
+  <li><strong>The artifact is checked for existence, not content.</strong>
+      Since v9, Step 12 verifies the named suite resolves to a tracked file
+      (F9) — this caught a suite in this very repository that had never been
+      written — but nothing checks that it asserts <em>that</em> row.</li>
+  <li><strong>Ordinal references remain legal</strong> (now W4 on any
+      occurrence, not a FAIL), so a spec that opts into positional links can
+      still be silently re-pointed by reordering.</li>
+  <li><strong>Mechanism strength is nudged, not enforced.</strong> W5 flags an
+      impossibility claim defended only by tests, and <code>tier-justified:</code>
+      silences it — an honest escape hatch that an unmotivated author can
+      always take.</li>
   <li><strong>It costs real time.</strong> Two extra gates, an obligations
       table, and a fixed apply sequence per spec. On genuinely trivial work,
       that overhead can exceed the value — which is what waivers, tiering and

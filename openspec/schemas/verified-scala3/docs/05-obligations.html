@@ -96,9 +96,9 @@
   <thead><tr><th>Column</th><th>Question it answers</th><th>Verified by</th></tr></thead>
   <tbody>
     <tr><td><strong>Obligation</strong></td><td><em>What</em> must hold — the claim, one line</td><td>human</td></tr>
-    <tr><td><strong>Source</strong></td><td><em>Where the claim comes from</em> — which requirement, property or scenario</td><td><span class="chip">F6</span> <span class="chip">F7</span> mechanically</td></tr>
+    <tr><td><strong>Source</strong></td><td><em>Where the claim comes from</em> — which requirement, property or scenario</td><td><span class="chip">F6</span> <span class="chip">F7</span> <span class="chip">F8</span> mechanically</td></tr>
     <tr><td><strong>Enforcement</strong></td><td><em>What mechanism</em> keeps it true</td><td>human + step 6</td></tr>
-    <tr><td><strong>Artifact</strong></td><td><em>Where that mechanism lives</em></td><td>not yet mechanical — see gaps</td></tr>
+    <tr><td><strong>Artifact</strong></td><td><em>Where that mechanism lives</em></td><td><span class="chip">F9</span> post-implementation (Step 12)</td></tr>
   </tbody>
 </table>
 </div>
@@ -438,9 +438,10 @@ be constructed from an empty string.
       “Property test” in the Enforcement column does not mean the property is
       strong, or even non-vacuous. Other machinery covers that: oracle
       polarity (chapter 6), coverage assertions, and mutation (chapter 7).</li>
-    <li><strong>The Artifact column is unverified.</strong> Nothing yet checks
-      that <code>MemorySpec</code> exists, or that it asserts <em>that</em>
-      row. This is the largest remaining hole in the chain.</li>
+    <li><strong>The artifact is checked for existence, not for content.</strong>
+      Since v9, Step 12 verifies that <code>MemorySpec</code> resolves to a
+      tracked file (F9) — but nothing checks that it asserts <em>that
+      particular row</em>. Existence is a floor, not a proof.</li>
     <li><strong>Completeness ≠ correctness of the claims.</strong> A perfectly
       enforced obligation faithfully protects a wrong requirement. That is
       chapter 1's <em>adequacy</em> row, and only humans supply it.</li>
@@ -501,27 +502,49 @@ requirement ──has──▶ scenarios / properties
                                              │
                                              └── executed by the rings (ch 7)
 
-verified today:  requirement → obligation   (F7)
-                 obligation  → source format (F6)
-                 obligation  → test          (steps 2 &amp; 6 cross-reference tables)
-NOT verified:    artifact    → the file existing and asserting it</code></pre>
+verified today:  requirement → obligation    (F7)
+                 obligation  → source format  (F6)
+                 obligation  → source exists  (F8: the cited Property/Scenario)
+                 obligation  → artifact file  (F9, at Step 12)
+                 obligation  → test           (steps 2 &amp; 6 cross-reference tables)
+NOT verified:    artifact    → asserts THIS row (existence is a floor)</code></pre>
 
 <details class="dive">
-  <summary>Deep dive · closing the last link<span class="dive-tag">roadmap</span></summary>
+  <summary>Deep dive · how the last links were closed (v9)<span class="dive-tag">history</span></summary>
   <p>
-    The artifact column is a string. Checking that <code>MemorySpec</code>
-    exists as a file, and that step 6's Requirement ↔ Test cross-reference
-    names the same suite, is mechanically feasible — the graph tool in chapter 9
-    already walks requirement → obligation → artifact and could resolve the
-    last hop against the filesystem.
+    Three of the four gaps listed here in v8 are now checked. They are worth
+    reading as a group, because each was invisible for the same reason: the
+    ledger recorded a <em>name</em>, and nobody verified the name pointed at
+    anything.
   </p>
+  <ul>
+    <li><strong>F8 — dangling typed sources.</strong> <code>Property:
+      recall-orderng</code> passed F6 (it is typed) and bound to nothing. Now
+      the cited Property/Scenario heading must exist in the spec.</li>
+    <li><strong>F9 — the artifact column.</strong> The named suite must
+      resolve to a tracked file. Run <em>opt-in</em>
+      (<code>spec-lint.sh --artifacts</code>) because a spec is written
+      before its tests exist: the artifact is a commitment at planning time
+      and a fact only at apply Step 12, which is where it is checked.</li>
+    <li><strong>W5 — mechanism strength.</strong> A normative statement
+      claiming a state is impossible (“cannot be constructed”,
+      “unrepresentable”) but enforced only by tests is now flagged, since the
+      ladder's top tiers exist for exactly that claim shape. Silenced with
+      <code>tier-justified: &lt;why not&gt;</code> when no type can express it.</li>
+    <li><strong>W4 — tightened.</strong> Fires on <em>any</em> ordinal
+      reference now, not only when a spec uses ordinals exclusively. A mixed
+      table is no safer: the one ordinal row is just as fragile.</li>
+  </ul>
   <p style="margin-bottom:0">
-    Two related gaps: property names in <code>Property: X</code> sources are
-    checked as <em>typed</em> but not as <em>existing</em> (a typo passes), and
-    nothing forces a claim about an invalid state to use a tier-1 or tier-2
-    mechanism when one is available. A rule like “requirements containing
-    <em>never</em> or <em>cannot</em> must be enforced at the type level or
-    justify why not” is the natural next version.
+    F9 justified itself on first run. On a completed, checkpointed change it
+    reported <code>MemoryRetrieverExampleSpec</code> — a suite that had never
+    been written. Those two obligations had really been discharged by a manual
+    run of the example, behind a plausible-looking suite name. The fix was to
+    say so: enforcement <em>manual review (documented manual run)</em>, artifact
+    <code>MemoryRetrieverExample.scala</code>, which exists. The ledger now
+    reports a manual discharge at every checkpoint instead of hiding it.
+    What remains genuinely open: nothing checks that the resolved suite
+    <em>asserts that particular row</em> — only that it exists.
   </p>
 </details>
 

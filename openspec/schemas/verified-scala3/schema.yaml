@@ -1,4 +1,18 @@
 # Changelog:
+#   9 — closing the obligation gaps the v8 audit left open:
+#       F8 — a TYPED source ("Property: X", "Scenario: Y") must name a heading
+#            that EXISTS in the spec; a typo previously resolved to nothing.
+#       F9 — every code-shaped Artifact token must resolve to a tracked file.
+#            OPT-IN (--artifacts) because a spec is written BEFORE its tests
+#            exist: the artifact column is a commitment at planning time and a
+#            fact only after implementation, so it is checked at apply Step 12.
+#       W5 — a requirement claiming a state is IMPOSSIBLE but enforced only by
+#            tests is flagged: the ladder's top tiers exist for that claim
+#            shape. Silenced by "tier-justified: <why not>" in Enforcement.
+#       W4 — now fires on ANY ordinal reference, not only when a spec uses
+#            ordinals exclusively; a mixed table is no safer.
+#       Found on adoption: an obligation naming a test suite that was never
+#       written (discharged by a manual run behind an aspirational name).
 #   8 — traceable proof obligations: the Proof-Obligations `Source` column now
 #       has a MANDATED format (every cell must NAME what the obligation comes
 #       from — "Requirement: <exact title>" preferred, "Requirement N" allowed,
@@ -53,7 +67,7 @@
 #   2.1 — first concept-registry support.
 #   2 — ring pipeline + typed contract + test oracle.
 name: verified-scala3
-version: 8
+version: 9
 description: >
   Depth-first verified Scala 3 workflow for functional, type-safe codebases.
   Correctness-first: every spec flows through
@@ -435,6 +449,20 @@ artifacts:
            Criterion: <name> | MUST-CONFIRM: <what>  followed by ":" or an
                                                      ordinal)
          A bare "Requirement" with no identifier names NOTHING and FAILS F6.
+         EXISTENCE (F8): a typed reference must name a heading that actually
+         exists in this spec — "Property: recall-orderng" is a dangling
+         reference, not a source.
+         ARTIFACT (F9): the Artifact cell names where the mechanism lives. A
+         code-shaped name (a test suite, a file path) is a COMMITMENT while
+         the spec is being written and a VERIFIED FACT after implementation —
+         apply Step 12 runs spec-lint.sh --artifacts, and a suite that was
+         never written fails there. If an obligation is really discharged by
+         a manual run, say so in Enforcement and name something that exists.
+         STRENGTH (W5): a requirement whose normative statement claims a state
+         is impossible ("cannot be constructed", "unrepresentable") should be
+         enforced at ladder tier 1–2 (type / smart constructor / compile-
+         negative). If a type genuinely cannot express it, write
+         "tier-justified: <why not>" in the Enforcement cell.
          COVERAGE: every `### Requirement:` must be named by at least one
          obligation (F7) — the table's completeness is checked as reachability,
          not as a row count. An obligation may legitimately source from a
@@ -514,10 +542,15 @@ artifacts:
          vague-word candidates. Its FAILs are lint FAILs; paste its summary
          into the report.
          F6 = an obligation Source that names nothing resolvable.
+         F8 = a typed source naming a Property/Scenario heading that does not
+              exist in the spec (a dangling reference).
          F7 = a requirement no obligation names (unenforced) — this is
               check 12 as reachability; it is STRICTER than counting rows and
               supersedes the old row-count heuristic (W2).
-         W4 = ordinal-only requirement references (positional; prefer titles).
+         W4 = ordinal requirement references (positional; prefer titles).
+         W5 = an impossibility claim enforced only by tests (see specs rule 8).
+         F9 is NOT run here — it is a post-implementation check; see apply
+         Step 12.
       The judgment checks (observability, testability, type-feasibility,
       altitude) remain below — the script does not replace them.
 
@@ -1242,6 +1275,16 @@ apply:
     1. update the spec and get human approval; or
     2. remove the extra concept.
     This prevents scope creep.
+
+    ARTIFACT CHECK — run
+      openspec/schemas/verified-scala3/scanner/spec-lint.sh --artifacts <change-dir>
+    Now that implementation exists, every code-shaped Artifact token in the
+    Proof-Obligations table must resolve to a tracked file (F9). This closes
+    the last link of the obligation chain: requirement -> obligation ->
+    ARTIFACT -> a file that exists. A suite named in the table but never
+    written means the obligation was really discharged some other way — fix
+    the row to say so and name something real, rather than leaving a
+    plausible fiction in the ledger.
 
     BUILD-DEPENDENCY DELTA — the concept delta pins the TYPE surface; this
     pins the DEPENDENCY surface. Run

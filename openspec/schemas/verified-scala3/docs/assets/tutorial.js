@@ -188,10 +188,11 @@
     var out = [];
     var reqs = [];          // {title, line, hasNorm, seenGiven, negative, scenarios}
     var props = [];         // {name, line, hasGen}
+    var scenarios = [];     // headings, for F8 existence checks
     var temps = [];         // {name, line, trig, resp}
     var cur = null, curKind = null;
     var inPo = false, hasPo = false, poRows = 0;
-    var covered = {}, ordinalRefs = 0, titleRefs = 0;
+    var covered = {}, ordinalRefs = 0, titleRefs = 0, strength = {};
 
     function push() { cur = null; curKind = null; }
 
@@ -214,6 +215,9 @@
         cur = { name: line.replace(/^### Property:\s*/, "").trim(), line: n, hasGen: false };
         curKind = "prop"; props.push(cur); inPo = false; return;
       }
+      if (/^#### Scenario:/.test(line)) {
+        scenarios.push(line.replace(/^#### Scenario:\s*/, "").trim());
+      }
       if (/^### Temporal:/.test(line)) {
         push();
         cur = { name: line.replace(/^### Temporal:\s*/, "").trim(), line: n, trig: false, resp: false };
@@ -229,6 +233,7 @@
       if (curKind === "req" && cur) {
         if (!cur.seenGiven && /\*\*Given\*\*/.test(line)) cur.seenGiven = true;
         if (!cur.seenGiven && /(^|[^A-Za-z])(SHALL|MUST)([^A-Za-z]|$)/.test(line)) cur.hasNorm = true;
+        if (!cur.seenGiven) cur.norm = (cur.norm || "") + " " + line.toLowerCase();
         var low = line.toLowerCase();
         if (/(^|[^a-z0-9])only([^a-z0-9]|$)/.test(low) ||
             /(^|[^a-z0-9])never([^a-z0-9]|$)/.test(low) ||
@@ -256,7 +261,7 @@
       if (cells.length < 4) return;
       var src = (cells[2] || "").trim();
       if (!src || /^<!--/.test(src)) return;
-      var hit = false;
+      var hit = false, hitReqs = [];
 
       // (1) ordinals: "Requirement 3", "R3"
       var toks = src.split(/[^A-Za-z0-9]+/);
@@ -264,7 +269,7 @@
         var idx = 0;
         if (/^R\d+$/.test(toks[i])) idx = parseInt(toks[i].slice(1), 10);
         else if (toks[i] === "Requirement" && /^\d+$/.test(toks[i + 1] || "")) idx = parseInt(toks[i + 1], 10);
-        if (idx >= 1 && idx <= reqs.length) { covered[idx] = true; hit = true; ordinalRefs++; }
+        if (idx >= 1 && idx <= reqs.length) { covered[idx] = true; hit = true; ordinalRefs++; hitReqs.push(idx); }
         else if (idx > reqs.length) {
           out.push({ lvl: "FAIL", code: "F6", line: lineno,
             msg: "Source cites Requirement " + idx + " but the spec has " + reqs.length });
@@ -275,8 +280,26 @@
       var low = src.toLowerCase();
       reqs.forEach(function (r, j) {
         var key = r.title.toLowerCase().slice(0, 40);
-        if (key && low.indexOf(key) >= 0) { covered[j + 1] = true; hit = true; titleRefs++; }
+        if (key && low.indexOf(key) >= 0) { covered[j + 1] = true; hit = true; titleRefs++; hitReqs.push(j + 1); }
       });
+      // (F8) every typed reference must name something that exists
+      src.split(/ \+ /).forEach(function (part) {
+        var m = part.trim().match(/^(Property|Properties|Scenario|Scenarios)\s*:\s*(.+)$/);
+        if (!m) return;
+        var kind = m[1], nm = m[2].trim().toLowerCase();
+        if (nm.length < 4) return;
+        var pool = /^Propert/.test(kind) ? props.map(function (p) { return p.name.toLowerCase(); })
+                                         : scenarios.map(function (x) { return x.toLowerCase(); });
+        var found = pool.some(function (k) { return k.indexOf(nm) >= 0 || nm.indexOf(k) >= 0; });
+        if (!found)
+          out.push({ lvl: "FAIL", code: "F8", line: lineno,
+            msg: 'Source cites ' + kind + ' "' + nm.slice(0, 52) + '" but no such heading exists in this spec' });
+      });
+      // (W5 data) does this row defend its requirement(s) at ladder tier 1/2?
+      var enf = (cells[3] || "");
+      var strong = /type system|type-level|opaque|smart constructor|unrepresentable|compile-negative|assertdoesnotcompile|compileerrors|exhaustiv|sealed/i.test(enf) ? 1 : 0;
+      if (/tier-justified/i.test(enf)) strong = 2;
+      hitReqs.forEach(function (i) { if (strong > (strength[i] || 0)) strength[i] = strong; });
       if (hit) return;
       // (3) typed non-requirement source
       if (/(^|[^A-Za-z])(Property|Properties|Scenario|Scenarios|Invariant|Compile-Negative|Temporal|Criterion|Type-Constraint|MUST-CONFIRM|Design|Non-goal)\s*(:|\d)/.test(src) ||
@@ -317,9 +340,17 @@
           out.push({ lvl: "FAIL", code: "F7", line: r.line,
             msg: 'requirement "' + r.title + '" is named by NO proof obligation (unenforced)' });
       });
-    if (ordinalRefs > 0 && titleRefs === 0)
+    if (ordinalRefs > 0)
       out.push({ lvl: "WARN", code: "W4", line: 0,
-        msg: ordinalRefs + " obligation Source(s) reference requirements BY ORDINAL only — reordering silently re-points them; prefer \"Requirement: <exact title>\"" });
+        msg: ordinalRefs + " obligation Source(s) reference requirements BY ORDINAL — reordering silently re-points them; prefer \"Requirement: <exact title>\"" });
+    if (hasPo)
+      reqs.forEach(function (r, j) {
+        var norm = (r.norm || "").replace(/\s+/g, " ");
+        var impossible = /cannot be (constructed|created|built|expressed|represented)|unrepresentable|(must|shall) not be constructible|impossible to (express|construct|represent)|never be constructed/.test(norm);
+        if (impossible && covered[j + 1] && !strength[j + 1])
+          out.push({ lvl: "WARN", code: "W5", line: r.line,
+            msg: 'requirement "' + r.title + '" claims a state is impossible but is enforced only by tests — a type or smart constructor (ladder tier 1-2) can make it unrepresentable; otherwise write "tier-justified: <why not>" in Enforcement' });
+      });
 
     out.sort(function (a, b) { return (a.line || 0) - (b.line || 0); });
     return { findings: out, reqs: reqs.length, props: props.length, poRows: poRows };

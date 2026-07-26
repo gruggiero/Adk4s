@@ -111,10 +111,20 @@ registry-check: OK (611 implementation-map tokens verified,
     <tr><td><span class="chip">F5</span></td><td>temporal property missing trigger or response event</td></tr>
     <tr><td><span class="chip">F6</span></td><td>obligation Source names nothing resolvable</td></tr>
     <tr><td><span class="chip">F7</span></td><td>a requirement no obligation names — unenforced</td></tr>
-    <tr><td><span class="chip">W1–W4</span></td><td>vague words · row-count shortfall · unconfirmed adversarial scenario · positional references</td></tr>
+    <tr><td><span class="chip">F8</span></td><td>a typed source (<code>Property:</code>/<code>Scenario:</code>) naming a heading that does not exist</td></tr>
+    <tr><td><span class="chip">F9</span></td><td>a code-shaped artifact that resolves to no tracked file — <em>opt-in</em> <code>--artifacts</code>, run post-implementation at Step 12</td></tr>
+    <tr><td><span class="chip">W1–W5</span></td><td>vague words · row-count shortfall · unconfirmed adversarial scenario · ordinal references · impossibility claim enforced only by tests</td></tr>
   </tbody>
 </table>
 </div>
+
+<p>
+  Note why F9 is opt-in rather than always on: a spec is written
+  <em>before</em> its tests exist, so at planning time the artifact column is
+  a commitment, and only after implementation is it a fact. Making it a
+  default FAIL would break every new spec; making it unavailable would leave
+  the last link of the obligation chain unchecked forever.
+</p>
 
 <p>
   The judgement checks — observability, testability, altitude, type-feasibility

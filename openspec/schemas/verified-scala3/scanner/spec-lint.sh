@@ -17,6 +17,14 @@
 #   F4  a spec with requirements has a "## Proof Obligations" section
 #   F5  every "### Temporal:" block has "**Trigger event**" and
 #       "**Response event**" lines
+#   F6  every Proof-Obligations Source names a resolvable reference
+#   F7  every requirement is named by >= 1 obligation (reachability)
+#   F8  every TYPED source (Property:/Scenario:) names a heading that
+#       EXISTS in the spec — a typo used to resolve to nothing
+#   F9  (--artifacts only) every code-shaped Artifact token resolves to a
+#       tracked file. OFF by default: specs are written BEFORE their tests
+#       exist, so the artifact column is a commitment at planning time and a
+#       fact only after implementation. Run with --artifacts at apply Step 12.
 #
 # WARN (reported, exit unaffected):
 #   W1  vague words (valid/fast/reasonable/correct/appropriate) inside
@@ -25,12 +33,20 @@
 #   W3  requirements matched by F2 — listed so the human can confirm the
 #       scenario input is genuinely forbidden, not just present
 #
-# Usage: spec-lint.sh [change-dir | repo-root]   (default: current directory)
+# Usage: spec-lint.sh [--artifacts] [change-dir | repo-root]
 #   change-dir: lint that change's specs/**/spec.md
 #   repo-root:  lint every active change (openspec/changes/*, archive excluded)
+#   --artifacts: also run F9 (post-implementation; see above)
 set -euo pipefail
 
-TARGET="${1:-.}"
+ARTIFACTS=0
+TARGET="."
+for arg in "$@"; do
+  case "$arg" in
+    --artifacts) ARTIFACTS=1 ;;
+    *)           TARGET="$arg" ;;
+  esac
+done
 
 specs=""
 if [ -d "$TARGET/specs" ]; then
@@ -93,14 +109,23 @@ while IFS= read -r spec; do
       tlow = tolower(req_name)
       if (tlow ~ /(^|[^[:alnum:]])only([^[:alnum:]]|$)/ ||
           tlow ~ /(^|[^[:alnum:]])never([^[:alnum:]]|$)/ ||
+          tlow ~ /(^|[^[:alnum:]])cannot([^[:alnum:]]|$)/ ||
           tlow ~ /must not/) req_negative = 1
+      req_negative_at[n_reqs] = req_negative
       next
     }
     /^### Property:/ {
       flush_req(); flush_prop(); flush_temp()
       prop_name = substr($0, 15); gsub(/^[ \t]+|[ \t]+$/, "", prop_name)
+      n_props++; prop_titles[n_props] = prop_name
       prop_line = NR; prop_has_gen = 0; in_po = 0
       next
+    }
+    /^#### Scenario:/ {
+      n_scen++
+      s = substr($0, 16); gsub(/^[ \t]+|[ \t]+$/, "", s)
+      scen_titles[n_scen] = s
+      # falls through: the body block below also counts it for the owning requirement
     }
     /^### Temporal:/ {
       flush_req(); flush_prop(); flush_temp()
@@ -121,7 +146,13 @@ while IFS= read -r spec; do
         low = tolower($0)
         if (low ~ /(^|[^[:alnum:]])only([^[:alnum:]]|$)/ ||
             low ~ /(^|[^[:alnum:]])never([^[:alnum:]]|$)/ ||
-            low ~ /must not/) req_negative = 1
+            low ~ /must not/) { req_negative = 1; req_negative_at[n_reqs] = 1 }
+        # W5 targets IMPOSSIBILITY claims specifically — states a type could
+        # make unrepresentable — not every requirement whose prose contains
+        # "only". A loose net here would produce warnings nobody reads.
+        # The normative statement is ACCUMULATED across lines: the phrase
+        # routinely wraps ("… an opaque type that cannot be\nconstructed …").
+        if (!req_seen_given) req_norm_text[n_reqs] = req_norm_text[n_reqs] " " low
         if ($0 ~ /^#### Scenario:/) req_scenarios++
         if (low ~ /(^|[^[:alnum:]])(valid|fast|reasonable|correct|appropriate)([^[:alnum:]]|$)/)
           printf "WARN W1 line %d: vague word in requirement \"%s\": %s\n", NR, req_name, $0
@@ -143,12 +174,53 @@ while IFS= read -r spec; do
     #   Property:|Scenario:|Invariant:|Compile-Negative:|Temporal:|
     #   Criterion:|Type-Constraint:|MUST-CONFIRM  (non-requirement sources)
     # "Requirement" with no identifier names nothing -> FAIL F6.
-    function check_source(row, lineno,   nf, cells, src, i, toks, nt, idx, hit, low, j, key) {
+    # F8 (v9): a TYPED source must name something that EXISTS in this spec.
+    # "Property: recall-orderng" (typo) resolved to nothing before v9.
+    function named_exists(kind, name,   i, low, k) {
+      low = tolower(name); gsub(/^[ \t]+|[ \t]+$/, "", low)
+      if (length(low) < 4) return 1              # too short to match reliably
+      if (kind ~ /^Propert/) {
+        for (i = 1; i <= n_props; i++) {
+          k = tolower(prop_titles[i])
+          if (index(k, low) > 0 || index(low, k) > 0) return 1
+        }
+        return 0
+      }
+      if (kind ~ /^Scenario/) {
+        for (i = 1; i <= n_scen; i++) {
+          k = tolower(scen_titles[i])
+          if (index(k, low) > 0 || index(low, k) > 0) return 1
+        }
+        return 0
+      }
+      return 1                                   # other kinds have no in-spec index
+    }
+
+    # does the (line-joined) normative statement claim a state is impossible?
+    function claims_impossible(t,   s) {
+      s = t; gsub(/[ \t]+/, " ", s)
+      return (s ~ /cannot be (constructed|created|built|expressed|represented)/ ||
+              s ~ /unrepresentable/ ||
+              s ~ /(must|shall) not be constructible/ ||
+              s ~ /impossible to (express|construct|represent)/ ||
+              s ~ /never be constructed/)
+    }
+
+    # tier 1/2 of the mechanism ladder: the claim is defended by the type
+    # system or a smart constructor rather than only by tests (W5, v9)
+    function is_strong(enf,   low) {
+      low = tolower(enf)
+      return (low ~ /type system|type-level|opaque|smart constructor|unrepresentable|compile-negative|assertdoesnotcompile|compileerrors|exhaustiv|sealed/)
+    }
+
+    function check_source(row, lineno,   nf, cells, src, enf, i, toks, nt, idx, hit,
+                          low, j, key, np, parts, part, kind, nm, p, hitreqs, nhit, strong) {
       nf = split(row, cells, "|")
       if (nf < 4) return                      # not a 4-column obligations row
       src = cells[3]; gsub(/^[ \t]+|[ \t]+$/, "", src)
+      enf = (nf >= 5) ? cells[4] : ""
       if (src == "" || src ~ /^<!--/) return
-      hit = 0
+      hit = 0; nhit = 0
       # ordinal references: "Requirement 3", "R3"
       nt = split(src, toks, /[^A-Za-z0-9]+/)
       for (i = 1; i <= nt; i++) {
@@ -157,6 +229,7 @@ while IFS= read -r spec; do
         else if (toks[i] == "Requirement" && toks[i+1] ~ /^[0-9]+$/) idx = toks[i+1] + 0
         if (idx >= 1 && idx <= n_reqs) {
           covered[idx] = 1; hit = 1; ordinal_refs++
+          hitreqs[++nhit] = idx
         } else if (idx > n_reqs && idx > 0) {
           printf "FAIL F6 line %d: Source cites Requirement %d but the spec has %d\n", lineno, idx, n_reqs
           hit = 1
@@ -166,8 +239,29 @@ while IFS= read -r spec; do
       low = tolower(src)
       for (j = 1; j <= n_reqs; j++) {
         key = tolower(substr(req_titles[j], 1, 40))
-        if (key != "" && index(low, key) > 0) { covered[j] = 1; hit = 1; title_refs++ }
+        if (key != "" && index(low, key) > 0) {
+          covered[j] = 1; hit = 1; title_refs++
+          hitreqs[++nhit] = j
+        }
       }
+      # ── F8: every typed reference must name something that exists ──────
+      np = split(src, parts, / \+ /)
+      for (p = 1; p <= np; p++) {
+        part = parts[p]; gsub(/^[ \t]+|[ \t]+$/, "", part)
+        if (match(part, /^(Property|Properties|Scenario|Scenarios)[ ]*:[ ]*/)) {
+          kind = substr(part, 1, RLENGTH); gsub(/[ :]+$/, "", kind)
+          nm = substr(part, RLENGTH + 1)
+          if (!named_exists(kind, nm)) {
+            printf "FAIL F8 line %d: Source cites %s \"%s\" but no such heading exists in this spec\n",
+                   lineno, kind, substr(nm, 1, 52)
+          }
+        }
+      }
+      # ── W5 data: does this row defend its requirement(s) at tier 1/2? ──
+      strong = is_strong(enf)
+      if (enf ~ /tier-justified/) strong = 2
+      for (i = 1; i <= nhit; i++)
+        if (strong > req_strength[hitreqs[i]]) req_strength[hitreqs[i]] = strong
       if (hit) return
       # non-requirement source kinds are legitimate — but must be TYPED,
       # i.e. the kind must be followed by ": <name>" or " <ordinal>"
@@ -187,10 +281,61 @@ while IFS= read -r spec; do
         for (i = 1; i <= n_reqs; i++)
           if (!covered[i])
             printf "FAIL F7 line %d: requirement \"%s\" is named by NO proof obligation (unenforced)\n", req_lines[i], req_titles[i]
-      if (ordinal_refs > 0 && title_refs == 0)
-        printf "WARN W4: %d obligation Source(s) reference requirements BY ORDINAL only — reordering requirements silently re-points them; prefer \"Requirement: <exact title>\"\n", ordinal_refs
+      # W4 (tightened in v9): ANY ordinal reference is positional and fragile,
+      # even in a spec that mostly uses titles — a mixed table is not safer.
+      if (ordinal_refs > 0)
+        printf "WARN W4: %d obligation Source(s) reference requirements BY ORDINAL — reordering requirements silently re-points them; prefer \"Requirement: <exact title>\"\n", ordinal_refs
+      # W5 (v9): a requirement claiming a state is IMPOSSIBLE, but defended
+      # only by tests — the top ladder tiers exist for exactly this claim
+      # shape. Silenced by "tier-justified: <why>" in the Enforcement cell.
+      if (has_po)
+        for (i = 1; i <= n_reqs; i++)
+          if (claims_impossible(req_norm_text[i]) && covered[i] && req_strength[i] == 0)
+            printf "WARN W5 line %d: requirement \"%s\" claims a state is impossible but is enforced only by tests — a type or smart constructor (ladder tier 1–2) can make it unrepresentable; otherwise write \"tier-justified: <why not>\" in the Enforcement cell\n", req_lines[i], req_titles[i]
     }
   ' "$spec")"
+
+  # ── F9: artifact existence (opt-in, post-implementation) ───────────────
+  # A code-shaped artifact token — CamelCase ending Spec/Test/Suite/
+  # Properties/TypeContract, or a path with an extension — must resolve to a
+  # tracked file. Prose artifacts (README, "adversarial review", build
+  # commands, spec sections) are legitimate and skipped.
+  if [ "$ARTIFACTS" -eq 1 ]; then
+    # awk emits "line<TAB>token" per backtick-quoted artifact token
+    art_tokens="$(awk '
+      BEGIN { q = sprintf("%c", 96) }          # 96 = backtick
+      /^## Proof Obligations/ {m=1; next}
+      /^## /                  {m=0}
+      m && /^\|/ && $0 !~ /^\|[ \t:]*-/ && $0 !~ /^\| *Obligation/ {
+        n = split($0, c, "|")
+        if (n < 5) next
+        cell = c[5]
+        k = split(cell, parts, q)
+        for (i = 2; i <= k; i += 2)            # odd-indexed pieces are inside backticks
+          if (parts[i] != "") printf "%d\t%s\n", NR, parts[i]
+      }' "$spec")"
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+    while IFS="$(printf '\t')" read -r aline tok; do
+      [ -z "${tok:-}" ] && continue
+      # a token containing whitespace is prose or a build command
+      # (`sbt module/compile`), never a file path — skip it
+      case "$tok" in *[[:space:]]*) continue ;; esac
+      # strip ONE trailing extension so `FooSpec.scala` is recognised as
+      # code-shaped (and paths keep their directories intact)
+      base="${tok%.*}"
+      case "$base" in
+        *[A-Z]*Spec|*[A-Z]*Test|*[A-Z]*Suite|*[A-Z]*Properties|*[A-Z]*TypeContract|*/*)
+          if [ -z "$(git -C "$repo_root" ls-files -- "*${base}*" 2>/dev/null | head -1)" ]; then
+            findings="$findings
+FAIL F9 line $aline: artifact '$tok' does not resolve to any tracked file"
+          fi
+          ;;
+      esac
+    done <<EOF9
+$art_tokens
+EOF9
+    findings="$(printf '%s\n' "$findings" | grep -v '^$' || true)"
+  fi
 
   if [ -n "$findings" ]; then
     echo "spec-lint: $spec"

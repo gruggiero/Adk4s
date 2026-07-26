@@ -263,6 +263,20 @@ always {
      nothing and FAILS. EVERY requirement must be named by at least one
      obligation — completeness is checked as reachability, not row count.
 
+     A typed reference must name a heading that EXISTS here (F8): a
+     mistyped "Property: recall-orderng" binds to nothing.
+
+     ARTIFACT: name where the mechanism lives. A code-shaped name (test
+     suite, file path) is a commitment now and a checked fact after
+     implementation — apply Step 12 runs spec-lint --artifacts (F9), and a
+     suite that was never written fails. If the real discharge is a manual
+     run, say so in Enforcement and name something that exists.
+
+     STRENGTH: if the normative statement claims a state is IMPOSSIBLE
+     ("cannot be constructed", "unrepresentable"), enforce it at ladder
+     tier 1-2 (type / smart constructor / compile-negative). If no type can
+     express it, write "tier-justified: <why not>" in Enforcement (W5).
+
      Mechanisms (strongest first):
      - type system (unrepresentable — cite the type + compile-negative test)
      - smart constructor (cite constructor + rejection property)
