@@ -27,6 +27,9 @@
 #       fact only after implementation. Run with --artifacts at apply Step 12.
 #
 # WARN (reported, exit unaffected):
+#   W6  a spec declaring Ring 6 Formal Contracts with no obligation naming a
+#       BRIDGE/mirror artifact — a proof about a model nobody runs says
+#       nothing about the shipped system (see templates/verified-mirror.md)
 #   W1  vague words (valid/fast/reasonable/correct/appropriate) inside
 #       requirement blocks — confirm a concrete definition sits next to them
 #   W2  Proof Obligations data rows fewer than requirement count
@@ -137,6 +140,7 @@ while IFS= read -r spec; do
       flush_req(); flush_prop(); flush_temp()
       in_po = ($0 ~ /^## Proof Obligations/)
       if (in_po) has_po = 1
+      in_fc = ($0 ~ /^## Formal Contracts/)
       next
     }
     {
@@ -162,8 +166,13 @@ while IFS= read -r spec; do
         if ($0 ~ /\*\*Trigger event\*\*/)  temp_has_trig = 1
         if ($0 ~ /\*\*Response event\*\*/) temp_has_resp = 1
       }
+      if (in_fc && $0 !~ /^[ \t]*$/ && $0 !~ /^<!--/ && $0 !~ /^[ \t]*-->/) fc_content++
       if (in_po && $0 ~ /^\|/ && $0 !~ /^\|[ \t:]*-/ && $0 !~ /^\| *Obligation/) {
         po_rows++
+        # only a BRIDGE/parity artifact counts: citing the model itself
+        # ("OracleKernel") is the formal-contract obligation, not the thing
+        # that binds the shipped code to it
+        if (tolower($0) ~ /bridge|parity/) bridge_rows++
         check_source($0, NR)
       }
     }
@@ -283,6 +292,9 @@ while IFS= read -r spec; do
             printf "FAIL F7 line %d: requirement \"%s\" is named by NO proof obligation (unenforced)\n", req_lines[i], req_titles[i]
       # W4 (tightened in v9): ANY ordinal reference is positional and fragile,
       # even in a spec that mostly uses titles — a mixed table is not safer.
+      # W6 (v10): Ring 6 declared, but nothing binds the model to the code.
+      if (fc_content > 2 && has_po && bridge_rows == 0)
+        printf "WARN W6: spec declares Formal Contracts (Ring 6) but no obligation names a bridge/mirror artifact — a proof about a model nobody runs says nothing about the shipped code (templates/verified-mirror.md)\n"
       if (ordinal_refs > 0)
         printf "WARN W4: %d obligation Source(s) reference requirements BY ORDINAL — reordering requirements silently re-points them; prefer \"Requirement: <exact title>\"\n", ordinal_refs
       # W5 (v9): a requirement claiming a state is IMPOSSIBLE, but defended

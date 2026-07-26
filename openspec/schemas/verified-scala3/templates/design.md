@@ -151,6 +151,22 @@
 **Fixture obligation**: `old fixture bytes/json → decode → expected domain value`
 and `new value → encode → decode → same value`.
 
+## Pure Code (Ring 6 candidates)
+
+<!-- Decide Ring 6 by ALGORITHMIC purity, not by whether the shipped code is
+     itself verifiable. Ask: is there a decision/fold/law at the centre, and
+     can its inputs be reduced to observable effect (Boolean, identity,
+     BigInt index) discarding types Stainless cannot model? Two yeses ⇒ write
+     a mirror (see templates/verified-mirror.md).
+     Every candidate gets a row. A "No" must say why — silence is not a
+     verdict. Unverifiable production types and a Scala-version mismatch are
+     NOT reasons to skip: they are why the mirror module exists. -->
+
+| Module / Function | Purpose | Ring 6? |
+|-------------------|---------|---------|
+| <!-- e.g. core.Soup.step --> | <!-- the state-fold kernel --> | <!-- Yes — SoupKernel mirror --> |
+| <!-- e.g. stream (fs2 pipe) --> | <!-- effect wiring --> | <!-- No — effectful; TP1–TP5 enforced by Ring 3 --> |
+
 ## Verification Map
 
 <!-- For each module, state which rings apply. This feeds directly into

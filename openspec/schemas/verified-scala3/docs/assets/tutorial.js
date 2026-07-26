@@ -193,6 +193,7 @@
     var cur = null, curKind = null;
     var inPo = false, hasPo = false, poRows = 0;
     var covered = {}, ordinalRefs = 0, titleRefs = 0, strength = {};
+    var inFc = false, fcContent = 0, bridgeRows = 0;
 
     function push() { cur = null; curKind = null; }
 
@@ -227,6 +228,7 @@
         push();
         inPo = /^## Proof Obligations/.test(line);
         if (inPo) hasPo = true;
+        inFc = /^## Formal Contracts/.test(line);
         return;
       }
 
@@ -249,8 +251,10 @@
         if (/\*\*Response event\*\*/.test(line)) cur.resp = true;
       }
 
+      if (inFc && line.trim() && !/^<!--/.test(line) && !/^\s*-->/.test(line)) fcContent++;
       if (inPo && /^\|/.test(line) && !/^\|[\s:]*-/.test(line) && !/^\|\s*Obligation/.test(line)) {
         poRows++;
+        if (/bridge|parity/i.test(line)) bridgeRows++;
         checkSource(line, n);
       }
     });
@@ -340,6 +344,9 @@
           out.push({ lvl: "FAIL", code: "F7", line: r.line,
             msg: 'requirement "' + r.title + '" is named by NO proof obligation (unenforced)' });
       });
+    if (fcContent > 2 && hasPo && bridgeRows === 0)
+      out.push({ lvl: "WARN", code: "W6", line: 0,
+        msg: "spec declares Formal Contracts (Ring 6) but no obligation names a bridge/mirror artifact — a proof about a model nobody runs says nothing about the shipped code" });
     if (ordinalRefs > 0)
       out.push({ lvl: "WARN", code: "W4", line: 0,
         msg: ordinalRefs + " obligation Source(s) reference requirements BY ORDINAL — reordering silently re-points them; prefer \"Requirement: <exact title>\"" });

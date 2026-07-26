@@ -55,7 +55,7 @@
 | Property testing | Hedgehog 0.13.1 (hedgehog-munit % Test) | Properties extend `hedgehog.munit.HedgehogSuite` with `property("…") { for x <- gen.forAll yield <Result> }`. Integrated shrinking, NO Arbitrary typeclass, explicit `Range` sizing. NOT ScalaCheck/munit-scalacheck. |
 | Actor test kits | N/A | No actor framework detected |
 | Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. |
-| Formal verification | Stainless 0.9.9.3 (bundled jar + local Maven repo) | Ring 6 available via `verified` module (Scala 3.7.2, `stainlessEnabled := false` by default). Run with `sbt -J-Xmx6g ring6`. |
+| Formal verification (record: frontend Scala version · mirror module + alias · mirror as Test-scope dep of production) | Stainless 0.9.9.3 (bundled jar + local Maven repo) | Ring 6 available via `verified` module (Scala 3.7.2, `stainlessEnabled := false` by default). Run with `sbt -J-Xmx6g ring6`. |
 | Model checking | none | No TLA+/Apalache. Ring 7 skip. |
 | Test count | ~551 tests total (11 + 26 + 153 + 361) | Across structured-llm, structured-llm-test-models, adk4s-orchestration, adk4s-core |
 

@@ -196,9 +196,23 @@ forAll { (param: Type) =>
 
 ## Formal Contracts (Ring 6)
 
-<!-- Stainless require/ensuring contracts for pure functions.
+<!-- Stainless require/ensuring contracts for the algorithm under proof.
      Only include if the proposal's verification strategy checks Ring 6.
-     These annotate the implementation during the apply phase.
+
+     TWO ROUTES (apply Step 10):
+     (a) DIRECT — the shipped code is PureScala: these contracts annotate it.
+     (b) VERIFIED MIRROR — the usual case when the shipped code uses types
+         Stainless cannot model, or the build's Scala version differs from
+         the Stainless frontend. State the contracts over the MODEL's
+         abstraction (inputs reduced to observable effect), name the mirror,
+         and commit to a BRIDGE PROPERTY TEST that runs shipped code and
+         model on the same generated inputs. The bridge test is an artifact
+         in the Proof Obligations table — without it the ring proves a
+         property of a program you do not ship.
+         Pattern: templates/verified-mirror.md.
+
+     Also state which laws are DELEGATED back to Ring 3 (e.g. a forall/exists
+     VC that diverges in the solver) and name the property that covers each.
 
      Delete this section if Ring 6 does not apply. -->
 

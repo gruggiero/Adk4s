@@ -1,4 +1,16 @@
 # Changelog:
+#  10 — Ring 6 by ALGORITHMIC purity (the verified-mirror pattern). Ring 6 was
+#       being skipped by reflex with two rationales that are statements about
+#       the shipped code's TYPES, not about the algorithm: "our code uses
+#       Iron/cats/opaque/Mirror/inline/IO, not a PureScala fit" and "Stainless
+#       pins an older Scala version". Neither is grounds to skip. The pattern
+#       (proven in accordant4s, two instances) is: a LEAF mirror module pinned
+#       to the Stainless frontend version depending on nothing project-local;
+#       a PureScala model that reduces the algorithm to its OBSERVABLE EFFECT;
+#       a mandatory BRIDGE PROPERTY TEST running shipped code and model on the
+#       same generated inputs; and a scope note naming every law delegated
+#       back to Ring 3. See templates/verified-mirror.md. New: design triage
+#       table, capability-profile detection, apply Step 10 procedure, W6.
 #   9 — closing the obligation gaps the v8 audit left open:
 #       F8 — a TYPED source ("Property: X", "Scenario: Y") must name a heading
 #            that EXISTS in the spec; a typo previously resolved to nothing.
@@ -67,7 +79,7 @@
 #   2.1 — first concept-registry support.
 #   2 — ring pipeline + typed contract + test oracle.
 name: verified-scala3
-version: 9
+version: 10
 description: >
   Depth-first verified Scala 3 workflow for functional, type-safe codebases.
   Correctness-first: every spec flows through
@@ -136,7 +148,14 @@ artifacts:
          Smithy), or message payloads.
          Ring 5 (mutation) applies to changed production logic where the mutation
          tool is available (see openspec/capability-profile.md).
-         Ring 6 (formal) applies to pure computation modules.
+         Ring 6 (formal) applies whenever the change contains an ALGORITHM
+         with a pure kernel expressible in PureScala AT SOME ABSTRACTION —
+         not only when the shipped code is itself verifiable. Unverifiable
+         production types (Iron, cats, opaque types, Mirror/inline, ujson,
+         IO/fs2) and a Scala-version mismatch with the Stainless frontend are
+         NOT grounds to skip: they are precisely why the VERIFIED-MIRROR
+         pattern exists (templates/verified-mirror.md). Skip only when there
+         is no decision/fold/law at the centre of the change — and say so.
          Ring 7 (model checking) optionally applies to distributed/event-driven
          invariants (event ordering, idempotency, replay, response guarantees).
          Ring 8 (adversarial spec-compliance review) is MANDATORY for every
@@ -222,7 +241,18 @@ artifacts:
          - Mutation: sbt-stryker4s plugin present? `stryker4s.conf` present?
            If the conf has a fixed `mutate` list, record it — Ring 5 must
            dynamically retarget it per spec (see apply phase).
-         - Formal: Stainless available on PATH or via plugin?
+         - Formal: Stainless available on PATH or via plugin? Record THREE
+           things, because Ring 6 applicability depends on them:
+             (a) the Scala version the Stainless frontend supports (the mirror
+                 module is pinned to it; the rest of the build need not be);
+             (b) whether a MIRROR MODULE exists (leaf, StainlessPlugin,
+                 `stainlessEnabled := false` by default) and the command alias
+                 that turns verification on (e.g. `ring6`);
+             (c) whether the production module takes the mirror as a
+                 TEST-scope dependency — the precondition for a bridge test.
+           A version mismatch between the build and the Stainless frontend is
+           NOT "Ring 6 unavailable": it is the reason the mirror is a
+           separately-pinned leaf module.
          - Test kits: ActorTestKit / BehaviorTestKit / PersistenceTestKit on the
            test classpath?
          - Deterministic concurrency testing: is the effect system's test kit
@@ -645,6 +675,16 @@ artifacts:
       2. EFFECT BOUNDARIES: Which code is pure (candidates for Ring 6 formal
          verification) and which is effectful. Actor/state-transition logic should
          delegate to pure functions wherever possible.
+         RING 6 TRIAGE TABLE — when the change contains any algorithm, include
+         a "Pure Code (Ring 6 candidates)" table listing every candidate with
+         a verdict and justification:
+           | Module / Function | Purpose | Ring 6? |
+         Decide by ALGORITHMIC purity: is there a decision, fold or law at the
+         centre, and can its inputs be reduced to observable effect (a Boolean,
+         an identity, a BigInt index) discarding types Stainless cannot model?
+         Two yes answers ⇒ write a mirror (templates/verified-mirror.md). A
+         "No" row must say why (e.g. "effectful fs2 pipe; TP1–TP5 enforced by
+         Ring 3 properties"). Silence is not a verdict.
 
       3. TYPE STRATEGY — INVALID-STATE PREVENTION: For every invariant, place it on
          this hierarchy and justify the placement:
@@ -1227,13 +1267,44 @@ apply:
     ═══════════════════════════════════════════════════════════════════════════
     STEP 10 — RING 6: FORMAL VERIFICATION / RING 7: MODEL CHECKING (if applicable)
     ═══════════════════════════════════════════════════════════════════════════
-    Ring 6 — only for specs whose "Formal Contracts" section is non-empty AND
-    whose implementation is pure (PureScala subset). Good candidates: truth
-    tables, interval/count semantics, desugaring on small ASTs, totality of
-    pure validators, pure state transitions, money arithmetic, monotonicity/
-    conservation laws.
-    Run: `stainless <relevant pure files>` and fix the implementation to
-    satisfy contracts (not the other way around).
+    Ring 6 — applies when the spec's "Formal Contracts" section is non-empty,
+    which the design's Ring 6 triage table decides by ALGORITHMIC purity.
+    Good candidates: truth tables, interval/count semantics, desugaring on
+    small ASTs, totality of pure validators, pure state transitions, money
+    arithmetic, monotonicity/conservation laws, enumeration order, dedup and
+    path-set preservation.
+
+    TWO ROUTES:
+    (a) DIRECT — the shipped code is already PureScala: annotate it with
+        require/ensuring, run `stainless <files>`, and fix the IMPLEMENTATION
+        to satisfy the contract (never weaken the contract to fit the code).
+    (b) VERIFIED MIRROR — the usual case, and the one that makes Ring 6
+        applicable to ordinary codebases. Use it whenever the shipped code
+        carries types Stainless cannot model (Iron, cats, opaque types,
+        Mirror/inline, ujson, IO/fs2) or the build's Scala version differs
+        from the Stainless frontend. Full pattern:
+        templates/verified-mirror.md. Four mandatory parts:
+        1. MIRROR MODULE — a leaf module pinned to the Stainless frontend's
+           Scala version, depending on NOTHING project-local (TASTy is only
+           backward compatible), `stainlessEnabled := false` by default with
+           a command alias to turn it on, not aggregated by root.
+        2. MODEL — an ABSTRACTION, not a copy: reduce the algorithm's inputs
+           to their observable effect (a Boolean outcome, a BigInt identity)
+           so the control flow survives and the unverifiable types do not.
+           Prefer quantifier-free VCs; add termination measures.
+        3. BRIDGE PROPERTY TEST — MANDATORY. The production module takes the
+           mirror as a TEST-scope dependency; a property test runs the
+           shipped code and the model on the SAME generated inputs and
+           asserts they agree on exactly the invariants the model proves.
+           WITHOUT THIS THE RING PROVES NOTHING ABOUT THE SHIPPED SYSTEM —
+           it proves a property of a program you do not run. The bridge test
+           is the artifact of a proof obligation, cited like any other.
+        4. SCOPE NOTE — the model's own doc comment records which laws
+           Stainless proves AND which are delegated, each naming the Ring 3
+           property that covers it. A law that diverges in the solver
+           (typically a forall/exists VC) is delegated, never dropped.
+    Run verification with the project's alias (e.g. `sbt ring6`), which flips
+    `stainlessEnabled` on for that module only.
 
     Ring 7 (optional) — for distributed/event-driven invariants that unit
     tests cannot establish (event ordering, at-least-once, idempotency, replay
