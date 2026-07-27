@@ -113,7 +113,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Format check | `sbt scalafmtCheck` |
 | Format apply | `sbt scalafmt` |
 | Mutation (Ring 5) | Retarget `stryker4s.conf` `mutate` list to changed files, then `sbt "<module>/stryker4s"` |
-| Formal verification (Ring 6) | `sbt -J-Xmx6g ring6` (PureScala `verified` module only) |
+| Formal verification (Ring 6) | `sbt -J-Xmx6g ring6` — verifies the `verified` leaf module's PureScala mirrors. Bridge tests that bind shipped code to a mirror run in the owning module's ordinary `test` (model compiled, not re-verified). |
 | Coverage | `sbt coverage test coverageReport` |
 | Fat JAR | `sbt assembly` |
 
@@ -152,7 +152,7 @@ The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend
 | 3 Property tests | ✅ | Hedgehog 0.13.1 via hedgehog-munit. Properties extend `HedgehogSuite`. Concurrency scenarios use `TestControl`. |
 | 4 Compatibility | ⚠️ Manual | No fixture-based compatibility framework. Applies only to changes touching serialization/wire data. |
 | 5 Mutation | ✅ | sbt-stryker4s 0.21.0 + stryker4s.conf. Retarget `mutate` list to each spec's changed files before running. |
-| 6 Formal | ✅ available — applicability by ALGORITHMIC purity (schema v10) | Stainless via the `verified` leaf module. Ring 6 is NOT limited to code that is itself PureScala: where the shipped code uses `Mirror`/`inline`/`ujson`/Iron/cats/`IO`, the VERIFIED-MIRROR pattern applies — a PureScala model of the algorithm reduced to observable effect, plus a mandatory bridge property test binding shipped code to the model (templates/verified-mirror.md). Candidate kernels in this repo: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation, and `optimizable-surface` predictor enumeration order / update purity / path-set preservation. **Blocked on**: `verified/` has no model and no `% Test` wiring into a production module yet. |
+| 6 Formal | ✅ available — applicability by ALGORITHMIC purity (schema v10) | Stainless via the `verified` leaf module. Ring 6 is NOT limited to code that is itself PureScala: where the shipped code uses `Mirror`/`inline`/`ujson`/Iron/cats/`IO`, the VERIFIED-MIRROR pattern applies — a PureScala model of the algorithm reduced to observable effect, plus a mandatory bridge property test binding shipped code to the model (templates/verified-mirror.md). Candidate kernels in this repo: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation, and `optimizable-surface` predictor enumeration order / update purity / path-set preservation. **Status**: the active `add-optimizable-surface` change is the first adopter — it commits to `PredictorKernel` (predictor-enumeration mirror) in `verified/` plus `adk4s-optimize dependsOn(verified % Test)` and a `PredictorModelBridgeSpec` bridge property. Until that lands, `verified/` is package-doc only. |
 | 7 Model checking | ❌ | No TLA+/Apalache. Skip with stated correctness impact. |
 | 8 Adversarial review | ✅ (manual — always available) | Runs BEFORE Rings 5/6/7 in the apply sequence (fresh-context reviewer). |
 | 9 Telemetry | ❌ | No otel4s/Daut. Skip with stated impact. |

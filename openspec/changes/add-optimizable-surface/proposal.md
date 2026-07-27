@@ -122,9 +122,26 @@ guard against silent structural drift in later phases.
       `Mirror`-derived boilerplate + pure data; Stryker4s is available but the
       high-value logic is covered by the laws suite. May be re-targeted in
       `design.md` if a non-trivial helper emerges.
-- [ ] Ring 6: Formal verification — NOT applicable. The surface is not a
-      PureScala module (it uses `Mirror`/`inline` and `ujson.Value`); the
-      `verified` module is Stainless-pinned to Scala 3.7.2 and not a fit.
+- [x] Ring 6: Formal verification — APPLIES, via the VERIFIED-MIRROR pattern
+      (schema v10, `templates/verified-mirror.md`). The earlier "not
+      applicable" rationale was a statement about the shipped code's TYPES
+      (`Mirror`/`inline`/`ujson.Value`) and about the Scala-version pin —
+      neither is grounds to skip. The *algorithm* under
+      `optimizable-surface/predictors` is a pure pre-order traversal of a
+      field tree, and it has a pure kernel once inputs are reduced to
+      observable effect: a program becomes a tree of
+      predictor / plain / sub-program / collection nodes, and a path becomes
+      a `List[BigInt]` of child indices. `PredictorKernel` (in the existing
+      `verified` leaf module, pinned to 3.7.2) proves declaration-order
+      enumeration, non-predictor exclusion, path-set preservation under
+      `updateAll`, and round-trip identity. The shipped `Optimizable` is
+      bound to that model by a MANDATORY bridge property test
+      (`PredictorModelBridgeSpec`) running both on the same generated
+      programs — without it the proof would be about a program we do not
+      ship. Build wiring: `adk4s-optimize dependsOn(verified % Test)` (TASTy
+      is backward compatible, so a 3.8.4 module may read the 3.7.2 artifact).
+      Laws whose VCs diverge in z3 are DELEGATED to their named Ring 3
+      property, never dropped.
 - [ ] Ring 7: Model checking — NOT applicable (no distributed/event-driven
       invariants).
 - [x] Ring 8: Adversarial spec-compliance review — MANDATORY. Fresh-context

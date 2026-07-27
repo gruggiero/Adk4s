@@ -146,6 +146,8 @@ then {
 | `PredictorPath` | case class | Stable address of a predictor inside a program: `segments: Vector[String]` (case-class field names, outermost first); `render: String` joins segments with `.`. |
 | `Optimizable[P]` | typeclass | The optimizer-facing capability of a program type `P`: `predictors`, `update`, `updateAll`, `updateEither`. With `inline def derived` via `Mirror.ProductOf[P]`. |
 | `HasPredictorState[Self]` | typeclass | Leaf capability: anything that *is* a predictor exposes `state(self): PredictorState` and `withState(self, s): Self`. The placeholder predictor implements it. |
+| `PredictorKernel` | PureScala model (Ring 6, `verified` module, Scala 3.7.2) | Verified mirror of the predictor-enumeration algorithm: `Prog` tree (`Pred`/`Plain`/`Sub`/`Coll`), `paths` (pre-order leaf paths as `List[BigInt]` index chains), `updateAll`. Proves declaration-order enumeration, non-predictor exclusion, path-set preservation and round-trip identity. Bound to the shipped `Optimizable` by `PredictorModelBridgeSpec`. |
+| `adk4s-optimize % Test → verified` build dependency | build wiring (Test scope) | One-line `build.sbt` edit making the Ring 6 mirror visible to the bridge test. TASTy is backward compatible (3.8.4 reads 3.7.2); `verified` keeps depending on nothing project-local. |
 | `Predict0[F, I, O]` | case class (placeholder) | Minimal predictor wrapping `StructuredLLM.completeTemplate`, enough to carry `PredictorState`. Replaced by real `Predict` in Phase 2. Implements `HasPredictorState`. |
 | `OptimizeError` | enum (extends Throwable) | `UnknownPath(path: PredictorPath)`, `FrozenPath(path: PredictorPath)`. Stands alone in `org.adk4s.optimize` (NOT extending `AdkError` — design.md decision). |
 | `OptimizerLaws` | testkit (main-scope munit) | Laws any `P => F[P]` optimizer must satisfy: student unchanged, frozen bit-identical, path-set preserved. Pattern follows `AgentMemoryLaws`. |
@@ -749,11 +751,110 @@ forAll { (p: ToyProgram) =>
 
 ## Formal Contracts (Ring 6)
 
-> Ring 6 is not applied for this spec. The optimizable-surface capability uses
-> structural derivation and JSON value payloads — not PureScala modules, so
-> Stainless is not a fit (the `verified` module is pinned to Scala 3.7.2 for
-> Stainless only). The purity and round-trip laws are enforced by Ring 3
-> Hedgehog properties instead. This section is intentionally omitted.
+Ring 6 applies via the VERIFIED-MIRROR pattern
+(`openspec/schemas/verified-scala3/templates/verified-mirror.md`). The shipped
+`Optimizable` cannot be verified directly — it uses `Mirror`/`inline`
+derivation and `ujson.Value` payloads, and the Stainless frontend is pinned to
+Scala 3.7.2 while this build is 3.8.4. Neither is grounds to skip: the
+*algorithm* under `optimizable-surface/predictors` is a pure pre-order
+traversal, and it survives reduction to observable effect.
+
+### The abstraction
+
+A program becomes a tree; a predictor-state becomes a `BigInt` identity; a path
+becomes the `List[BigInt]` of child indices that reaches a leaf. Field
+declaration order becomes list order — which is the whole point, since
+declaration order is the law under proof.
+
+```scala
+// verified/src/main/scala/org/adk4s/verified/PredictorKernel.scala  (Scala 3.7.2)
+sealed abstract class Prog
+case class Pred(frozen: Boolean, state: BigInt) extends Prog  // a predictor leaf
+case class Plain()                              extends Prog  // a non-predictor field
+case class Sub(fields: List[Prog])              extends Prog  // nested program, decl order
+case class Coll(elems: List[Prog])              extends Prog  // ordered collection
+
+def paths(p: Prog, prefix: List[BigInt]): List[List[BigInt]]   // pre-order leaf paths
+def updateAll(p: Prog, f: BigInt => BigInt): Prog              // skips frozen leaves
+```
+
+### Contract: paths — enumeration is complete, ordered, and predictor-only
+
+**Precondition** (`require`): none — `paths` is total over `Prog`.
+**Postcondition** (`ensuring`): the result length equals the number of `Pred`
+leaves in the tree (completeness + `Plain` exclusion), and every returned path
+is a valid index chain into the tree (well-formedness). Pre-order traversal of
+`Sub`/`Coll` in list order gives declaration order.
+
+```scala
+def paths(p: Prog, prefix: List[BigInt]): List[List[BigInt]] = {
+  decreases(p)
+  p match {
+    case Pred(_, _) => List(prefix)
+    case Plain()    => Nil[List[BigInt]]()
+    case Sub(fs)    => indexed(fs, prefix)
+    case Coll(es)   => indexed(es, prefix)
+  }
+}.ensuring(_.size == countPreds(p))
+```
+
+### Contract: updateAll — path set preserved, frozen leaves untouched
+
+**Precondition** (`require`): none.
+**Postcondition** (`ensuring`): `paths(updateAll(p, f)) == paths(p)` (the update
+changes states, never the shape), and every `Pred` whose `frozen` flag is set is
+returned bit-identical.
+
+```scala
+def updateAll(p: Prog, f: BigInt => BigInt): Prog = {
+  decreases(p)
+  p match {
+    case Pred(fr, st) => if (fr) Pred(fr, st) else Pred(fr, f(st))
+    case Plain()      => Plain()
+    case Sub(fs)      => Sub(fs.map(updateAll(_, f)))
+    case Coll(es)     => Coll(es.map(updateAll(_, f)))
+  }
+}.ensuring(r => paths(r, Nil()) == paths(p, Nil()) && frozenStates(r) == frozenStates(p))
+```
+
+### Contract: round-trip identity
+
+**Postcondition** (`ensuring`): `updateAll(p, x => x) == p` — updating with the
+identity function returns an equal program.
+
+### Bridge — how the shipped code is bound to the model
+
+`PredictorModelBridgeSpec` (Hedgehog, in `adk4s-optimize` test sources) runs the
+real `Optimizable` and the model on the SAME generated programs and asserts they
+agree on exactly the proven invariants:
+
+1. the real `optimizable-surface/predictors` path sequence, mapped to index
+   chains, equals `PredictorKernel.paths` element-for-element (order included);
+2. after `optimizable-surface/updateAll`, the real path set equals the model's;
+3. the real frozen predictors are bit-identical exactly where the model's are.
+
+Build wiring this spec commits to: `adk4s-optimize dependsOn(verified % Test)`.
+TASTy is backward compatible, so the 3.8.4 module may read the 3.7.2 artifact —
+never the reverse, which is why `verified` depends on nothing project-local.
+`stainlessEnabled := false` by default, so the bridge test pays only a plain
+compile of the model; verification is the separate `sbt -J-Xmx6g ring6` step.
+
+### Scope — what is proven, and what is delegated
+
+Target proofs (best-effort): the three contracts above, all quantifier-free or
+structurally inductive with `decreases` measures.
+
+DELEGATED to Ring 3, and named here rather than dropped:
+
+| Law | Why not proven here | Covered by |
+|---|---|---|
+| Real derivation emits fields in *source* declaration order | `Mirror`-level property of the compiler, outside any PureScala model | Property: predictors-declaration-order |
+| Nested/collection path prefixing matches the real derivation | the model proves the traversal shape; the *encoding* of segments is production behaviour | Property: nested-recursion-paths, Property: collection-recursion-paths |
+| `updateEither` typed-error behaviour | error algebra is not modelled (no `ujson`/error ADT in PureScala) | Property: updateEither-unknown-path-error, Property: updateEither-frozen-path-error |
+
+If a target VC diverges in z3 (the classic case being a `forall`/`exists`
+quantifier), it moves into this table with its Ring 3 property named — it is
+never silently dropped.
 
 ## Temporal Properties (Ring 9)
 
@@ -805,6 +906,10 @@ forAll { (p: ToyProgram) =>
 | Optimize module compiles independently | Requirement: Optimize module skeleton + Scenario: Module compiles independently | build verification (compile the module in isolation) | build verification |
 | Optimize module tests pass | Requirement: Optimize module skeleton + Scenario: Module tests pass | module test run | build verification |
 | Optimize module has no forbidden dependencies | Requirement: Optimize module skeleton + Scenario: Module has no forbidden dependencies | dependency-tree inspection + manual review (Ring 8) | adversarial review |
+| Enumeration is complete, ordered and predictor-only (model) | Requirement: optimizable-surface/predictors enumerates in declaration order + Invariant: paths returns one entry per Pred leaf, in pre-order | formal contract (Ring 6) — `paths` ensuring clause, verified by Stainless | `PredictorKernel` |
+| updateAll preserves the path set and leaves frozen leaves bit-identical (model) | Requirement: optimizable-surface/updateAll skips frozen predictors + Invariant: paths(updateAll(p, f)) == paths(p) | formal contract (Ring 6) — `updateAll` ensuring clause | `PredictorKernel` |
+| Round-trip identity holds for all programs (model) | Requirement: Round-trip identity law + Invariant: updateAll(p, identity) == p | formal contract (Ring 6) | `PredictorKernel` |
+| Shipped Optimizable conforms to the verified model | Requirement: optimizable-surface/predictors enumerates in declaration order + Requirement: optimizable-surface/predictors recurses into nested sub-programs and collections | bridge property test (Ring 3 + Ring 6) — real and model on the same generated programs, asserting path order, path set after updateAll, and frozen identity | `PredictorModelBridgeSpec` |
 | PredictorPath is distinct from FieldPath (different domain) | Requirement: predictor path addressing + Criterion: inventory-check concept separation | manual review (Ring 8) | adversarial review |
 | Collection-nested predictor round-trips | Requirement: optimizable-surface/predictors recurses into nested sub-programs and collections + Property: round-trip-identity on collection-nested + Criterion: Phase 0 exit | Hedgehog property | `OptimizableSpec.scala` |
 
@@ -812,11 +917,16 @@ forAll { (p: ToyProgram) =>
 
 | Anchor | Kind | Where | Note |
 |--------|------|-------|------|
+| `PredictorKernel.scala` | new file (Ring 6 model) | `verified/src/main/scala/org/adk4s/verified/` | PureScala, Scala 3.7.2. Uses `stainless.collection.List`; `decreases` measures on `paths`/`updateAll`. Verified by `sbt -J-Xmx6g ring6`. |
+| `PredictorModelBridgeSpec.scala` | new file (bridge test) | `adk4s-optimize/src/test/scala/org/adk4s/optimize/` | Hedgehog. Maps a generated program to `Prog`, compares real vs model. Compiles the model only — `stainlessEnabled := false` keeps the solver out of `test`. |
+| `adk4s-optimize dependsOn(verified % Test)` | build step | `build.sbt` | Ring 6 bridge precondition; add when the module is created. |
 | `Demo` | case class | `adk4s-optimize/src/main/scala/org/adk4s/optimize/Demo.scala` | new file |
 | `PredictorState` | case class | `adk4s-optimize/src/main/scala/org/adk4s/optimize/PredictorState.scala` | new file |
 | `PredictorPath` | case class | `adk4s-optimize/src/main/scala/org/adk4s/optimize/PredictorPath.scala` | new file; `render` joins segments with `.` |
 | `Optimizable[P]` | typeclass | `adk4s-optimize/src/main/scala/org/adk4s/optimize/Optimizable.scala` | new file; `inline def derived` via `Mirror.ProductOf[P]` |
 | `HasPredictorState[Self]` | typeclass | `adk4s-optimize/src/main/scala/org/adk4s/optimize/HasPredictorState.scala` | new file |
+| `PredictorKernel` | PureScala model (Ring 6, `verified` module, Scala 3.7.2) | Verified mirror of the predictor-enumeration algorithm: `Prog` tree (`Pred`/`Plain`/`Sub`/`Coll`), `paths` (pre-order leaf paths as `List[BigInt]` index chains), `updateAll`. Proves declaration-order enumeration, non-predictor exclusion, path-set preservation and round-trip identity. Bound to the shipped `Optimizable` by `PredictorModelBridgeSpec`. |
+| `adk4s-optimize % Test → verified` build dependency | build wiring (Test scope) | One-line `build.sbt` edit making the Ring 6 mirror visible to the bridge test. TASTy is backward compatible (3.8.4 reads 3.7.2); `verified` keeps depending on nothing project-local. |
 | `Predict0[F, I, O]` | case class (placeholder) | `adk4s-optimize/src/main/scala/org/adk4s/optimize/Predict0.scala` | new file; wraps `StructuredLLM.completeTemplate`; implements `HasPredictorState` |
 | `OptimizeError` | enum (extends Throwable) | `adk4s-optimize/src/main/scala/org/adk4s/optimize/OptimizeError.scala` | new file; `UnknownPath`, `FrozenPath`; stands alone (NOT `AdkError`) |
 | `OptimizerLaws` | testkit (main-scope munit) | `adk4s-optimize/src/main/scala/org/adk4s/optimize/OptimizerLaws.scala` (or a `org.adk4s.optimize.testkit` companion — design.md) | new file; pattern follows `AgentMemoryLaws` |
