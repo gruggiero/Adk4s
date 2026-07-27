@@ -11,6 +11,7 @@ adk4s (Agent Development Kit for Scala 3) is a functional, type-safe agent toolk
 adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models
 adk4s-orchestration → adk4s-core, structured-llm, workflows4s-core
 adk4s-core → structured-llm, llm4s/core
+adk4s-optimize → structured-llm, verified (Test scope only)
 structured-llm → llm4s/core, workflows4s-core
 structured-llm-test-models → structured-llm (compile only, Smithy codegen)
 verified → (leaf module, Scala 3.7.2, Stainless, not aggregated by root)
@@ -23,7 +24,8 @@ verified → (leaf module, Scala 3.7.2, Stainless, not aggregated by root)
 - **adk4s-core** — Components, tools, runnables, events, interrupts. `ChatModel`, `Tool`/`InvokableTool`/`StreamableTool`, `Agent`, `AgentTool`, `ToolsNode`, `ToolMiddleware`, `Runnable`/`Lambda`, `AgentEvent`/`AgentEventEmitter`, `InterruptSignal`, streaming utilities, `AdkError` hierarchy.
 - **adk4s-orchestration** — Agents, graphs, workflows. `ReactAgent`, `AgentRunner` (interrupt/resume), `WIOGraph`/`WIONode` (type-safe DAG), `Graph`/`GraphExecutor`, `Branch`/`Router`, `Chain`, `Workflow`, `StatefulNode`, `EventSourcedState`, `CheckpointStore`.
 - **adk4s-examples** — 55+ runnable examples (all extend `IOApp.Simple`). Run via `./adk4s-examples/run-example.sh <name>` or `sbt "adk4s-examples/runMain <FQCN>"`.
-- **verified** — Leaf module pinned to Scala 3.7.2 for Stainless formal verification (Ring 6). Not aggregated by root. Run with `sbt -J-Xmx6g ring6`.
+- **adk4s-optimize** — Optimizable predictor surface (DSPy port Phase 0). `Optimizable[P]` typeclass with `Mirror`-based derivation, `PredictorState`/`PredictorPath`/`Demo` data types, `OptimizeError` ADT, `HasPredictorState` leaf capability, `Predict0` placeholder predictor, `OptimizerLaws` testkit. Depends on structured-llm (for placeholder) and verified (Test scope, for Ring 6 bridge).
+- **verified** — Leaf module pinned to Scala 3.7.2 for Stainless formal verification (Ring 6). Not aggregated by root. Run with `sbt -J-Xmx6g ring6`. Contains `PredictorKernel` PureScala model mirroring the `Optimizable` traversal algorithm.
 
 ## Tech Stack
 

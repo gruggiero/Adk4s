@@ -88,6 +88,8 @@
 | `FallbackSemantic` | enum | `Resume`, `Atomic`, `BeforeFirstElement` | `org.adk4s.core.runnable` | scan:RunnableOps.scala (found by fixed multi-module scanner, v6 migration) |
 | `GraphWorkflowContext.Event` | sealed trait (nested) | `NodeResult` | `org.adk4s.orchestration.execution` | scan:GraphWorkflowContext.scala (found by fixed multi-module scanner, v6 migration) |
 | `SectionType` | enum | `System`, `User`, `Assistant`, `Raw` | `org.adk4s.structured.template` | scan:PromptSyntax.scala (found by fixed multi-module scanner, v6 migration) |
+| `OptimizeError` | enum | `UnknownPath`, `FrozenPath` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
+| `Prog` (model) | sealed trait | `Pred`, `Plain`, `Sub`, `Coll` | `org.adk4s.verified.PredictorKernel` | spec:add-optimizable-surface/optimizable-surface (Ring 6 PureScala model) |
 
 > Note: `adk4s-examples` defines many per-example `sealed trait` state/event
 > types. These are application-edge code, not reusable library concepts, and
@@ -140,6 +142,10 @@
 | `MemoryHit` | `text: String, score: Double, validFrom: Option[Instant], validTo: Option[Instant], provenance: Option[String], payload: Map[String, String]` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (`preTurn` renders `List[MemoryHit]` into a context string) |
 | `TemporalScope` | `asOf: Instant` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (`MemoryPolicy.scope: Option[TemporalScope]`) |
 | `MemoryPolicy` | `recallK: Int, scope: Option[TemporalScope], writeUserInput: Boolean, writeAssistantOutput: Boolean, render: List[MemoryHit] => String` (private constructor; smart constructor enforces `recallK >= 0`) | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (`MemoryPolicy.default`, `policy.render`) |
+| `PredictorState` | `instructions: String, demos: Vector[Demo], frozen: Boolean` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
+| `Demo` | `input: ujson.Value, output: ujson.Value` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
+| `PredictorPath` | `segments: Vector[String]` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
+| `Predict0` | `state: PredictorState, template: PromptTemplate, schema: Schema, structured: StructuredLLM[F]` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface (Phase 0 placeholder) |
 
 ## Service Traits
 
@@ -162,6 +168,8 @@
 | `StructuredLLM[F[_]]` | `F` | `complete`, `completeRaw`, `completeTemplate`, `function`, `extractor`, `streamWithResult`, `streamWithResultRaw`, `completeValidated`, `streamPartial` | `org.adk4s.structured.core` | pre-existing |
 | `AgentMemory[F[_]]` | `F` (no constraint on trait; `Monad[F]` on `rememberAll` default) | `remember(episode: Episode): F[EpisodeOutcome]`, `recall(query: String, k: Int, scope: Option[TemporalScope]): F[List[MemoryHit]]`, `rememberAll(episodes: List[Episode]): F[List[EpisodeOutcome]]` | `org.adk4s.memory` | pre-existing (shipped by archived `2026-07-05-add-memory-api`) — **REUSED by this change** (`MemoryHook` calls `recall`/`remember`) |
 | `CheckpointStore` | (no type param — concrete trait) | `set(checkpointId: String, data: Array[Byte]): F[Unit]`, `get(checkpointId: String): F[Option[Array[Byte]]]`, `delete(checkpointId: String): F[Unit]` | `org.adk4s.orchestration.interrupt` | pre-existing — **REUSED by this change** (`MemoryAwareRunner` delegates resume to the underlying `AgentRunner` which owns the store) |
+| `Optimizable[P]` | `P` (no F constraint) | `predictors(p: P): Vector[(PredictorPath, PredictorState)]`, `update(p, path, f): P`, `updateEither(p, path, f): Either[OptimizeError, P]`, `updateAll(p, f): P` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
+| `HasPredictorState[Self]` | `Self` (no F constraint) | `state(self: Self): PredictorState`, `withState(self: Self, s: PredictorState): Self` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 
 ## Smithy Models
 

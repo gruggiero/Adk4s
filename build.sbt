@@ -116,6 +116,32 @@ lazy val `adk4s-memory-testkit` = (project in file("adk4s-memory-testkit"))
     scalacOptions ++= scala3Options
   )
 
+// ── adk4s-optimize — optimizable predictor surface (DSPy port Phase 0) ─────
+// Erased `Optimizable[P]` typeclass with `Mirror`-based derivation, pure
+// `PredictorState`/`PredictorPath`/`Demo` data types, `OptimizeError` ADT,
+// `Predict0[F, I, O]` placeholder, and `OptimizerLaws` testkit (main scope).
+// Depends on structured-llm for the placeholder predictor's
+// `StructuredLLM.completeTemplate` wrapper. Depends on `verified` at Test
+// scope for the Ring 6 bridge (TASTy is backward compatible: 3.8.4 reads
+// 3.7.2). MUST NOT depend on adk4s-core, adk4s-orchestration, workflows4s,
+// or the llm4s LLM client directly (Ring 2 purity rule).
+lazy val `adk4s-optimize` = (project in file("adk4s-optimize"))
+  .dependsOn(
+    `structured-llm`,
+    `verified` % Test
+  )
+  .settings(
+    name := "adk4s-optimize",
+    libraryDependencies ++= Seq(
+      catsEffect,
+      fs2Core,
+      munitMain,
+      munitCatsEffect,
+      hedgehogMunit
+    ) ++ testDeps,
+    scalacOptions ++= scala3Options
+  )
+
 lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
   .dependsOn(
     `adk4s-core`,
