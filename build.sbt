@@ -207,8 +207,21 @@ lazy val `verified` = (project in file("verified"))
     // Default OFF: verified/compile is a plain, fast compile of the model.
     // Ring 6 turns verification ON explicitly via the `ring6` alias below.
     stainlessEnabled := false,
-    publish / skip   := true
+    publish / skip   := true,
+    // Z3 native interface: Stainless 0.9.9.3 uses the ScalaZ3 wrapper (not
+    // com.microsoft.z3 directly). The ScalaZ3 jar is not bundled with the
+    // Stainless plugin for Scala 3, so the native Z3 interface is unavailable.
+    // Ring 6 falls back to smt-z3 (Z3 via SMT-LIB subprocess), which is slower
+    // but functional. To enable the native interface, build ScalaZ3 from
+    // source for Scala 3.7.2 and add the jar to unmanagedClasspath.
+    // See: https://github.com/epfl-lara/ScalaZ3
   )
 
 // Ring 6 — run Stainless verification (needs a big heap; z3 single-threaded).
-addCommandAlias("ring6", "; set verified / stainlessEnabled := true ; verified / compile")
+// The smt-z3 fallback solver requires the z3 binary in PATH:
+//   PATH=/home/gruggiero/opt/z3-4.13.4/z3-4.13.4-x64-glibc-2.35/bin:$PATH \
+//   sbt -J-Xmx6g ring6
+addCommandAlias(
+  "ring6",
+  "; set verified / stainlessEnabled := true ; verified / compile"
+)

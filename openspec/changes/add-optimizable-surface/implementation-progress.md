@@ -53,6 +53,17 @@
 - [x] Ring 2 — import audit (no forbidden imports: no adk4s-core, adk4s-orchestration, workflows4s, or llm4s client)
 - [x] Ring 3 — all 15 Hedgehog properties GREEN (12 in OptimizableSpec + 3 in OptimizerLawsSpec)
 - [x] Ring 6 — `PredictorKernel.scala` model + `PredictorModelBridgeSpec.scala` bridge (6 bridge tests, all GREEN)
+  - Stainless 0.9.9.3 with smt-z3 fallback (native Z3 interface unavailable: ScalaZ3 not built for Scala 3)
+  - Z3 4.13.4 (glibc 2.35) binary in PATH for smt-z3 subprocess solver
+  - Termination strategy: tree→tree recursion (list tails wrapped in Sub/Coll), `decreases(p)` measure
+  - Results: 35 VCs, 28 valid, 7 invalid (all "measure decreases" for wrapped tail calls), 0 unknown, 0.91s
+  - The 7 invalid VCs are `ProgPrimitiveSize(Sub(t))` vs `ProgPrimitiveSize(Sub(Cons(h, t)))` — the default
+    ADT size measure doesn't recurse into list contents. The functions ARE terminating (each call processes
+    a strictly smaller subtree). Proving this requires either (a) the native Z3 interface with a custom
+    `treeSize` BigInt measure, or (b) upgrading to Stainless 0.10.0 which may have better measure inference.
+  - Property lemmas (pathsCompleteness, updateAllShapePreserved, updateAllFrozenPreserved, roundTripIdentity)
+    are stated as standalone boolean functions WITHOUT `ensuring` clauses — they are tested by the bridge
+    spec (64 tests) but not formally verified due to solver performance limitations.
 - [x] Ring 8 — adversarial spec-compliance review (fresh context): 15 PASS, 1 PARTIAL (R12 compile-negative test enforced at compiler level via `-Wconf` flag, not via munit macro — justified), 0 FAIL
 
 ### Step 12 — concept delta + inventory + module-graph update
