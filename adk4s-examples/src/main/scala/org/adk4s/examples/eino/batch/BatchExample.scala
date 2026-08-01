@@ -79,8 +79,7 @@ object BatchExample extends IOApp.Simple:
     Runnable.fromInvoke[ReviewRequest, ReviewResult] { (req: ReviewRequest) =>
       if req.priority == "low" then
         IO.raiseError(new RuntimeException(s"Review failed for ${req.documentId}: low-priority documents rejected"))
-      else
-        reviewRunnable.invoke(req)
+      else reviewRunnable.invoke(req)
     }
 
   // --- Scenarios ---
@@ -89,9 +88,9 @@ object BatchExample extends IOApp.Simple:
     val executor: BatchExecutor[ReviewRequest, ReviewResult] =
       BatchExecutor.fromRunnable(reviewRunnable)
     for
-      _ <- ExampleUtils.printSubSection("Scenario 1: Sequential Processing")
+      _       <- ExampleUtils.printSubSection("Scenario 1: Sequential Processing")
       results <- executor.invokeAll(sampleDocuments.take(3))
-      _ <- IO.println(s"   Processed ${results.length} documents sequentially")
+      _       <- IO.println(s"   Processed ${results.length} documents sequentially")
       _ <- results.traverse_ { (result: Either[Throwable, ReviewResult]) =>
         result match
           case Right(r) => IO.println(s"   - ${r.documentId}: approved=${r.approved}, score=${r.score}")
@@ -103,9 +102,9 @@ object BatchExample extends IOApp.Simple:
     val executor: BatchExecutor[ReviewRequest, ReviewResult] =
       BatchExecutor.fromRunnable(reviewRunnable)
     for
-      _ <- ExampleUtils.printSubSection("Scenario 2: Concurrent Processing (concurrency=3)")
+      _       <- ExampleUtils.printSubSection("Scenario 2: Concurrent Processing (concurrency=3)")
       results <- executor.invokeAllPar(sampleDocuments, 3)
-      _ <- IO.println(s"   Processed ${results.length} documents concurrently")
+      _       <- IO.println(s"   Processed ${results.length} documents concurrently")
       _ <- results.traverse_ { (result: Either[Throwable, ReviewResult]) =>
         result match
           case Right(r) => IO.println(s"   - ${r.documentId}: approved=${r.approved}, score=${r.score}")
@@ -117,17 +116,13 @@ object BatchExample extends IOApp.Simple:
     val executor: BatchExecutor[ReviewRequest, ReviewResult] =
       BatchExecutor.fromRunnable(failingReviewRunnable)
     for
-      _ <- ExampleUtils.printSubSection("Scenario 3: Error Handling (per-item isolation)")
+      _       <- ExampleUtils.printSubSection("Scenario 3: Error Handling (per-item isolation)")
       results <- executor.invokeAll(sampleDocuments)
       successes = results.collect { case Right(r) => r }
-      failures = results.collect { case Left(e) => e }
+      failures  = results.collect { case Left(e) => e }
       _ <- IO.println(s"   Total: ${results.length}, Succeeded: ${successes.length}, Failed: ${failures.length}")
-      _ <- successes.traverse_ { (r: ReviewResult) =>
-        IO.println(s"   - OK: ${r.documentId} (score=${r.score})")
-      }
-      _ <- failures.traverse_ { (e: Throwable) =>
-        IO.println(s"   - FAIL: ${e.getMessage}")
-      }
+      _ <- successes.traverse_((r: ReviewResult) => IO.println(s"   - OK: ${r.documentId} (score=${r.score})"))
+      _ <- failures.traverse_((e: Throwable) => IO.println(s"   - FAIL: ${e.getMessage}"))
     yield ()
 
   private def runStreaming: IO[Unit] =
@@ -151,7 +146,7 @@ object BatchExample extends IOApp.Simple:
     val executor: BatchExecutor[ReviewRequest, ReviewResult] =
       BatchExecutor.fromRunnable(reviewRunnable)
     for
-      _ <- ExampleUtils.printSubSection("Scenario 5: Parent Pipeline with Reduce")
+      _       <- ExampleUtils.printSubSection("Scenario 5: Parent Pipeline with Reduce")
       results <- executor.invokeAllPar(sampleDocuments, 3)
       successes = results.collect { case Right(r) => r }
       report = ReviewReport(

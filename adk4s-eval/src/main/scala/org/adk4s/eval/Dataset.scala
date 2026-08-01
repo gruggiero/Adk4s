@@ -3,6 +3,8 @@ package org.adk4s.eval
 import cats.effect.Sync
 import upickle.default.*
 
+import scala.util.Using
+
 /**
  * Dataset reader — reads a JSONL file (one JSON object per line) into a
  * `Vector[Example[I, O]]` using caller-supplied upickle readers for `I` and
@@ -29,35 +31,36 @@ object Dataset:
     path: String
   )(using readerI: Reader[I], readerO: Reader[O], F: Sync[F]): F[Vector[Example[I, O]]] =
     F.blocking {
-      val lines: Vector[String] =
-        scala.io.Source.fromFile(path).getLines().toVector
-      val results: Vector[Either[Throwable, Option[Example[I, O]]]] =
-        lines.zipWithIndex.map { case (line, idx) =>
-          if line.isBlank then Right(None)
-          else
-            try
-              val parsed: ujson.Value = ujson.read(line)
-              val input: I            = upickle.default.read[I](parsed("input").render())
-              val gold: O             = upickle.default.read[O](parsed("gold").render())
-              val id: Option[String] = parsed.obj.get("id") match
-                case Some(ujson.Null) => None
-                case Some(v)          => Some(v.str)
-                case None             => None
-              val meta: Map[String, String] = parsed.obj.get("meta") match
-                case Some(obj: ujson.Obj) => obj.value.toMap.map { case (k, v) => k -> v.str }
-                case Some(ujson.Null)     => Map.empty[String, String]
-                case None                 => Map.empty[String, String]
-                case Some(other) =>
-                  throw new MalformedLineException(idx + 1, s"meta field must be a JSON object, got: $other")
-              Right(Some(Example(input, gold, id, meta)))
-            catch
-              case _: Exception =>
-                Left(new MalformedLineException(idx + 1, line))
-        }
-      val firstError: Option[Throwable] = results.collectFirst { case Left(e) => e }
-      firstError match
-        case Some(e) => throw e
-        case None    => results.collect { case Right(Some(ex)) => ex }
+      Using.resource(scala.io.Source.fromFile(path)) { source =>
+        val lines: Vector[String] = source.getLines().toVector
+        val results: Vector[Either[Throwable, Option[Example[I, O]]]] =
+          lines.zipWithIndex.map { case (line, idx) =>
+            if line.isBlank then Right(None)
+            else
+              try
+                val parsed: ujson.Value = ujson.read(line)
+                val input: I            = upickle.default.read[I](parsed("input").render())
+                val gold: O             = upickle.default.read[O](parsed("gold").render())
+                val id: Option[String] = parsed.obj.get("id") match
+                  case Some(ujson.Null) => None
+                  case Some(v)          => Some(v.str)
+                  case None             => None
+                val meta: Map[String, String] = parsed.obj.get("meta") match
+                  case Some(obj: ujson.Obj) => obj.value.toMap.map { case (k, v) => k -> v.str }
+                  case Some(ujson.Null)     => Map.empty[String, String]
+                  case None                 => Map.empty[String, String]
+                  case Some(other) =>
+                    throw new MalformedLineException(idx + 1, s"meta field must be a JSON object, got: $other")
+                Right(Some(Example(input, gold, id, meta)))
+              catch
+                case _: Exception =>
+                  Left(new MalformedLineException(idx + 1, line))
+          }
+        val firstError: Option[Throwable] = results.collectFirst { case Left(e) => e }
+        firstError match
+          case Some(e) => throw e
+          case None    => results.collect { case Right(Some(ex)) => ex }
+      }
     }
 
 /** Raised by `Dataset.fromJsonl` when a line is not valid JSON. */

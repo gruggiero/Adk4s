@@ -3,8 +3,8 @@ package org.adk4s.examples.structured.llm.chain
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
-import org.adk4s.structured.test.{CategoryClassification, QueryClassification}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
+import org.adk4s.structured.test.{ CategoryClassification, QueryClassification }
 
 /**
  * Demonstrates composing multiple StructuredLLM parsers in sequence.
@@ -39,13 +39,13 @@ object ChainCompositionStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[QueryClassification]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Chain Composition (Structured)")
+      _         <- ExampleUtils.printSection("Chain Composition (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -70,8 +70,8 @@ object ChainCompositionStructuredExample extends IOApp.Simple:
         s"Query: $query1\nCategory: ${categoryResult.category}"
       )
       typeResult <- structured.complete[QueryClassification](typePrompt)
-      _ <- IO.println(s"   → Type: ${typeResult.queryType}")
-      _ <- IO.println(s"   → Intent: ${typeResult.intent}")
+      _          <- IO.println(s"   → Type: ${typeResult.queryType}")
+      _          <- IO.println(s"   → Intent: ${typeResult.intent}")
 
       // Example 2: Three-stage classification
       _ <- ExampleUtils.printSubSection("2. Science Question Analysis")
@@ -92,8 +92,8 @@ object ChainCompositionStructuredExample extends IOApp.Simple:
         s"Query: $query2\nCategory: ${categoryResult2.category}"
       )
       typeResult2 <- structured.complete[QueryClassification](typePrompt2)
-      _ <- IO.println(s"   → Type: ${typeResult2.queryType}")
-      _ <- IO.println(s"   → Intent: ${typeResult2.intent}")
+      _           <- IO.println(s"   → Type: ${typeResult2.queryType}")
+      _           <- IO.println(s"   → Intent: ${typeResult2.intent}")
 
       // Example 3: Command analysis
       _ <- ExampleUtils.printSubSection("3. Command Analysis")
@@ -114,8 +114,8 @@ object ChainCompositionStructuredExample extends IOApp.Simple:
         s"Query: $query3\nCategory: ${categoryResult3.category}"
       )
       typeResult3 <- structured.complete[QueryClassification](typePrompt3)
-      _ <- IO.println(s"   → Type: ${typeResult3.queryType}")
-      _ <- IO.println(s"   → Intent: ${typeResult3.intent}")
+      _           <- IO.println(s"   → Type: ${typeResult3.queryType}")
+      _           <- IO.println(s"   → Intent: ${typeResult3.intent}")
 
       _ <- IO.println("\nChain composition example completed.")
     yield ()

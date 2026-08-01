@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.llm.multiagent
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
 import org.adk4s.structured.test.SpecialistDelegation
 
 /**
@@ -30,13 +30,13 @@ object SpecialistDelegationStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[SpecialistDelegation]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new SpecialistDelegationMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new SpecialistDelegationMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Specialist Delegation (Structured)")
+      _         <- ExampleUtils.printSection("Specialist Delegation (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -55,9 +55,9 @@ object SpecialistDelegationStructuredExample extends IOApp.Simple:
         s"Task: $task1"
       )
       result1 <- structured.complete[SpecialistDelegation](prompt1)
-      _ <- IO.println(s"   Task: $task1")
-      _ <- IO.println(s"   → Delegated to: ${result1.specialist}")
-      _ <- IO.println(s"   → Rationale: ${result1.rationale}")
+      _       <- IO.println(s"   Task: $task1")
+      _       <- IO.println(s"   → Delegated to: ${result1.specialist}")
+      _       <- IO.println(s"   → Rationale: ${result1.rationale}")
 
       // Example 2: Data analysis task
       _ <- ExampleUtils.printSubSection("2. Data Analysis Delegation")
@@ -67,9 +67,9 @@ object SpecialistDelegationStructuredExample extends IOApp.Simple:
         s"Task: $task2"
       )
       result2 <- structured.complete[SpecialistDelegation](prompt2)
-      _ <- IO.println(s"   Task: $task2")
-      _ <- IO.println(s"   → Delegated to: ${result2.specialist}")
-      _ <- IO.println(s"   → Rationale: ${result2.rationale}")
+      _       <- IO.println(s"   Task: $task2")
+      _       <- IO.println(s"   → Delegated to: ${result2.specialist}")
+      _       <- IO.println(s"   → Rationale: ${result2.rationale}")
 
       // Example 3: Security audit task
       _ <- ExampleUtils.printSubSection("3. Security Audit Delegation")
@@ -79,9 +79,9 @@ object SpecialistDelegationStructuredExample extends IOApp.Simple:
         s"Task: $task3"
       )
       result3 <- structured.complete[SpecialistDelegation](prompt3)
-      _ <- IO.println(s"   Task: $task3")
-      _ <- IO.println(s"   → Delegated to: ${result3.specialist}")
-      _ <- IO.println(s"   → Rationale: ${result3.rationale}")
+      _       <- IO.println(s"   Task: $task3")
+      _       <- IO.println(s"   → Delegated to: ${result3.specialist}")
+      _       <- IO.println(s"   → Rationale: ${result3.rationale}")
 
       // Example 4: Performance optimization task
       _ <- ExampleUtils.printSubSection("4. Performance Optimization Delegation")
@@ -91,9 +91,9 @@ object SpecialistDelegationStructuredExample extends IOApp.Simple:
         s"Task: $task4"
       )
       result4 <- structured.complete[SpecialistDelegation](prompt4)
-      _ <- IO.println(s"   Task: $task4")
-      _ <- IO.println(s"   → Delegated to: ${result4.specialist}")
-      _ <- IO.println(s"   → Rationale: ${result4.rationale}")
+      _       <- IO.println(s"   Task: $task4")
+      _       <- IO.println(s"   → Delegated to: ${result4.specialist}")
+      _       <- IO.println(s"   → Rationale: ${result4.rationale}")
 
       _ <- IO.println("\nSpecialist delegation example completed.")
     yield ()
@@ -106,9 +106,8 @@ class SpecialistDelegationMockLLMClient extends org.llm4s.llmconnect.LLMClient:
   import java.util.UUID
 
   def complete(conversation: Conversation, options: CompletionOptions): Either[org.llm4s.error.LLMError, Completion] =
-    val lastUserMessage: String = conversation.messages.collect {
-      case msg: UserMessage => msg.content
-    }.lastOption.getOrElse("")
+    val lastUserMessage: String =
+      conversation.messages.collect { case msg: UserMessage => msg.content }.lastOption.getOrElse("")
 
     val response: String =
       if lastUserMessage.contains("pull request") || lastUserMessage.contains("authentication feature") then
@@ -119,20 +118,21 @@ class SpecialistDelegationMockLLMClient extends org.llm4s.llmconnect.LLMClient:
         """{"specialist": "security_specialist", "rationale": "API security audits require specialized knowledge of vulnerabilities and attack vectors"}"""
       else if lastUserMessage.contains("optimize") || lastUserMessage.contains("slow page loads") then
         """{"specialist": "performance_specialist", "rationale": "Database query optimization and performance tuning requires specialized performance analysis skills"}"""
-      else
-        """{"specialist": "code_specialist", "rationale": "Default to code specialist for general tasks"}"""
+      else """{"specialist": "code_specialist", "rationale": "Default to code specialist for general tasks"}"""
 
     val assistantMessage: AssistantMessage = AssistantMessage(Some(response))
-    Right(Completion(
-      id = UUID.randomUUID().toString,
-      created = System.currentTimeMillis(),
-      content = response,
-      model = "mock-model",
-      message = assistantMessage,
-      toolCalls = List.empty,
-      usage = None,
-      thinking = None
-    ))
+    Right(
+      Completion(
+        id = UUID.randomUUID().toString,
+        created = System.currentTimeMillis(),
+        content = response,
+        model = "mock-model",
+        message = assistantMessage,
+        toolCalls = List.empty,
+        usage = None,
+        thinking = None
+      )
+    )
 
   def streamComplete(
     conversation: Conversation,
@@ -141,5 +141,5 @@ class SpecialistDelegationMockLLMClient extends org.llm4s.llmconnect.LLMClient:
   ): Either[org.llm4s.error.LLMError, Completion] =
     complete(conversation, options)
 
-  def getContextWindow(): Int = 8192
+  def getContextWindow(): Int     = 8192
   def getReserveCompletion(): Int = 512

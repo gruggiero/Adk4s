@@ -183,6 +183,28 @@ class EvaluateSpec extends HedgehogSuite:
       case other =>
         fail(s"Expected EvalError.TooManyErrors, got ${other.getClass.getName}")
 
+  test("cap exceeded with exact count (parallelism 1) → count = max + 1"):
+    // With parallelism 1 (sequential), the failure count is deterministic:
+    // maxErrors = Some(3) raises at the 4th failure (count > cap → 4 > 3).
+    val failingProgram: String => IO[String]    = (_: String) => IO.raiseError(new RuntimeException("boom"))
+    val devset: Vector[Example[String, String]] = stubDevset(20)
+    val error: Throwable =
+      runIOFailed(
+        Evaluate[IO, String, String](
+          failingProgram,
+          devset,
+          Metrics.exactMatch[IO],
+          EvalConfig(failureScore = 0.0, maxErrors = Some(3), parallelism = 1)
+        )
+      )
+    error match
+      case EvalError.TooManyErrors(count, max, partial) =>
+        assertEquals(max, 3)
+        assertEquals(count, 4, s"count should be exactly max+1=4, got $count")
+        assert(partial.nonEmpty, "partial rows should be non-empty")
+      case other =>
+        fail(s"Expected EvalError.TooManyErrors, got ${other.getClass.getName}")
+
   test("cap exceeded with cancellation probe → in-flight work cancelled"):
     // R1.3: maxErrors abort cancels in-flight work. A Deferred-based probe
     // observes cancellation: some examples wait on a never-completed Deferred,
@@ -494,8 +516,10 @@ class EvaluateSpec extends HedgehogSuite:
         EvaluationResult.fromJson[String, String](json)
       parsed match
         case Right(rt) =>
-          // Compare score and row count (full equality may fail on Throwable)
-          (rt.score ==== result.score).and(rt.rows.size ==== result.rows.size)
+          // Full equality via resultEqual (compares Failed by class + message,
+          // not reference equality, since JSON round-trip reconstructs the
+          // RuntimeException).
+          hedgehog.Result.assert(resultEqual(rt, result))
         case Left(err) =>
           hedgehog.Result.failure.log(s"fromJson failed: $err")
 

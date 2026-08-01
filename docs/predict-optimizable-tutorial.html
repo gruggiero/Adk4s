@@ -1,0 +1,1885 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Predict &amp; Optimizable — the DSPy port, Phase 0</title>
+<style>
+/* ── design tokens: same system as openspec/schemas/verified-scala3/docs ── */
+:root{
+  --bg:#fbfbfd; --bg-raised:#fff; --bg-sunken:#f2f3f7; --fg:#1a1d24;
+  --fg-muted:#5b6472; --fg-faint:#8b95a5; --rule:#e2e5ec; --rule-soft:#eef0f4;
+  --accent:#2f5fd0; --accent-bg:#eaf0fd; --ok:#0f7a4a; --ok-bg:#e7f6ee;
+  --warn:#9a6400; --warn-bg:#fdf3e0; --bad:#b3261e; --bad-bg:#fdeceb;
+  --wise:#6b3fa0; --wise-bg:#f2ecfb; --code-bg:#f6f7f9;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06);
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Fira Code",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#12141a; --bg-raised:#191c24; --bg-sunken:#0d0f14; --fg:#e6e9ef;
+  --fg-muted:#a3adbd; --fg-faint:#6f7986; --rule:#272c37; --rule-soft:#1e222b;
+  --accent:#7aa2f7; --accent-bg:#17233d; --ok:#56d39a; --ok-bg:#10281f;
+  --warn:#e5b567; --warn-bg:#2a2113; --bad:#f2837a; --bad-bg:#2e1717;
+  --wise:#c4a7f5; --wise-bg:#221a33; --code-bg:#0f1218;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.3);}}
+:root[data-theme="dark"]{
+  --bg:#12141a; --bg-raised:#191c24; --bg-sunken:#0d0f14; --fg:#e6e9ef;
+  --fg-muted:#a3adbd; --fg-faint:#6f7986; --rule:#272c37; --rule-soft:#1e222b;
+  --accent:#7aa2f7; --accent-bg:#17233d; --ok:#56d39a; --ok-bg:#10281f;
+  --warn:#e5b567; --warn-bg:#2a2113; --bad:#f2837a; --bad-bg:#2e1717;
+  --wise:#c4a7f5; --wise-bg:#221a33; --code-bg:#0f1218;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.3);}
+:root[data-theme="light"]{
+  --bg:#fbfbfd; --bg-raised:#fff; --bg-sunken:#f2f3f7; --fg:#1a1d24;
+  --fg-muted:#5b6472; --fg-faint:#8b95a5; --rule:#e2e5ec; --rule-soft:#eef0f4;
+  --accent:#2f5fd0; --accent-bg:#eaf0fd; --ok:#0f7a4a; --ok-bg:#e7f6ee;
+  --warn:#9a6400; --warn-bg:#fdf3e0; --bad:#b3261e; --bad-bg:#fdeceb;
+  --wise:#6b3fa0; --wise-bg:#f2ecfb; --code-bg:#f6f7f9;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06);}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:1.5rem}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+  font-size:16.5px;line-height:1.68;-webkit-font-smoothing:antialiased}
+
+.layout{display:grid;grid-template-columns:280px minmax(0,1fr)}
+.sidebar{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--rule);
+  background:var(--bg-sunken);padding:1.4rem 1.1rem 3rem}
+main{padding:2.2rem clamp(1rem,4vw,3.4rem) 6rem;max-width:64rem}
+.prose{max-width:45rem}
+@media (max-width:980px){.layout{grid-template-columns:1fr}
+  .sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid var(--rule)}}
+
+.brand{font-weight:700;font-size:.95rem;letter-spacing:-.01em;margin-bottom:.15rem}
+.brand-sub{font-size:.74rem;color:var(--fg-faint);margin-bottom:1.2rem;
+  text-transform:uppercase;letter-spacing:.07em}
+.toc-title{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-faint);
+  margin:0 0 .45rem .5rem;font-weight:700}
+#toc{list-style:none;margin:0;padding:0;font-size:.82rem;border-left:2px solid var(--rule)}
+#toc li a{display:block;padding:.25rem .5rem .25rem .7rem;color:var(--fg-muted);text-decoration:none;
+  border-left:2px solid transparent;margin-left:-2px;line-height:1.4}
+#toc li a:hover{color:var(--fg)}
+#toc li a.active{color:var(--accent);border-left-color:var(--accent);font-weight:600}
+#toc li.h3 a{padding-left:1.5rem;font-size:.77rem}
+.theme-toggle{margin-top:1.6rem;background:none;border:1px solid var(--rule);color:var(--fg-muted);
+  border-radius:6px;padding:.32rem .6rem;font-size:.76rem;cursor:pointer;font-family:var(--sans)}
+.theme-toggle:hover{background:var(--bg-raised);color:var(--fg)}
+
+h1{font-size:clamp(1.85rem,3.6vw,2.5rem);line-height:1.15;letter-spacing:-.022em;margin:0 0 .5rem;font-weight:750}
+h2{font-size:1.42rem;line-height:1.25;letter-spacing:-.015em;margin:3.4rem 0 .9rem;padding-top:.9rem;
+  border-top:1px solid var(--rule-soft);font-weight:700}
+h3{font-size:1.1rem;margin:2.1rem 0 .6rem;letter-spacing:-.01em;font-weight:680}
+h4{font-size:.96rem;margin:1.5rem 0 .45rem;color:var(--fg-muted);text-transform:uppercase;
+  letter-spacing:.06em;font-weight:700}
+p{margin:0 0 1.05rem}
+a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+strong{font-weight:660}
+ul,ol{margin:0 0 1.05rem;padding-left:1.4rem}
+li{margin:.32rem 0}
+.lede{font-size:1.12rem;line-height:1.6;color:var(--fg-muted);margin-bottom:1.8rem}
+.eyebrow{font-family:var(--mono);font-size:.76rem;color:var(--accent);text-transform:uppercase;
+  letter-spacing:.1em;margin-bottom:.5rem;font-weight:600}
+.meta{font-size:.8rem;color:var(--fg-faint);margin-bottom:2.2rem;padding-bottom:1.2rem;
+  border-bottom:1px solid var(--rule)}
+
+code{font-family:var(--mono);font-size:.875em;background:var(--code-bg);padding:.1em .34em;
+  border-radius:4px;border:1px solid var(--rule-soft)}
+pre{background:var(--code-bg);border:1px solid var(--rule);border-radius:9px;padding:.95rem 1.05rem;
+  overflow-x:auto;margin:0 0 1.15rem;line-height:1.55}
+pre code{background:none;border:0;padding:0;font-size:.82rem}
+.filename{font-family:var(--mono);font-size:.72rem;color:var(--fg-faint);margin-bottom:.3rem;display:block}
+.k{color:var(--wise);font-weight:600}.s{color:var(--ok)}.c{color:var(--fg-faint);font-style:italic}
+.t{color:var(--accent)}.n{color:var(--warn)}
+
+.box{border:1px solid var(--rule);border-left:3px solid var(--fg-faint);border-radius:8px;
+  padding:.95rem 1.1rem;margin:1.4rem 0;background:var(--bg-raised)}
+.box>:last-child{margin-bottom:0}
+.box .box-title{font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;
+  margin-bottom:.45rem;display:flex;align-items:center;gap:.4rem}
+.box.rule{border-left-color:var(--accent);background:var(--accent-bg)}.box.rule .box-title{color:var(--accent)}
+.box.danger{border-left-color:var(--bad);background:var(--bad-bg)}.box.danger .box-title{color:var(--bad)}
+.box.win{border-left-color:var(--ok);background:var(--ok-bg)}.box.win .box-title{color:var(--ok)}
+.box.caution{border-left-color:var(--warn);background:var(--warn-bg)}.box.caution .box-title{color:var(--warn)}
+.box.insight{border-left-color:var(--wise);background:var(--wise-bg)}.box.insight .box-title{color:var(--wise)}
+
+.table-wrap{overflow-x:auto;margin:0 0 1.3rem}
+table{border-collapse:collapse;width:100%;font-size:.875rem}
+th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-muted);
+  font-weight:700;border-bottom:2px solid var(--rule)}
+tbody tr:hover{background:var(--rule-soft)}
+td code{font-size:.82em}
+
+details.dive{border:1px solid var(--rule);border-radius:8px;padding:.1rem .95rem;margin:1.2rem 0;background:var(--bg-raised)}
+details.dive>summary{cursor:pointer;padding:.7rem 0;font-weight:620;font-size:.93rem;list-style:none;
+  display:flex;gap:.5rem;align-items:center}
+details.dive>summary::-webkit-details-marker{display:none}
+details.dive>summary::before{content:"▸";color:var(--accent);font-size:.8rem;transition:transform .15s}
+details.dive[open]>summary::before{transform:rotate(90deg)}
+details.dive[open]>summary{border-bottom:1px solid var(--rule-soft);margin-bottom:.8rem}
+details.dive .dive-tag{font-family:var(--mono);font-size:.68rem;color:var(--fg-faint);
+  text-transform:uppercase;letter-spacing:.06em;margin-left:auto}
+
+.tabs{margin:1.4rem 0;border:1px solid var(--rule);border-radius:9px;overflow:hidden;background:var(--bg-raised)}
+.tab-bar{display:flex;border-bottom:1px solid var(--rule);background:var(--bg-sunken);overflow-x:auto}
+.tab-bar button{flex:0 0 auto;background:none;border:0;border-bottom:2px solid transparent;padding:.6rem .95rem;
+  font-size:.82rem;color:var(--fg-muted);cursor:pointer;font-family:var(--sans);font-weight:560;white-space:nowrap}
+.tab-bar button:hover{color:var(--fg)}
+.tab-bar button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);background:var(--bg-raised)}
+.tab-panel{padding:1.05rem 1.15rem;display:none}
+.tab-panel[data-active="true"]{display:block}
+.tab-panel>:last-child{margin-bottom:0}
+
+.widget{border:1px solid var(--rule);border-radius:10px;margin:1.6rem 0;background:var(--bg-raised);
+  box-shadow:var(--shadow);overflow:hidden}
+.widget-head{padding:.7rem 1rem;border-bottom:1px solid var(--rule);background:var(--bg-sunken);
+  display:flex;align-items:center;gap:.55rem;flex-wrap:wrap}
+.widget-head .wtag{font-family:var(--mono);font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;
+  color:#fff;background:var(--accent);padding:.16rem .42rem;border-radius:4px;font-weight:700}
+.widget-head h4{margin:0;text-transform:none;letter-spacing:0;font-size:.93rem;color:var(--fg);font-weight:650}
+.widget-body{padding:1rem}
+.widget-body>:last-child{margin-bottom:0}
+
+.btn{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:.45rem .9rem;font-size:.82rem;
+  font-weight:600;cursor:pointer;font-family:var(--sans)}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:none;border:1px solid var(--rule);color:var(--fg-muted)}
+.btn.ghost:hover{background:var(--bg-sunken);color:var(--fg)}
+.btn.small{padding:.24rem .5rem;font-size:.74rem}
+.btn-row{display:flex;gap:.5rem;flex-wrap:wrap;margin:.85rem 0 0;align-items:center}
+select,input[type=number],input[type=text]{font-family:var(--mono);font-size:.78rem;padding:.3rem .45rem;
+  border:1px solid var(--rule);border-radius:6px;background:var(--bg);color:var(--fg)}
+label.inline{font-size:.78rem;color:var(--fg-muted);display:inline-flex;gap:.35rem;align-items:center}
+
+.verdict{margin-top:.9rem;border-radius:8px;padding:.75rem .9rem;font-size:.84rem;border:1px solid var(--rule);
+  background:var(--bg-sunken)}
+.verdict.pass{border-color:var(--ok);background:var(--ok-bg)}
+.verdict.fail{border-color:var(--bad);background:var(--bad-bg)}
+.verdict .vhead{font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+.verdict ul{margin:.5rem 0 0;padding-left:1.2rem}
+.verdict li{margin:.22rem 0;font-family:var(--mono);font-size:.76rem;line-height:1.5}
+.tag-pass{color:var(--ok);font-weight:700}.tag-fail{color:var(--bad);font-weight:700}
+.tag-warn{color:var(--warn);font-weight:700}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.1rem 0}
+@media (max-width:760px){.two-col{grid-template-columns:1fr}}
+.panel{border:1px solid var(--rule);border-radius:8px;background:var(--bg-sunken);padding:.75rem .85rem}
+.panel h5{margin:0 0 .5rem;font-size:.76rem;text-transform:uppercase;letter-spacing:.07em;color:var(--fg-muted)}
+.mono-list{font-family:var(--mono);font-size:.77rem;line-height:1.7;margin:0;padding:0;list-style:none}
+.mono-list li{margin:0;display:flex;gap:.5rem;align-items:baseline}
+.chip{display:inline-block;font-family:var(--mono);font-size:.72rem;padding:.05rem .4rem;border-radius:4px;
+  background:var(--accent-bg);color:var(--accent);border:1px solid var(--rule);white-space:nowrap}
+.chip.frozen{background:var(--warn-bg);color:var(--warn)}
+.chip.plain{background:var(--rule-soft);color:var(--fg-faint)}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}
+
+.tree{font-family:var(--mono);font-size:.79rem;line-height:1.75;margin:0}
+.tree .row{display:flex;gap:.45rem;align-items:center;padding:.1rem .3rem;border-radius:5px}
+.tree .row.sel{background:var(--accent-bg)}
+.tree .row button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:0;text-align:left}
+.tree .row .pathbtn{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.tree .indent{color:var(--fg-faint)}
+
+.stat-row{display:flex;gap:1.4rem;flex-wrap:wrap;margin:.2rem 0 .6rem}
+.stat{font-size:.78rem;color:var(--fg-muted)}
+.stat b{display:block;font-size:1.2rem;color:var(--fg);font-family:var(--mono)}
+
+.ledger{font-family:var(--mono);font-size:.74rem;width:100%}
+.ledger td{padding:.22rem .5rem;border-bottom:1px solid var(--rule-soft)}
+.ledger .v{color:var(--ok)}.ledger .i{color:var(--bad);font-weight:700}.ledger .t{color:var(--fg-faint)}
+
+.q{border:1px solid var(--rule);border-radius:9px;padding:.95rem 1.05rem;margin-bottom:.85rem;background:var(--bg-raised)}
+.q .qtext{font-weight:600;margin-bottom:.7rem}
+.q .opts{display:flex;flex-direction:column;gap:.38rem}
+.q .opt{text-align:left;background:var(--bg);border:1px solid var(--rule);border-radius:7px;padding:.5rem .7rem;
+  font-size:.86rem;cursor:pointer;font-family:var(--sans);color:var(--fg);line-height:1.45}
+.q .opt:hover{border-color:var(--accent)}
+.q .opt.correct{border-color:var(--ok);background:var(--ok-bg)}
+.q .opt.wrong{border-color:var(--bad);background:var(--bad-bg)}
+.q .why{margin-top:.7rem;font-size:.84rem;padding:.6rem .75rem;border-radius:7px;background:var(--bg-sunken);
+  border-left:3px solid var(--accent);display:none}
+.q .why.show{display:block}
+.footnote{font-size:.82rem;color:var(--fg-muted)}
+hr{border:0;border-top:1px solid var(--rule);margin:2.4rem 0}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div class="brand">Predict &amp; Optimizable</div>
+  <div class="brand-sub">ADK4S · DSPy port · Phase 0</div>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" id="themeBtn">◐ theme</button>
+</aside>
+
+<main>
+<div class="eyebrow">Interactive tutorial</div>
+<h1>Predictors you can read, address and rewrite</h1>
+<p class="lede">Phase 0 of the DSPy port adds one thing to ADK4S: a way for a program that nobody
+wrote yet to enumerate the LM-call sites inside a program that somebody else wrote, read their
+prompts as data, and hand back a new program with one of them changed. This page explains why that
+matters, how it is built in Scala 3, how it differs from the Python original, and — in detail — how
+a PureScala model in the <code>verified</code> module is tied to the shipped code so the two provably
+describe the same traversal.</p>
+<div class="meta">
+  Module <code>adk4s-optimize</code> · Ring 6 model
+  <code>verified/src/main/scala/org/adk4s/verified/PredictorKernel.scala</code> ·
+  numbers on this page come from a live <code>sbt -J-Xmx6g ring6</code> run on 2026-07-28.<br>
+  State as of <strong>2026-08-01</strong>: Phase 0 is <strong>archived</strong> — its 16 requirements are
+  synced to <code>openspec/specs/optimizable-surface/spec.md</code> and the full change (design, Ring 6
+  contracts, proof obligations) lives at
+  <code>openspec/changes/archive/2026-08-01-add-optimizable-surface/</code>. Phase 1
+  (<code>adk4s-eval</code>) is in flight — see <a href="#s-today">§10</a>.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-why">1 · Why prompts have to become data</h2>
+<div class="prose">
+
+<p>An LLM step in almost every codebase looks like a function. You write a prompt, you interpolate
+some variables, you parse the answer. In ADK4S today that is <code>StructuredLLM.function[I, A]</code>:
+give it a <code>PromptTemplate[I]</code> and a <code>Schema[A]</code>, get back an
+<code>I =&gt; F[A]</code>. Excellent ergonomics, and completely opaque: once the template is a
+function, nothing can look inside it, and nothing can produce a <em>different</em> one.</p>
+
+<p>DSPy's contribution is not a prompting trick. It is the observation that the instruction string
+and the few-shot examples attached to each LM call are <strong>parameters</strong> — the same kind of
+thing as weights — and that if you can (a) score a whole program against data and (b) mechanically
+rewrite those parameters, then you can <em>search</em> for better ones. "Compile" a program once
+against a training set, save the resulting instructions and demos as an artifact, and serve that.
+Their headline economic claim follows: <em>small model + compiled prompts</em> often beats
+<em>big model + hand-written prompts</em>.</p>
+
+<div class="box insight">
+  <div class="box-title">The split that organises everything</div>
+  <p><strong>Forward pass</strong> — render a prompt, call the model, parse the answer, run tools,
+  stream. ADK4S already has this, and in places (SAP's type-aware coercion, Smithy schemas,
+  <code>Constraint.check</code>) it is stronger than DSPy's.</p>
+  <p style="margin-bottom:0"><strong>Backward pass</strong> — score the program, propose new
+  parameters, keep what wins. ADK4S has none of it. Everything in the port plan
+  (<code>docs/dspy-port-operative-plan.md</code>) is the backward pass, and every part of it needs the
+  same primitive: <em>enumerate the tunable sites of an arbitrary program and replace one</em>.</p>
+</div>
+
+<p>That primitive is what Phase 0 builds, and nothing else. No optimizer, no demo rendering, no
+persistence, no trace capture. The reason for spiking it alone is stated bluntly in the proposal: the
+surface is load-bearing for Phases 2–4 and effectively irreversible once optimizers are written
+against it. Get the shape wrong and every optimizer fights the types forever.</p>
+
+<h3 id="s-why-two">Two words you need before anything else</h3>
+
+<p><strong>Predictor</strong> — one LM-call site. Not the model, not the client: the <em>site</em>,
+with its own instruction string and its own few-shot examples. A program has several; a RAG pipeline
+has a query-rewriter and an answerer; each is a predictor with its own tunable text.</p>
+
+<p><strong>Program</strong> — a value composed of predictors and other programs. In Python that is an
+object whose attributes happen to be modules. In Scala it is a case class whose fields happen to be
+predictors. The optimizer must work on both without knowing either type.</p>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-predict">2 · <code>Predict</code>: an LM call site with state</h2>
+<div class="prose">
+
+<p>In DSPy, <code>Predict</code> is the atom: it holds a <em>signature</em> (instructions + typed
+input/output fields) and a mutable <code>demos</code> list that optimizers write into. Calling it
+renders the signature and demos through an adapter, calls the LM, and coerces the reply back to the
+declared types.</p>
+
+<p>Phase 0 of the ADK4S port deliberately ships a <em>placeholder</em>, <code>Predict0</code>, and
+says so in its name. It carries exactly the state an optimizer needs and exposes no way to run
+anything — because a Phase 0 that could render demos into prompts would be a Phase 2 that shipped
+untested.</p>
+
+<pre class="scala"><span class="filename">adk4s-optimize/src/main/scala/org/adk4s/optimize/Predict0.scala</span><code>final case class Predict0[F[_], I, O](
+  state:      PredictorState,        // the tunable part — instructions, demos, frozen
+  template:   PromptTemplate[I],     // the carried capability …
+  schema:     Schema[O],             // … not invoked in Phase 0
+  structured: StructuredLLM[F]
+)
+
+object Predict0:
+  given hasPredictorStateForPredict0[F[_], I, O]: HasPredictorState[Predict0[F, I, O]] with
+    def state(self: Predict0[F, I, O]): PredictorState = self.state
+    def withState(self: Predict0[F, I, O], s: PredictorState): Predict0[F, I, O] =
+      self.copy(state = s)</code></pre>
+
+<p>The tunable part is one small immutable record:</p>
+
+<pre class="scala"><code>final case class Demo(input: ujson.Value, output: ujson.Value)
+
+final case class PredictorState(
+  instructions: String,        // the one string an instruction optimizer rewrites
+  demos:        Vector[Demo],  // what BootstrapFewShot fills in
+  frozen:       Boolean        // DSPy's `_compiled` — "optimizers, hands off"
+)</code></pre>
+
+<div class="box rule">
+  <div class="box-title">Three design commitments hiding in that record</div>
+  <ul style="margin-bottom:0">
+    <li><strong>Instructions live on the state, not on the module.</strong> The same contract can run
+    under a plain predictor, a chain-of-thought wrapper, or a future agent wrapper, and an optimizer
+    still has exactly <em>one</em> string to rewrite.</li>
+    <li><strong>Demos are JSON, not typed values.</strong> An optimizer holding a heterogeneous
+    program cannot know <code>I</code> and <code>O</code>; <code>ujson.Value</code> is the erased
+    currency. The type safety is restored at render time in Phase 2.</li>
+    <li><strong>Frozen is data, not a type.</strong> A frozen predictor is a perfectly ordinary value
+    you can construct. That keeps <code>freeze</code> a pure function instead of a phantom-typed
+    ceremony — and it means the "don't touch frozen" rule must be enforced by the surface's own
+    behaviour, which is why it shows up in the laws and in the formal model.</li>
+  </ul>
+</div>
+
+<p>Field names and descriptions are deliberately <em>not</em> tunable. DSPy calls this the inert-field
+rule: callers depend on the field names, so optimizers may never touch them. In Scala the rule is free
+— the fields are the case-class types, and the erased surface simply has no method that could change
+them.</p>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-optimizable">3 · <code>Optimizable</code>: the three actions</h2>
+<div class="prose">
+
+<p>An optimizer is generic in the program type. It sees no <code>Predict0</code>, no
+<code>I</code>/<code>O</code>, no user case classes — only paths and states. That is the whole
+surface:</p>
+
+<pre class="scala"><span class="filename">adk4s-optimize/src/main/scala/org/adk4s/optimize/Optimizable.scala</span><code>trait Optimizable[P]:
+  /** every tunable site, in field declaration order */
+  def predictors(p: P): Vector[(PredictorPath, PredictorState)]
+
+  /** total variant: typed error instead of an exception */
+  def updateEither(p: P, path: PredictorPath, f: PredictorState =&gt; PredictorState)
+      : Either[OptimizeError, P]
+
+  /** convenience: raises the same typed error from the Left branch */
+  def update(p: P, path: PredictorPath, f: PredictorState =&gt; PredictorState): P
+
+  /** every non-frozen site at once */
+  def updateAll(p: P, f: (PredictorPath, PredictorState) =&gt; PredictorState): P =
+    predictors(p).filter(!_._2.frozen).foldLeft(p) { (acc, entry) =&gt;
+      val (path, _) = entry
+      update(acc, path, s =&gt; f(path, s))
+    }</code></pre>
+
+<p>Addresses are plain strings, outermost first — case-class field names, and for collections the
+element index rendered as a string:</p>
+
+<pre class="scala"><code>final case class PredictorPath(segments: Vector[String]):
+  def render: String = segments.mkString(".")   // "rag.answer", "steps.2"
+
+enum OptimizeError extends Throwable:
+  case UnknownPath(path: PredictorPath)   // not a site this program has
+  case FrozenPath(path: PredictorPath)    // a site that said "hands off"</code></pre>
+
+<p>Note what <code>updateAll</code>'s default implementation gives you for free: frozen exclusion is
+<em>structural</em>. It is a <code>filter</code> before a fold, not a runtime check inside the update,
+so there is no code path in which <code>f</code> is applied to a frozen state. A reviewer can see this
+in four lines; a Python <code>if not p._compiled:</code> scattered across an optimizer cannot be
+audited that way.</p>
+
+<h3 id="s-optimizable-laws">The laws that make an optimizer an optimizer</h3>
+
+<p>Phase 0 also ships <code>OptimizerLaws</code> in main scope (the pattern already used by
+<code>AgentMemoryLaws</code>), so every optimizer written in Phases 2–4 can be held to the same three
+statements:</p>
+
+<div class="table-wrap"><table>
+<thead><tr><th>Law</th><th>Statement</th><th>What it rules out</th></tr></thead>
+<tbody>
+<tr><td><strong>Purity</strong></td><td>the student value is unchanged after <code>compile</code></td>
+<td>the DSPy hazard of one candidate mutating another through a shared sub-module</td></tr>
+<tr><td><strong>Frozen-preserved</strong></td><td>frozen states are bit-identical in the result</td>
+<td>an optimizer that "helpfully" retunes a site the user pinned</td></tr>
+<tr><td><strong>Path-set-preserved</strong></td><td>the result has the same path set as the student</td>
+<td>an optimizer that changes program <em>structure</em> — optimizers tune state, never shape</td></tr>
+</tbody></table></div>
+
+<p>The two toy optimizers in Phase 0 exist only to prove the surface survives contact with
+structurally different optimizer shapes: <code>UppercaseInstructions</code> rewrites every instruction
+string, <code>StaticDemoInjector</code> appends a fixed demo. Different data, same
+<code>updateAll</code>, same derived instance, zero knowledge of the program type. That is the
+acceptance test for the entire phase.</p>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-play">4 · Playground: enumerate, address, update</h2>
+<div class="prose">
+<p>The widget below is a faithful JavaScript port of the shipped <code>Optimizable.derived</code>
+traversal: same order of resolution (sub-program → leaf → collection → skip), same path construction,
+same error cases. Build a program on the left; the enumeration and every action are computed by the
+same rules the Scala code uses.</p>
+</div>
+
+<div class="widget">
+  <div class="widget-head"><span class="wtag">live</span><h4>Derivation playground</h4>
+    <span style="margin-left:auto;font-size:.76rem;color:var(--fg-faint)" id="pgPreset"></span></div>
+  <div class="widget-body">
+    <div class="btn-row" style="margin-top:0">
+      <span class="footnote">Preset:</span>
+      <button class="btn ghost small" data-preset="two">TwoPredictors</button>
+      <button class="btn ghost small" data-preset="outer">Outer/Inner</button>
+      <button class="btn ghost small" data-preset="pipeline">Pipeline</button>
+      <button class="btn ghost small" data-preset="mixed">MixedProgram</button>
+    </div>
+    <div class="two-col">
+      <div class="panel">
+        <h5>program value</h5>
+        <div class="tree" id="pgTree"></div>
+        <div class="btn-row">
+          <button class="btn ghost small" data-add="pred">+ predictor</button>
+          <button class="btn ghost small" data-add="plain">+ plain field</button>
+          <button class="btn ghost small" data-add="sub">+ sub-program</button>
+          <button class="btn ghost small" data-add="vec">+ Vector[Predict0]</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h5>predictors(p)</h5>
+        <ul class="mono-list" id="pgPreds"></ul>
+        <div class="btn-row">
+          <button class="btn small" id="pgUpper">updateAll · uppercase</button>
+          <button class="btn small" id="pgDemo">updateAll · +demo</button>
+          <button class="btn ghost small" id="pgReset">reset states</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:.2rem">
+      <h5>address a single site — <code>updateEither(p, path, f)</code></h5>
+      <div class="btn-row" style="margin-top:.1rem">
+        <input type="text" id="pgPath" value="a" size="18" aria-label="path">
+        <button class="btn small" id="pgUpdate">update · append "!"</button>
+        <button class="btn ghost small" id="pgFreeze">toggle frozen at path</button>
+      </div>
+      <div id="pgOut" class="verdict" style="margin-top:.7rem">Pick a path from the list, or type one
+        (<code>a</code>, <code>inner.leaf</code>, <code>steps.1</code>).</div>
+    </div>
+  </div>
+</div>
+
+<div class="prose">
+<div class="box caution">
+  <div class="box-title">Things worth provoking in that widget</div>
+  <ul style="margin-bottom:0">
+    <li>Type a path that does not exist (<code>zzz</code>) → <code>UnknownPath</code>. Type a
+    <em>prefix</em> of a real path (<code>inner</code>) → also <code>UnknownPath</code>: a sub-program
+    is not itself a tunable site.</li>
+    <li>Address a <code>Vector</code> field without its index (<code>steps</code>) → <code>UnknownPath</code>;
+    with an out-of-range index (<code>steps.9</code>) → the same.</li>
+    <li>Freeze a site, then run <code>updateAll</code>: it is skipped silently. Then address it
+    directly: <code>FrozenPath</code>. Silent for the bulk operation, loud for the targeted one —
+    that asymmetry is specified, not accidental.</li>
+    <li>Add a plain <code>String</code> field anywhere: it never appears in the enumeration, and the
+    paths of its neighbours do not shift, because paths are field <em>names</em>, not positions.</li>
+  </ul>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-dspy">5 · Same idea, different machine: DSPy vs ADK4S</h2>
+<div class="prose">
+
+<p>DSPy's equivalent of <code>Optimizable</code> is <code>named_predictors()</code>, which walks
+<code>self.__dict__</code> at runtime, recursing into lists and dicts, collecting anything that
+is a <code>Predict</code>. Forking a candidate is a hand-written <code>deepcopy</code>. Freezing is a
+<code>_compiled</code> boolean the optimizer is expected to honour.</p>
+
+<div class="tabs" id="tabsDspy">
+  <div class="tab-bar" role="tablist">
+    <button role="tab" aria-selected="true">Python (DSPy)</button>
+    <button role="tab" aria-selected="false">Scala 3 (ADK4S)</button>
+    <button role="tab" aria-selected="false">What changed</button>
+  </div>
+  <div class="tab-panel" data-active="true">
+<pre class="python"><code># declaration IS registration: assignment into self.__dict__
+class RAG(dspy.Module):
+    def __init__(self):
+        super().__init__()                       # ProgramMeta enforces this call
+        self.rewrite = dspy.Predict("q -&gt; q2")
+        self.answer  = dspy.ChainOfThought("ctx, q -&gt; a")
+
+# an optimizer forks a candidate:
+candidate = student.deepcopy()                   # hand-written, not stdlib
+for name, pred in candidate.named_predictors():  # runtime walk of __dict__
+    if pred._compiled:                           # honoured by convention
+        continue
+    pred.demos = new_demos                       # in-place mutation</code></pre>
+  </div>
+  <div class="tab-panel">
+<pre class="scala"><code>// declaration IS registration: a field with a HasPredictorState instance
+final case class Rag(
+  rewrite: Predict0[IO, Query, Query],
+  answer:  Predict0[IO, Ctx, Answer],
+  label:   String                                // ignored: not a predictor
+) derives Optimizable
+
+// an optimizer forks a candidate:
+val candidate: Rag = Optimizable[Rag].updateAll(student, (path, s) =&gt;
+  s.copy(demos = newDemos)                       // pure copy; frozen filtered out
+)
+// student is untouched — that is a value, not a promise</code></pre>
+  </div>
+  <div class="tab-panel">
+<div class="table-wrap"><table>
+<thead><tr><th>Concern</th><th>DSPy</th><th>ADK4S Phase 0</th></tr></thead>
+<tbody>
+<tr><td>Finding predictors</td><td>runtime <code>__dict__</code> walk</td><td>compile-time <code>Mirror</code> derivation — no reflection at runtime</td></tr>
+<tr><td>Typos in a path</td><td><code>AttributeError</code> at serving time</td><td><code>UnknownPath</code> value, or a compile error if you use the enumerated paths</td></tr>
+<tr><td>Forking a candidate</td><td>hand-written <code>deepcopy</code>; in-place mutation hazards documented at length</td><td><code>copy</code> on immutable case classes; purity is the default, not a discipline</td></tr>
+<tr><td>Freezing</td><td><code>_compiled</code> flag honoured by convention</td><td><code>frozen</code> excluded structurally by <code>updateAll</code>; typed <code>FrozenPath</code> on direct access</td></tr>
+<tr><td>Enumeration order</td><td>insertion order of <code>__dict__</code></td><td>case-class declaration order, guaranteed by <code>Mirror.MirroredElemLabels</code></td></tr>
+<tr><td>Collections of predictors</td><td>lists <em>and</em> dicts, recursively</td><td><code>Vector</code> now; <code>Map[String, *]</code> deliberately deferred</td></tr>
+<tr><td>Signature field types</td><td>metaclass + a stack-frame walk (up to 100 frames) to resolve custom types</td><td>types are types; nothing to resolve</td></tr>
+<tr><td>Errors from the surface</td><td>exceptions, untyped</td><td>sealed <code>OptimizeError</code>; inexhaustive matches are compile errors (<code>-Wconf</code> escalation)</td></tr>
+</tbody></table></div>
+  </div>
+</div>
+
+<div class="box win">
+  <div class="box-title">The advantage, stated plainly</div>
+  <p style="margin-bottom:0">Python's dynamism was doing real work here, and Scala cannot copy the
+  technique — but it does not need the technique. What DSPy achieves with a runtime walk plus a
+  deepcopy plus a convention, ADK4S achieves with a compile-time walk plus a value plus a typed error.
+  The optimizer loop becomes referentially transparent, which is what makes the three laws
+  <em>testable</em> at all, and what makes the algorithm small enough to state in a theorem prover.</p>
+</div>
+
+<div class="box danger">
+  <div class="box-title">And the cost, equally plainly</div>
+  <ul style="margin-bottom:0">
+    <li><strong>Existentials leak into optimizer internals.</strong> A program's predictors have
+    different <code>I</code>/<code>O</code>; the surface erases them to
+    <code>PredictorState</code> + <code>ujson.Value</code>. That is the deliberate trade — and the
+    reason the surface is frozen by proposal rather than evolved casually.</li>
+    <li><strong>Only what the derivation knows about is reachable.</strong> Predictors behind a
+    <code>Map</code>, an <code>Option</code>, or a bespoke container are invisible until a later phase
+    teaches the derivation about them. DSPy's walk would have found them.</li>
+    <li><strong>Derivation errors are compiler errors,</strong> and inline-expansion errors are not
+    famous for their readability. See the deep dive below for one real scar.</li>
+  </ul>
+</div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-derive">6 · How the derivation actually works</h2>
+<div class="prose">
+
+<p><code>Optimizable.derived</code> is an <code>inline def</code> that walks the product mirror at
+compile time. There are three parallel sequences: the field <em>types</em>
+(<code>m.MirroredElemTypes</code>, a tuple type), the field <em>labels</em>
+(<code>m.MirroredElemLabels</code>, constant string types), and the runtime field <em>values</em>
+(<code>productIterator</code>). The types drive the inline recursion; the labels become path segments;
+the values are what actually gets read and rebuilt.</p>
+
+<pre class="scala"><code>private inline def predictorsWalk[Types &lt;: Tuple](
+  values: Vector[Any], names: List[String], prefix: Vector[String]
+): Vector[(PredictorPath, PredictorState)] =
+  inline erasedValue[Types] match
+    case _: EmptyTuple     =&gt; Vector.empty
+    case _: (head *: tail) =&gt;
+      val contributed = predictField[head](values.head, prefix :+ names.head)
+      contributed ++ predictorsWalk[tail](values.tail, names.tail, prefix)</code></pre>
+
+<p>Per field, the rule is a four-way decision, and its <em>order</em> is load-bearing:</p>
+
+<ol>
+  <li><code>Vector[elem]</code> → indexed leaves, one per element, segment = the index as a string.
+  (Matched first, structurally, because a <code>Vector</code> never has an
+  <code>Optimizable</code> instance of its own.)</li>
+  <li>otherwise <code>summonFrom</code>:
+    <ul>
+      <li>an <code>Optimizable[T]</code> in scope → <strong>sub-program</strong>: recurse, prefixing the
+      field name to every nested path;</li>
+      <li>else a <code>HasPredictorState[T]</code> → <strong>leaf</strong>: one entry, path = field name;</li>
+      <li>else → <strong>skip</strong>. Not a fallback, not a silent failure: a field with neither
+      instance is not a tunable site, and skipping it <em>is</em> the specified behaviour.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><code>Optimizable</code> is tried before <code>HasPredictorState</code> so that a type which is both
+a program and a predictor is treated as a subtree. In Phase 0 nothing is both, but the ordering is
+fixed now because Phase 2's real <code>Predict</code> could be.</p>
+
+<h3 id="s-derive-update">The update side, and one honest scar</h3>
+
+<p><code>updateEither</code> walks the same fields looking for the one whose name equals
+<code>path.segments(0)</code>, then either applies <code>f</code> (leaf), recurses with the remaining
+segments (sub-program), or indexes into the collection. The rebuilt program comes back through the
+mirror:</p>
+
+<pre class="scala"><code>updateWalk[m.MirroredElemTypes](fieldValues, fieldNames, Vector.empty, path, f).map { updated =&gt;
+  val tuple: Tuple = updated.foldLeft(EmptyTuple: Tuple)((acc, v) =&gt; acc :* v.asInstanceOf[Object])
+  m.fromTuple(tuple.asInstanceOf[m.MirroredElemTypes])
+}</code></pre>
+
+<details class="dive">
+  <summary>Deep dive — why the <code>Vector</code> update path resolves its typeclass through a closure
+  <span class="dive-tag">implementation</span></summary>
+  <p>In <code>predictCollection</code>, the <code>HasPredictorState[Elem]</code> instance is summoned
+  at the top of the inline expansion, and everything works. In the update path the same
+  <code>summonFrom</code> sat <em>after</em> a runtime <code>if/else</code>, at a greater inline depth,
+  where the pattern-bound element type no longer resolved.</p>
+  <p>The fix in the shipped code is deliberate and documented: a helper
+  <code>predictCollectionWithUpdater[Elem]</code> is called <strong>before any runtime branching</strong>,
+  and returns, per element, a triple of <em>(path, state, updater closure)</em> where the closure has
+  already captured the typeclass instance:</p>
+<pre class="scala"><code>val updater: PredictorState =&gt; Any = s =&gt; leaf.withState(e.asInstanceOf[Elem], s)</code></pre>
+  <p>The subsequent runtime code (<code>updateCollectionFromEntries</code>) is then plain Scala: find
+  the entry whose path matches exactly, check <code>frozen</code>, apply <code>f</code>, call the
+  updater, rebuild the vector with <code>updated(idx, …)</code>. This is why the entries are computed
+  even on the branch that turns out not to need them — moving that call inside the branch is what
+  breaks, so the comment above it says exactly that.</p>
+  <p style="margin-bottom:0">Cost: a small amount of wasted work per non-matching field. Benefit: the
+  collection case resolves at all. It is the sort of thing worth reading before Phase 2 touches this
+  file.</p>
+</details>
+
+<div class="box rule">
+  <div class="box-title">Where the error cases come from</div>
+  <p style="margin-bottom:0">Every <code>UnknownPath</code> in the implementation corresponds to a
+  structural impossibility, and each is a separate arm rather than a catch-all: empty path; no field
+  with that name; a leaf addressed with extra segments; a sub-program addressed without them; a
+  <code>Vector</code> addressed without an index; an index out of range. <code>FrozenPath</code> has
+  exactly two sites — the leaf branch and the collection branch. Ring 8's adversarial review of this
+  change specifically hunted for a <code>case _ =&gt; p</code> that would have swallowed any of them.</p>
+</div>
+
+<div class="box caution">
+  <div class="box-title">A detail worth knowing before Phase 2</div>
+  <p style="margin-bottom:0">The sub-program branch propagates the inner <code>Left</code> unchanged
+  (<code>subOpt.updateEither(field, subPath, f).map(…)</code>), so an error raised inside a nested
+  program carries the <strong>relative</strong> path: addressing <code>sub.leaf</code> on a frozen
+  nested predictor returns <code>FrozenPath(leaf)</code>, not <code>FrozenPath(sub.leaf)</code>. The
+  playground above reproduces that faithfully rather than tidying it up. It costs nothing today —
+  nothing consumes the payload — but a GEPA-style optimizer logging failed writes by path will want
+  the absolute one.</p>
+</div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-laws-live">7 · The laws, run against good and bad optimizers</h2>
+<div class="prose">
+<p>Laws are only interesting if they can fail. Pick an optimizer — two of them are the toys that ship,
+two are deliberately broken in ways a real optimizer plausibly could be — and run the three laws
+against the current playground program.</p>
+</div>
+
+<div class="widget">
+  <div class="widget-head"><span class="wtag">live</span><h4>OptimizerLaws</h4></div>
+  <div class="widget-body">
+    <div class="btn-row" style="margin-top:0">
+      <label class="inline">optimizer
+        <select id="lawOpt">
+          <option value="upper">UppercaseInstructions (ships)</option>
+          <option value="demo">StaticDemoInjector (ships)</option>
+          <option value="thaw">IgnoresFrozen — tunes every site</option>
+          <option value="prune">PrunesEmptySites — drops sites with empty instructions</option>
+          <option value="cheat">SharesState — writes the whole Vector at once</option>
+        </select>
+      </label>
+      <button class="btn small" id="lawRun">run laws</button>
+    </div>
+    <div id="lawOut" class="verdict">Runs <code>purity</code>, <code>frozenPreserved</code> and
+      <code>pathSetPreserved</code> over the program in the playground above.</div>
+  </div>
+</div>
+
+<div class="prose">
+<p>Two results are worth dwelling on. <em>PrunesEmptySites</em> fails only the path-set law — its
+output is a perfectly valid program, just not the same shape, which is precisely the failure mode
+"optimizers tune state, never structure" exists to name. <em>SharesState</em> passes all three laws
+while writing the wrong sites: the laws are a floor, not a ceiling, and the targeted-update behaviour
+is covered by a separate Ring 3 property (<code>update-only-target</code>). Knowing which guard covers
+what is the difference between a test suite and a habit.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-ring6">8 · Ring 6: the verified-mirror pattern</h2>
+<div class="prose">
+
+<p>This repository grades changes by verification rings. Ring 6 is formal verification with Stainless.
+The first draft of this change's <code>design.md</code> declared Ring 6 <em>not applicable</em>, with
+three reasons: the code uses <code>Mirror</code> and <code>inline</code>; it carries
+<code>ujson.Value</code>; and Stainless is pinned to Scala 3.7.2 while the module builds on 3.8.4.</p>
+
+<p>That reasoning was then rejected — and the rejection is the interesting part. All three facts are
+statements about the <em>types the shipped code mentions</em>. None is a statement about the
+<em>algorithm</em>. Strip the algorithm to its observable effect and what remains is a pre-order
+traversal of a finite tree, which is exactly the kind of thing a prover eats for breakfast. Hence
+schema v10's <strong>verified-mirror</strong> pattern: don't verify the shipped code, verify a
+faithful model of its algorithm, and then <em>bind</em> the model to the shipped code with a property
+test that runs both.</p>
+
+<h3 id="s-ring6-abstract">The abstraction</h3>
+
+<div class="table-wrap"><table>
+<thead><tr><th>Shipped code</th><th>Model</th><th>Why that is faithful</th></tr></thead>
+<tbody>
+<tr><td>a program value (case class of fields)</td><td><code>Sub(fields: List[Prog])</code></td><td>field declaration order becomes list order — and declaration order is the law under proof</td></tr>
+<tr><td>a <code>Predict0</code> field</td><td><code>Pred(frozen: Boolean, state: BigInt)</code></td><td>the only observable properties of a state, for this algorithm, are "is it frozen" and "is it this one"</td></tr>
+<tr><td>a non-predictor field</td><td><code>Plain()</code></td><td>it exists, it occupies a declaration position, it is never enumerated</td></tr>
+<tr><td><code>Vector[Predict0]</code></td><td><code>Coll(elems: List[Prog])</code></td><td>ordered, index-addressed</td></tr>
+<tr><td><code>PredictorPath("outer","leaf")</code></td><td><code>List[BigInt]</code> of child indices</td><td>names are resolved to positions by the bridge; the traversal only ever cares about position</td></tr>
+<tr><td><code>instructions</code>, <code>demos</code>, <code>ujson</code></td><td>— (erased to the <code>BigInt</code>)</td><td>the traversal never inspects them; carrying them would prove nothing extra</td></tr>
+</tbody></table></div>
+
+<p>The model is 200 lines of PureScala in the leaf <code>verified</code> module (Scala 3.7.2, not
+aggregated by the root build, depends on nothing project-local):</p>
+
+<pre class="scala"><span class="filename">verified/src/main/scala/org/adk4s/verified/PredictorKernel.scala</span><code>sealed abstract class Prog
+case class Pred(frozen: Boolean, state: BigInt) extends Prog
+case class Plain()                              extends Prog
+case class Sub(fields: List[Prog])              extends Prog
+case class Coll(elems: List[Prog])              extends Prog
+
+def pathsImpl(p: Prog, prefix: List[BigInt], startIdx: BigInt): List[List[BigInt]] = {
+  decreases(p)
+  p match {
+    case Pred(_, _) =&gt; List(prefix)
+    case Plain()    =&gt; Nil[List[BigInt]]()
+    case Sub(fs)    =&gt; fs match {
+      case Nil()      =&gt; Nil[List[BigInt]]()
+      case Cons(h, t) =&gt;
+        pathsImpl(h, prefix ++ Cons(startIdx, Nil()), BigInt(0)) ++
+        pathsImpl(Sub(t), prefix, startIdx + BigInt(1))          // ← tail re-wrapped as a Prog
+    }
+    case Coll(es)   =&gt; /* same shape */
+  }
+}
+
+def updateAll(p: Prog, f: BigInt =&gt; BigInt): Prog = {
+  decreases(p)
+  p match {
+    case Pred(fr, st) =&gt; if (fr) Pred(fr, st) else Pred(fr, f(st))   // frozen: bit-identical
+    case Plain()      =&gt; Plain()
+    case Sub(fs)      =&gt; Sub(updateAllList(fs, f))
+    case Coll(es)     =&gt; Coll(updateAllList(es, f))
+  }
+}</code></pre>
+
+<div class="box insight">
+  <div class="box-title">The trick in the recursion — and its price</div>
+  <p>Look at <code>pathsImpl(Sub(t), prefix, startIdx + 1)</code>. The natural way to walk a list of
+  children is a helper that recurses on the list; but then Stainless must compare a
+  <em>tree</em> measure with a <em>list</em> measure, which are incomparable, and every such call
+  produces an unprovable termination obligation. Re-wrapping the tail as <code>Sub(t)</code> makes
+  every recursive call tree→tree, so the default ADT size measure applies uniformly.</p>
+  <p style="margin-bottom:0">It very nearly works. The default <code>ProgPrimitiveSize</code> measure
+  does not recurse into <em>list contents</em>, so <code>Sub(Cons(h,t))</code> and <code>Sub(t)</code>
+  can measure the same to the solver — and those are exactly the seven obligations that still come
+  back <span class="tag-fail">invalid</span> below. The functions do terminate; the default measure
+  cannot see why.</p>
+</div>
+
+<h3 id="s-ring6-ledger">What the prover actually says today</h3>
+
+<p>Below is the real summary table from <code>sbt -J-Xmx6g ring6</code>, verbatim in structure. Filter
+it, and read the note under it, because the honest status is more interesting than a green badge.</p>
+
+</div>
+
+<div class="widget">
+  <div class="widget-head"><span class="wtag">data</span><h4>Ring 6 verification ledger — PredictorKernel</h4>
+    <span style="margin-left:auto;font-size:.75rem;color:var(--fg-faint)">Stainless 0.9.9.3 · solver <code>smt-z3</code> (Z3 4.13.4) · 0.98 s</span></div>
+  <div class="widget-body">
+    <div class="stat-row">
+      <div class="stat"><b>35</b>conditions</div>
+      <div class="stat"><b style="color:var(--ok)">28</b>valid <span class="footnote">(17 cached, 11 trivial)</span></div>
+      <div class="stat"><b style="color:var(--bad)">7</b>invalid</div>
+      <div class="stat"><b>0</b>unknown</div>
+      <div class="stat"><b>0</b>on the four property lemmas</div>
+    </div>
+    <div class="btn-row" style="margin-top:.2rem">
+      <button class="btn ghost small" data-vc="all">all</button>
+      <button class="btn ghost small" data-vc="invalid">invalid only</button>
+      <button class="btn ghost small" data-vc="measure">measure decreases</button>
+      <button class="btn ghost small" data-vc="exh">exhaustiveness</button>
+    </div>
+    <div class="table-wrap" style="max-height:19rem;overflow-y:auto;margin-top:.7rem">
+      <table class="ledger"><tbody id="vcBody"></tbody></table>
+    </div>
+    <div class="verdict" style="margin-top:.8rem">
+      <div class="vhead">counter-example returned for one of the seven</div>
+      <div style="font-family:var(--mono);font-size:.77rem;margin-top:.35rem">
+        p: Prog → Coll(Cons(Sub(Cons(Plain(), Nil())), Nil()))
+      </div>
+      <p class="footnote" style="margin:.5rem 0 0">A collection holding a sub-program holding a single
+      plain field: the solver cannot show the re-wrapped tail is smaller, so it exhibits the smallest
+      shape where its size arithmetic goes flat. It is a counter-example to the <em>measure</em>, not to
+      the algorithm.</p>
+    </div>
+  </div>
+</div>
+
+<div class="prose">
+<div class="box caution">
+  <div class="box-title">Read this before quoting "Ring 6 passed"</div>
+  <p>Two gaps separate the current state from the spec's stated ambition, and both are visible in the
+  ledger:</p>
+  <ol>
+    <li><strong>Seven termination obligations are still invalid.</strong> They are all "measure
+    decreases" on the re-wrapped tail calls (<code>countPreds</code> ×2, <code>frozenStates</code> ×2,
+    <code>pathsImpl</code> ×2, <code>updateAllList</code> ×1). Closing them needs an explicit
+    <code>treeSize</code> measure that counts list contents, or a newer Stainless with better measure
+    inference.</li>
+    <li><strong>The four semantic lemmas generate no obligations at all.</strong>
+    <code>pathsCompleteness</code>, <code>updateAllShapePreserved</code>,
+    <code>updateAllFrozenPreserved</code> and <code>roundTripIdentity</code> are written as plain
+    boolean functions <em>without</em> <code>ensuring</code> clauses — a deliberate retreat, recorded in
+    the commit message, after the <code>smt-z3</code> subprocess fallback hung on the postconditions.
+    The native Z3 interface is unavailable because ScalaZ3 is not built for Scala 3. So the meanings
+    those lemmas express are currently checked by the bridge property test, not by the prover.</li>
+  </ol>
+  <p style="margin-bottom:0">What Stainless <em>does</em> establish today: the model's matches are
+  exhaustive, its measures are non-negative, and 28 of 35 obligations — including every
+  <code>updateAll</code> termination obligation — discharge. That is real, and it is less than
+  "the contracts are proven". The spec's own delegation rule applies: a diverging obligation moves into
+  the delegation table with a named Ring 3 property, and is never silently dropped.</p>
+</div>
+
+<details class="dive">
+  <summary>What closing gap 2 would look like <span class="dive-tag">next step</span></summary>
+  <p>Restore the postconditions on the recursive functions and give the prover a measure it can
+  actually use:</p>
+<pre class="scala"><code>def treeSize(p: Prog): BigInt = {
+  decreases(p)
+  p match
+    case Pred(_, _) =&gt; BigInt(1)
+    case Plain()    =&gt; BigInt(1)
+    case Sub(fs)    =&gt; BigInt(1) + listSize(fs)
+    case Coll(es)   =&gt; BigInt(1) + listSize(es)
+}.ensuring(_ &gt; BigInt(0))
+
+def pathsImpl(p: Prog, prefix: List[BigInt], startIdx: BigInt): List[List[BigInt]] = {
+  decreases(treeSize(p))                        // explicit, counts list contents
+  …
+}.ensuring(_.size == countPreds(p))             // the completeness contract, back on the function</code></pre>
+  <p style="margin-bottom:0">Then either build ScalaZ3 for Scala 3.7.2 and drop the jar on the
+  classpath (the native interface, which is what the postconditions need for tolerable performance),
+  or move to a Stainless release whose measure inference handles ADTs containing lists. Until one of
+  those lands, the honest label for Ring 6 on this change is <em>partial</em>.</p>
+</details>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-bridge">9 · The bridge: why the model is the same algorithm</h2>
+<div class="prose">
+
+<p>A proof about a model you also wrote is worth nothing on its own — the classic failure of formal
+methods is proving something true about a program you do not ship. The verified-mirror pattern's
+answer is the <strong>bridge</strong>: a property test in the shipped module that runs the real
+<code>Optimizable</code> and the model <code>PredictorKernel</code> <em>on the same generated
+programs</em> and asserts they agree, on exactly the invariants the model is supposed to carry.</p>
+
+<pre class="scala"><span class="filename">adk4s-optimize/src/test/scala/org/adk4s/optimize/PredictorModelBridgeSpec.scala</span><code>property("bridge-paths-match: Pipeline collection"):
+  for
+    n       &lt;- Gen.int(Range.linear(1, 5)).forAll
+    seeds   &lt;- Gen.int(Range.linear(0, 1000)).list(Range.linear(1, 5)).forAll
+    frozens &lt;- Gen.boolean.list(Range.linear(1, 5)).forAll
+  yield
+    val modelProg = Sub(toSList(List(Coll(modelElems))))         // the model's view
+    val realProg  = ToyPrograms.Pipeline(realSteps)              // the real value
+
+    val modelPaths = PredictorKernel.paths(modelProg, SNil())    // List[List[BigInt]]
+    val realPaths  = Optimizable[Pipeline].predictors(realProg).map(_._1)
+
+    // field names and index strings → child indices, then compare element-for-element
+    realIndexChains ==== modelIndexChains</code></pre>
+
+<p>Six properties make up the bridge: path-sequence equality for each of the three derivation shapes
+(leaf, nested sub-program, collection), path-set preservation after <code>updateAll</code>,
+frozen-state identity, and round-trip identity. Build wiring is one line —
+<code>adk4s-optimize dependsOn(verified % Test)</code> — and it works only in that direction, because
+TASTy is backward compatible: a 3.8.4 module can read the 3.7.2 artifact, never the reverse. That is
+also why <code>verified</code> depends on nothing project-local. <code>stainlessEnabled := false</code>
+by default, so <code>sbt test</code> pays a plain compile of the model and the solver only runs under
+the explicit <code>ring6</code> alias.</p>
+
+<h3 id="s-bridge-live">Run the bridge yourself — including against a sabotaged implementation</h3>
+
+<p>The widget below is the bridge in miniature. It generates random programs from a seed (the repo
+convention: nothing stochastic without an explicit seed), runs both implementations, and reports
+agreement. The interesting control is the last one: <strong>inject a bug into the "shipped"
+side</strong> and watch which invariant notices.</p>
+</div>
+
+<div class="widget">
+  <div class="widget-head"><span class="wtag">live</span><h4>Bridge fuzzer — real vs model</h4></div>
+  <div class="widget-body">
+    <div class="btn-row" style="margin-top:0">
+      <label class="inline">seed <input type="number" id="brSeed" value="42" style="width:6rem"></label>
+      <label class="inline">programs <input type="number" id="brN" value="200" style="width:5.5rem"></label>
+      <label class="inline">inject bug
+        <select id="brBug">
+          <option value="none">none — ship as written</option>
+          <option value="order">enumerate fields in reverse order</option>
+          <option value="plain">include plain (non-predictor) fields</option>
+          <option value="noidx">drop the index segment on Vector paths</option>
+          <option value="frozen">updateAll also touches frozen sites</option>
+          <option value="broadcast">update writes every element of a Vector</option>
+        </select>
+      </label>
+      <button class="btn small" id="brRun">run bridge</button>
+    </div>
+    <div id="brOut" class="verdict">Not run yet.</div>
+    <div class="panel" style="margin-top:.8rem">
+      <h5>first disagreement (if any)</h5>
+      <div id="brDetail" class="footnote">—</div>
+    </div>
+  </div>
+</div>
+
+<div class="prose">
+<div class="box rule">
+  <div class="box-title">What the bridge does and does not buy</div>
+  <p><strong>Catches:</strong> any drift between the shipped traversal and the proven one that shows up
+  in path order, path membership, or frozen identity — which is to say, every structural bug the model's
+  contracts are about. Try the first four injections: each turns the bridge red within a handful of
+  generated programs.</p>
+  <p style="margin-bottom:0"><strong>Does not catch:</strong> the <em>broadcast</em> injection. Writing
+  every element of a <code>Vector</code> preserves the path set, preserves frozen identity when no
+  sibling is frozen, and preserves order — so the bridge stays green while the update is wrong. That
+  bug belongs to a different guard, and the spec names it: Ring 3's <code>update-only-target</code>
+  property. This is the delegation discipline in action — every law that the model cannot carry is
+  written down with the property that carries it instead, rather than being quietly assumed.</p>
+</div>
+
+<h3 id="s-bridge-chain">The full chain of trust, end to end</h3>
+
+<div class="table-wrap"><table>
+<thead><tr><th>#</th><th>Link</th><th>Mechanism</th><th>Status today</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>The model terminates and is total over <code>Prog</code></td><td>Stainless: exhaustiveness + non-negative measure + measure-decreases obligations</td><td><span class="tag-warn">partial</span> — 28/35 valid, 7 measure obligations invalid</td></tr>
+<tr><td>2</td><td>The model's traversal has the intended <em>meaning</em> (completeness, shape preservation, frozen identity, round-trip)</td><td>should be <code>ensuring</code> clauses on the kernel functions</td><td><span class="tag-fail">not discharged</span> — lemmas present but without postconditions; delegated to link 3</td></tr>
+<tr><td>3</td><td>The shipped <code>Optimizable</code> agrees with the model</td><td><code>PredictorModelBridgeSpec</code> — 6 Hedgehog properties, both implementations on the same generated programs</td><td><span class="tag-pass">green</span></td></tr>
+<tr><td>4</td><td>Behaviour the model deliberately does not describe (typed errors, name→segment encoding, source declaration order)</td><td>named Ring 3 properties: <code>predictors-declaration-order</code>, <code>nested-recursion-paths</code>, <code>collection-recursion-paths</code>, <code>updateEither-unknown-path-error</code>, <code>updateEither-frozen-path-error</code>, <code>update-only-target</code></td><td><span class="tag-pass">green</span> — 15 properties inside 64 tests, all passing on 2026-08-01</td></tr>
+<tr><td>5</td><td>The code does not satisfy the tests while violating the English spec</td><td>Ring 8 adversarial review in a fresh context, requirement by requirement</td><td><span class="tag-pass">15 PASS, 1 PARTIAL, 0 FAIL</span></td></tr>
+</tbody></table></div>
+
+<p>Read down that column and the honest sentence is: <em>we are sure the shipped traversal and the
+modelled traversal are the same traversal (link 3, empirically, over generated programs), and we are
+sure the model is total and terminating on most of its call sites (link 1); we are not yet sure, by
+proof, that the traversal means what the contracts say — that part still rests on properties, not on
+Z3.</em> Which is a considerably stronger position than "we wrote tests", and a considerably weaker one
+than "it is verified". Saying which of the two you have is the entire point of keeping the ledger.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s-today">10 · Where the port actually stands</h2>
+<div class="prose">
+<p>Phase 0 ended with a frozen API and was archived on 2026-08-01. Phase 1 started immediately — it has
+no dependency on the surface — and is currently at its first human gate. Click a phase for its state and
+for what it needs from the surface.</p>
+</div>
+
+<div class="widget">
+  <div class="widget-head"><span class="wtag">status</span><h4>DSPy port — phase board (2026-08-01)</h4></div>
+  <div class="widget-body">
+    <div class="btn-row" style="margin-top:0" id="phaseBar"></div>
+    <div class="panel" style="margin-top:.8rem" id="phaseDetail"></div>
+  </div>
+</div>
+
+<div class="prose">
+
+<h3 id="s-today-eval">Phase 1 in the tree: what already compiles</h3>
+
+<p><code>adk4s-eval</code> exists, is wired into <code>build.sbt</code> (<code>dependsOn(structured-llm)</code>,
+cats-effect + fs2 only), and holds the full typed contract with <code>???</code> bodies — 13 signatures
+plus two exhaustiveness checks, pinned by <code>EvalCoreTypeContract</code> before any implementation
+is written. Two of those types are the reason this section belongs in a Phase 0 tutorial:</p>
+
+<pre class="scala"><span class="filename">adk4s-eval/src/main/scala/org/adk4s/eval/{Metric,Trace,TraceEntry}.scala</span><code>trait Metric[F[_], I, O]:
+  /** `None` in evaluation mode; `Some(trace)` when an optimizer is calling.
+    * This signature is FROZEN — Phase 2/3 optimizers depend on it. */
+  def apply(gold: Example[I, O], pred: O, trace: Option[Trace]): F[Score]
+
+final case class TraceEntry(path: String, input: ujson.Value, output: ujson.Value)
+
+final case class Trace(entries: Vector[TraceEntry]):
+  /** GEPA's `pred_trace`: the slice belonging to one predictor */
+  def forPredictor(path: String): Trace =
+    Trace(entries.filter(entry =&gt; entry.path.startsWith(path)))</code></pre>
+
+<div class="box insight">
+  <div class="box-title">Two modules that must meet, and deliberately cannot see each other</div>
+  <p><code>TraceEntry.path</code> is a bare <code>String</code>, not a <code>PredictorPath</code> —
+  and <code>Trace.forPredictor</code> is a <em>prefix</em> filter, which is exactly the shape
+  <code>PredictorPath.render</code> produces (<code>"rag.answer"</code>, <code>"steps.2"</code>). The two
+  modules are joined by that string convention and by nothing else: the build comment on
+  <code>adk4s-eval</code> spells out the Ring 2 purity rule — it must not depend on
+  <code>adk4s-optimize</code>, and <code>adk4s-optimize</code> does not depend on it either.</p>
+  <p style="margin-bottom:0">They meet in Phase 2, in a third place: <code>BootstrapFewShot</code> takes
+  a <code>Metric</code> from eval and an <code>Optimizable</code> from optimize, runs a program under a
+  <code>TraceCollector</code>, and converts each passing trace entry into a <code>Demo</code> credited to
+  the predictor at that entry's path. The <code>String</code>/<code>PredictorPath</code> seam is the one
+  place where a rename could silently break the credit assignment — worth a typed bridge when Phase 2
+  wires them together.</p>
+</div>
+
+<p>The frozen <code>Option[Trace]</code> argument is the same discipline as the frozen predictor surface,
+applied one module over: pin the signature <em>before</em> anything consumes it, so the consumers
+(a demo optimizer, then a reflective one) never force a change to a contract that many call sites
+already depend on. DSPy's equivalent is a five-argument duck-typed convention discovered at runtime;
+here it is one method, and the "am I being evaluated or optimized?" toggle is a value of type
+<code>Option</code>.</p>
+
+<h3 id="s-next">What each remaining phase needs from the surface</h3>
+
+<div class="table-wrap"><table>
+<thead><tr><th>Phase</th><th>Needs from this surface</th></tr></thead>
+<tbody>
+<tr><td><strong>1 · eval core</strong> — in flight</td><td>nothing structural. Its only tie to Phase 0 is the trace-path string convention above, and the <code>Evaluate</code> harness every later optimizer scores candidates with.</td></tr>
+<tr><td><strong>2 · compiler MVP</strong></td><td><code>predictors</code> to mint demos per site; <code>updateAll</code> to attach them; <code>PredictorState</code> as the unit of <code>CompiledState</code> save/load. The real <code>Predict</code> replaces <code>Predict0</code> by implementing the same <code>HasPredictorState</code>, and derived instances keep working untouched.</td></tr>
+<tr><td><strong>3 · instruction optimization</strong></td><td>COPRO and GEPA rewrite exactly one field of <code>PredictorState</code>; <code>PredictorPath.render</code> feeds <code>Trace.forPredictor</code>, which is already written and waiting</td></tr>
+<tr><td><strong>4 · orchestration</strong></td><td>an <code>Optimizable</code> instance for graphs and for <code>ReactAgent</code> (system prompt as instructions, tool descriptions as pseudo-predictors) — the acceptance test being that <em>optimizers need no changes at all</em></td></tr>
+</tbody></table></div>
+
+<p>Two open items are already named for later phases rather than discovered later: <code>Map[String, *]</code>
+recursion in the derivation (deferred from Phase 0), and the module direction question — <code>Demo</code>,
+<code>PredictorState</code>, <code>PredictorPath</code> and <code>HasPredictorState</code> are expected to
+move into <code>structured-llm</code> in Phase 2 so that <code>Signature</code> can carry demos without
+inverting the module graph.</p>
+
+<h3 id="s-quiz">Checkpoint</h3>
+</div>
+
+<div id="quiz"></div>
+
+<div class="prose">
+<div class="box win">
+  <div class="box-title">The three sentences worth keeping</div>
+  <ol style="margin-bottom:0">
+    <li>An optimizer is a function from a program to a program that may change predictor
+    <em>state</em> and nothing else; the surface exists to make "and nothing else" checkable.</li>
+    <li>Python found predictors by walking objects at runtime; Scala finds them by walking a mirror at
+    compile time, and gets purity, ordering and typed errors as a side effect rather than as a
+    discipline.</li>
+    <li>You cannot verify code that uses <code>inline</code>, <code>Mirror</code> and JSON — but you can
+    verify the traversal underneath it and then <em>bind</em> the two with a property test. The
+    binding is the load-bearing part; without it the proof is about a program you do not ship.</li>
+  </ol>
+</div>
+
+<hr>
+<p class="footnote">Sources: <code>docs/dspy-port-analysis.md</code> ·
+<code>docs/dspy-port-operative-plan.md</code> ·
+<code>openspec/specs/optimizable-surface/spec.md</code> (synced requirements) ·
+<code>openspec/changes/archive/2026-08-01-add-optimizable-surface/</code> (design, Ring 6 contracts,
+proof obligations, progress ledger) ·
+<code>openspec/changes/add-eval-core/</code> (Phase 1, in flight) ·
+<code>adk4s-optimize/src/main/scala/org/adk4s/optimize/*.scala</code> ·
+<code>adk4s-eval/src/main/scala/org/adk4s/eval/*.scala</code> ·
+<code>verified/src/main/scala/org/adk4s/verified/PredictorKernel.scala</code> ·
+live <code>sbt -J-Xmx6g ring6</code> output, 2026-07-28. Page state: 2026-08-01.</p>
+</div>
+
+</main>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   0 · chrome: theme, ToC, tabs, code highlighting
+   ═════════════════════════════════════════════════════════════════════ */
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem("adk4s-po-theme"); } catch (e) {}
+  if (saved) document.documentElement.setAttribute("data-theme", saved);
+  document.getElementById("themeBtn").addEventListener("click", function () {
+    var cur = document.documentElement.getAttribute("data-theme");
+    if (!cur) cur = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    var next = cur === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("adk4s-po-theme", next); } catch (e) {}
+  });
+
+  var toc = document.getElementById("toc");
+  var heads = document.querySelectorAll("main h2, main h3");
+  heads.forEach(function (h) {
+    if (!h.id) return;
+    var li = document.createElement("li");
+    if (h.tagName === "H3") li.className = "h3";
+    var a = document.createElement("a");
+    a.href = "#" + h.id;
+    a.textContent = h.textContent.replace(/\s+/g, " ").trim();
+    li.appendChild(a); toc.appendChild(li);
+  });
+  var links = Array.prototype.slice.call(toc.querySelectorAll("a"));
+  function spy() {
+    var best = null, bestTop = -1e9;
+    heads.forEach(function (h) {
+      var t = h.getBoundingClientRect().top - 90;
+      if (t < 0 && t > bestTop) { bestTop = t; best = h.id; }
+    });
+    links.forEach(function (a) { a.classList.toggle("active", a.getAttribute("href") === "#" + best); });
+  }
+  window.addEventListener("scroll", spy, { passive: true }); spy();
+
+  document.querySelectorAll(".tabs").forEach(function (tabs) {
+    var btns = Array.prototype.slice.call(tabs.querySelectorAll(".tab-bar button"));
+    var panels = Array.prototype.slice.call(tabs.querySelectorAll(".tab-panel"));
+    btns.forEach(function (b, i) {
+      b.addEventListener("click", function () {
+        btns.forEach(function (x, j) { x.setAttribute("aria-selected", String(i === j)); });
+        panels.forEach(function (p, j) { p.setAttribute("data-active", String(i === j)); });
+      });
+    });
+  });
+
+  // dependency-free highlighter: comments/strings first, then keywords/types/numbers
+  var SCALA_KW = "def|val|var|case|class|object|trait|enum|given|using|extends|with|new|inline|final|sealed|abstract|import|package|match|if|else|then|yield|for|return|true|false|null|this|type|derives|lazy|private|override";
+  var PY_KW = "def|class|return|for|in|if|else|elif|import|from|self|None|True|False|super|pass|continue";
+  document.querySelectorAll("pre.scala code, pre.python code").forEach(function (code) {
+    var isPy = code.parentNode.className.indexOf("python") >= 0;
+    var txt = code.textContent
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    var src = isPy
+      ? "(#[^\\n]*)|(\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*')|\\b(" + PY_KW + ")\\b|\\b([A-Z][A-Za-z0-9_]*)\\b|\\b(\\d+)\\b"
+      : "(//[^\\n]*|/\\*[\\s\\S]*?\\*/)|(\"(?:[^\"\\\\]|\\\\.)*\")|\\b(" + SCALA_KW + ")\\b|\\b([A-Z][A-Za-z0-9_]*)\\b|\\b(\\d+)\\b";
+    var re = new RegExp(src, "g");
+    code.innerHTML = txt.replace(re, function (m, c, s, k, t, n) {
+      if (c) return '<span class="c">' + c + "</span>";
+      if (s) return '<span class="s">' + s + "</span>";
+      if (k) return '<span class="k">' + k + "</span>";
+      if (t) return '<span class="t">' + t + "</span>";
+      if (n) return '<span class="n">' + n + "</span>";
+      return m;
+    });
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   1 · shipped side — a faithful JS port of Optimizable.derived
+       program : { fields: [ { name, node } ] }
+       node    : {k:'pred', st:{instructions, demos, frozen}}
+               | {k:'plain'}
+               | {k:'sub',  prog}
+               | {k:'vec',  elems:[predNode]}
+   ═════════════════════════════════════════════════════════════════════ */
+var Shipped = (function () {
+
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+
+  // ── predictors: sub-program → leaf → collection → skip, declaration order
+  function predictors(prog, bug) {
+    bug = bug || "none";
+    var out = [];
+    var fields = prog.fields;
+    if (bug === "order") fields = fields.slice().reverse();
+    fields.forEach(function (f) {
+      var n = f.node;
+      if (n.k === "vec") {
+        n.elems.forEach(function (e, i) {
+          var segs = bug === "noidx" ? [f.name] : [f.name, String(i)];
+          out.push({ path: segs, st: e.st });
+        });
+      } else if (n.k === "sub") {
+        predictors(n.prog, bug).forEach(function (inner) {
+          out.push({ path: [f.name].concat(inner.path), st: inner.st });
+        });
+      } else if (n.k === "pred") {
+        out.push({ path: [f.name], st: n.st });
+      } else if (n.k === "plain" && bug === "plain") {
+        out.push({ path: [f.name], st: { instructions: "", demos: 0, frozen: false } });
+      }
+    });
+    return out;
+  }
+
+  function err(kind, path) { return { err: { kind: kind, path: path.join(".") } }; }
+
+  // ── updateEither: walk fields for segment 0, then leaf / subtree / index
+  function updateEither(prog, path, f, bug) {
+    bug = bug || "none";
+    if (path.length === 0) return err("UnknownPath", path);
+    var target = path[0], rest = path.slice(1);
+    var fields = prog.fields, idx = -1;
+    for (var i = 0; i < fields.length; i++) if (fields[i].name === target) { idx = i; break; }
+    if (idx < 0) return err("UnknownPath", path);
+
+    var fld = fields[idx], n = fld.node, next = clone(prog);
+
+    if (n.k === "plain") return err("UnknownPath", path);
+
+    if (n.k === "pred") {
+      if (rest.length !== 0) return err("UnknownPath", path);
+      if (n.st.frozen) return err("FrozenPath", path);
+      next.fields[idx].node.st = f(clone(n.st));
+      return { ok: next };
+    }
+
+    if (n.k === "sub") {
+      if (rest.length === 0) return err("UnknownPath", path);
+      var sub = updateEither(n.prog, rest, f, bug);
+      // the shipped code propagates the inner Left unchanged, so a nested error
+      // carries the RELATIVE path — reproduced here rather than tidied up
+      if (sub.err) return { err: sub.err };
+      next.fields[idx].node.prog = sub.ok;
+      return { ok: next };
+    }
+
+    // vec: needs exactly one index segment, in range
+    if (rest.length !== 1) return err("UnknownPath", path);
+    var ei = parseInt(rest[0], 10);
+    if (isNaN(ei) || ei < 0 || ei >= n.elems.length) return err("UnknownPath", path);
+    if (n.elems[ei].st.frozen) return err("FrozenPath", path);
+    if (bug === "broadcast") {
+      // writes every sibling — but still respects frozen, so no model invariant notices
+      next.fields[idx].node.elems.forEach(function (e) { if (!e.st.frozen) e.st = f(clone(e.st)); });
+    } else {
+      next.fields[idx].node.elems[ei].st = f(clone(n.elems[ei].st));
+    }
+    return { ok: next };
+  }
+
+  // ── updateAll: filter non-frozen, then fold updates (frozen exclusion is structural)
+  function updateAll(prog, f, bug) {
+    bug = bug || "none";
+    var snapshot = predictors(prog, bug === "order" ? "none" : bug);
+    var acc = clone(prog);
+    snapshot.forEach(function (e) {
+      if (e.st.frozen && bug !== "frozen") return;
+      var r = updateEither(acc, e.path, function (s) { return f(e.path, s); }, bug);
+      if (r.ok) acc = r.ok;
+      else if (bug === "frozen" && r.err.kind === "FrozenPath") {
+        // the sabotaged variant forces the write through
+        acc = forceWrite(acc, e.path, f);
+      }
+    });
+    return acc;
+  }
+
+  function forceWrite(prog, path, f) {
+    var next = clone(prog), target = path[0], rest = path.slice(1);
+    for (var i = 0; i < next.fields.length; i++) {
+      if (next.fields[i].name !== target) continue;
+      var n = next.fields[i].node;
+      if (n.k === "pred") n.st = f(path, clone(n.st));
+      else if (n.k === "sub") next.fields[i].node.prog = forceWrite(n.prog, rest, f);
+      else if (n.k === "vec") { var ei = parseInt(rest[0], 10); n.elems[ei].st = f(path, clone(n.elems[ei].st)); }
+    }
+    return next;
+  }
+
+  return { predictors: predictors, updateEither: updateEither, updateAll: updateAll, clone: clone };
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   2 · model side — a JS port of verified/PredictorKernel (PureScala)
+       Prog : {t:'Pred', frozen, state} | {t:'Plain'} | {t:'Sub', xs} | {t:'Coll', xs}
+   ═════════════════════════════════════════════════════════════════════ */
+var Kernel = (function () {
+
+  function countPreds(p) {
+    if (p.t === "Pred") return 1;
+    if (p.t === "Plain") return 0;
+    return p.xs.reduce(function (a, c) { return a + countPreds(c); }, 0);
+  }
+
+  function paths(p, prefix) {
+    if (p.t === "Pred") return [prefix];
+    if (p.t === "Plain") return [];
+    var out = [];
+    p.xs.forEach(function (child, i) {
+      paths(child, prefix.concat([i])).forEach(function (q) { out.push(q); });
+    });
+    return out;
+  }
+
+  function updateAll(p, f) {
+    if (p.t === "Pred") return p.frozen ? { t: "Pred", frozen: true, state: p.state }
+                                        : { t: "Pred", frozen: false, state: f(p.state) };
+    if (p.t === "Plain") return { t: "Plain" };
+    return { t: p.t, xs: p.xs.map(function (c) { return updateAll(c, f); }) };
+  }
+
+  function frozenStates(p) {
+    if (p.t === "Pred") return p.frozen ? [p.state] : [];
+    if (p.t === "Plain") return [];
+    return p.xs.reduce(function (a, c) { return a.concat(frozenStates(c)); }, []);
+  }
+
+  // abstraction function: a shipped program value → the model's Prog
+  function toProg(prog) {
+    return { t: "Sub", xs: prog.fields.map(function (f) { return toNode(f.node); }) };
+  }
+  function toNode(n) {
+    if (n.k === "pred") return { t: "Pred", frozen: !!n.st.frozen, state: n.st.id };
+    if (n.k === "plain") return { t: "Plain" };
+    if (n.k === "sub") return toProg(n.prog);
+    return { t: "Coll", xs: n.elems.map(toNode) };
+  }
+
+  // bridge mapping: a shipped PredictorPath → the model's index chain (or null)
+  function pathToIndices(prog, segs) {
+    if (segs.length === 0) return null;
+    var idx = -1;
+    for (var i = 0; i < prog.fields.length; i++)
+      if (prog.fields[i].name === segs[0]) { idx = i; break; }
+    if (idx < 0) return null;
+    var n = prog.fields[idx].node, rest = segs.slice(1);
+    if (n.k === "pred") return rest.length === 0 ? [idx] : null;
+    if (n.k === "plain") return rest.length === 0 ? [idx] : null;   // only reachable when sabotaged
+    if (n.k === "sub") { var t = pathToIndices(n.prog, rest); return t ? [idx].concat(t) : null; }
+    if (rest.length !== 1) return null;
+    var ei = parseInt(rest[0], 10);
+    if (isNaN(ei) || ei < 0 || ei >= n.elems.length) return null;
+    return [idx, ei];
+  }
+
+  return { countPreds: countPreds, paths: paths, updateAll: updateAll,
+           frozenStates: frozenStates, toProg: toProg, pathToIndices: pathToIndices };
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   3 · playground widget
+   ═════════════════════════════════════════════════════════════════════ */
+(function () {
+  var uid = 0;
+  function pred(instr, frozen) { return { k: "pred", st: { instructions: instr, demos: 0, frozen: !!frozen, id: ++uid } }; }
+  function presets(name) {
+    uid = 0;
+    if (name === "two") return { label: "TwoPredictors(a, b, extra: String)", fields: [
+      { name: "a", node: pred("classify the query", false) },
+      { name: "b", node: pred("answer from context", false) },
+      { name: "extra", node: { k: "plain" } }] };
+    if (name === "outer") return { label: "Outer(inner: Inner(leaf))", fields: [
+      { name: "inner", node: { k: "sub", prog: { fields: [{ name: "leaf", node: pred("summarise", false) }] } } }] };
+    if (name === "pipeline") return { label: "Pipeline(steps: Vector[Predict0])", fields: [
+      { name: "steps", node: { k: "vec", elems: [pred("step one", false), pred("step two", true), pred("step three", false)] } }] };
+    return { label: "MixedProgram(leaf, sub, vec, plain)", fields: [
+      { name: "leaf", node: pred("rewrite the question", false) },
+      { name: "sub", node: { k: "sub", prog: { fields: [{ name: "leaf", node: pred("retrieve", true) }] } } },
+      { name: "vec", node: { k: "vec", elems: [pred("judge a", false), pred("judge b", false)] } },
+      { name: "plain", node: { k: "plain" } }] };
+  }
+
+  var prog = presets("two");
+  var initial = Shipped.clone(prog);
+  var treeEl = document.getElementById("pgTree"),
+      predsEl = document.getElementById("pgPreds"),
+      outEl = document.getElementById("pgOut"),
+      pathEl = document.getElementById("pgPath"),
+      labelEl = document.getElementById("pgPreset");
+
+  window.__pgProgram = function () { return prog; };   // shared with the laws widget
+
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+  function renderNode(name, node, depth, lines) {
+    var pad = "&nbsp;&nbsp;".repeat(depth);
+    if (node.k === "pred")
+      lines.push(pad + name + ": <span class='t'>Predict0</span> " + chip(node.st));
+    else if (node.k === "plain")
+      lines.push(pad + name + ": <span class='chip plain'>String — not a predictor</span>");
+    else if (node.k === "sub") {
+      lines.push(pad + name + ": <span class='t'>Inner</span> {");
+      node.prog.fields.forEach(function (f) { renderNode(f.name, f.node, depth + 1, lines); });
+      lines.push(pad + "}");
+    } else {
+      lines.push(pad + name + ": <span class='t'>Vector[Predict0]</span> [");
+      node.elems.forEach(function (e, i) { lines.push(pad + "&nbsp;&nbsp;" + i + " → " + chip(e.st)); });
+      lines.push(pad + "]");
+    }
+  }
+  function chip(st) {
+    return "<span class='chip" + (st.frozen ? " frozen" : "") + "'>" +
+      esc(st.instructions || "∅") + (st.demos ? " · " + st.demos + " demo" + (st.demos > 1 ? "s" : "") : "") +
+      (st.frozen ? " · frozen" : "") + "</span>";
+  }
+
+  function render() {
+    labelEl.textContent = prog.label || "";
+    var lines = [];
+    prog.fields.forEach(function (f) { renderNode(f.name, f.node, 0, lines); });
+    treeEl.innerHTML = lines.map(function (l) { return "<div class='row'>" + l + "</div>"; }).join("");
+
+    var ps = Shipped.predictors(prog);
+    predsEl.innerHTML = ps.length === 0
+      ? "<li class='footnote'>no predictors — the enumeration is empty</li>"
+      : ps.map(function (e, i) {
+          return "<li><span style='color:var(--fg-faint)'>" + i + "</span>" +
+            "<button class='pathbtn' data-path='" + e.path.join(".") + "'>" + e.path.join(".") + "</button>" +
+            chip(e.st) + "</li>";
+        }).join("");
+    predsEl.querySelectorAll(".pathbtn").forEach(function (b) {
+      b.addEventListener("click", function () { pathEl.value = b.getAttribute("data-path"); });
+    });
+  }
+
+  function say(html, cls) {
+    outEl.className = "verdict" + (cls ? " " + cls : "");
+    outEl.innerHTML = html;
+  }
+
+  document.querySelectorAll("[data-preset]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      prog = presets(b.getAttribute("data-preset"));
+      initial = Shipped.clone(prog);
+      pathEl.value = Shipped.predictors(prog).map(function (e) { return e.path.join("."); })[0] || "";
+      render(); say("Preset loaded. <code>predictors(p)</code> recomputed.");
+    });
+  });
+
+  document.querySelectorAll("[data-add]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var kind = b.getAttribute("data-add"), n = prog.fields.length;
+      var name = kind === "vec" ? "steps" + n : kind === "sub" ? "sub" + n : kind === "plain" ? "note" + n : "p" + n;
+      var node = kind === "pred" ? pred("new instruction", false)
+        : kind === "plain" ? { k: "plain" }
+        : kind === "sub" ? { k: "sub", prog: { fields: [{ name: "leaf", node: pred("nested instruction", false) }] } }
+        : { k: "vec", elems: [pred("elem 0", false), pred("elem 1", false)] };
+      prog.fields.push({ name: name, node: node });
+      prog.label = "(edited)";
+      render(); say("Added field <code>" + name + "</code>. Note where its paths appear in the enumeration order.");
+    });
+  });
+
+  document.getElementById("pgUpper").addEventListener("click", function () {
+    prog = Shipped.updateAll(prog, function (_, s) { s.instructions = s.instructions.toUpperCase(); return s; });
+    render();
+    say("<span class='vhead tag-pass'>updateAll · UppercaseInstructions</span><br>" +
+        "Non-frozen sites rewritten. Frozen sites were filtered out <em>before</em> the fold — no update was attempted on them.");
+  });
+  document.getElementById("pgDemo").addEventListener("click", function () {
+    prog = Shipped.updateAll(prog, function (_, s) { s.demos = (s.demos || 0) + 1; return s; });
+    render();
+    say("<span class='vhead tag-pass'>updateAll · StaticDemoInjector</span><br>" +
+        "Same traversal, different <code>f</code>. The surface has no idea what a demo is.");
+  });
+  document.getElementById("pgReset").addEventListener("click", function () {
+    prog = Shipped.clone(initial); render(); say("States reset to the preset.");
+  });
+
+  document.getElementById("pgUpdate").addEventListener("click", function () {
+    var segs = pathEl.value.split(".").filter(function (s) { return s.length > 0; });
+    var r = Shipped.updateEither(prog, segs, function (s) { s.instructions = s.instructions + "!"; return s; });
+    if (r.ok) {
+      prog = r.ok; render();
+      say("<span class='vhead tag-pass'>Right(updated program)</span><br>" +
+          "Only <code>" + esc(segs.join(".")) + "</code> changed; every other field is the same value.", "pass");
+    } else {
+      say("<span class='vhead tag-fail'>Left(OptimizeError." + r.err.kind + ")</span><br>" +
+          "<code>path = " + esc(r.err.path || "(empty)") + "</code><br>" +
+          (r.err.kind === "FrozenPath"
+            ? "The site exists and is readable — it just refuses to be written. <code>updateAll</code> would have skipped it silently."
+            : "No enumerated site has that address. Sub-programs and bare <code>Vector</code> fields are not sites; only their leaves are."), "fail");
+    }
+  });
+
+  document.getElementById("pgFreeze").addEventListener("click", function () {
+    var segs = pathEl.value.split(".").filter(function (s) { return s.length > 0; });
+    var found = false;
+    (function walk(p, prefix) {
+      p.fields.forEach(function (f) {
+        var here = prefix.concat([f.name]);
+        if (f.node.k === "pred" && here.join(".") === segs.join(".")) { f.node.st.frozen = !f.node.st.frozen; found = true; }
+        else if (f.node.k === "sub") walk(f.node.prog, here);
+        else if (f.node.k === "vec") f.node.elems.forEach(function (e, i) {
+          if (here.concat([String(i)]).join(".") === segs.join(".")) { e.st.frozen = !e.st.frozen; found = true; }
+        });
+      });
+    })(prog, []);
+    render();
+    say(found ? "Toggled <code>frozen</code> at <code>" + esc(segs.join(".")) + "</code>. It stays visible in <code>predictors(p)</code> — freezing blocks writes, never reads."
+              : "<span class='tag-fail'>No predictor at that path</span> — nothing to freeze.", found ? "" : "fail");
+  });
+
+  render();
+  pathEl.value = "a";
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   4 · laws widget
+   ═════════════════════════════════════════════════════════════════════ */
+(function () {
+  var out = document.getElementById("lawOut");
+
+  var OPTIMIZERS = {
+    upper: function (p) { return Shipped.updateAll(p, function (_, s) { s.instructions = s.instructions.toUpperCase(); return s; }); },
+    demo:  function (p) { return Shipped.updateAll(p, function (_, s) { s.demos = (s.demos || 0) + 1; return s; }); },
+    thaw:  function (p) { return Shipped.updateAll(p, function (_, s) { s.instructions = "RETUNED"; return s; }, "frozen"); },
+    prune: function (p) {
+      var q = Shipped.clone(p);
+      q.fields = q.fields.filter(function (f) { return !(f.node.k === "pred" && f.node.st.instructions === ""); });
+      return Shipped.updateAll(q, function (_, s) { s.instructions = s.instructions || ""; return s; });
+    },
+    cheat: function (p) { return Shipped.updateAll(p, function (_, s) { s.instructions = s.instructions + "*"; return s; }, "broadcast"); }
+  };
+
+  // a law can only fail if the program contains the shape it is about, so the
+  // student is topped up with whatever the selected optimizer needs to misbehave
+  function prepare(key, p) {
+    var notes = [], has = Shipped.predictors(p);
+    if (!has.some(function (e) { return e.st.frozen; })) {
+      p.fields.push({ name: "pinned", node: { k: "pred", st: { instructions: "hand-tuned", demos: 0, frozen: true, id: 901 } } });
+      notes.push("appended a frozen site <code>pinned</code>");
+    }
+    if (key === "prune") {
+      p.fields.push({ name: "empty", node: { k: "pred", st: { instructions: "", demos: 0, frozen: false, id: 902 } } });
+      notes.push("appended an empty-instruction site <code>empty</code>");
+    }
+    if (key === "cheat" && !p.fields.some(function (f) { return f.node.k === "vec"; })) {
+      p.fields.push({ name: "judges", node: { k: "vec", elems: [
+        { k: "pred", st: { instructions: "judge a", demos: 0, frozen: false, id: 903 } },
+        { k: "pred", st: { instructions: "judge b", demos: 0, frozen: false, id: 904 } }] } });
+      notes.push("appended a <code>Vector</code> field <code>judges</code>");
+    }
+    return notes;
+  }
+
+  document.getElementById("lawRun").addEventListener("click", function () {
+    var key = document.getElementById("lawOpt").value;
+    var student = Shipped.clone(window.__pgProgram());
+    var notes = prepare(key, student);
+
+    var snapshotBefore = JSON.stringify(Shipped.predictors(student));
+    var frozenBefore = JSON.stringify(Shipped.predictors(student).filter(function (e) { return e.st.frozen; }));
+    var pathsBefore = Shipped.predictors(student).map(function (e) { return e.path.join("."); }).sort().join("|");
+
+    var result = OPTIMIZERS[key](student);
+
+    var purity = JSON.stringify(Shipped.predictors(student)) === snapshotBefore;
+    var frozenAfter = JSON.stringify(Shipped.predictors(result).filter(function (e) { return e.st.frozen; }));
+    var frozenOk = frozenAfter === frozenBefore;
+    var pathsAfter = Shipped.predictors(result).map(function (e) { return e.path.join("."); }).sort().join("|");
+    var pathsOk = pathsAfter === pathsBefore;
+
+    function row(name, ok, note) {
+      return "<li>" + (ok ? "<span class='tag-pass'>PASS</span>" : "<span class='tag-fail'>FAIL</span>") +
+        " &nbsp;" + name + (note ? " &nbsp;<span style='color:var(--fg-muted)'>" + note + "</span>" : "") + "</li>";
+    }
+    var all = purity && frozenOk && pathsOk;
+    var extra = key === "cheat"
+      ? "<p class='footnote' style='margin:.6rem 0 0'>All three laws hold — and the optimizer still wrote sites it was not asked to write. " +
+        "That failure is covered by the Ring 3 property <code>update-only-target</code>, not by the laws.</p>"
+      : key === "thaw"
+      ? "<p class='footnote' style='margin:.6rem 0 0'>The frozen site is still <em>enumerated</em> after the run — freezing was never about visibility. " +
+        "What broke is that its state is no longer bit-identical.</p>"
+      : "";
+    if (notes.length)
+      extra += "<p class='footnote' style='margin:.4rem 0 0'>Student prepared for this optimizer: " + notes.join("; ") + ".</p>";
+    out.className = "verdict " + (all ? "pass" : "fail");
+    out.innerHTML = "<span class='vhead'>OptimizerLaws.all → " + (all ? "true" : "false") + "</span><ul>" +
+      row("purity — student unchanged", purity) +
+      row("frozenPreserved — frozen bit-identical", frozenOk) +
+      row("pathSetPreserved — same sites", pathsOk,
+          pathsOk ? "" : "before " + pathsBefore.split("|").length + " sites, after " + pathsAfter.split("|").length) +
+      "</ul>" + extra;
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   5 · Ring 6 ledger (verbatim from the sbt ring6 run, 2026-07-28)
+   ═════════════════════════════════════════════════════════════════════ */
+(function () {
+  var VCS = [
+    ["countPreds", "57:5", "body assertion: match exhaustiveness", "trivial"],
+    ["countPreds", "57:5", "non-negative measure", "valid from cache"],
+    ["countPreds", "61:9", "body assertion: match exhaustiveness", "trivial"],
+    ["countPreds", "63:30", "measure decreases", "invalid"],
+    ["countPreds", "63:46", "measure decreases", "valid from cache"],
+    ["countPreds", "66:9", "body assertion: match exhaustiveness", "trivial"],
+    ["countPreds", "68:30", "measure decreases", "invalid"],
+    ["countPreds", "68:46", "measure decreases", "valid from cache"],
+    ["frozenStates", "154:5", "body assertion: match exhaustiveness", "valid from cache"],
+    ["frozenStates", "154:5", "non-negative measure", "valid from cache"],
+    ["frozenStates", "159:9", "body assertion: match exhaustiveness", "trivial"],
+    ["frozenStates", "161:30", "measure decreases", "invalid"],
+    ["frozenStates", "161:49", "measure decreases", "valid from cache"],
+    ["frozenStates", "164:9", "body assertion: match exhaustiveness", "trivial"],
+    ["frozenStates", "166:30", "measure decreases", "invalid"],
+    ["frozenStates", "166:49", "measure decreases", "valid from cache"],
+    ["pathsImpl", "100:5", "body assertion: match exhaustiveness", "trivial"],
+    ["pathsImpl", "100:5", "non-negative measure", "valid from cache"],
+    ["pathsImpl", "104:9", "body assertion: match exhaustiveness", "trivial"],
+    ["pathsImpl", "107:13", "measure decreases", "invalid"],
+    ["pathsImpl", "108:13", "measure decreases", "valid from cache"],
+    ["pathsImpl", "111:9", "body assertion: match exhaustiveness", "trivial"],
+    ["pathsImpl", "114:13", "measure decreases", "invalid"],
+    ["pathsImpl", "115:13", "measure decreases", "valid from cache"],
+    ["sumList", "77:5", "body assertion: match exhaustiveness", "trivial"],
+    ["sumList", "77:5", "non-negative measure", "valid from cache"],
+    ["sumList", "79:30", "measure decreases", "valid from cache"],
+    ["updateAll", "129:5", "body assertion: match exhaustiveness", "trivial"],
+    ["updateAll", "129:5", "non-negative measure", "valid from cache"],
+    ["updateAll", "132:32", "measure decreases", "valid from cache"],
+    ["updateAll", "133:33", "measure decreases", "valid from cache"],
+    ["updateAllList", "144:5", "body assertion: match exhaustiveness", "trivial"],
+    ["updateAllList", "144:5", "non-negative measure", "valid from cache"],
+    ["updateAllList", "146:31", "measure decreases", "invalid"],
+    ["updateAllList", "146:48", "measure decreases", "valid from cache"]
+  ];
+  var body = document.getElementById("vcBody");
+  function draw(filter) {
+    body.innerHTML = VCS.filter(function (v) {
+      if (filter === "invalid") return v[3] === "invalid";
+      if (filter === "measure") return v[2] === "measure decreases";
+      if (filter === "exh") return v[2].indexOf("exhaustiveness") >= 0;
+      return true;
+    }).map(function (v) {
+      var cls = v[3] === "invalid" ? "i" : v[3] === "trivial" ? "t" : "v";
+      return "<tr><td>" + v[0] + "</td><td class='t'>" + v[1] + "</td><td>" + v[2] +
+        "</td><td class='" + cls + "'>" + v[3] + (v[3] === "invalid" ? " &nbsp;U:smt-z3" : "") + "</td></tr>";
+    }).join("");
+  }
+  document.querySelectorAll("[data-vc]").forEach(function (b) {
+    b.addEventListener("click", function () { draw(b.getAttribute("data-vc")); });
+  });
+  draw("all");
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   6 · bridge fuzzer — the two implementations on the same generated programs
+   ═════════════════════════════════════════════════════════════════════ */
+(function () {
+  function rng(seed) {                       // mulberry32 — seeded, like every generator in the repo
+    var a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  var uid = 0;
+  function genProgram(r, depth) {
+    var n = 1 + Math.floor(r() * 4), fields = [];
+    for (var i = 0; i < n; i++) {
+      var roll = r();
+      var name = "f" + i;
+      if (roll < 0.45) fields.push({ name: name, node: { k: "pred", st: mkState(r) } });
+      else if (roll < 0.62) fields.push({ name: name, node: { k: "plain" } });
+      else if (roll < 0.82 && depth < 2) fields.push({ name: name, node: { k: "sub", prog: genProgram(r, depth + 1) } });
+      else {
+        var m = 1 + Math.floor(r() * 3), elems = [];
+        for (var j = 0; j < m; j++) elems.push({ k: "pred", st: mkState(r) });
+        fields.push({ name: name, node: { k: "vec", elems: elems } });
+      }
+    }
+    return { fields: fields };
+  }
+  function mkState(r) { return { instructions: "i" + (++uid), demos: 0, frozen: r() < 0.35, id: uid }; }
+
+  var out = document.getElementById("brOut"), detail = document.getElementById("brDetail");
+
+  document.getElementById("brRun").addEventListener("click", function () {
+    var seed = parseInt(document.getElementById("brSeed").value, 10) || 0;
+    var N = Math.max(1, Math.min(5000, parseInt(document.getElementById("brN").value, 10) || 200));
+    var bug = document.getElementById("brBug").value;
+    var r = rng(seed);
+    uid = 0;
+
+    var checks = { order: 0, shape: 0, frozen: 0, roundtrip: 0 };
+    var fails = { order: 0, shape: 0, frozen: 0, roundtrip: 0 };
+    var firstFail = null;
+
+    for (var t = 0; t < N; t++) {
+      var prog = genProgram(r, 0);
+      var model = Kernel.toProg(prog);
+
+      // ── invariant 1: path sequence, element for element
+      var realPaths = Shipped.predictors(prog, bug);
+      var realChains = realPaths.map(function (e) { return Kernel.pathToIndices(prog, e.path); });
+      var modelChains = Kernel.paths(model, []);
+      checks.order++;
+      var ok1 = realChains.length === modelChains.length && realChains.every(function (c, i) {
+        return c !== null && c.join(",") === modelChains[i].join(",");
+      });
+      if (!ok1) { fails.order++; if (!firstFail) firstFail = { inv: "path sequence", prog: prog, real: realPaths.map(function (e) { return e.path.join("."); }), model: modelChains.map(function (c) { return c.join("."); }) }; }
+
+      // ── invariant 2: path set preserved by updateAll
+      var realAfter = Shipped.updateAll(prog, function (_, s) { s.instructions = s.instructions + "!"; return s; }, bug);
+      var modelAfter = Kernel.updateAll(model, function (x) { return x + 1; });
+      checks.shape++;
+      var setBefore = realPaths.map(function (e) { return e.path.join("."); }).sort().join("|");
+      var setAfter = Shipped.predictors(realAfter, bug).map(function (e) { return e.path.join("."); }).sort().join("|");
+      var mBefore = modelChains.map(function (c) { return c.join("."); }).sort().join("|");
+      var mAfter = Kernel.paths(modelAfter, []).map(function (c) { return c.join("."); }).sort().join("|");
+      var ok2 = setBefore === setAfter && mBefore === mAfter;
+      if (!ok2) { fails.shape++; if (!firstFail) firstFail = { inv: "path set after updateAll", prog: prog, real: [setBefore, setAfter], model: [mBefore, mAfter] }; }
+
+      // ── invariant 3: frozen states bit-identical, and in the same places
+      checks.frozen++;
+      var realFrozenBefore = realPaths.filter(function (e) { return e.st.frozen; })
+        .map(function (e) { return e.path.join(".") + "=" + e.st.instructions; }).join("|");
+      var realFrozenAfter = Shipped.predictors(realAfter, bug).filter(function (e) { return e.st.frozen; })
+        .map(function (e) { return e.path.join(".") + "=" + e.st.instructions; }).join("|");
+      var mFrozenBefore = Kernel.frozenStates(model).join(","),
+          mFrozenAfter = Kernel.frozenStates(modelAfter).join(",");
+      var ok3 = realFrozenBefore === realFrozenAfter && mFrozenBefore === mFrozenAfter;
+      if (!ok3) { fails.frozen++; if (!firstFail) firstFail = { inv: "frozen identity", prog: prog, real: [realFrozenBefore, realFrozenAfter], model: [mFrozenBefore, mFrozenAfter] }; }
+
+      // ── invariant 4: round-trip identity
+      checks.roundtrip++;
+      var realId = Shipped.updateAll(prog, function (_, s) { return s; }, bug);
+      var modelId = Kernel.updateAll(model, function (x) { return x; });
+      var ok4 = JSON.stringify(realId) === JSON.stringify(prog) && JSON.stringify(modelId) === JSON.stringify(model);
+      if (!ok4) { fails.roundtrip++; if (!firstFail) firstFail = { inv: "round-trip identity", prog: prog, real: ["updateAll(p, identity) != p"], model: [] }; }
+    }
+
+    var totalFails = fails.order + fails.shape + fails.frozen + fails.roundtrip;
+    var green = totalFails === 0;
+    function row(name, n, tot) {
+      return "<li>" + (n === 0 ? "<span class='tag-pass'>PASS</span>" : "<span class='tag-fail'>FAIL</span>") +
+        " &nbsp;" + name + " &nbsp;<span style='color:var(--fg-muted)'>" + (tot - n) + "/" + tot + " programs agree</span></li>";
+    }
+    var note = "";
+    if (bug === "broadcast" && green)
+      note = "<p class='footnote' style='margin:.6rem 0 0'><span class='tag-warn'>Bridge green, code wrong.</span> " +
+        "Writing every element of a <code>Vector</code> keeps order, membership and frozen identity intact, so no model " +
+        "invariant notices. The guard for this is the Ring 3 property <code>update-only-target</code> — which is exactly " +
+        "why the spec keeps a delegation table instead of pretending the model covers everything.</p>";
+    else if (!green)
+      note = "<p class='footnote' style='margin:.6rem 0 0'>In the repo this is a red <code>PredictorModelBridgeSpec</code>: " +
+        "Hedgehog shrinks the counter-example and the change cannot reach its checkpoint.</p>";
+
+    out.className = "verdict " + (green ? "pass" : "fail");
+    out.innerHTML = "<span class='vhead'>" + N + " generated programs · seed " + seed +
+      " · bug: " + bug + " → " + (green ? "AGREE" : totalFails + " disagreements") + "</span><ul>" +
+      row("path sequence (order included)", fails.order, checks.order) +
+      row("path set preserved by updateAll", fails.shape, checks.shape) +
+      row("frozen states bit-identical", fails.frozen, checks.frozen) +
+      row("round-trip identity", fails.roundtrip, checks.roundtrip) +
+      "</ul>" + note;
+
+    detail.innerHTML = firstFail
+      ? "<div style='font-family:var(--mono);font-size:.75rem;line-height:1.6'>" +
+        "invariant: <b>" + firstFail.inv + "</b><br>" +
+        "shipped: " + JSON.stringify(firstFail.real) + "<br>" +
+        "model&nbsp;&nbsp;: " + JSON.stringify(firstFail.model) + "<br>" +
+        "program: " + JSON.stringify(firstFail.prog.fields.map(function (f) { return f.name + ":" + f.node.k; })) +
+        "</div>"
+      : "no disagreement in this run";
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   6b · phase board — state of the port on 2026-08-01
+   ═════════════════════════════════════════════════════════════════════ */
+(function () {
+  var PHASES = [
+    { id: "Phase 0", name: "optimizable surface", state: "archived", cls: "ok",
+      body: "<p><code>add-optimizable-surface</code>, archived 2026-08-01. Its 16 requirements are synced to " +
+        "<code>openspec/specs/optimizable-surface/spec.md</code>; the design, the Ring 6 formal contracts and the " +
+        "proof-obligation table stay in <code>openspec/changes/archive/2026-08-01-add-optimizable-surface/</code>.</p>" +
+        "<p>Shipped: <code>adk4s-optimize</code> (7 public types + the <code>testkit</code> laws) and " +
+        "<code>PredictorKernel</code> in <code>verified</code>. Concepts <code>optimizable-surface.md</code> and " +
+        "<code>predictor-state.md</code> are registered. Ring 6 is <span class='tag-warn'>partial</span> — see §8.</p>" +
+        "<p style='margin-bottom:0'><code>sbt adk4s-optimize/test</code>, re-run 2026-08-01: " +
+        "<span class='tag-pass'>64/64 green</span> — OptimizableSpec 32, OptimizableTypeContract 9, Predict0Spec 7, " +
+        "PredictorModelBridgeSpec 6 (the bridge), OptimizerLawsSpec 6, ToyOptimizerSpec 4.</p>" },
+    { id: "Phase 1", name: "eval core", state: "in flight — Step 1 of 13", cls: "warn",
+      body: "<p><code>add-eval-core</code>, 2 specs (<code>eval-core</code>, <code>llm-judges</code>). The module is wired " +
+        "and the whole typed contract compiles with <code>???</code> bodies: <code>Example</code>, <code>Score</code>, " +
+        "<code>Metric</code>, <code>Trace</code>/<code>TraceEntry</code>, <code>EvalConfig</code>, <code>EvalOutcome</code>, " +
+        "<code>EvalRow</code>, <code>EvalError</code>, <code>EvaluationResult</code>, <code>Evaluate</code>, " +
+        "<code>Metrics</code>, <code>Dataset</code>.</p>" +
+        "<p style='margin-bottom:0'>15 type-contract tests pass; the change is stopped at <strong>human gate 1 of 2</strong> " +
+        "(typed contract), with the test oracle — 9 Hedgehog properties plus the polarity run — still ahead of any " +
+        "implementation. Nothing here depends on Phase 0.</p>" },
+    { id: "Phase 2", name: "compiler MVP", state: "not started", cls: "",
+      body: "<p style='margin-bottom:0'>Four specs: <code>signature-as-data</code>, <code>adapter-demo-rendering</code>, " +
+        "<code>bootstrap-fewshot</code>, <code>compiled-state-and-cache</code>. This is where the two existing modules meet: " +
+        "a <code>Metric</code> from eval, an <code>Optimizable</code> from optimize, and a trace collector to credit demos " +
+        "to paths. It also replaces <code>Predict0</code> with the real <code>Predict</code> and is expected to move " +
+        "<code>Demo</code>/<code>PredictorState</code>/<code>PredictorPath</code>/<code>HasPredictorState</code> into " +
+        "<code>structured-llm</code>.</p>" },
+    { id: "Phase 3", name: "instruction optimization", state: "not started", cls: "",
+      body: "<p style='margin-bottom:0'>Ambient trace capture, COPRO, a GEPA-style reflective optimizer with Pareto " +
+        "sampling, and the inference combinators (<code>BestOfN</code>, <code>RefineN</code>, <code>KnnFewShot</code>). " +
+        "The pieces already in place for it: <code>Score.feedback</code> (inert until now), " +
+        "<code>Trace.forPredictor</code>, and <code>PredictorPath.render</code> as the key that joins them.</p>" },
+    { id: "Phase 4", name: "orchestration", state: "not started", cls: "",
+      body: "<p style='margin-bottom:0'><code>Optimizable</code> instances for WIOGraph nodes and for " +
+        "<code>ReactAgent</code> (system prompt as instructions, tool descriptions as pseudo-predictors). The acceptance " +
+        "test is deliberately negative: an existing optimizer must compile a graph and an agent with <em>zero</em> " +
+        "optimizer code changes — which is the real verdict on whether the Phase 0 surface was designed right.</p>" }
+  ];
+  var bar = document.getElementById("phaseBar"), det = document.getElementById("phaseDetail");
+  if (!bar) return;
+  function show(i) {
+    Array.prototype.forEach.call(bar.children, function (b, j) {
+      b.className = "btn " + (i === j ? "small" : "ghost small");
+    });
+    var p = PHASES[i];
+    det.innerHTML = "<h5>" + p.id + " · " + p.name +
+      " &nbsp;<span class='chip " + (p.cls === "ok" ? "ok" : p.cls === "warn" ? "frozen" : "plain") + "'>" +
+      p.state + "</span></h5>" + p.body;
+  }
+  PHASES.forEach(function (p, i) {
+    var b = document.createElement("button");
+    b.className = "btn ghost small";
+    b.innerHTML = p.id + " · " + p.name;
+    b.addEventListener("click", function () { show(i); });
+    bar.appendChild(b);
+  });
+  show(1);   // open on the phase that is actually moving
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   7 · quiz
+   ═════════════════════════════════════════════════════════════════════ */
+(function () {
+  var QS = [
+    { q: "A program has a frozen predictor at <code>sub.leaf</code>. What does <code>updateAll</code> do, and what does <code>updateEither(p, \"sub.leaf\", f)</code> return?",
+      opts: ["Both raise FrozenPath — freezing is uniform",
+             "updateAll skips it silently; updateEither returns Left(FrozenPath)",
+             "Both succeed; frozen is advisory, as in DSPy",
+             "updateAll skips it; updateEither returns Left(UnknownPath), since a frozen site is not enumerable"],
+      a: 1,
+      why: "Silent for the bulk operation (the filter runs before the fold, so f is never applied), loud for the targeted one. And frozen sites stay fully readable through <code>predictors</code> — freezing blocks writes, not reads." },
+    { q: "Why is the Ring 6 model written over <code>List[BigInt]</code> index chains rather than over the real <code>PredictorPath</code> strings?",
+      opts: ["Stainless cannot represent String at all",
+             "Because the traversal only ever depends on position; names are an encoding the bridge maps back",
+             "To make the proof shorter, accepting that path semantics go unverified",
+             "Because DSPy uses integer indices internally"],
+      a: 1,
+      why: "Reduction to observable effect: declaration order is what the theorem is about, and order is positional. The name→segment encoding is production behaviour, delegated by name to the Ring 3 properties <code>nested-recursion-paths</code> and <code>collection-recursion-paths</code>." },
+    { q: "The bridge spec passes and Stainless reports 28/35 valid. What may you claim?",
+      opts: ["The algorithm is formally verified",
+             "The shipped code agrees with a model that is total and mostly proven terminating; the semantic contracts currently rest on property tests, not on the solver",
+             "Nothing — invalid VCs invalidate the whole run",
+             "The shipped code is verified, since the bridge transfers the proof to it"],
+      a: 1,
+      why: "The four semantic lemmas carry no <code>ensuring</code> clauses, so they generate no verification conditions at all; the seven invalid ones are measure obligations on the re-wrapped tail calls. Real, useful, and not the same thing as 'verified'." },
+    { q: "You add a field <code>cache: Map[String, Predict0[IO, A, B]]</code> to a program. What happens?",
+      opts: ["Compile error — the derivation rejects unknown containers",
+             "Its predictors are enumerated with keys as path segments",
+             "The field is silently skipped: no instance matches, so it is not a tunable site",
+             "It is treated as a single leaf predictor"],
+      a: 2,
+      why: "Skipping is the specified rule for a field with neither <code>Optimizable</code> nor <code>HasPredictorState</code> — and <code>Map</code> recursion was explicitly deferred past Phase 0. It is also the one place where DSPy's runtime walk would have found something Scala's does not, which is why the deferral is written down rather than assumed." }
+  ];
+  var root = document.getElementById("quiz");
+  QS.forEach(function (item, qi) {
+    var d = document.createElement("div"); d.className = "q";
+    d.innerHTML = "<div class='qtext'>" + (qi + 1) + ". " + item.q + "</div><div class='opts'></div>" +
+      "<div class='why'>" + item.why + "</div>";
+    var opts = d.querySelector(".opts"), why = d.querySelector(".why");
+    item.opts.forEach(function (o, oi) {
+      var b = document.createElement("button"); b.className = "opt"; b.innerHTML = o;
+      b.addEventListener("click", function () {
+        opts.querySelectorAll(".opt").forEach(function (x, xi) {
+          x.classList.toggle("correct", xi === item.a);
+          x.classList.toggle("wrong", xi === oi && oi !== item.a);
+        });
+        why.classList.add("show");
+      });
+      opts.appendChild(b);
+    });
+    root.appendChild(d);
+  });
+})();
+</script>
+</body>
+</html>

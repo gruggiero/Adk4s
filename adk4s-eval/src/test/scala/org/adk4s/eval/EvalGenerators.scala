@@ -78,13 +78,51 @@ object EvalGenerators:
    * Classify by outcome mix: all-succeeded, all-failed, mixed.
    */
   def genEvaluationResult: Gen[EvaluationResult[String, String]] =
+    Gen.choice1(
+      genEvaluationResultAllSucceeded,
+      genEvaluationResultAllFailed,
+      genEvaluationResultMixed
+    )
+
+  /** Generate an EvaluationResult where all rows succeeded. */
+  def genEvaluationResultAllSucceeded: Gen[EvaluationResult[String, String]] =
     for
-      n       <- Gen.int(Range.linear(1, 20))
+      n      <- Gen.int(Range.linear(1, 20))
+      scores <- genScoreValue.list(Range.linear(1, 20)).map(_.toVector)
+    yield
+      val rows: Vector[EvalRow[String, String]] = (0 until n).toVector.map(i =>
+        EvalRow(
+          Example(s"input-$i", s"gold-$i", Some(i.toString)),
+          EvalOutcome.Succeeded(s"pred-$i"),
+          Score(scores(i % scores.size), Some(s"feedback-$i"))
+        )
+      )
+      val mean: Double = rows.map(_.score.value).sum / rows.size
+      EvaluationResult(mean, rows)
+
+  /** Generate an EvaluationResult where all rows failed. */
+  def genEvaluationResultAllFailed: Gen[EvaluationResult[String, String]] =
+    for n <- Gen.int(Range.linear(1, 20))
+    yield
+      val rows: Vector[EvalRow[String, String]] = (0 until n).toVector.map(i =>
+        EvalRow(
+          Example(s"input-$i", s"gold-$i", Some(i.toString)),
+          EvalOutcome.Failed(new RuntimeException(s"error-$i")),
+          Score(0.0, Some(s"failure feedback-$i"))
+        )
+      )
+      val mean: Double = rows.map(_.score.value).sum / rows.size
+      EvaluationResult(mean, rows)
+
+  /** Generate an EvaluationResult with a mix of succeeded and failed rows. */
+  def genEvaluationResultMixed: Gen[EvaluationResult[String, String]] =
+    for
+      n       <- Gen.int(Range.linear(2, 20))
       scores  <- genScoreValue.list(Range.linear(1, 20)).map(_.toVector)
       failIdx <- Gen.int(Range.linear(0, n - 1))
     yield
       val rows: Vector[EvalRow[String, String]] = (0 until n).toVector.map(i =>
-        if i == failIdx % n then
+        if i == failIdx then
           EvalRow(
             Example(s"input-$i", s"gold-$i", Some(i.toString)),
             EvalOutcome.Failed(new RuntimeException("boom")),
@@ -99,3 +137,31 @@ object EvalGenerators:
       )
       val mean: Double = rows.map(_.score.value).sum / rows.size
       EvaluationResult(mean, rows)
+
+  /**
+   * Custom equality for `EvaluationResult[String, String]` that compares
+   * `EvalOutcome.Failed` by error class name + message (not reference equality),
+   * since JSON round-trip reconstructs a new `RuntimeException` instance.
+   *
+   * Returns true if the two results are equal by this comparison.
+   */
+  def resultEqual(a: EvaluationResult[String, String], b: EvaluationResult[String, String]): Boolean =
+    a.score == b.score &&
+    a.rows.size == b.rows.size &&
+    a.rows.zip(b.rows).forall { case (ra, rb) =>
+      rowEqual(ra, rb)
+    }
+
+  /** Custom row equality — compares outcome by type + message, not reference. */
+  private def rowEqual(a: EvalRow[String, String], b: EvalRow[String, String]): Boolean =
+    a.example == b.example &&
+    outcomeEqual(a.outcome, b.outcome) &&
+    a.score == b.score
+
+  /** Custom outcome equality — `Failed` compared by class name + message. */
+  private def outcomeEqual(a: EvalOutcome[String], b: EvalOutcome[String]): Boolean =
+    (a, b) match
+      case (EvalOutcome.Succeeded(va), EvalOutcome.Succeeded(vb)) => va == vb
+      case (EvalOutcome.Failed(ea), EvalOutcome.Failed(eb)) =>
+        ea.getClass.getName == eb.getClass.getName && ea.getMessage == eb.getMessage
+      case _ => false

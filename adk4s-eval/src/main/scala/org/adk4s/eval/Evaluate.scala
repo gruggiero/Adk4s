@@ -95,11 +95,11 @@ object Evaluate:
           .map(rows => EvaluationResult(mean(rows), rows))
           .handleErrorWith {
             case _: EvalError.TooManyErrors[?, ?] =>
-              for
-                partial <- rowsRef.get
-                count   <- failCountRef.get
-                _       <- F.raiseError(EvalError.TooManyErrors[I, O](count, cap, partial))
-              yield EvaluationResult(0.0, Vector.empty[EvalRow[I, O]])
+              rowsRef.get.flatMap(partial =>
+                failCountRef.get.flatMap(count =>
+                  F.raiseError(EvalError.TooManyErrors[I, O](count, cap, partial))
+                )
+              )
             case other => F.raiseError(other)
           }
     yield result
@@ -116,10 +116,7 @@ object Evaluate:
         case Right(pred) =>
           metric(example, pred, trace = None).attempt.flatMap {
             case Right(score) => F.pure(EvalRow(example, EvalOutcome.Succeeded(pred), score))
-            case Left(_) =>
-              F.pure(
-                EvalRow(example, EvalOutcome.Failed(new RuntimeException("metric failed")), Score(config.failureScore))
-              )
+            case Left(err)    => F.pure(EvalRow(example, EvalOutcome.Failed(err), Score(config.failureScore)))
           }
         case Left(err) => F.pure(EvalRow(example, EvalOutcome.Failed(err), Score(config.failureScore)))
       }

@@ -36,8 +36,8 @@ object SimpleWorkflowExample extends IOApp.Simple:
 
   object Ctx extends WorkflowContext:
     sealed trait WfState
-    final case class InputState(value: Int) extends WfState
-    final case class DoubledState(original: Int, doubled: Int) extends WfState
+    final case class InputState(value: Int)                                    extends WfState
+    final case class DoubledState(original: Int, doubled: Int)                 extends WfState
     final case class OutputState(original: Int, doubled: Int, message: String) extends WfState
 
     sealed trait WfEvent
@@ -133,16 +133,16 @@ object SimpleWorkflowExample extends IOApp.Simple:
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx.Ctx]
     ): IO[(ActiveWorkflow[Ctx.Ctx], Boolean)] =
-      val liftEffect: WCEffectLift[Ctx.Ctx, IO] = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val liftEffect: WCEffectLift[Ctx.Ctx, IO]      = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
       val wakeup: WakeupResult[IO, WCEvent[Ctx.Ctx]] = workflow.proceed(Instant.EPOCH, liftEffect)
       wakeup match
         case WakeupResult.Noop() => IO.pure((workflow, false))
         case WakeupResult.Processed(io) =>
           io.asInstanceOf[IO[Ior[Instant, WCEvent[Ctx.Ctx]]]].map { (result: Ior[Instant, WCEvent[Ctx.Ctx]]) =>
             val eventOpt: Option[WCEvent[Ctx.Ctx]] = result match
-              case Ior.Right(event) => Some(event)
+              case Ior.Right(event)   => Some(event)
               case Ior.Both(_, event) => Some(event)
-              case Ior.Left(_) => None
+              case Ior.Left(_)        => None
             eventOpt match
               case Some(event) =>
                 (workflow.handleEvent(event).getOrElse(workflow), true)

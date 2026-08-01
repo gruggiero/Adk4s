@@ -42,9 +42,9 @@ object SimpleGraphExample extends IOApp.Simple:
 
   object Ctx extends WorkflowContext:
     sealed trait GraphState
-    final case class InputState(topic: String) extends GraphState
+    final case class InputState(topic: String)                     extends GraphState
     final case class ConversationState(conversation: Conversation) extends GraphState
-    final case class OutputState(response: String) extends GraphState
+    final case class OutputState(response: String)                 extends GraphState
 
     sealed trait GraphEvent
     final case class ChatCompleted(completion: Completion) extends GraphEvent
@@ -58,12 +58,12 @@ object SimpleGraphExample extends IOApp.Simple:
   import Ctx.InputState
   import Ctx.OutputState
 
-  private given ErrorMeta[Nothing] = ErrorMeta.noError
+  private given ErrorMeta[Nothing]      = ErrorMeta.noError
   private given ClassTag[ChatCompleted] = scala.reflect.ClassTag(classOf[ChatCompleted])
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Simple Graph Example (Eino: graph/simple)")
+      _         <- ExampleUtils.printSection("Simple Graph Example (Eino: graph/simple)")
       chatModel <- ExampleUtils.createChatModel
 
       wio <- buildGraph(chatModel) match
@@ -88,7 +88,9 @@ object SimpleGraphExample extends IOApp.Simple:
       _ <- IO.println("\nSimple graph example completed.")
     yield ()
 
-  private def buildGraph(chatModel: ChatModel[IO]): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState]] =
+  private def buildGraph(
+    chatModel: ChatModel[IO]
+  ): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState]] =
     val templateRef: WIONodeRef[Ctx.Ctx, InputState, ConversationState] =
       WIONodeRef[Ctx.Ctx, InputState, ConversationState](NodeKey.unsafeApply("template"))
     val chatRef: WIONodeRef[Ctx.Ctx, ConversationState, OutputState] =
@@ -98,18 +100,21 @@ object SimpleGraphExample extends IOApp.Simple:
 
     val templateNode: WIOPureNode[Ctx.Ctx, InputState, Nothing, ConversationState] =
       WIONode.pure[Ctx.Ctx, InputState, ConversationState]((input: InputState) =>
-        ConversationState(Conversation(Seq(
-          SystemMessage(s"You are an expert on ${input.topic}."),
-          UserMessage(s"Tell me about ${input.topic}.")
-        )))
+        ConversationState(
+          Conversation(
+            Seq(
+              SystemMessage(s"You are an expert on ${input.topic}."),
+              UserMessage(s"Tell me about ${input.topic}.")
+            )
+          )
+        )
       )
 
     val chatNode: WIORunIONode[Ctx.Ctx, ConversationState, Nothing, ChatCompleted, OutputState] =
       WIONode.runIO[Ctx.Ctx, ConversationState, ChatCompleted, OutputState](
-        runIO = (state: ConversationState) =>
-          chatModel.generate(state.conversation).map((c: Completion) => ChatCompleted(c)),
-        handleEvent = (_: ConversationState, evt: ChatCompleted) =>
-          OutputState(response = evt.completion.content)
+        runIO =
+          (state: ConversationState) => chatModel.generate(state.conversation).map((c: Completion) => ChatCompleted(c)),
+        handleEvent = (_: ConversationState, evt: ChatCompleted) => OutputState(response = evt.completion.content)
       )
 
     for
@@ -132,16 +137,16 @@ object SimpleGraphExample extends IOApp.Simple:
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx.Ctx]
     ): IO[(ActiveWorkflow[Ctx.Ctx], Boolean)] =
-      val liftEffect: WCEffectLift[Ctx.Ctx, IO] = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val liftEffect: WCEffectLift[Ctx.Ctx, IO]      = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
       val wakeup: WakeupResult[IO, WCEvent[Ctx.Ctx]] = workflow.proceed(Instant.EPOCH, liftEffect)
       wakeup match
         case WakeupResult.Noop() => IO.pure((workflow, false))
         case WakeupResult.Processed(io) =>
           io.asInstanceOf[IO[Ior[Instant, WCEvent[Ctx.Ctx]]]].map { (result: Ior[Instant, WCEvent[Ctx.Ctx]]) =>
             val eventOpt: Option[WCEvent[Ctx.Ctx]] = result match
-              case Ior.Right(event) => Some(event)
+              case Ior.Right(event)   => Some(event)
               case Ior.Both(_, event) => Some(event)
-              case Ior.Left(_) => None
+              case Ior.Left(_)        => None
             eventOpt match
               case Some(event) =>
                 val next: ActiveWorkflow[Ctx.Ctx] = workflow.handleEvent(event).getOrElse(workflow)

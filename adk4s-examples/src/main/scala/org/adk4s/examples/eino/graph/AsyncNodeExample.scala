@@ -44,7 +44,7 @@ object AsyncNodeExample extends IOApp.Simple:
   import Ctx.TextProduced
   import Ctx.TextState
 
-  private given ErrorMeta[Nothing] = ErrorMeta.noError
+  private given ErrorMeta[Nothing]     = ErrorMeta.noError
   private given ClassTag[TextProduced] = scala.reflect.ClassTag(classOf[TextProduced])
 
   def run: IO[Unit] =
@@ -54,7 +54,7 @@ object AsyncNodeExample extends IOApp.Simple:
       runnable <- compileRunnable(buildGraph())
 
       // Scenario 1: Invoke mode — background report generation
-      _ <- ExampleUtils.printSubSection("1. Invoke Mode (Background Report)")
+      _            <- ExampleUtils.printSubSection("1. Invoke Mode (Background Report)")
       invokeResult <- runnable.invoke(TextState("Quarterly Sales Report"))
       _ <- invokeResult match
         case result: TextState =>
@@ -65,11 +65,12 @@ object AsyncNodeExample extends IOApp.Simple:
       // Scenario 2: Stream mode — live transcription
       _ <- ExampleUtils.printSubSection("2. Stream Mode (Live Transcription)")
       _ <- IO.print("   Tokens: ")
-      _ <- runnable.stream(TextState("hello world from async node"))
+      _ <- runnable
+        .stream(TextState("hello world from async node"))
         .evalMap { (state: GraphState) =>
           state match
             case result: TextState => IO.print(s"${result.text} ")
-            case _ => IO.unit
+            case _                 => IO.unit
         }
         .compile
         .drain
@@ -85,8 +86,7 @@ object AsyncNodeExample extends IOApp.Simple:
       Runnable.fromInvoke[TextState, String]((input: TextState) =>
         val content: String = input.text
         IO.sleep(500.millis) *> {
-          if content.toLowerCase.contains("error") then
-            IO.raiseError(new RuntimeException("report generation failed"))
+          if content.toLowerCase.contains("error") then IO.raiseError(new RuntimeException("report generation failed"))
           else
             val url: String = "https://example.com/report/" +
               content.toLowerCase.replace(" ", "-")
@@ -98,19 +98,18 @@ object AsyncNodeExample extends IOApp.Simple:
     // Emits words one at a time with delays, converting to uppercase
     val asyncStreamableRunnable: Runnable[TextState, String] =
       Runnable.full[TextState, String](
-        invokeFn = (input: TextState) =>
-          IO.pure(input.text.toUpperCase),
+        invokeFn = (input: TextState) => IO.pure(input.text.toUpperCase),
         streamFn = (input: TextState) =>
           val words: List[String] = input.text.split("\\s+").toList
-          Stream.emits(words)
+          Stream
+            .emits(words)
             .evalMap { (word: String) =>
               IO.sleep(200.millis) *> {
-                if word.equalsIgnoreCase("error") then
-                  IO.raiseError(new RuntimeException("transcription stream error"))
-                else
-                  IO.pure(word.toUpperCase)
+                if word.equalsIgnoreCase("error") then IO.raiseError(new RuntimeException("transcription stream error"))
+                else IO.pure(word.toUpperCase)
               }
-            },
+            }
+        ,
         collectFn = (inputStream: Stream[IO, TextState]) =>
           inputStream.compile.lastOrError.map((s: TextState) => s.text.toUpperCase),
         transformFn = (inputStream: Stream[IO, TextState]) =>
@@ -159,6 +158,8 @@ object AsyncNodeExample extends IOApp.Simple:
         graph.toRunnable match
           case Right(runnable) => IO.pure(runnable)
           case Left(errors) =>
-            IO.raiseError(new IllegalStateException(
-              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-            ))
+            IO.raiseError(
+              new IllegalStateException(
+                s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+              )
+            )

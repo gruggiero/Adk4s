@@ -4,8 +4,8 @@ import cats.effect.IO
 import cats.effect.IOApp
 import cats.syntax.foldable.*
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
-import org.adk4s.structured.test.{SchemaExtraction, ExtractionMetadata}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
+import org.adk4s.structured.test.{ SchemaExtraction, ExtractionMetadata }
 
 /**
  * Demonstrates StructuredLLM for complex schema extraction with nested structures.
@@ -44,13 +44,13 @@ object SchemaExtractionStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[SchemaExtraction]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new SchemaExtractionMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new SchemaExtractionMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Complex Schema Extraction (Structured)")
+      _         <- ExampleUtils.printSection("Complex Schema Extraction (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -68,14 +68,14 @@ object SchemaExtractionStructuredExample extends IOApp.Simple:
         s"Article:\n$article1"
       )
       result1 <- structured.complete[SchemaExtraction](prompt1)
-      _ <- IO.println(s"   Title: ${result1.title}")
-      _ <- IO.println(s"   Author: ${result1.author}")
-      _ <- IO.println(s"   Tags: ${result1.tags.mkString(", ")}")
+      _       <- IO.println(s"   Title: ${result1.title}")
+      _       <- IO.println(s"   Author: ${result1.author}")
+      _       <- IO.println(s"   Tags: ${result1.tags.mkString(", ")}")
       _ <- result1.metadata match
         case Some(meta) =>
           IO.println(s"   Source: ${meta.source}") *>
-          IO.println(s"   Date: ${meta.date}") *>
-          meta.confidence.fold(IO.unit)(conf => IO.println(s"   Confidence: $conf"))
+            IO.println(s"   Date: ${meta.date}") *>
+            meta.confidence.fold(IO.unit)(conf => IO.println(s"   Confidence: $conf"))
         case None => IO.unit
 
       // Example 2: Research paper metadata
@@ -91,14 +91,14 @@ object SchemaExtractionStructuredExample extends IOApp.Simple:
         s"Paper:\n$paper"
       )
       result2 <- structured.complete[SchemaExtraction](prompt2)
-      _ <- IO.println(s"   Title: ${result2.title}")
-      _ <- IO.println(s"   Author: ${result2.author}")
-      _ <- IO.println(s"   Tags: ${result2.tags.mkString(", ")}")
+      _       <- IO.println(s"   Title: ${result2.title}")
+      _       <- IO.println(s"   Author: ${result2.author}")
+      _       <- IO.println(s"   Tags: ${result2.tags.mkString(", ")}")
       _ <- result2.metadata match
         case Some(meta) =>
           IO.println(s"   Source: ${meta.source}") *>
-          IO.println(s"   Date: ${meta.date}") *>
-          meta.confidence.fold(IO.unit)(conf => IO.println(s"   Confidence: $conf"))
+            IO.println(s"   Date: ${meta.date}") *>
+            meta.confidence.fold(IO.unit)(conf => IO.println(s"   Confidence: $conf"))
         case None => IO.unit
 
       // Example 3: Blog post metadata
@@ -114,14 +114,14 @@ object SchemaExtractionStructuredExample extends IOApp.Simple:
         s"Blog post:\n$blog"
       )
       result3 <- structured.complete[SchemaExtraction](prompt3)
-      _ <- IO.println(s"   Title: ${result3.title}")
-      _ <- IO.println(s"   Author: ${result3.author}")
-      _ <- IO.println(s"   Tags: ${result3.tags.mkString(", ")}")
+      _       <- IO.println(s"   Title: ${result3.title}")
+      _       <- IO.println(s"   Author: ${result3.author}")
+      _       <- IO.println(s"   Tags: ${result3.tags.mkString(", ")}")
       _ <- result3.metadata match
         case Some(meta) =>
           IO.println(s"   Source: ${meta.source}") *>
-          IO.println(s"   Date: ${meta.date}") *>
-          meta.confidence.fold(IO.unit)(conf => IO.println(s"   Confidence: $conf"))
+            IO.println(s"   Date: ${meta.date}") *>
+            meta.confidence.fold(IO.unit)(conf => IO.println(s"   Confidence: $conf"))
         case None => IO.unit
 
       _ <- IO.println("\nComplex schema extraction example completed.")
@@ -135,13 +135,11 @@ class SchemaExtractionMockLLMClient extends org.llm4s.llmconnect.LLMClient:
   import java.util.UUID
 
   def complete(conversation: Conversation, options: CompletionOptions): Either[org.llm4s.error.LLMError, Completion] =
-    val lastUserMessage: String = conversation.messages.collect {
-      case msg: UserMessage => msg.content
-    }.lastOption.getOrElse("")
+    val lastUserMessage: String =
+      conversation.messages.collect { case msg: UserMessage => msg.content }.lastOption.getOrElse("")
 
     val response: String =
-      if lastUserMessage.contains("Functional Programming") && lastUserMessage.contains("Jane Smith") then
-        """{
+      if lastUserMessage.contains("Functional Programming") && lastUserMessage.contains("Jane Smith") then """{
           |  "title": "Introduction to Functional Programming",
           |  "author": "Jane Smith",
           |  "tags": ["functional-programming", "scala", "fp", "programming-paradigms"],
@@ -151,8 +149,7 @@ class SchemaExtractionMockLLMClient extends org.llm4s.llmconnect.LLMClient:
           |    "confidence": 0.95
           |  }
           |}""".stripMargin
-      else if lastUserMessage.contains("Deep Learning") && lastUserMessage.contains("Robert Chen") then
-        """{
+      else if lastUserMessage.contains("Deep Learning") && lastUserMessage.contains("Robert Chen") then """{
           |  "title": "Deep Learning for Natural Language Processing",
           |  "author": "Dr. Robert Chen",
           |  "tags": ["deep-learning", "nlp", "transformers", "attention-mechanisms", "bert"],
@@ -162,8 +159,7 @@ class SchemaExtractionMockLLMClient extends org.llm4s.llmconnect.LLMClient:
           |    "confidence": 0.98
           |  }
           |}""".stripMargin
-      else if lastUserMessage.contains("Getting Started with Scala 3") then
-        """{
+      else if lastUserMessage.contains("Getting Started with Scala 3") then """{
           |  "title": "Getting Started with Scala 3",
           |  "author": "Alex Johnson",
           |  "tags": ["scala", "programming", "tutorial", "functional-programming"],
@@ -173,8 +169,7 @@ class SchemaExtractionMockLLMClient extends org.llm4s.llmconnect.LLMClient:
           |    "confidence": 0.92
           |  }
           |}""".stripMargin
-      else
-        """{
+      else """{
           |  "title": "Unknown Article",
           |  "author": "Unknown",
           |  "tags": ["general"],
@@ -185,16 +180,18 @@ class SchemaExtractionMockLLMClient extends org.llm4s.llmconnect.LLMClient:
           |}""".stripMargin
 
     val assistantMessage: AssistantMessage = AssistantMessage(Some(response))
-    Right(Completion(
-      id = UUID.randomUUID().toString,
-      created = System.currentTimeMillis(),
-      content = response,
-      model = "mock-model",
-      message = assistantMessage,
-      toolCalls = List.empty,
-      usage = None,
-      thinking = None
-    ))
+    Right(
+      Completion(
+        id = UUID.randomUUID().toString,
+        created = System.currentTimeMillis(),
+        content = response,
+        model = "mock-model",
+        message = assistantMessage,
+        toolCalls = List.empty,
+        usage = None,
+        thinking = None
+      )
+    )
 
   def streamComplete(
     conversation: Conversation,
@@ -203,5 +200,5 @@ class SchemaExtractionMockLLMClient extends org.llm4s.llmconnect.LLMClient:
   ): Either[org.llm4s.error.LLMError, Completion] =
     complete(conversation, options)
 
-  def getContextWindow(): Int = 8192
+  def getContextWindow(): Int     = 8192
   def getReserveCompletion(): Int = 512

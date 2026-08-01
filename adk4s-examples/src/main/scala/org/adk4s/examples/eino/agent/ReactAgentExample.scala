@@ -36,8 +36,8 @@ object ReactAgentExample extends IOApp.Simple:
     (args: ujson.Value) => {
       val city: String = args("city").str
       val restaurants: ujson.Value = ujson.Arr(
-        ujson.Obj("name" -> "Sichuan Palace", "cuisine" -> "Sichuan", "rating" -> 4.8, "city" -> city),
-        ujson.Obj("name" -> "Hunan Garden", "cuisine" -> "Hunan", "rating" -> 4.5, "city" -> city),
+        ujson.Obj("name" -> "Sichuan Palace", "cuisine"     -> "Sichuan", "rating" -> 4.8, "city" -> city),
+        ujson.Obj("name" -> "Hunan Garden", "cuisine"       -> "Hunan", "rating"   -> 4.5, "city" -> city),
         ujson.Obj("name" -> "Beijing Duck House", "cuisine" -> "Beijing", "rating" -> 4.7, "city" -> city)
       )
       Right(restaurants)
@@ -57,18 +57,21 @@ object ReactAgentExample extends IOApp.Simple:
     (args: ujson.Value) => {
       val restaurant: String = args("restaurant").str
       val dishes: ujson.Value = restaurant match
-        case "Sichuan Palace" => ujson.Arr(
-          ujson.Obj("name" -> "Mapo Tofu", "spicy" -> true, "price" -> 28),
-          ujson.Obj("name" -> "Kung Pao Chicken", "spicy" -> true, "price" -> 35),
-          ujson.Obj("name" -> "Dan Dan Noodles", "spicy" -> true, "price" -> 22)
-        )
-        case "Hunan Garden" => ujson.Arr(
-          ujson.Obj("name" -> "Steamed Fish Head", "spicy" -> true, "price" -> 58),
-          ujson.Obj("name" -> "Stir-fried Pork", "spicy" -> false, "price" -> 32)
-        )
-        case _ => ujson.Arr(
-          ujson.Obj("name" -> "House Special", "spicy" -> false, "price" -> 40)
-        )
+        case "Sichuan Palace" =>
+          ujson.Arr(
+            ujson.Obj("name" -> "Mapo Tofu", "spicy"        -> true, "price" -> 28),
+            ujson.Obj("name" -> "Kung Pao Chicken", "spicy" -> true, "price" -> 35),
+            ujson.Obj("name" -> "Dan Dan Noodles", "spicy"  -> true, "price" -> 22)
+          )
+        case "Hunan Garden" =>
+          ujson.Arr(
+            ujson.Obj("name" -> "Steamed Fish Head", "spicy" -> true, "price"  -> 58),
+            ujson.Obj("name" -> "Stir-fried Pork", "spicy"   -> false, "price" -> 32)
+          )
+        case _ =>
+          ujson.Arr(
+            ujson.Obj("name" -> "House Special", "spicy" -> false, "price" -> 40)
+          )
       Right(dishes)
     }
   )
@@ -94,9 +97,7 @@ object ReactAgentExample extends IOApp.Simple:
           List(UserMessage("What dishes does Sichuan Palace serve?")),
           maxSteps = 5
         )
-        .evalMap { chunk =>
-          IO.print(chunk.content.getOrElse(""))
-        }
+        .evalMap(chunk => IO.print(chunk.content.getOrElse("")))
         .compile
         .drain
       _ <- IO.println("")
@@ -106,12 +107,14 @@ object ReactAgentExample extends IOApp.Simple:
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("ReactAgent Example (Eino: flow/agent/react)")
+      _         <- ExampleUtils.printSection("ReactAgent Example (Eino: flow/agent/react)")
       chatModel <- ExampleUtils.createChatModel
       agent = ReactAgent.create(
         model = chatModel,
         tools = List(restaurantTool, dishTool),
-        systemPrompt = Some("You are a helpful assistant that recommends restaurants and dishes. Use the available tools to look up information."),
+        systemPrompt = Some(
+          "You are a helpful assistant that recommends restaurants and dishes. Use the available tools to look up information."
+        ),
         maxSteps = 10
       )
       _ <- runGenerate(agent)

@@ -1,12 +1,12 @@
 package org.adk4s.examples.eino.agent
 
-import cats.effect.{IO, IOApp}
-import org.adk4s.core.component.{ChatModel, ChatModelConfig, InvokableTool, Tool}
-import org.adk4s.core.interrupt.{AgentEvent, AgentEventEmitter}
+import cats.effect.{ IO, IOApp }
+import org.adk4s.core.component.{ ChatModel, ChatModelConfig, InvokableTool, Tool }
+import org.adk4s.core.interrupt.{ AgentEvent, AgentEventEmitter }
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.orchestration.agent.{AgentRunner, ReactAgent, RunResult}
+import org.adk4s.orchestration.agent.{ AgentRunner, ReactAgent, RunResult }
 import org.adk4s.orchestration.interrupt.InMemoryCheckpointStore
-import org.llm4s.llmconnect.model.{AssistantMessage, Completion, Conversation, StreamedChunk, ToolCall, UserMessage}
+import org.llm4s.llmconnect.model.{ AssistantMessage, Completion, Conversation, StreamedChunk, ToolCall, UserMessage }
 
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -49,12 +49,11 @@ object EventStreamExample extends IOApp.Simple:
                 arguments = ujson.Obj("message" -> "hello world")
               )
               IO.pure(makeCompletion("", Seq(tc)))
-            else
-              IO.pure(makeCompletion("I echoed your message successfully!"))
+            else IO.pure(makeCompletion("I echoed your message successfully!"))
           }
         def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
         def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-        def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+        def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
       // Create agent with emitter
       emitter <- AgentEventEmitter.create()
@@ -62,26 +61,29 @@ object EventStreamExample extends IOApp.Simple:
 
       // Set up runner
       store <- InMemoryCheckpointStore.create
-      runner = AgentRunner.create(agent, store, emitter)
+      runner                  = AgentRunner.create(agent, store, emitter)
       (resultIO, eventStream) = runner.runWithEvents(List(UserMessage("Echo hello world")))
 
       _ <- ExampleUtils.printSubSection("Streaming events from agent execution")
 
       // Run both concurrently: consume events and wait for result
       resultFiber <- resultIO.start
-      events <- eventStream.evalTap { (event: AgentEvent) =>
-        val eventType: String = event match
-          case _: AgentEvent.MessageOutput     => "MessageOutput"
-          case _: AgentEvent.ToolCallRequested  => "ToolCallRequested"
-          case _: AgentEvent.ToolCallCompleted  => "ToolCallCompleted"
-          case _: AgentEvent.IterationCompleted => "IterationCompleted"
-          case _: AgentEvent.Interrupted        => "Interrupted"
-          case _: AgentEvent.ErrorOccurred      => "ErrorOccurred"
-          case _: AgentEvent.TokenDelta         => "TokenDelta"
-          case _: AgentEvent.MemoryRecalled     => "MemoryRecalled"
-          case _: AgentEvent.MemoryWritten      => "MemoryWritten"
-        IO.println(s"  [EVENT] $eventType @ ${event.runPath.show}")
-      }.compile.toList
+      events <- eventStream
+        .evalTap { (event: AgentEvent) =>
+          val eventType: String = event match
+            case _: AgentEvent.MessageOutput      => "MessageOutput"
+            case _: AgentEvent.ToolCallRequested  => "ToolCallRequested"
+            case _: AgentEvent.ToolCallCompleted  => "ToolCallCompleted"
+            case _: AgentEvent.IterationCompleted => "IterationCompleted"
+            case _: AgentEvent.Interrupted        => "Interrupted"
+            case _: AgentEvent.ErrorOccurred      => "ErrorOccurred"
+            case _: AgentEvent.TokenDelta         => "TokenDelta"
+            case _: AgentEvent.MemoryRecalled     => "MemoryRecalled"
+            case _: AgentEvent.MemoryWritten      => "MemoryWritten"
+          IO.println(s"  [EVENT] $eventType @ ${event.runPath.show}")
+        }
+        .compile
+        .toList
       result <- resultFiber.joinWithNever
 
       _ <- ExampleUtils.printSubSection("Result")

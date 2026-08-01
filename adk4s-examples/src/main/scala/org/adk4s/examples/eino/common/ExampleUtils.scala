@@ -36,7 +36,8 @@ object ExampleUtils:
     apiKey match
       case Some(key) =>
         val model: String = Option(System.getenv("LLM_MODEL")).filter(_.nonEmpty).getOrElse("gpt-4o-mini")
-        val baseUrl: String = Option(System.getenv("OPENAI_BASE_URL")).filter(_.nonEmpty).getOrElse("https://api.openai.com/v1")
+        val baseUrl: String =
+          Option(System.getenv("OPENAI_BASE_URL")).filter(_.nonEmpty).getOrElse("https://api.openai.com/v1")
         IO.println(s"[Using real LLM: $model]") *>
           IO.fromEither(
             ModelRegistryService
@@ -45,7 +46,7 @@ object ExampleUtils:
               .map(err => new RuntimeException(s"Failed to load model registry: ${err.message}"))
           ).flatMap { (registry: ModelRegistryService) =>
             given ContextWindowResolver = ContextWindowResolver(registry)
-            val config: OpenAIConfig = OpenAIConfig.fromValues(model, key, None, baseUrl)
+            val config: OpenAIConfig    = OpenAIConfig.fromValues(model, key, None, baseUrl)
             IO.fromEither(
               LLMConnect
                 .getClient(config)(using registry)
@@ -55,16 +56,19 @@ object ExampleUtils:
           }
       case None =>
         IO.println("[Using MockLLMClient — set OPENAI_API_KEY for real LLM]") *>
-          IO.raiseError(new UnsupportedOperationException(
-            "No API key provided and no mock client available. Each example should handle the None case."
-          ))
+          IO.raiseError(
+            new UnsupportedOperationException(
+              "No API key provided and no mock client available. Each example should handle the None case."
+            )
+          )
 
   def createChatModel: IO[ChatModel[IO]] =
     val apiKey: Option[String] = Option(System.getenv("OPENAI_API_KEY")).filter(_.nonEmpty)
     apiKey match
       case Some(key) =>
         val model: String = Option(System.getenv("LLM_MODEL")).filter(_.nonEmpty).getOrElse("gpt-4o-mini")
-        val baseUrl: String = Option(System.getenv("OPENAI_BASE_URL")).filter(_.nonEmpty).getOrElse("https://api.openai.com/v1")
+        val baseUrl: String =
+          Option(System.getenv("OPENAI_BASE_URL")).filter(_.nonEmpty).getOrElse("https://api.openai.com/v1")
         IO.println(s"[Using real LLM: $model via $baseUrl]") *>
           IO.fromEither(
             ModelRegistryService
@@ -73,7 +77,7 @@ object ExampleUtils:
               .map(err => new RuntimeException(s"Failed to load model registry: ${err.message}"))
           ).flatMap { (registry: ModelRegistryService) =>
             given ContextWindowResolver = ContextWindowResolver(registry)
-            val config: OpenAIConfig = OpenAIConfig.fromValues(model, key, None, baseUrl)
+            val config: OpenAIConfig    = OpenAIConfig.fromValues(model, key, None, baseUrl)
             IO.fromEither(
               LLMConnect
                 .getClient(config)(using registry)
@@ -88,13 +92,11 @@ object ExampleUtils:
 class MockChatModel extends ChatModel[IO]:
   def generate(conversation: Conversation): IO[Completion] =
     IO.delay {
-      val lastUserMessage: String = conversation.messages.collect {
-        case msg: UserMessage => msg.content
-      }.lastOption.getOrElse("")
+      val lastUserMessage: String =
+        conversation.messages.collect { case msg: UserMessage => msg.content }.lastOption.getOrElse("")
 
-      val systemContent: String = conversation.messages.collect {
-        case msg: SystemMessage => msg.content
-      }.headOption.getOrElse("")
+      val systemContent: String =
+        conversation.messages.collect { case msg: SystemMessage => msg.content }.headOption.getOrElse("")
 
       val response: String =
         if systemContent.contains("cat") then
@@ -105,12 +107,10 @@ class MockChatModel extends ChatModel[IO]:
           "The writing is good but could use more specific examples and a stronger conclusion."
         else if systemContent.contains("writer") then
           "Here is a revised draft incorporating the feedback with concrete examples."
-        else if lastUserMessage.contains("weather") then
-          "The weather today is sunny with a high of 72°F."
+        else if lastUserMessage.contains("weather") then "The weather today is sunny with a high of 72°F."
         else if lastUserMessage.contains("plan") then
           "Step 1: Research the topic. Step 2: Create an outline. Step 3: Write the draft."
-        else
-          s"I received your message: ${lastUserMessage.take(50)}"
+        else s"I received your message: ${lastUserMessage.take(50)}"
 
       val assistantMessage: AssistantMessage = AssistantMessage(response)
       Completion(
@@ -133,13 +133,15 @@ class MockChatModel extends ChatModel[IO]:
           finishReason = None,
           thinkingDelta = None
         )
-      } ++ fs2.Stream.emit(StreamedChunk(
-        id = completion.id,
-        content = None,
-        toolCall = None,
-        finishReason = Some("stop"),
-        thinkingDelta = None
-      ))
+      } ++ fs2.Stream.emit(
+        StreamedChunk(
+          id = completion.id,
+          content = None,
+          toolCall = None,
+          finishReason = Some("stop"),
+          thinkingDelta = None
+        )
+      )
     }
 
   def streamContent(conversation: Conversation): fs2.Stream[IO, String] =

@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.llm.classification
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
 import org.adk4s.structured.test.QueryClassification
 
 /**
@@ -30,13 +30,13 @@ object QueryClassificationStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[QueryClassification]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Query Classification (Structured)")
+      _         <- ExampleUtils.printSection("Query Classification (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -48,9 +48,9 @@ object QueryClassificationStructuredExample extends IOApp.Simple:
         s"Classify this query: \"$query1\""
       )
       result1 <- structured.complete[QueryClassification](prompt1)
-      _ <- IO.println(s"   Query: $query1")
-      _ <- IO.println(s"   Type: ${result1.queryType}")
-      _ <- IO.println(s"   Intent: ${result1.intent}")
+      _       <- IO.println(s"   Query: $query1")
+      _       <- IO.println(s"   Type: ${result1.queryType}")
+      _       <- IO.println(s"   Intent: ${result1.intent}")
 
       // Example 2: Command
       _ <- ExampleUtils.printSubSection("2. Command Classification")
@@ -60,9 +60,9 @@ object QueryClassificationStructuredExample extends IOApp.Simple:
         s"Classify this query: \"$query2\""
       )
       result2 <- structured.complete[QueryClassification](prompt2)
-      _ <- IO.println(s"   Query: $query2")
-      _ <- IO.println(s"   Type: ${result2.queryType}")
-      _ <- IO.println(s"   Intent: ${result2.intent}")
+      _       <- IO.println(s"   Query: $query2")
+      _       <- IO.println(s"   Type: ${result2.queryType}")
+      _       <- IO.println(s"   Intent: ${result2.intent}")
 
       // Example 3: Statement
       _ <- ExampleUtils.printSubSection("3. Statement Classification")
@@ -72,9 +72,9 @@ object QueryClassificationStructuredExample extends IOApp.Simple:
         s"Classify this query: \"$query3\""
       )
       result3 <- structured.complete[QueryClassification](prompt3)
-      _ <- IO.println(s"   Query: $query3")
-      _ <- IO.println(s"   Type: ${result3.queryType}")
-      _ <- IO.println(s"   Intent: ${result3.intent}")
+      _       <- IO.println(s"   Query: $query3")
+      _       <- IO.println(s"   Type: ${result3.queryType}")
+      _       <- IO.println(s"   Intent: ${result3.intent}")
 
       // Example 4: Implicit command (question that implies action)
       _ <- ExampleUtils.printSubSection("4. Implicit Command Classification")
@@ -84,9 +84,9 @@ object QueryClassificationStructuredExample extends IOApp.Simple:
         s"Classify this query: \"$query4\""
       )
       result4 <- structured.complete[QueryClassification](prompt4)
-      _ <- IO.println(s"   Query: $query4")
-      _ <- IO.println(s"   Type: ${result4.queryType}")
-      _ <- IO.println(s"   Intent: ${result4.intent}")
+      _       <- IO.println(s"   Query: $query4")
+      _       <- IO.println(s"   Type: ${result4.queryType}")
+      _       <- IO.println(s"   Intent: ${result4.intent}")
 
       _ <- IO.println("\nQuery classification example completed.")
     yield ()

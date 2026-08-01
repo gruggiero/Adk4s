@@ -181,9 +181,10 @@ configured max-errors cap, and SHALL cancel all in-flight work.
 **Given** a devset of 50 examples and `maxErrors = Some(3)` and a program that
 raises on every call
 **When** the harness runs
-**Then** the harness raises `EvalError.TooManyErrors(count=3, max=3, partial)`
-where `partial` contains the rows collected before the abort, and all
-in-flight program calls are cancelled (observable via a cancellation probe).
+**Then** the harness raises `EvalError.TooManyErrors(count=4, max=3, partial)`
+after the 4th failure (the cap is exceeded: 4 > 3), where `partial` contains
+the rows collected before the abort, and all in-flight program calls are
+cancelled (observable via a cancellation probe).
 
 **Rationale**: Without a cap, a systematically broken program wastes the entire
 budget. The cap must abort early AND cancel work actually in flight, not just

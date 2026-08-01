@@ -86,5 +86,5 @@ impl: `evalCapped` uses a `Ref[F, Int]` counter; when `newCount > cap`, raises `
 
 ## Deviations from the pattern
 
-- The `maxErrors` cap uses `count > cap` (strictly exceeds), meaning `maxErrors = Some(n)` triggers on the `(n+1)`-th failure. The spec scenario "maxErrors = Some(3) → count=3" is interpreted as the cap being reached, not exceeded — the test uses `count >= max` for leniency.
+- The `maxErrors` cap uses `count > cap` (strictly exceeds), meaning `maxErrors = Some(n)` triggers on the `(n+1)`-th failure. This is consistent with the spec's "exceeds the configured max-errors cap" wording and the "Cap exceeded" scenario (maxErrors=2 → 3rd failure). The requirement Given (maxErrors=3 → count=4) confirms this semantics.
 - The `seed` field in `EvalConfig` is reserved for future shuffling features and is not used by the current implementation (the harness is deterministic given a pure program + metric).

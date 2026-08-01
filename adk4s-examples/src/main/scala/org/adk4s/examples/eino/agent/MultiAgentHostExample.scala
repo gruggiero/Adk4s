@@ -48,7 +48,7 @@ object MultiAgentHostExample extends IOApp.Simple:
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Multi-Agent Host Example (Eino: agent/multiagent/host)")
+      _         <- ExampleUtils.printSection("Multi-Agent Host Example (Eino: agent/multiagent/host)")
       chatModel <- ExampleUtils.createChatModel
 
       // Query 1: Math question → routes to MathAgent
@@ -70,8 +70,8 @@ object MultiAgentHostExample extends IOApp.Simple:
     for
       // Step 1: Host classifies the query
       category <- classifyQuery(chatModel, query)
-      _ <- IO.println(s"   Query: $query")
-      _ <- IO.println(s"   Routed to: $category")
+      _        <- IO.println(s"   Query: $query")
+      _        <- IO.println(s"   Routed to: $category")
 
       // Step 2: Get the specialist
       specialist = specialists.getOrElse(category, specialists("general"))
@@ -79,18 +79,20 @@ object MultiAgentHostExample extends IOApp.Simple:
 
       // Step 3: Specialist responds
       response <- runSpecialist(chatModel, specialist, query)
-      _ <- IO.println(s"   Response: ${response.take(120)}...")
+      _        <- IO.println(s"   Response: ${response.take(120)}...")
     yield ()
 
   private def classifyQuery(chatModel: ChatModel[IO], query: String): IO[String] =
-    val classifierConv: Conversation = Conversation(Seq(
-      SystemMessage(
-        """You are a query classifier. Classify the user's query into exactly one category.
+    val classifierConv: Conversation = Conversation(
+      Seq(
+        SystemMessage(
+          """You are a query classifier. Classify the user's query into exactly one category.
           |Reply with ONLY the category name, nothing else.
           |Categories: math, code, general""".stripMargin
-      ),
-      UserMessage(query)
-    ))
+        ),
+        UserMessage(query)
+      )
+    )
     chatModel.generate(classifierConv).map { (completion: Completion) =>
       val raw: String = completion.content.trim.toLowerCase
       if raw.contains("math") then "math"
@@ -103,8 +105,10 @@ object MultiAgentHostExample extends IOApp.Simple:
     specialist: SpecialistAgent,
     query: String
   ): IO[String] =
-    val conv: Conversation = Conversation(Seq(
-      SystemMessage(specialist.systemPrompt),
-      UserMessage(query)
-    ))
+    val conv: Conversation = Conversation(
+      Seq(
+        SystemMessage(specialist.systemPrompt),
+        UserMessage(query)
+      )
+    )
     chatModel.generate(conv).map(_.content)

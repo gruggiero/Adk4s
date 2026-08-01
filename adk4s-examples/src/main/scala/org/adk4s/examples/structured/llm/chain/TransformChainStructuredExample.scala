@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.llm.chain
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
 import org.adk4s.structured.test.TypedIntermediate
 
 /**
@@ -32,13 +32,13 @@ object TransformChainStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[TypedIntermediate]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Transform Chain (Structured)")
+      _         <- ExampleUtils.printSection("Transform Chain (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -62,9 +62,9 @@ object TransformChainStructuredExample extends IOApp.Simple:
         s"Raw data: $rawData"
       )
       extracted <- structured.complete[TypedIntermediate](extractPrompt)
-      _ <- IO.println(s"   → Stage: ${extracted.stage}")
-      _ <- IO.println(s"   → Extracted: ${extracted.result}")
-      _ <- IO.println(s"   → Next: ${extracted.nextAction}")
+      _         <- IO.println(s"   → Stage: ${extracted.stage}")
+      _         <- IO.println(s"   → Extracted: ${extracted.result}")
+      _         <- IO.println(s"   → Next: ${extracted.nextAction}")
 
       // Stage 2: Transform (using extracted data)
       _ <- IO.println("\n   Stage 2: Transformation...")
@@ -73,9 +73,9 @@ object TransformChainStructuredExample extends IOApp.Simple:
         s"Extracted data: ${extracted.result}"
       )
       transformed <- structured.complete[TypedIntermediate](transformPrompt)
-      _ <- IO.println(s"   → Stage: ${transformed.stage}")
-      _ <- IO.println(s"   → Transformed: ${transformed.result}")
-      _ <- IO.println(s"   → Next: ${transformed.nextAction}")
+      _           <- IO.println(s"   → Stage: ${transformed.stage}")
+      _           <- IO.println(s"   → Transformed: ${transformed.result}")
+      _           <- IO.println(s"   → Next: ${transformed.nextAction}")
 
       // Stage 3: Normalize (using transformed data)
       _ <- IO.println("\n   Stage 3: Normalization...")
@@ -84,9 +84,9 @@ object TransformChainStructuredExample extends IOApp.Simple:
         s"Transformed data: ${transformed.result}"
       )
       normalized <- structured.complete[TypedIntermediate](normalizePrompt)
-      _ <- IO.println(s"   → Stage: ${normalized.stage}")
-      _ <- IO.println(s"   → Normalized: ${normalized.result}")
-      _ <- IO.println(s"   → Next: ${normalized.nextAction}")
+      _          <- IO.println(s"   → Stage: ${normalized.stage}")
+      _          <- IO.println(s"   → Normalized: ${normalized.result}")
+      _          <- IO.println(s"   → Next: ${normalized.nextAction}")
 
       // Stage 4: Enrich (using normalized data)
       _ <- IO.println("\n   Stage 4: Enrichment...")
@@ -95,9 +95,9 @@ object TransformChainStructuredExample extends IOApp.Simple:
         s"Normalized data: ${normalized.result}"
       )
       enriched <- structured.complete[TypedIntermediate](enrichPrompt)
-      _ <- IO.println(s"   → Stage: ${enriched.stage}")
-      _ <- IO.println(s"   → Enriched: ${enriched.result}")
-      _ <- IO.println(s"   → Next: ${enriched.nextAction}")
+      _        <- IO.println(s"   → Stage: ${enriched.stage}")
+      _        <- IO.println(s"   → Enriched: ${enriched.result}")
+      _        <- IO.println(s"   → Next: ${enriched.nextAction}")
 
       _ <- IO.println("\n   Transformation pipeline complete!")
       _ <- IO.println(s"   Final output: ${enriched.result}")

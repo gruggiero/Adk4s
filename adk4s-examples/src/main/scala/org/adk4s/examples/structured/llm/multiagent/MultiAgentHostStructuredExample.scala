@@ -3,8 +3,8 @@ package org.adk4s.examples.structured.llm.multiagent
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
-import org.adk4s.structured.test.{SpecialistDelegation, CategoryClassification}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
+import org.adk4s.structured.test.{ SpecialistDelegation, CategoryClassification }
 
 /**
  * Demonstrates multi-agent host pattern with StructuredLLM.
@@ -39,8 +39,8 @@ object MultiAgentHostStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[CategoryClassification]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new MultiAgentHostMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new MultiAgentHostMockLLMClient())
     }
 
   // Simulate specialist agent execution
@@ -76,7 +76,7 @@ object MultiAgentHostStructuredExample extends IOApp.Simple:
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Multi-Agent Host (Structured)")
+      _         <- ExampleUtils.printSection("Multi-Agent Host (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -98,15 +98,15 @@ object MultiAgentHostStructuredExample extends IOApp.Simple:
         s"Task: $task1"
       )
       routing1 <- structured.complete[SpecialistDelegation](hostPrompt1)
-      _ <- IO.println(s"   [Host] → Delegating to: ${routing1.specialist}")
-      _ <- IO.println(s"   [Host] → Rationale: ${routing1.rationale}\n")
+      _        <- IO.println(s"   [Host] → Delegating to: ${routing1.specialist}")
+      _        <- IO.println(s"   [Host] → Rationale: ${routing1.rationale}\n")
 
       // Execute specialist
       result1 <- routing1.specialist match
-        case "code_specialist" => executeCodeSpecialist(task1, llmClient)
-        case "data_specialist" => executeDataSpecialist(task1, llmClient)
+        case "code_specialist"     => executeCodeSpecialist(task1, llmClient)
+        case "data_specialist"     => executeDataSpecialist(task1, llmClient)
         case "security_specialist" => executeSecuritySpecialist(task1, llmClient)
-        case _ => IO.pure("Unknown specialist")
+        case _                     => IO.pure("Unknown specialist")
       _ <- IO.println(s"   [${routing1.specialist}] $result1")
 
       // Example 2: Data task
@@ -120,14 +120,14 @@ object MultiAgentHostStructuredExample extends IOApp.Simple:
         s"Task: $task2"
       )
       routing2 <- structured.complete[SpecialistDelegation](hostPrompt2)
-      _ <- IO.println(s"   [Host] → Delegating to: ${routing2.specialist}")
-      _ <- IO.println(s"   [Host] → Rationale: ${routing2.rationale}\n")
+      _        <- IO.println(s"   [Host] → Delegating to: ${routing2.specialist}")
+      _        <- IO.println(s"   [Host] → Rationale: ${routing2.rationale}\n")
 
       result2 <- routing2.specialist match
-        case "code_specialist" => executeCodeSpecialist(task2, llmClient)
-        case "data_specialist" => executeDataSpecialist(task2, llmClient)
+        case "code_specialist"     => executeCodeSpecialist(task2, llmClient)
+        case "data_specialist"     => executeDataSpecialist(task2, llmClient)
         case "security_specialist" => executeSecuritySpecialist(task2, llmClient)
-        case _ => IO.pure("Unknown specialist")
+        case _                     => IO.pure("Unknown specialist")
       _ <- IO.println(s"   [${routing2.specialist}] $result2")
 
       // Example 3: Security task
@@ -141,14 +141,14 @@ object MultiAgentHostStructuredExample extends IOApp.Simple:
         s"Task: $task3"
       )
       routing3 <- structured.complete[SpecialistDelegation](hostPrompt3)
-      _ <- IO.println(s"   [Host] → Delegating to: ${routing3.specialist}")
-      _ <- IO.println(s"   [Host] → Rationale: ${routing3.rationale}\n")
+      _        <- IO.println(s"   [Host] → Delegating to: ${routing3.specialist}")
+      _        <- IO.println(s"   [Host] → Rationale: ${routing3.rationale}\n")
 
       result3 <- routing3.specialist match
-        case "code_specialist" => executeCodeSpecialist(task3, llmClient)
-        case "data_specialist" => executeDataSpecialist(task3, llmClient)
+        case "code_specialist"     => executeCodeSpecialist(task3, llmClient)
+        case "data_specialist"     => executeDataSpecialist(task3, llmClient)
         case "security_specialist" => executeSecuritySpecialist(task3, llmClient)
-        case _ => IO.pure("Unknown specialist")
+        case _                     => IO.pure("Unknown specialist")
       _ <- IO.println(s"   [${routing3.specialist}] $result3")
 
       _ <- IO.println("\nMulti-agent host example completed.")
@@ -162,13 +162,11 @@ class MultiAgentHostMockLLMClient extends org.llm4s.llmconnect.LLMClient:
   import java.util.UUID
 
   def complete(conversation: Conversation, options: CompletionOptions): Either[org.llm4s.error.LLMError, Completion] =
-    val systemMessage: String = conversation.messages.collect {
-      case msg: SystemMessage => msg.content
-    }.headOption.getOrElse("")
+    val systemMessage: String =
+      conversation.messages.collect { case msg: SystemMessage => msg.content }.headOption.getOrElse("")
 
-    val lastUserMessage: String = conversation.messages.collect {
-      case msg: UserMessage => msg.content
-    }.lastOption.getOrElse("")
+    val lastUserMessage: String =
+      conversation.messages.collect { case msg: UserMessage => msg.content }.lastOption.getOrElse("")
 
     val response: String =
       // Host routing decisions
@@ -179,29 +177,27 @@ class MultiAgentHostMockLLMClient extends org.llm4s.llmconnect.LLMClient:
           """{"specialist": "data_specialist", "rationale": "Analyzing trends requires data analysis expertise"}"""
         else if lastUserMessage.contains("penetration testing") then
           """{"specialist": "security_specialist", "rationale": "Penetration testing requires security expertise"}"""
-        else
-          """{"specialist": "code_specialist", "rationale": "Default to code specialist"}"""
+        else """{"specialist": "code_specialist", "rationale": "Default to code specialist"}"""
       // Specialist execution responses
-      else if systemMessage.contains("code specialist") then
-        """{"category": "code-review", "confidence": 0.92}"""
-      else if systemMessage.contains("data specialist") then
-        """{"category": "data-analysis", "confidence": 0.90}"""
+      else if systemMessage.contains("code specialist") then """{"category": "code-review", "confidence": 0.92}"""
+      else if systemMessage.contains("data specialist") then """{"category": "data-analysis", "confidence": 0.90}"""
       else if systemMessage.contains("security specialist") then
         """{"category": "security-audit", "confidence": 0.95}"""
-      else
-        """{"category": "general", "confidence": 0.70}"""
+      else """{"category": "general", "confidence": 0.70}"""
 
     val assistantMessage: AssistantMessage = AssistantMessage(Some(response))
-    Right(Completion(
-      id = UUID.randomUUID().toString,
-      created = System.currentTimeMillis(),
-      content = response,
-      model = "mock-model",
-      message = assistantMessage,
-      toolCalls = List.empty,
-      usage = None,
-      thinking = None
-    ))
+    Right(
+      Completion(
+        id = UUID.randomUUID().toString,
+        created = System.currentTimeMillis(),
+        content = response,
+        model = "mock-model",
+        message = assistantMessage,
+        toolCalls = List.empty,
+        usage = None,
+        thinking = None
+      )
+    )
 
   def streamComplete(
     conversation: Conversation,
@@ -210,5 +206,5 @@ class MultiAgentHostMockLLMClient extends org.llm4s.llmconnect.LLMClient:
   ): Either[org.llm4s.error.LLMError, Completion] =
     complete(conversation, options)
 
-  def getContextWindow(): Int = 8192
+  def getContextWindow(): Int     = 8192
   def getReserveCompletion(): Int = 512

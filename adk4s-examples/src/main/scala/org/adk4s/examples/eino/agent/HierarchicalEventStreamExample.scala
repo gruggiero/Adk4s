@@ -1,13 +1,21 @@
 package org.adk4s.examples.eino.agent
 
-import cats.effect.{IO, IOApp}
+import cats.effect.{ IO, IOApp }
 import cats.syntax.traverse.toTraverseOps
-import org.adk4s.core.component.{Agent, AgentTool, ChatModel, ChatModelConfig, InvokableTool, Tool}
-import org.adk4s.core.interrupt.{AgentEvent, AgentEventEmitter}
+import org.adk4s.core.component.{ Agent, AgentTool, ChatModel, ChatModelConfig, InvokableTool, Tool }
+import org.adk4s.core.interrupt.{ AgentEvent, AgentEventEmitter }
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.orchestration.agent.{AgentRunner, ReactAgent, RunResult}
+import org.adk4s.orchestration.agent.{ AgentRunner, ReactAgent, RunResult }
 import org.adk4s.orchestration.interrupt.InMemoryCheckpointStore
-import org.llm4s.llmconnect.model.{AssistantMessage, Completion, Conversation, Message, StreamedChunk, ToolCall, UserMessage}
+import org.llm4s.llmconnect.model.{
+  AssistantMessage,
+  Completion,
+  Conversation,
+  Message,
+  StreamedChunk,
+  ToolCall,
+  UserMessage
+}
 
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -47,7 +55,7 @@ object HierarchicalEventStreamExample extends IOApp.Simple:
     "search",
     "Searches knowledge base for information",
     (args: ujson.Value) => {
-      val query: String = args.obj.get("query").map(_.str).getOrElse("")
+      val query: String   = args.obj.get("query").map(_.str).getOrElse("")
       val results: String = s"Search results for '$query':\n1. Article A\n2. Article B\n3. Article C"
       Right(ujson.Str(results))
     }
@@ -109,13 +117,28 @@ object HierarchicalEventStreamExample extends IOApp.Simple:
 
       def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
       def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-      def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+      def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
     emitter match
       case Some(e) =>
-        ReactAgent.create("research-agent", "Agent that performs research using search tools", model, List(searchTool), None, 5, e)
+        ReactAgent.create(
+          "research-agent",
+          "Agent that performs research using search tools",
+          model,
+          List(searchTool),
+          None,
+          5,
+          e
+        )
       case None =>
-        ReactAgent.create("research-agent", "Agent that performs research using search tools", model, List(searchTool), None, 5)
+        ReactAgent.create(
+          "research-agent",
+          "Agent that performs research using search tools",
+          model,
+          List(searchTool),
+          None,
+          5
+        )
 
   // Create parent orchestrator agent
   private def createOrchestratorAgent(researchTool: InvokableTool[IO], emitter: Option[AgentEventEmitter]): ReactAgent =
@@ -158,7 +181,9 @@ object HierarchicalEventStreamExample extends IOApp.Simple:
               .getOrElse("No results")
 
             val msg: AssistantMessage = AssistantMessage(
-              contentOpt = Some(s"Here's what our research team found:\n\n$researchResults\n\nLet me know if you need more details!"),
+              contentOpt = Some(
+                s"Here's what our research team found:\n\n$researchResults\n\nLet me know if you need more details!"
+              ),
               toolCalls = Seq.empty
             )
 
@@ -173,13 +198,28 @@ object HierarchicalEventStreamExample extends IOApp.Simple:
 
       def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
       def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-      def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+      def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
     emitter match
       case Some(e) =>
-        ReactAgent.create("orchestrator", "Orchestrator agent that delegates to specialist agents", model, List(researchTool), None, 5, e)
+        ReactAgent.create(
+          "orchestrator",
+          "Orchestrator agent that delegates to specialist agents",
+          model,
+          List(researchTool),
+          None,
+          5,
+          e
+        )
       case None =>
-        ReactAgent.create("orchestrator", "Orchestrator agent that delegates to specialist agents", model, List(researchTool), None, 5)
+        ReactAgent.create(
+          "orchestrator",
+          "Orchestrator agent that delegates to specialist agents",
+          model,
+          List(researchTool),
+          None,
+          5
+        )
 
   def run: IO[Unit] =
     for
@@ -198,7 +238,7 @@ object HierarchicalEventStreamExample extends IOApp.Simple:
 
       // Set up runner
       store <- InMemoryCheckpointStore.create
-      runner = AgentRunner.create(orchestratorAgent, store, emitter)
+      runner                  = AgentRunner.create(orchestratorAgent, store, emitter)
       (resultIO, eventStream) = runner.runWithEvents(List(UserMessage("Research quantum computing applications")))
 
       _ <- ExampleUtils.printSubSection("Event Stream (real-time)")
@@ -210,44 +250,47 @@ object HierarchicalEventStreamExample extends IOApp.Simple:
       // Run concurrently: consume events and wait for result
       resultFiber <- resultIO.start
 
-      events <- eventStream.evalTap { (event: AgentEvent) =>
-        val eventType: String = event match
-          case _: AgentEvent.MessageOutput     => "MessageOutput"
-          case _: AgentEvent.ToolCallRequested  => "ToolCallRequested"
-          case _: AgentEvent.ToolCallCompleted  => "ToolCallCompleted"
-          case _: AgentEvent.IterationCompleted => "IterationCompleted"
-          case _: AgentEvent.Interrupted        => "Interrupted"
-          case _: AgentEvent.ErrorOccurred      => "ErrorOccurred"
-          case _: AgentEvent.TokenDelta         => "TokenDelta"
-          case _: AgentEvent.MemoryRecalled     => "MemoryRecalled"
-          case _: AgentEvent.MemoryWritten      => "MemoryWritten"
+      events <- eventStream
+        .evalTap { (event: AgentEvent) =>
+          val eventType: String = event match
+            case _: AgentEvent.MessageOutput      => "MessageOutput"
+            case _: AgentEvent.ToolCallRequested  => "ToolCallRequested"
+            case _: AgentEvent.ToolCallCompleted  => "ToolCallCompleted"
+            case _: AgentEvent.IterationCompleted => "IterationCompleted"
+            case _: AgentEvent.Interrupted        => "Interrupted"
+            case _: AgentEvent.ErrorOccurred      => "ErrorOccurred"
+            case _: AgentEvent.TokenDelta         => "TokenDelta"
+            case _: AgentEvent.MemoryRecalled     => "MemoryRecalled"
+            case _: AgentEvent.MemoryWritten      => "MemoryWritten"
 
-        for
-          _ <- eventCounts.update { (counts: Map[String, Int]) =>
-            counts.updated(eventType, counts.getOrElse(eventType, 0) + 1)
-          }
-          line <- IO.delay {
-            val path: String = event.runPath.show
-            val depth: Int = if path.isEmpty then 0 else path.count(_ == '/')
-            val indent: String = "  " * depth
-            val pathDisplay: String = if path.isEmpty then "(root)" else path
+          for
+            _ <- eventCounts.update { (counts: Map[String, Int]) =>
+              counts.updated(eventType, counts.getOrElse(eventType, 0) + 1)
+            }
+            line <- IO.delay {
+              val path: String        = event.runPath.show
+              val depth: Int          = if path.isEmpty then 0 else path.count(_ == '/')
+              val indent: String      = "  " * depth
+              val pathDisplay: String = if path.isEmpty then "(root)" else path
 
-            val details: String = event match
-              case e: AgentEvent.ToolCallRequested =>
-                s"tool=${e.toolName}"
-              case e: AgentEvent.ToolCallCompleted =>
-                val status: String = if e.isError then "ERROR" else "OK"
-                s"tool=${e.toolName} status=$status"
-              case e: AgentEvent.MessageOutput =>
-                val preview: String = e.message.take(50)
-                s"msg='${preview}${if e.message.length > 50 then "..." else ""}'"
-              case _ => ""
+              val details: String = event match
+                case e: AgentEvent.ToolCallRequested =>
+                  s"tool=${e.toolName}"
+                case e: AgentEvent.ToolCallCompleted =>
+                  val status: String = if e.isError then "ERROR" else "OK"
+                  s"tool=${e.toolName} status=$status"
+                case e: AgentEvent.MessageOutput =>
+                  val preview: String = e.message.take(50)
+                  s"msg='${preview}${if e.message.length > 50 then "..." else ""}'"
+                case _ => ""
 
-            s"$indent[$eventType] @ $pathDisplay${if details.nonEmpty then s" ($details)" else ""}"
-          }
-          _ <- IO.println(line)
-        yield ()
-      }.compile.toList
+              s"$indent[$eventType] @ $pathDisplay${if details.nonEmpty then s" ($details)" else ""}"
+            }
+            _ <- IO.println(line)
+          yield ()
+        }
+        .compile
+        .toList
 
       result <- resultFiber.joinWithNever
 
@@ -257,15 +300,15 @@ object HierarchicalEventStreamExample extends IOApp.Simple:
       _ <- result match
         case RunResult.Completed(output, _) =>
           IO.println("✓ Execution completed successfully") *>
-          IO.println("") *>
-          IO.println("Final output (truncated):") *>
-          IO.println(s"  ${output.take(100)}...")
+            IO.println("") *>
+            IO.println("Final output (truncated):") *>
+            IO.println(s"  ${output.take(100)}...")
 
         case other =>
           IO.println(s"Result: $other")
 
-      _ <- IO.println("")
-      _ <- IO.println("Event Statistics:")
+      _      <- IO.println("")
+      _      <- IO.println("Event Statistics:")
       counts <- eventCounts.get
       _ <- counts.toList.sortBy(_._1).traverse { case (eventType, count) =>
         IO.println(s"  $eventType: $count")

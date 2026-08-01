@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.core.tools.JsonFixMiddleware
 import org.adk4s.core.tools.ToolInfer
-import org.adk4s.core.tools.{StructuredToolCall, ToolSchema, TypedTool}
+import org.adk4s.core.tools.{ StructuredToolCall, ToolSchema, TypedTool }
 import org.adk4s.examples.eino.common.ExampleUtils
 
 /**
@@ -60,13 +60,16 @@ object ToolSchemaExample extends IOApp.Simple:
     for
       _ <- ExampleUtils.printSubSection("Scenario 2: Create Tool with Inferred Schema")
 
-      tool = ToolInfer.infer[BookingArgs]("book_trip", "Book a trip to a destination") {
-        (args: BookingArgs) =>
-          IO.pure(Right(ujson.Obj(
-            "confirmation" -> s"Booked ${args.passengers} passengers to ${args.destination}",
-            "premium" -> args.premium,
-            "price" -> (if args.premium then args.passengers * 500.0 else args.passengers * 200.0)
-          )))
+      tool = ToolInfer.infer[BookingArgs]("book_trip", "Book a trip to a destination") { (args: BookingArgs) =>
+        IO.pure(
+          Right(
+            ujson.Obj(
+              "confirmation" -> s"Booked ${args.passengers} passengers to ${args.destination}",
+              "premium"      -> args.premium,
+              "price"        -> (if args.premium then args.passengers * 500.0 else args.passengers * 200.0)
+            )
+          )
+        )
       }
 
       _ <- IO.println(s"   Tool name: ${tool.info.name}")
@@ -76,7 +79,7 @@ object ToolSchemaExample extends IOApp.Simple:
       // Execute the tool
       input = ujson.Obj("destination" -> "Tokyo", "passengers" -> 3, "premium" -> true)
       result <- tool.run(input)
-      _ <- IO.println(s"   Invocation result: ${ujson.write(result, indent = 2)}")
+      _      <- IO.println(s"   Invocation result: ${ujson.write(result, indent = 2)}")
     yield ()
 
   private def runJsonFix: IO[Unit] =
@@ -105,7 +108,7 @@ object ToolSchemaExample extends IOApp.Simple:
 
   private def runStructuredToolCall: IO[Unit] =
     // Derive ToolSchema instances for type-safe execution
-    given ToolSchema[BookingArgs] = ToolSchema.derive[BookingArgs]
+    given ToolSchema[BookingArgs]   = ToolSchema.derive[BookingArgs]
     given ToolSchema[BookingResult] = ToolSchema.derive[BookingResult]
 
     for
@@ -117,7 +120,7 @@ object ToolSchemaExample extends IOApp.Simple:
           toolName = "book_trip_typed",
           toolDescription = "Type-safe booking with guaranteed input/output types"
         ) { (args: BookingArgs) =>
-          val price: Double = if args.premium then args.passengers * 500.0 else args.passengers * 200.0
+          val price: Double        = if args.premium then args.passengers * 500.0 else args.passengers * 200.0
           val confirmation: String = s"Booked ${args.passengers} passengers to ${args.destination}"
           IO.pure(BookingResult(confirmation, args.premium, price))
         }
@@ -130,9 +133,9 @@ object ToolSchemaExample extends IOApp.Simple:
       _ <- IO.println(s"\n   Input: $typedInput")
 
       typedResult: BookingResult <- typedTool.execute(typedInput)
-      _ <- IO.println(s"   Result: $typedResult")
-      _ <- IO.println(s"   Confirmation: ${typedResult.confirmation}")
-      _ <- IO.println(f"   Price: $$${typedResult.price}%.2f")
+      _                          <- IO.println(s"   Result: $typedResult")
+      _                          <- IO.println(s"   Confirmation: ${typedResult.confirmation}")
+      _                          <- IO.println(f"   Price: $$${typedResult.price}%.2f")
 
       // Demonstrate asInvokableTool conversion for registry compatibility
       _ <- IO.println(s"\n   Converting to InvokableTool for registry compatibility...")

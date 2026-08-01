@@ -48,14 +48,14 @@ object ToolCallAgentExample extends IOApp.Simple:
 
   object Ctx extends WorkflowContext:
     sealed trait AgentState
-    final case class QueryState(query: String) extends AgentState
-    final case class ConversationState(conversation: Conversation) extends AgentState
-    final case class CompletionState(completion: Completion) extends AgentState
+    final case class QueryState(query: String)                                               extends AgentState
+    final case class ConversationState(conversation: Conversation)                           extends AgentState
+    final case class CompletionState(completion: Completion)                                 extends AgentState
     final case class ToolResultState(query: String, llmResponse: String, toolResult: String) extends AgentState
 
     sealed trait AgentEvent
     final case class ChatCompleted(completion: Completion) extends AgentEvent
-    final case class ToolExecuted(result: String) extends AgentEvent
+    final case class ToolExecuted(result: String)          extends AgentEvent
 
     override type State = AgentState
     override type Event = AgentEvent
@@ -68,9 +68,9 @@ object ToolCallAgentExample extends IOApp.Simple:
   import Ctx.ToolExecuted
   import Ctx.ToolResultState
 
-  private given ErrorMeta[Nothing] = ErrorMeta.noError
+  private given ErrorMeta[Nothing]      = ErrorMeta.noError
   private given ClassTag[ChatCompleted] = scala.reflect.ClassTag(classOf[ChatCompleted])
-  private given ClassTag[ToolExecuted] = scala.reflect.ClassTag(classOf[ToolExecuted])
+  private given ClassTag[ToolExecuted]  = scala.reflect.ClassTag(classOf[ToolExecuted])
 
   // Mock tool: a simple calculator
   private val calculatorTool: InvokableTool[IO] = Tool.invokable[IO](
@@ -83,7 +83,7 @@ object ToolCallAgentExample extends IOApp.Simple:
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Tool Call Agent Example (Eino: graph/tool_call_agent)")
+      _         <- ExampleUtils.printSection("Tool Call Agent Example (Eino: graph/tool_call_agent)")
       chatModel <- ExampleUtils.createChatModel
 
       wio <- buildGraph(chatModel) match
@@ -109,7 +109,9 @@ object ToolCallAgentExample extends IOApp.Simple:
       _ <- IO.println("\nTool call agent example completed.")
     yield ()
 
-  private def buildGraph(chatModel: ChatModel[IO]): Either[WIOGraphError, WIOGraph[Ctx.Ctx, QueryState, Nothing, AgentState]] =
+  private def buildGraph(
+    chatModel: ChatModel[IO]
+  ): Either[WIOGraphError, WIOGraph[Ctx.Ctx, QueryState, Nothing, AgentState]] =
     val templateRef: WIONodeRef[Ctx.Ctx, QueryState, ConversationState] =
       WIONodeRef[Ctx.Ctx, QueryState, ConversationState](NodeKey.unsafeApply("template"))
     val chatRef: WIONodeRef[Ctx.Ctx, ConversationState, CompletionState] =
@@ -121,18 +123,21 @@ object ToolCallAgentExample extends IOApp.Simple:
 
     val templateNode: WIOPureNode[Ctx.Ctx, QueryState, Nothing, ConversationState] =
       WIONode.pure[Ctx.Ctx, QueryState, ConversationState]((input: QueryState) =>
-        ConversationState(Conversation(Seq(
-          SystemMessage("You are a helpful assistant with access to a calculator tool."),
-          UserMessage(input.query)
-        )))
+        ConversationState(
+          Conversation(
+            Seq(
+              SystemMessage("You are a helpful assistant with access to a calculator tool."),
+              UserMessage(input.query)
+            )
+          )
+        )
       )
 
     val chatNode: WIORunIONode[Ctx.Ctx, ConversationState, Nothing, ChatCompleted, CompletionState] =
       WIONode.runIO[Ctx.Ctx, ConversationState, ChatCompleted, CompletionState](
-        runIO = (state: ConversationState) =>
-          chatModel.generate(state.conversation).map((c: Completion) => ChatCompleted(c)),
-        handleEvent = (_: ConversationState, evt: ChatCompleted) =>
-          CompletionState(evt.completion)
+        runIO =
+          (state: ConversationState) => chatModel.generate(state.conversation).map((c: Completion) => ChatCompleted(c)),
+        handleEvent = (_: ConversationState, evt: ChatCompleted) => CompletionState(evt.completion)
       )
 
     val toolNode: WIORunIONode[Ctx.Ctx, CompletionState, Nothing, ToolExecuted, ToolResultState] =
@@ -140,7 +145,8 @@ object ToolCallAgentExample extends IOApp.Simple:
         runIO = (state: CompletionState) =>
           val toolInput: ToolInput = ToolInput("calculator", """{"expression": "6 * 7"}""", "call-1")
           val toolsNode: ToolsNode = ToolsNode.fromAdkTools(List(calculatorTool))
-          toolsNode.executeTool(toolInput).map((output: ToolOutput) => ToolExecuted(output.result)),
+          toolsNode.executeTool(toolInput).map((output: ToolOutput) => ToolExecuted(output.result))
+        ,
         handleEvent = (state: CompletionState, evt: ToolExecuted) =>
           ToolResultState(
             query = "What is 6 * 7?",
@@ -171,16 +177,16 @@ object ToolCallAgentExample extends IOApp.Simple:
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx.Ctx]
     ): IO[(ActiveWorkflow[Ctx.Ctx], Boolean)] =
-      val liftEffect: WCEffectLift[Ctx.Ctx, IO] = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val liftEffect: WCEffectLift[Ctx.Ctx, IO]      = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
       val wakeup: WakeupResult[IO, WCEvent[Ctx.Ctx]] = workflow.proceed(Instant.EPOCH, liftEffect)
       wakeup match
         case WakeupResult.Noop() => IO.pure((workflow, false))
         case WakeupResult.Processed(io) =>
           io.asInstanceOf[IO[Ior[Instant, WCEvent[Ctx.Ctx]]]].map { (result: Ior[Instant, WCEvent[Ctx.Ctx]]) =>
             val eventOpt: Option[WCEvent[Ctx.Ctx]] = result match
-              case Ior.Right(event) => Some(event)
+              case Ior.Right(event)   => Some(event)
               case Ior.Both(_, event) => Some(event)
-              case Ior.Left(_) => None
+              case Ior.Left(_)        => None
             eventOpt match
               case Some(event) =>
                 (workflow.handleEvent(event).getOrElse(workflow), true)

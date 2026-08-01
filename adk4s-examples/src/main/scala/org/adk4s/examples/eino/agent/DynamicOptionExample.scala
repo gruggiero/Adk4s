@@ -38,10 +38,12 @@ object DynamicOptionExample extends IOApp.Simple:
     ),
     (args: ujson.Value) => {
       val city: String = args("city").str
-      Right(ujson.Arr(
-        ujson.Obj("name" -> "Sichuan Palace", "city" -> city),
-        ujson.Obj("name" -> "Hunan Garden", "city" -> city)
-      ))
+      Right(
+        ujson.Arr(
+          ujson.Obj("name" -> "Sichuan Palace", "city" -> city),
+          ujson.Obj("name" -> "Hunan Garden", "city"   -> city)
+        )
+      )
     }
   )
 
@@ -73,10 +75,12 @@ object DynamicOptionExample extends IOApp.Simple:
     ),
     (args: ujson.Value) => {
       val restaurant: String = args("restaurant").str
-      Right(ujson.Arr(
-        ujson.Obj("rating" -> 4.5, "text" -> s"Great food at $restaurant!"),
-        ujson.Obj("rating" -> 4.0, "text" -> s"Nice atmosphere at $restaurant.")
-      ))
+      Right(
+        ujson.Arr(
+          ujson.Obj("rating" -> 4.5, "text" -> s"Great food at $restaurant!"),
+          ujson.Obj("rating" -> 4.0, "text" -> s"Nice atmosphere at $restaurant.")
+        )
+      )
     }
   )
 
@@ -88,7 +92,7 @@ object DynamicOptionExample extends IOApp.Simple:
 
       // Create a dynamic tool registry with initial tools
       chatModel <- ExampleUtils.createChatModel
-      registry <- DynamicToolRegistry.create(List(restaurantTool))
+      registry  <- DynamicToolRegistry.create(List(restaurantTool))
       agent = ReactAgent.createWithToolProvider(
         model = chatModel,
         toolProvider = registry.currentTools,
@@ -97,36 +101,36 @@ object DynamicOptionExample extends IOApp.Simple:
       )
 
       // Scenario 1: Initial tools
-      _ <- ExampleUtils.printSubSection("Scenario 1: Initial tools (restaurant only)")
-      names1 <- registry.toolNames
-      _ <- IO.println(s"   Available tools: $names1")
+      _       <- ExampleUtils.printSubSection("Scenario 1: Initial tools (restaurant only)")
+      names1  <- registry.toolNames
+      _       <- IO.println(s"   Available tools: $names1")
       result1 <- agent.generate(List(UserMessage("Find restaurants in Beijing")), 5)
-      _ <- IO.println(s"   Agent: ${result1.content}")
+      _       <- IO.println(s"   Agent: ${result1.content}")
 
       // Scenario 2: Add weather tool at runtime
-      _ <- ExampleUtils.printSubSection("Scenario 2: Add weather tool at runtime")
-      _ <- registry.addTool(weatherTool)
-      names2 <- registry.toolNames
-      _ <- IO.println(s"   Available tools: $names2")
+      _       <- ExampleUtils.printSubSection("Scenario 2: Add weather tool at runtime")
+      _       <- registry.addTool(weatherTool)
+      names2  <- registry.toolNames
+      _       <- IO.println(s"   Available tools: $names2")
       result2 <- agent.generate(List(UserMessage("What's the weather in Beijing?")), 5)
-      _ <- IO.println(s"   Agent: ${result2.content}")
+      _       <- IO.println(s"   Agent: ${result2.content}")
 
       // Scenario 3: Add reviews tool, remove weather tool
-      _ <- ExampleUtils.printSubSection("Scenario 3: Swap tools (add reviews, remove weather)")
-      _ <- registry.addTool(reviewTool)
-      _ <- registry.removeTool("get_weather")
-      names3 <- registry.toolNames
-      _ <- IO.println(s"   Available tools: $names3")
+      _       <- ExampleUtils.printSubSection("Scenario 3: Swap tools (add reviews, remove weather)")
+      _       <- registry.addTool(reviewTool)
+      _       <- registry.removeTool("get_weather")
+      names3  <- registry.toolNames
+      _       <- IO.println(s"   Available tools: $names3")
       result3 <- agent.generate(List(UserMessage("Get reviews for Sichuan Palace")), 5)
-      _ <- IO.println(s"   Agent: ${result3.content}")
+      _       <- IO.println(s"   Agent: ${result3.content}")
 
       // Scenario 4: Clear all tools
-      _ <- ExampleUtils.printSubSection("Scenario 4: Clear all tools")
-      _ <- registry.clear
-      names4 <- registry.toolNames
-      _ <- IO.println(s"   Available tools: $names4")
+      _       <- ExampleUtils.printSubSection("Scenario 4: Clear all tools")
+      _       <- registry.clear
+      names4  <- registry.toolNames
+      _       <- IO.println(s"   Available tools: $names4")
       result4 <- agent.generate(List(UserMessage("Hello")), 5)
-      _ <- IO.println(s"   Agent: ${result4.content}")
+      _       <- IO.println(s"   Agent: ${result4.content}")
 
       _ <- IO.println("\n=== DynamicOption Example Completed ===")
     yield ()

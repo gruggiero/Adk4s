@@ -47,20 +47,20 @@ object StreamFieldMapExample extends IOApp.Simple:
       @tailrec
       def loop(idx: Int, count: Int): Int =
         if idx > fullStr.length - subStr.length then count
-        else if fullStr.substring(idx, idx + subStr.length) == subStr then
-          loop(idx + subStr.length, count + 1)
-        else
-          loop(idx + 1, count)
+        else if fullStr.substring(idx, idx + subStr.length) == subStr then loop(idx + subStr.length, count + 1)
+        else loop(idx + 1, count)
       loop(0, 0)
 
   // --- Main ---
 
   def run: IO[Unit] =
     // Eino input: stream of messages with content and reasoning content
-    val messageStream: Stream[IO, MessageChunk] = Stream.emits(List(
-      MessageChunk(content = "", reasoningContent = "I need to say something meaningful"),
-      MessageChunk(content = "Hello world!", reasoningContent = "")
-    ))
+    val messageStream: Stream[IO, MessageChunk] = Stream.emits(
+      List(
+        MessageChunk(content = "", reasoningContent = "I need to say something meaningful"),
+        MessageChunk(content = "Hello world!", reasoningContent = "")
+      )
+    )
 
     val subStr: String = "o"
 
@@ -82,24 +82,28 @@ object StreamFieldMapExample extends IOApp.Simple:
 
       // Step 2: Process each stream through word counter
       // Eino: TransformableLambda(wordCounter) — per-chunk counting
-      contentCounts = contentStream.map((ci: CounterInput) => countOccurrences(ci.fullStr, ci.subStr))
+      contentCounts   = contentStream.map((ci: CounterInput) => countOccurrences(ci.fullStr, ci.subStr))
       reasoningCounts = reasoningStream.map((ci: CounterInput) => countOccurrences(ci.fullStr, ci.subStr))
 
       // Step 3: Merge results
       // Eino: END.AddInput("c1", ToField("content_count")).AddInput("c2", ToField("reasoning_content_count"))
       mergedStream = StreamFieldMerger.merge2[Int, Int, ChunkResult](
-        contentCounts, reasoningCounts,
+        contentCounts,
+        reasoningCounts,
         (cc: Int, rc: Int) => ChunkResult(contentCount = cc, reasoningContentCount = rc)
       )
 
       _ <- ExampleUtils.printSubSection("Per-chunk results")
-      results <- mergedStream.evalMap { (chunk: ChunkResult) =>
-        IO.println(s"   content_count=${chunk.contentCount}, reasoning_content_count=${chunk.reasoningContentCount}")
-          .as(chunk)
-      }.compile.toList
+      results <- mergedStream
+        .evalMap { (chunk: ChunkResult) =>
+          IO.println(s"   content_count=${chunk.contentCount}, reasoning_content_count=${chunk.reasoningContentCount}")
+            .as(chunk)
+        }
+        .compile
+        .toList
 
       // Accumulate totals (Eino example does this in the consumer loop)
-      totalContent = results.map(_.contentCount).sum
+      totalContent   = results.map(_.contentCount).sum
       totalReasoning = results.map(_.reasoningContentCount).sum
 
       _ <- ExampleUtils.printSubSection("Totals")

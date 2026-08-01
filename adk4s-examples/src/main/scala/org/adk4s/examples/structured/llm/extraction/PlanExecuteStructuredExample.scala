@@ -4,8 +4,8 @@ import cats.effect.IO
 import cats.effect.IOApp
 import cats.syntax.foldable.*
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
-import org.adk4s.structured.test.{PlanExtraction, PlanStep}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
+import org.adk4s.structured.test.{ PlanExtraction, PlanStep }
 
 /**
  * Demonstrates StructuredLLM for plan extraction with typed output.
@@ -42,13 +42,13 @@ object PlanExecuteStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[PlanExtraction]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Plan Extraction (Structured)")
+      _         <- ExampleUtils.printSection("Plan Extraction (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -60,9 +60,9 @@ object PlanExecuteStructuredExample extends IOApp.Simple:
         s"Create a plan for: $task1"
       )
       result1 <- structured.complete[PlanExtraction](prompt1)
-      _ <- IO.println(s"   Task: $task1")
-      _ <- IO.println(s"   Total Duration: ${result1.totalDuration} minutes")
-      _ <- IO.println(s"   Steps:")
+      _       <- IO.println(s"   Task: $task1")
+      _       <- IO.println(s"   Total Duration: ${result1.totalDuration} minutes")
+      _       <- IO.println(s"   Steps:")
       _ <- result1.steps.traverse_ { step =>
         IO.println(s"     ${step.index}. ${step.description} (${step.duration} min)")
       }
@@ -75,9 +75,9 @@ object PlanExecuteStructuredExample extends IOApp.Simple:
         s"Create a plan for: $task2"
       )
       result2 <- structured.complete[PlanExtraction](prompt2)
-      _ <- IO.println(s"   Task: $task2")
-      _ <- IO.println(s"   Total Duration: ${result2.totalDuration} minutes")
-      _ <- IO.println(s"   Steps:")
+      _       <- IO.println(s"   Task: $task2")
+      _       <- IO.println(s"   Total Duration: ${result2.totalDuration} minutes")
+      _       <- IO.println(s"   Steps:")
       _ <- result2.steps.traverse_ { step =>
         IO.println(s"     ${step.index}. ${step.description} (${step.duration} min)")
       }
@@ -90,13 +90,12 @@ object PlanExecuteStructuredExample extends IOApp.Simple:
         s"Create a plan for: $task3"
       )
       result3 <- structured.complete[PlanExtraction](prompt3)
-      _ <- IO.println(s"   Task: $task3")
-      _ <- IO.println(s"   Total Duration: ${result3.totalDuration} minutes")
-      _ <- IO.println(s"   Steps:")
+      _       <- IO.println(s"   Task: $task3")
+      _       <- IO.println(s"   Total Duration: ${result3.totalDuration} minutes")
+      _       <- IO.println(s"   Steps:")
       _ <- result3.steps.traverse_ { step =>
         IO.println(s"     ${step.index}. ${step.description} (${step.duration} min)")
       }
 
       _ <- IO.println("\nPlan extraction example completed.")
     yield ()
-

@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.toolcall
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.core.runnable.Runnable
-import org.adk4s.core.tools.{StructuredToolCall, ToolSchema, TypedTool}
+import org.adk4s.core.tools.{ StructuredToolCall, ToolSchema, TypedTool }
 import org.adk4s.core.types.NodeKey
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
@@ -41,8 +41,8 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
     ) extends GraphState
 
     sealed trait GraphEvent
-    final case class InputValidated(valid: Boolean) extends GraphEvent
-    final case class ToolExecuted(result: String) extends GraphEvent
+    final case class InputValidated(valid: Boolean)  extends GraphEvent
+    final case class ToolExecuted(result: String)    extends GraphEvent
     final case class ResultFormatted(output: String) extends GraphEvent
 
     override type State = GraphState
@@ -64,17 +64,17 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
   case class FormattingInput(content: String)
   case class FormattingResult(formatted: String)
 
-  given ToolSchema[ValidationInput] = ToolSchema.derive[ValidationInput]
+  given ToolSchema[ValidationInput]  = ToolSchema.derive[ValidationInput]
   given ToolSchema[ValidationResult] = ToolSchema.derive[ValidationResult]
-  given ToolSchema[ProcessingInput] = ToolSchema.derive[ProcessingInput]
+  given ToolSchema[ProcessingInput]  = ToolSchema.derive[ProcessingInput]
   given ToolSchema[ProcessingResult] = ToolSchema.derive[ProcessingResult]
-  given ToolSchema[FormattingInput] = ToolSchema.derive[FormattingInput]
+  given ToolSchema[FormattingInput]  = ToolSchema.derive[FormattingInput]
   given ToolSchema[FormattingResult] = ToolSchema.derive[FormattingResult]
 
   private given errorMetaNothing: ErrorMeta[Nothing] = ErrorMeta.noError
-  private given ClassTag[InputValidated] = scala.reflect.ClassTag(classOf[InputValidated])
-  private given ClassTag[ToolExecuted] = scala.reflect.ClassTag(classOf[ToolExecuted])
-  private given ClassTag[ResultFormatted] = scala.reflect.ClassTag(classOf[ResultFormatted])
+  private given ClassTag[InputValidated]             = scala.reflect.ClassTag(classOf[InputValidated])
+  private given ClassTag[ToolExecuted]               = scala.reflect.ClassTag(classOf[ToolExecuted])
+  private given ClassTag[ResultFormatted]            = scala.reflect.ClassTag(classOf[ResultFormatted])
 
   // Define typed tools
   private def createValidationTool: TypedTool[IO, ValidationInput, ValidationResult] =
@@ -82,12 +82,9 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
       toolName = "validate_input",
       toolDescription = "Validates that input text is non-empty and well-formed"
     ) { (input: ValidationInput) =>
-      if input.text.trim.isEmpty then
-        IO.pure(ValidationResult(isValid = false, reason = "Input is empty"))
-      else if input.text.length > 1000 then
-        IO.pure(ValidationResult(isValid = false, reason = "Input too long"))
-      else
-        IO.pure(ValidationResult(isValid = true, reason = "Input is valid"))
+      if input.text.trim.isEmpty then IO.pure(ValidationResult(isValid = false, reason = "Input is empty"))
+      else if input.text.length > 1000 then IO.pure(ValidationResult(isValid = false, reason = "Input too long"))
+      else IO.pure(ValidationResult(isValid = true, reason = "Input is valid"))
     }
 
   private def createProcessingTool: TypedTool[IO, ProcessingInput, ProcessingResult] =
@@ -104,7 +101,7 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
       toolName = "format_output",
       toolDescription = "Formats output with decorative borders"
     ) { (input: FormattingInput) =>
-      val border: String = "=" * 50
+      val border: String    = "=" * 50
       val formatted: String = s"$border\n${input.content}\n$border"
       IO.pure(FormattingResult(formatted = formatted))
     }
@@ -117,7 +114,7 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
       processingTool = createProcessingTool
       formattingTool = createFormattingTool
 
-      _ <- ExampleUtils.printSubSection("Execute Tool Graph Workflow")
+      _        <- ExampleUtils.printSubSection("Execute Tool Graph Workflow")
       runnable <- compileRunnable(buildGraph(validationTool, processingTool, formattingTool))
 
       // Execute the workflow
@@ -128,8 +125,8 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
       _ <- result match
         case state: ToolWorkState =>
           IO.println(s"   Validated: ${state.validated.getOrElse(false)}") *>
-          IO.println(s"   Tool Result: ${state.toolResult.getOrElse("N/A")}") *>
-          IO.println(s"   Formatted:\n${state.formatted.getOrElse("N/A")}")
+            IO.println(s"   Tool Result: ${state.toolResult.getOrElse("N/A")}") *>
+            IO.println(s"   Formatted:\n${state.formatted.getOrElse("N/A")}")
         case other =>
           IO.println(s"   Unexpected state: $other")
 
@@ -218,6 +215,8 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
         graph.toRunnable match
           case Right(runnable) => IO.pure(runnable)
           case Left(errors) =>
-            IO.raiseError(new IllegalStateException(
-              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-            ))
+            IO.raiseError(
+              new IllegalStateException(
+                s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+              )
+            )

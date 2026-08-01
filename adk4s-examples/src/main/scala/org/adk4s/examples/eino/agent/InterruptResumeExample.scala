@@ -1,13 +1,21 @@
 package org.adk4s.examples.eino.agent
 
-import cats.effect.{IO, IOApp}
-import org.adk4s.core.component.{AdkToolInfo, Agent, ChatModel, ChatModelConfig, InvokableTool, Tool}
+import cats.effect.{ IO, IOApp }
+import org.adk4s.core.component.{ AdkToolInfo, Agent, ChatModel, ChatModelConfig, InvokableTool, Tool }
 import org.adk4s.core.error.AgentInterruptedException
-import org.adk4s.core.interrupt.{AddressSegment, AgentEventEmitter, InterruptResult, InterruptSignal}
+import org.adk4s.core.interrupt.{ AddressSegment, AgentEventEmitter, InterruptResult, InterruptSignal }
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.orchestration.agent.{AgentRunner, ReactAgent, RunResult}
+import org.adk4s.orchestration.agent.{ AgentRunner, ReactAgent, RunResult }
 import org.adk4s.orchestration.interrupt.InMemoryCheckpointStore
-import org.llm4s.llmconnect.model.{AssistantMessage, Completion, Conversation, Message, StreamedChunk, ToolCall, UserMessage}
+import org.llm4s.llmconnect.model.{
+  AssistantMessage,
+  Completion,
+  Conversation,
+  Message,
+  StreamedChunk,
+  ToolCall,
+  UserMessage
+}
 
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -34,10 +42,13 @@ object InterruptResumeExample extends IOApp.Simple:
     def asToolFunction: Option[org.llm4s.toolapi.ToolFunction[Any, Any]] = None
     def run(arguments: ujson.Value): IO[ujson.Value] =
       val action: String = arguments.obj.get("action").map(_.str).getOrElse("unknown action")
-      IO.raiseError(AgentInterruptedException(
-        InterruptSignal.simple(s"Approval needed for: $action")
-          .withAddress(List(AddressSegment.Tool("request_approval")))
-      ))
+      IO.raiseError(
+        AgentInterruptedException(
+          InterruptSignal
+            .simple(s"Approval needed for: $action")
+            .withAddress(List(AddressSegment.Tool("request_approval")))
+        )
+      )
 
   private def makeCompletion(content: String, toolCalls: Seq[ToolCall] = Seq.empty): Completion =
     val msg: AssistantMessage = AssistantMessage(contentOpt = Some(content), toolCalls = toolCalls)
@@ -67,29 +78,28 @@ object InterruptResumeExample extends IOApp.Simple:
                 arguments = ujson.Obj("action" -> "delete user 42")
               )
               IO.pure(makeCompletion("", Seq(tc)))
-            else
-              IO.pure(makeCompletion("Action completed after approval."))
+            else IO.pure(makeCompletion("Action completed after approval."))
           }
         def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
         def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-        def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+        def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
       agent = ReactAgent.create("approval-agent", "Agent with approval workflow", model, List(approvalTool), None, 10)
 
       // Set up runner with checkpoint store
-      store <- InMemoryCheckpointStore.create
+      store   <- InMemoryCheckpointStore.create
       emitter <- AgentEventEmitter.create()
       runner = AgentRunner.create(agent, store, emitter)
 
       // Phase 1: Run agent — it will interrupt
-      _ <- ExampleUtils.printSubSection("Phase 1: Running agent (will interrupt)")
+      _       <- ExampleUtils.printSubSection("Phase 1: Running agent (will interrupt)")
       result1 <- runner.run(List(UserMessage("Delete user 42")))
       _ <- result1 match
         case RunResult.Interrupted(checkpointId, signal) =>
           IO.println(s"Agent interrupted!") *>
-          IO.println(s"  Checkpoint ID: $checkpointId") *>
-          IO.println(s"  Signal: ${signal.info}") *>
-          IO.println(s"  Address: ${signal.address.map(_.name).mkString(" > ")}")
+            IO.println(s"  Checkpoint ID: $checkpointId") *>
+            IO.println(s"  Signal: ${signal.info}") *>
+            IO.println(s"  Address: ${signal.address.map(_.name).mkString(" > ")}")
         case other =>
           IO.println(s"Unexpected result: $other")
 
@@ -97,19 +107,22 @@ object InterruptResumeExample extends IOApp.Simple:
       _ <- ExampleUtils.printSubSection("Phase 2: Resuming with approval")
       checkpointId = result1 match
         case RunResult.Interrupted(id, _) => id
-        case _ => "none"
+        case _                            => "none"
       emitter2 <- AgentEventEmitter.create()
       runner2 = AgentRunner.create(agent, store, emitter2)
-      result2 <- runner2.resume(checkpointId, List(
-        InterruptResult(
-          address = List(AddressSegment.Tool("request_approval")),
-          data = ujson.Obj("approved" -> true)
+      result2 <- runner2.resume(
+        checkpointId,
+        List(
+          InterruptResult(
+            address = List(AddressSegment.Tool("request_approval")),
+            data = ujson.Obj("approved" -> true)
+          )
         )
-      ))
+      )
       _ <- result2 match
         case RunResult.Completed(output, _) =>
           IO.println(s"Agent completed after resume!") *>
-          IO.println(s"  Output: $output")
+            IO.println(s"  Output: $output")
         case other =>
           IO.println(s"Resume result: $other")
 

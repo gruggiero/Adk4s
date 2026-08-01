@@ -20,18 +20,20 @@ object ChatExample extends IOApp.Simple:
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Quickstart Chat Example (Eino: quickstart/chat)")
+      _         <- ExampleUtils.printSection("Quickstart Chat Example (Eino: quickstart/chat)")
       chatModel <- ExampleUtils.createChatModel
 
       // 1. Single-turn generate
       _ <- ExampleUtils.printSubSection("1. Single-turn Generate")
-      conv1 = Conversation(Seq(
-        SystemMessage("You are a helpful assistant."),
-        UserMessage("What is 2 + 2?")
-      ))
+      conv1 = Conversation(
+        Seq(
+          SystemMessage("You are a helpful assistant."),
+          UserMessage("What is 2 + 2?")
+        )
+      )
       response1 <- chatModel.generate(conv1)
-      _ <- IO.println(s"   User: What is 2 + 2?")
-      _ <- IO.println(s"   Assistant: ${response1.content}")
+      _         <- IO.println(s"   User: What is 2 + 2?")
+      _         <- IO.println(s"   Assistant: ${response1.content}")
 
       // 2. Multi-turn conversation
       _ <- ExampleUtils.printSubSection("2. Multi-turn Conversation")
@@ -40,27 +42,30 @@ object ChatExample extends IOApp.Simple:
         UserMessage("Tell me about cats.")
       )
       turn1 <- chatModel.generate(Conversation(messages1))
-      _ <- IO.println(s"   User: Tell me about cats.")
-      _ <- IO.println(s"   Assistant: ${turn1.content}")
+      _     <- IO.println(s"   User: Tell me about cats.")
+      _     <- IO.println(s"   Assistant: ${turn1.content}")
 
       messages2: Seq[Message] = messages1 ++ Seq(turn1.message, UserMessage("Why do they purr?"))
       turn2 <- chatModel.generate(Conversation(messages2))
-      _ <- IO.println(s"   User: Why do they purr?")
-      _ <- IO.println(s"   Assistant: ${turn2.content}")
+      _     <- IO.println(s"   User: Why do they purr?")
+      _     <- IO.println(s"   Assistant: ${turn2.content}")
 
       messages3: Seq[Message] = messages2 ++ Seq(turn2.message, UserMessage("Are they good pets?"))
       turn3 <- chatModel.generate(Conversation(messages3))
-      _ <- IO.println(s"   User: Are they good pets?")
-      _ <- IO.println(s"   Assistant: ${turn3.content}")
+      _     <- IO.println(s"   User: Are they good pets?")
+      _     <- IO.println(s"   Assistant: ${turn3.content}")
 
       // 3. Streaming mode
       _ <- ExampleUtils.printSubSection("3. Streaming Mode (token-by-token)")
-      streamConv = Conversation(Seq(
-        SystemMessage("You are a dog."),
-        UserMessage("Why do dogs bark?")
-      ))
+      streamConv = Conversation(
+        Seq(
+          SystemMessage("You are a dog."),
+          UserMessage("Why do dogs bark?")
+        )
+      )
       _ <- IO.print("   Streaming: ")
-      _ <- chatModel.streamContent(streamConv)
+      _ <- chatModel
+        .streamContent(streamConv)
         .evalMap((token: String) => IO.print(token))
         .compile
         .drain

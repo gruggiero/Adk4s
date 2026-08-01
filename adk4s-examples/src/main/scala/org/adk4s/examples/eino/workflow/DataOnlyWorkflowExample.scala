@@ -39,15 +39,11 @@ object DataOnlyWorkflowExample extends IOApp.Simple:
 
   // Eino: adder := func(ctx, in []int) (int, error) { sum }
   private val adder: Runnable[List[Int], Int] =
-    Runnable.fromInvoke[List[Int], Int] { (nums: List[Int]) =>
-      IO.pure(nums.sum)
-    }
+    Runnable.fromInvoke[List[Int], Int]((nums: List[Int]) => IO.pure(nums.sum))
 
   // Eino: multiplier := func(ctx, m mul) (int, error) { m.A * m.B }
   private val multiplier: Runnable[MulInput, Int] =
-    Runnable.fromInvoke[MulInput, Int] { (m: MulInput) =>
-      IO.pure(m.a * m.b)
-    }
+    Runnable.fromInvoke[MulInput, Int]((m: MulInput) => IO.pure(m.a * m.b))
 
   // --- Main ---
 
@@ -65,16 +61,16 @@ object DataOnlyWorkflowExample extends IOApp.Simple:
 
       // Step 1: adder — Eino: FromField("Add") extracts the add list
       addResult <- adder.invoke(input.add)
-      _ <- ExampleUtils.printSubSection("Step 1: Adder")
-      _ <- IO.println(s"   sum(${input.add}) = $addResult")
+      _         <- ExampleUtils.printSubSection("Step 1: Adder")
+      _         <- IO.println(s"   sum(${input.add}) = $addResult")
 
       // Step 2: multiplier — Eino: ToField("A") maps adder output to A,
       //   MapFields("Multiply","B") + WithNoDirectDependency() maps input.multiply to B
       // In Scala, we explicitly construct MulInput from both sources
       mulInput = MulInput(a = addResult, b = input.multiply)
       mulResult <- multiplier.invoke(mulInput)
-      _ <- ExampleUtils.printSubSection("Step 2: Multiplier")
-      _ <- IO.println(s"   $addResult * ${input.multiply} = $mulResult")
+      _         <- ExampleUtils.printSubSection("Step 2: Multiplier")
+      _         <- IO.println(s"   $addResult * ${input.multiply} = $mulResult")
 
       _ <- ExampleUtils.printSubSection("Final Result")
       _ <- IO.println(s"   $mulResult")

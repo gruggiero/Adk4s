@@ -29,8 +29,8 @@ object RetrieverExample extends IOApp.Simple:
       documents
         .map { case (id: String, content: String) =>
           val contentWords: Set[String] = content.toLowerCase.split("\\s+").toSet
-          val overlap: Int = queryWords.intersect(contentWords).size
-          val score: Double = if queryWords.nonEmpty then overlap.toDouble / queryWords.size else 0.0
+          val overlap: Int              = queryWords.intersect(contentWords).size
+          val score: Double             = if queryWords.nonEmpty then overlap.toDouble / queryWords.size else 0.0
           (id, content, score)
         }
         .sortBy(-_._3)
@@ -56,8 +56,8 @@ object RetrieverExample extends IOApp.Simple:
 
       // 2. Semantic search (simulated)
       _ <- ExampleUtils.printSubSection("2. Semantic Search")
-      retriever = SimpleRetriever(documents)
-      query1 = "animals that make sounds"
+      retriever                                = SimpleRetriever(documents)
+      query1                                   = "animals that make sounds"
       results1: List[(String, String, Double)] = retriever.search(query1, 3)
       _ <- IO.println(s"   Query: \"$query1\"")
       _ <- results1.foldLeft(IO.unit) { case (acc, (id: String, content: String, score: Double)) =>
@@ -66,7 +66,7 @@ object RetrieverExample extends IOApp.Simple:
 
       // 3. Different query
       _ <- ExampleUtils.printSubSection("3. AI-Related Search")
-      query2 = "machine learning neural networks"
+      query2                                   = "machine learning neural networks"
       results2: List[(String, String, Double)] = retriever.search(query2, 3)
       _ <- IO.println(s"   Query: \"$query2\"")
       _ <- results2.foldLeft(IO.unit) { case (acc, (id: String, content: String, score: Double)) =>
@@ -80,13 +80,13 @@ object RetrieverExample extends IOApp.Simple:
                   |Supervised learning uses labeled training data.
                   |Unsupervised learning finds hidden patterns in data.
                   |Reinforcement learning learns through trial and error.""".stripMargin
-      chunker = ChunkerFactory.sentence()
-      config: ChunkingConfig = ChunkingConfig(targetSize = 100, maxSize = 150, overlap = 20, minChunkSize = 20)
+      chunker                     = ChunkerFactory.sentence()
+      config: ChunkingConfig      = ChunkingConfig(targetSize = 100, maxSize = 150, overlap = 20, minChunkSize = 20)
       chunks: List[DocumentChunk] = chunker.chunk(longDoc, config).toList
       _ <- IO.println(s"   Document chunked into ${chunks.size} pieces")
-      chunkDocs: List[(String, String)] = chunks.map((c: DocumentChunk) => (s"chunk-${c.index}", c.content))
-      chunkRetriever = SimpleRetriever(chunkDocs)
-      query3 = "learning from labeled data"
+      chunkDocs: List[(String, String)]        = chunks.map((c: DocumentChunk) => (s"chunk-${c.index}", c.content))
+      chunkRetriever                           = SimpleRetriever(chunkDocs)
+      query3                                   = "learning from labeled data"
       results3: List[(String, String, Double)] = chunkRetriever.search(query3, 2)
       _ <- IO.println(s"   Query: \"$query3\"")
       _ <- results3.foldLeft(IO.unit) { case (acc, (id: String, content: String, score: Double)) =>

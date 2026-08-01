@@ -39,10 +39,11 @@ object ReactMemoryExample extends IOApp.Simple:
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("ReAct Memory Example (Eino: agent/react/memory)")
+      _         <- ExampleUtils.printSection("ReAct Memory Example (Eino: agent/react/memory)")
       chatModel <- ExampleUtils.createChatModel
 
-      systemPrompt = "You are a helpful assistant. Remember everything the user tells you and use it in later responses."
+      systemPrompt =
+        "You are a helpful assistant. Remember everything the user tells you and use it in later responses."
       initialMemory = ConversationMemory(List.empty, systemPrompt)
 
       // Turn 1: User introduces themselves
@@ -73,8 +74,8 @@ object ReactMemoryExample extends IOApp.Simple:
       _ <- ExampleUtils.printSubSection("Turn 4: Memory Recall")
       memory7 = memory6.addUser("What's my name and what do I do?")
       response4 <- chatModel.generate(memory7.toConversation)
-      _ <- IO.println(s"   User: What's my name and what do I do?")
-      _ <- IO.println(s"   Agent: ${response4.content}")
+      _         <- IO.println(s"   User: What's my name and what do I do?")
+      _         <- IO.println(s"   Agent: ${response4.content}")
 
       // Show conversation stats
       _ <- ExampleUtils.printSubSection("Conversation Stats")

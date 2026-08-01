@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.effect.IOApp
 import cats.syntax.foldable.*
 import org.adk4s.core.component.InvokableTool
-import org.adk4s.core.tools.{StructuredToolCall, ToolSchema, TypedTool}
+import org.adk4s.core.tools.{ StructuredToolCall, ToolSchema, TypedTool }
 import org.adk4s.examples.eino.common.ExampleUtils
 
 /**
@@ -32,12 +32,12 @@ object ReactAgentStructuredExample extends IOApp.Simple:
   case class WeatherResult(temperature: Double, condition: String, city: String)
 
   // Derive ToolSchema instances automatically
-  given ToolSchema[CalculatorInput] = ToolSchema.derive[CalculatorInput]
+  given ToolSchema[CalculatorInput]  = ToolSchema.derive[CalculatorInput]
   given ToolSchema[CalculatorResult] = ToolSchema.derive[CalculatorResult]
-  given ToolSchema[SearchInput] = ToolSchema.derive[SearchInput]
-  given ToolSchema[SearchResult] = ToolSchema.derive[SearchResult]
-  given ToolSchema[WeatherInput] = ToolSchema.derive[WeatherInput]
-  given ToolSchema[WeatherResult] = ToolSchema.derive[WeatherResult]
+  given ToolSchema[SearchInput]      = ToolSchema.derive[SearchInput]
+  given ToolSchema[SearchResult]     = ToolSchema.derive[SearchResult]
+  given ToolSchema[WeatherInput]     = ToolSchema.derive[WeatherInput]
+  given ToolSchema[WeatherResult]    = ToolSchema.derive[WeatherResult]
 
   // Create typed tools using StructuredToolCall.createTool
   private def createCalculatorTool: TypedTool[IO, CalculatorInput, CalculatorResult] =
@@ -46,12 +46,12 @@ object ReactAgentStructuredExample extends IOApp.Simple:
       toolDescription = "Performs arithmetic operations (add, subtract, multiply, divide)"
     ) { input =>
       val result: Double = input.operation.toLowerCase match
-        case "add" => input.x + input.y
-        case "subtract" => input.x - input.y
-        case "multiply" => input.x * input.y
+        case "add"                    => input.x + input.y
+        case "subtract"               => input.x - input.y
+        case "multiply"               => input.x * input.y
         case "divide" if input.y != 0 => input.x / input.y
-        case "divide" => Double.NaN
-        case _ => Double.NaN
+        case "divide"                 => Double.NaN
+        case _                        => Double.NaN
 
       val explanation: String = s"${input.operation}(${input.x}, ${input.y}) = $result"
       IO.pure(CalculatorResult(result, explanation))
@@ -84,33 +84,33 @@ object ReactAgentStructuredExample extends IOApp.Simple:
       // Mock weather data
       val temperature: Double = input.city.toLowerCase match
         case "san francisco" => if input.units == "celsius" then 18.0 else 64.0
-        case "new york" => if input.units == "celsius" then 22.0 else 72.0
-        case "london" => if input.units == "celsius" then 15.0 else 59.0
-        case _ => if input.units == "celsius" then 20.0 else 68.0
+        case "new york"      => if input.units == "celsius" then 22.0 else 72.0
+        case "london"        => if input.units == "celsius" then 15.0 else 59.0
+        case _               => if input.units == "celsius" then 20.0 else 68.0
 
       val condition: String = input.city.toLowerCase match
         case "san francisco" => "Foggy"
-        case "new york" => "Partly Cloudy"
-        case "london" => "Rainy"
-        case _ => "Sunny"
+        case "new york"      => "Partly Cloudy"
+        case "london"        => "Rainy"
+        case _               => "Sunny"
 
       IO.pure(WeatherResult(temperature, condition, input.city))
     }
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("ReAct Agent with Typed Tools (Structured)")
+      _         <- ExampleUtils.printSection("ReAct Agent with Typed Tools (Structured)")
       llmClient <- createLLMClient
 
       // Create typed tools
       calculatorTool = createCalculatorTool
-      searchTool = createSearchTool
-      weatherTool = createWeatherTool
+      searchTool     = createSearchTool
+      weatherTool    = createWeatherTool
 
       // Convert to invokable tools for LLM tool calling
       tools: List[InvokableTool[IO]] = List(
@@ -124,25 +124,25 @@ object ReactAgentStructuredExample extends IOApp.Simple:
       _ <- IO.println("   Task: Calculate 45 * 67")
       calcInput = CalculatorInput("multiply", 45.0, 67.0)
       calcResult <- calculatorTool.execute(calcInput)
-      _ <- IO.println(s"   Result: ${calcResult.result}")
-      _ <- IO.println(s"   Explanation: ${calcResult.explanation}")
+      _          <- IO.println(s"   Result: ${calcResult.result}")
+      _          <- IO.println(s"   Explanation: ${calcResult.explanation}")
 
       // Example 2: Search tool
       _ <- ExampleUtils.printSubSection("2. Search Tool Execution")
       _ <- IO.println("   Task: Search for 'Scala functional programming'")
       searchInput = SearchInput("Scala functional programming")
       searchResult <- searchTool.execute(searchInput)
-      _ <- IO.println(s"   Top Result: ${searchResult.topResult}")
-      _ <- IO.println(s"   Relevance: ${searchResult.relevance}")
+      _            <- IO.println(s"   Top Result: ${searchResult.topResult}")
+      _            <- IO.println(s"   Relevance: ${searchResult.relevance}")
 
       // Example 3: Weather tool
       _ <- ExampleUtils.printSubSection("3. Weather Tool Execution")
       _ <- IO.println("   Task: Get weather for San Francisco")
       weatherInput = WeatherInput("San Francisco", "celsius")
       weatherResult <- weatherTool.execute(weatherInput)
-      _ <- IO.println(s"   City: ${weatherResult.city}")
-      _ <- IO.println(s"   Temperature: ${weatherResult.temperature}°C")
-      _ <- IO.println(s"   Condition: ${weatherResult.condition}")
+      _             <- IO.println(s"   City: ${weatherResult.city}")
+      _             <- IO.println(s"   Temperature: ${weatherResult.temperature}°C")
+      _             <- IO.println(s"   Condition: ${weatherResult.condition}")
 
       // Example 4: ReAct loop simulation (simplified)
       _ <- ExampleUtils.printSubSection("4. ReAct Loop Simulation")
@@ -151,14 +151,14 @@ object ReactAgentStructuredExample extends IOApp.Simple:
       _ <- IO.println("   [Action]: Calling calculator tool")
       reactInput = CalculatorInput("divide", 144.0, 12.0)
       reactResult <- calculatorTool.execute(reactInput)
-      _ <- IO.println(s"   [Tool Result]: ${reactResult.explanation}")
-      _ <- IO.println(s"   [Final Answer]: The result is ${reactResult.result}")
+      _           <- IO.println(s"   [Tool Result]: ${reactResult.explanation}")
+      _           <- IO.println(s"   [Final Answer]: The result is ${reactResult.result}")
 
       // Example 5: Tool schema encoding (for returning results to LLM)
       _ <- ExampleUtils.printSubSection("5. Tool Result Encoding")
       _ <- IO.println("   Encoding calculator result as JSON for LLM:")
       encodedResult = summon[ToolSchema[CalculatorResult]].encoder(calcResult)
-      encodedJson = ujson.write(encodedResult, indent = 2)
+      encodedJson   = ujson.write(encodedResult, indent = 2)
       _ <- IO.println(s"   $encodedJson")
 
       _ <- IO.println("\nReAct agent example completed.")

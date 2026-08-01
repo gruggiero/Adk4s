@@ -33,9 +33,9 @@ object StaticValuesExample extends IOApp.Simple:
 
   object Ctx extends WorkflowContext:
     sealed trait SvState
-    final case class InputState(name: String) extends SvState
+    final case class InputState(name: String)                                       extends SvState
     final case class EnrichedState(name: String, greeting: String, timestamp: Long) extends SvState
-    final case class OutputState(message: String) extends SvState
+    final case class OutputState(message: String)                                   extends SvState
 
     sealed trait SvEvent
     override type State = SvState
@@ -50,7 +50,7 @@ object StaticValuesExample extends IOApp.Simple:
 
   // Static values injected into the pipeline
   private val defaultGreeting: String = "Hello"
-  private val appVersion: String = "1.0.0"
+  private val appVersion: String      = "1.0.0"
 
   def run: IO[Unit] =
     for
@@ -65,17 +65,17 @@ object StaticValuesExample extends IOApp.Simple:
             case Left(errors: NonEmptyChain[WIOGraphError]) =>
               IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
 
-      _ <- ExampleUtils.printSubSection("1. With name 'Alice'")
+      _       <- ExampleUtils.printSubSection("1. With name 'Alice'")
       result1 <- executeWio(wio, InputState("Alice"))
       _ <- result1 match
         case output: OutputState => IO.println(s"   ${output.message}")
-        case other => IO.println(s"   Unexpected: $other")
+        case other               => IO.println(s"   Unexpected: $other")
 
-      _ <- ExampleUtils.printSubSection("2. With name 'Bob'")
+      _       <- ExampleUtils.printSubSection("2. With name 'Bob'")
       result2 <- executeWio(wio, InputState("Bob"))
       _ <- result2 match
         case output: OutputState => IO.println(s"   ${output.message}")
-        case other => IO.println(s"   Unexpected: $other")
+        case other               => IO.println(s"   Unexpected: $other")
 
       _ <- IO.println("\nStatic values example completed.")
     yield ()
@@ -126,16 +126,16 @@ object StaticValuesExample extends IOApp.Simple:
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx.Ctx]
     ): IO[(ActiveWorkflow[Ctx.Ctx], Boolean)] =
-      val liftEffect: WCEffectLift[Ctx.Ctx, IO] = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val liftEffect: WCEffectLift[Ctx.Ctx, IO]      = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
       val wakeup: WakeupResult[IO, WCEvent[Ctx.Ctx]] = workflow.proceed(Instant.EPOCH, liftEffect)
       wakeup match
         case WakeupResult.Noop() => IO.pure((workflow, false))
         case WakeupResult.Processed(io) =>
           io.asInstanceOf[IO[Ior[Instant, WCEvent[Ctx.Ctx]]]].map { (result: Ior[Instant, WCEvent[Ctx.Ctx]]) =>
             val eventOpt: Option[WCEvent[Ctx.Ctx]] = result match
-              case Ior.Right(event) => Some(event)
+              case Ior.Right(event)   => Some(event)
               case Ior.Both(_, event) => Some(event)
-              case Ior.Left(_) => None
+              case Ior.Left(_)        => None
             eventOpt match
               case Some(event) =>
                 (workflow.handleEvent(event).getOrElse(workflow), true)

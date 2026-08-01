@@ -1,12 +1,20 @@
 package org.adk4s.examples.eino.agent
 
-import cats.effect.{IO, IOApp}
-import org.adk4s.core.component.{Agent, AgentTool, ChatModel, ChatModelConfig, InvokableTool}
+import cats.effect.{ IO, IOApp }
+import org.adk4s.core.component.{ Agent, AgentTool, ChatModel, ChatModelConfig, InvokableTool }
 import org.adk4s.core.interrupt.AgentEventEmitter
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.orchestration.agent.{AgentRunner, ReactAgent, RunResult}
+import org.adk4s.orchestration.agent.{ AgentRunner, ReactAgent, RunResult }
 import org.adk4s.orchestration.interrupt.InMemoryCheckpointStore
-import org.llm4s.llmconnect.model.{AssistantMessage, Completion, Conversation, Message, StreamedChunk, ToolCall, UserMessage}
+import org.llm4s.llmconnect.model.{
+  AssistantMessage,
+  Completion,
+  Conversation,
+  Message,
+  StreamedChunk,
+  ToolCall,
+  UserMessage
+}
 
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -33,7 +41,7 @@ object NestedAgentDelegationExample extends IOApp.Simple:
 
   // Level 3: Query sub-specialist (leaf agent)
   private val queryAgent: Agent = new Agent:
-    val name: String = "query-specialist"
+    val name: String        = "query-specialist"
     val description: String = "Executes database queries and returns results"
 
     def generate(messages: List[Message], maxSteps: Int): IO[AssistantMessage] =
@@ -45,13 +53,14 @@ object NestedAgentDelegationExample extends IOApp.Simple:
           """{"query": "SELECT * FROM orders", "results": [{"id": 101, "amount": 49.99, "status": "completed"}]}"""
         else if request.toLowerCase.contains("product") then
           """{"query": "SELECT * FROM products", "results": [{"id": 5, "name": "Widget", "price": 29.99}]}"""
-        else
-          s"""{"query": "UNKNOWN", "results": [], "note": "Query type not recognized"}"""
+        else s"""{"query": "UNKNOWN", "results": [], "note": "Query type not recognized"}"""
 
-      IO.pure(AssistantMessage(
-        contentOpt = Some(s"Query executed successfully:\n$result"),
-        toolCalls = Seq.empty
-      ))
+      IO.pure(
+        AssistantMessage(
+          contentOpt = Some(s"Query executed successfully:\n$result"),
+          toolCalls = Seq.empty
+        )
+      )
 
   // Level 2: Data specialist that delegates to query sub-specialist
   private def createDataSpecialist(queryTool: InvokableTool[IO]): ReactAgent =
@@ -109,7 +118,7 @@ object NestedAgentDelegationExample extends IOApp.Simple:
 
       def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
       def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-      def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+      def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
     ReactAgent.create(
       "data-specialist",
@@ -161,7 +170,9 @@ object NestedAgentDelegationExample extends IOApp.Simple:
               .getOrElse("No results")
 
             val msg: AssistantMessage = AssistantMessage(
-              contentOpt = Some(s"Request processed through our specialist teams:\n\n$specialistResults\n\nIs there anything else you'd like to know?"),
+              contentOpt = Some(
+                s"Request processed through our specialist teams:\n\n$specialistResults\n\nIs there anything else you'd like to know?"
+              ),
               toolCalls = Seq.empty
             )
 
@@ -176,7 +187,7 @@ object NestedAgentDelegationExample extends IOApp.Simple:
 
       def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
       def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-      def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+      def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
     ReactAgent.create(
       "supervisor",
@@ -194,15 +205,15 @@ object NestedAgentDelegationExample extends IOApp.Simple:
       _ <- IO.println("")
 
       // Build hierarchy from bottom up
-      _ <- ExampleUtils.printSubSection("1. Creating Query Specialist (Level 3)")
+      _         <- ExampleUtils.printSubSection("1. Creating Query Specialist (Level 3)")
       queryTool <- AgentTool.fromAgent(queryAgent)
-      _ <- IO.println(s"   Created: ${queryTool.info.name}")
+      _         <- IO.println(s"   Created: ${queryTool.info.name}")
 
       _ <- ExampleUtils.printSubSection("2. Creating Data Specialist (Level 2)")
       dataSpecialistAgent: ReactAgent = createDataSpecialist(queryTool)
       dataSpecialistTool <- AgentTool.fromAgent(dataSpecialistAgent)
-      _ <- IO.println(s"   Created: ${dataSpecialistTool.info.name}")
-      _ <- IO.println(s"   Has access to: ${queryTool.info.name}")
+      _                  <- IO.println(s"   Created: ${dataSpecialistTool.info.name}")
+      _                  <- IO.println(s"   Has access to: ${queryTool.info.name}")
 
       _ <- ExampleUtils.printSubSection("3. Creating Supervisor (Level 1)")
       supervisorAgent: ReactAgent = createSupervisor(dataSpecialistTool)
@@ -214,7 +225,7 @@ object NestedAgentDelegationExample extends IOApp.Simple:
       _ <- IO.println("   User request: Find all active users")
       _ <- IO.println("")
 
-      store <- InMemoryCheckpointStore.create
+      store   <- InMemoryCheckpointStore.create
       emitter <- AgentEventEmitter.create()
       runner = AgentRunner.create(supervisorAgent, store, emitter)
 
@@ -223,14 +234,14 @@ object NestedAgentDelegationExample extends IOApp.Simple:
       _ <- result match
         case RunResult.Completed(output, _) =>
           IO.println("   FLOW:") *>
-          IO.println("   1. Supervisor received request") *>
-          IO.println("   2. Supervisor → delegated to Data Specialist") *>
-          IO.println("   3. Data Specialist → delegated to Query Specialist") *>
-          IO.println("   4. Query Specialist → executed query") *>
-          IO.println("   5. Results bubbled back through hierarchy") *>
-          IO.println("") *>
-          IO.println("   FINAL OUTPUT:") *>
-          IO.println(s"   ${output.split("\n").mkString("\n   ")}")
+            IO.println("   1. Supervisor received request") *>
+            IO.println("   2. Supervisor → delegated to Data Specialist") *>
+            IO.println("   3. Data Specialist → delegated to Query Specialist") *>
+            IO.println("   4. Query Specialist → executed query") *>
+            IO.println("   5. Results bubbled back through hierarchy") *>
+            IO.println("") *>
+            IO.println("   FINAL OUTPUT:") *>
+            IO.println(s"   ${output.split("\n").mkString("\n   ")}")
         case other =>
           IO.println(s"   Unexpected result: $other")
 

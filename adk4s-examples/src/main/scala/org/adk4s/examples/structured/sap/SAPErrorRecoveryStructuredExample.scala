@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.sap
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
 import org.adk4s.structured.test.CategoryClassification
 
 /**
@@ -34,13 +34,13 @@ object SAPErrorRecoveryStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[CategoryClassification]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new SAPRecoveryMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new SAPRecoveryMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("SAP Error Recovery (Structured)")
+      _         <- ExampleUtils.printSection("SAP Error Recovery (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -61,7 +61,7 @@ object SAPErrorRecoveryStructuredExample extends IOApp.Simple:
         s"Query: $query1"
       )
       result1 <- structured.complete[CategoryClassification](prompt1)
-      _ <- IO.println(s"   ✓ Successfully parsed: category=${result1.category}, confidence=${result1.confidence}")
+      _       <- IO.println(s"   ✓ Successfully parsed: category=${result1.category}, confidence=${result1.confidence}")
 
       // Example 2: Trailing comma recovery
       _ <- ExampleUtils.printSubSection("2. Trailing Comma Recovery")
@@ -72,7 +72,7 @@ object SAPErrorRecoveryStructuredExample extends IOApp.Simple:
         s"Query: $query2"
       )
       result2 <- structured.complete[CategoryClassification](prompt2)
-      _ <- IO.println(s"   ✓ Successfully parsed: category=${result2.category}, confidence=${result2.confidence}")
+      _       <- IO.println(s"   ✓ Successfully parsed: category=${result2.category}, confidence=${result2.confidence}")
 
       // Example 3: Single quotes recovery
       _ <- ExampleUtils.printSubSection("3. Single Quotes Recovery")
@@ -83,7 +83,7 @@ object SAPErrorRecoveryStructuredExample extends IOApp.Simple:
         s"Query: $query3"
       )
       result3 <- structured.complete[CategoryClassification](prompt3)
-      _ <- IO.println(s"   ✓ Successfully parsed: category=${result3.category}, confidence=${result3.confidence}")
+      _       <- IO.println(s"   ✓ Successfully parsed: category=${result3.category}, confidence=${result3.confidence}")
 
       // Example 4: Multiple errors recovery
       _ <- ExampleUtils.printSubSection("4. Multiple Errors Recovery")
@@ -94,7 +94,7 @@ object SAPErrorRecoveryStructuredExample extends IOApp.Simple:
         s"Query: $query4"
       )
       result4 <- structured.complete[CategoryClassification](prompt4)
-      _ <- IO.println(s"   ✓ Successfully parsed: category=${result4.category}, confidence=${result4.confidence}")
+      _       <- IO.println(s"   ✓ Successfully parsed: category=${result4.category}, confidence=${result4.confidence}")
 
       _ <- IO.println("\n   All malformed responses were successfully recovered by SAP!")
       _ <- IO.println("\nSAP error recovery example completed.")
@@ -108,9 +108,8 @@ class SAPRecoveryMockLLMClient extends org.llm4s.llmconnect.LLMClient:
   import java.util.UUID
 
   def complete(conversation: Conversation, options: CompletionOptions): Either[org.llm4s.error.LLMError, Completion] =
-    val systemMessage: String = conversation.messages.collect {
-      case msg: SystemMessage => msg.content
-    }.headOption.getOrElse("")
+    val systemMessage: String =
+      conversation.messages.collect { case msg: SystemMessage => msg.content }.headOption.getOrElse("")
 
     val response: String =
       if systemMessage.contains("markdown code fences") then
@@ -134,16 +133,18 @@ class SAPRecoveryMockLLMClient extends org.llm4s.llmconnect.LLMClient:
         """{"category": "other", "confidence": 0.70}"""
 
     val assistantMessage: AssistantMessage = AssistantMessage(Some(response))
-    Right(Completion(
-      id = UUID.randomUUID().toString,
-      created = System.currentTimeMillis(),
-      content = response,
-      model = "mock-model",
-      message = assistantMessage,
-      toolCalls = List.empty,
-      usage = None,
-      thinking = None
-    ))
+    Right(
+      Completion(
+        id = UUID.randomUUID().toString,
+        created = System.currentTimeMillis(),
+        content = response,
+        model = "mock-model",
+        message = assistantMessage,
+        toolCalls = List.empty,
+        usage = None,
+        thinking = None
+      )
+    )
 
   def streamComplete(
     conversation: Conversation,
@@ -152,5 +153,5 @@ class SAPRecoveryMockLLMClient extends org.llm4s.llmconnect.LLMClient:
   ): Either[org.llm4s.error.LLMError, Completion] =
     complete(conversation, options)
 
-  def getContextWindow(): Int = 8192
+  def getContextWindow(): Int     = 8192
   def getReserveCompletion(): Int = 512

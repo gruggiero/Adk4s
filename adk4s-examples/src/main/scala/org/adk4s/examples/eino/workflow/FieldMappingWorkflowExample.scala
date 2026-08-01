@@ -49,17 +49,15 @@ object FieldMappingWorkflowExample extends IOApp.Simple:
       IO.pure {
         // Eino equivalent: strings.Count(c.FullStr, c.SubStr)
         val fullStr: String = input.fullStr
-        val subStr: String = input.subStr
+        val subStr: String  = input.subStr
         if subStr.isEmpty then 0
         else
           import scala.annotation.tailrec
           @tailrec
           def loop(idx: Int, count: Int): Int =
             if idx > fullStr.length - subStr.length then count
-            else if fullStr.substring(idx, idx + subStr.length) == subStr then
-              loop(idx + subStr.length, count + 1)
-            else
-              loop(idx + 1, count)
+            else if fullStr.substring(idx, idx + subStr.length) == subStr then loop(idx + subStr.length, count + 1)
+            else loop(idx + 1, count)
           loop(0, 0)
       }
     }
@@ -109,7 +107,7 @@ object FieldMappingWorkflowExample extends IOApp.Simple:
       _ <- IO.println(s"   subStr:           \"${input.subStr}\"")
 
       // Run both counters (Eino runs them as parallel workflow nodes)
-      contentCount <- c1Pipeline.invoke(input)
+      contentCount   <- c1Pipeline.invoke(input)
       reasoningCount <- c2Pipeline.invoke(input)
       result = WorkflowResult(contentCount = contentCount, reasoningContentCount = reasoningCount)
 

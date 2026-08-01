@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.llm.classification
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
 import org.adk4s.structured.test.ChainRoute
 
 /**
@@ -30,13 +30,13 @@ object ChainRouteStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[ChainRoute]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Chain Route Selection (Structured)")
+      _         <- ExampleUtils.printSection("Chain Route Selection (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -55,9 +55,9 @@ object ChainRouteStructuredExample extends IOApp.Simple:
         s"Task: $task1"
       )
       result1 <- structured.complete[ChainRoute](prompt1)
-      _ <- IO.println(s"   Task: $task1")
-      _ <- IO.println(s"   → Route to: ${result1.chainName}")
-      _ <- IO.println(s"   → Reason: ${result1.reason}")
+      _       <- IO.println(s"   Task: $task1")
+      _       <- IO.println(s"   → Route to: ${result1.chainName}")
+      _       <- IO.println(s"   → Reason: ${result1.reason}")
 
       // Example 2: Q&A task
       _ <- ExampleUtils.printSubSection("2. Question Answering Task Routing")
@@ -67,9 +67,9 @@ object ChainRouteStructuredExample extends IOApp.Simple:
         s"Task: $task2"
       )
       result2 <- structured.complete[ChainRoute](prompt2)
-      _ <- IO.println(s"   Task: $task2")
-      _ <- IO.println(s"   → Route to: ${result2.chainName}")
-      _ <- IO.println(s"   → Reason: ${result2.reason}")
+      _       <- IO.println(s"   Task: $task2")
+      _       <- IO.println(s"   → Route to: ${result2.chainName}")
+      _       <- IO.println(s"   → Reason: ${result2.reason}")
 
       // Example 3: Translation task
       _ <- ExampleUtils.printSubSection("3. Translation Task Routing")
@@ -79,9 +79,9 @@ object ChainRouteStructuredExample extends IOApp.Simple:
         s"Task: $task3"
       )
       result3 <- structured.complete[ChainRoute](prompt3)
-      _ <- IO.println(s"   Task: $task3")
-      _ <- IO.println(s"   → Route to: ${result3.chainName}")
-      _ <- IO.println(s"   → Reason: ${result3.reason}")
+      _       <- IO.println(s"   Task: $task3")
+      _       <- IO.println(s"   → Route to: ${result3.chainName}")
+      _       <- IO.println(s"   → Reason: ${result3.reason}")
 
       // Example 4: Classification task
       _ <- ExampleUtils.printSubSection("4. Classification Task Routing")
@@ -91,9 +91,9 @@ object ChainRouteStructuredExample extends IOApp.Simple:
         s"Task: $task4"
       )
       result4 <- structured.complete[ChainRoute](prompt4)
-      _ <- IO.println(s"   Task: $task4")
-      _ <- IO.println(s"   → Route to: ${result4.chainName}")
-      _ <- IO.println(s"   → Reason: ${result4.reason}")
+      _       <- IO.println(s"   Task: $task4")
+      _       <- IO.println(s"   → Route to: ${result4.chainName}")
+      _       <- IO.println(s"   → Reason: ${result4.reason}")
 
       _ <- IO.println("\nChain route selection example completed.")
     yield ()

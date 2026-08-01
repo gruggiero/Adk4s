@@ -45,7 +45,7 @@ object StateGraphExample extends IOApp.Simple:
   import Ctx.TextProcessed
   import Ctx.TextState
 
-  private given ErrorMeta[Nothing] = ErrorMeta.noError
+  private given ErrorMeta[Nothing]      = ErrorMeta.noError
   private given ClassTag[TextProcessed] = scala.reflect.ClassTag(classOf[TextProcessed])
 
   def run: IO[Unit] =
@@ -55,7 +55,7 @@ object StateGraphExample extends IOApp.Simple:
       runnable <- compileRunnable(buildGraph())
 
       // 1. Invoke mode
-      _ <- ExampleUtils.printSubSection("1. Invoke Mode")
+      _            <- ExampleUtils.printSubSection("1. Invoke Mode")
       invokeResult <- runnable.invoke(TextState("how are you"))
       _ <- invokeResult match
         case result: TextState =>
@@ -64,13 +64,13 @@ object StateGraphExample extends IOApp.Simple:
           IO.println(s"   Unexpected state: $other")
 
       // 2. Stream mode
-      _ <- ExampleUtils.printSubSection("2. Stream Mode")
+      _             <- ExampleUtils.printSubSection("2. Stream Mode")
       streamResults <- runnable.stream(TextState("how are you")).compile.toList
-      _ <- IO.println(s"   Stream chunks:")
+      _             <- IO.println(s"   Stream chunks:")
       _ <- streamResults.foldLeft(IO.unit) { (acc: IO[Unit], state: GraphState) =>
         acc *> (state match
           case result: TextState => IO.println(s"     chunk: ${result.text}")
-          case other => IO.println(s"     unexpected: $other")
+          case other             => IO.println(s"     unexpected: $other")
         )
       }
 
@@ -78,11 +78,11 @@ object StateGraphExample extends IOApp.Simple:
       _ <- ExampleUtils.printSubSection("3. Transform Mode")
       inputStream = Stream.emit[IO, TextState](TextState("how are you"))
       transformResults <- runnable.transform(inputStream.map(identity)).compile.toList
-      _ <- IO.println(s"   Transform results:")
+      _                <- IO.println(s"   Transform results:")
       _ <- transformResults.foldLeft(IO.unit) { (acc: IO[Unit], state: GraphState) =>
         acc *> (state match
           case result: TextState => IO.println(s"     result: ${result.text}")
-          case other => IO.println(s"     unexpected: $other")
+          case other             => IO.println(s"     unexpected: $other")
         )
       }
 
@@ -92,14 +92,12 @@ object StateGraphExample extends IOApp.Simple:
   private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, TextState, Nothing, GraphState]] =
     // Node 1: InvokableLambda — prepends "InvokableLambda: "
     val invokableRunnable: Runnable[TextState, String] =
-      Runnable.fromInvoke[TextState, String]((input: TextState) =>
-        IO.pure("InvokableLambda: " + input.text)
-      )
+      Runnable.fromInvoke[TextState, String]((input: TextState) => IO.pure("InvokableLambda: " + input.text))
 
     // Node 2: StreamableLambda — prepends "StreamableLambda: " and streams word-by-word
     val streamableRunnable: Runnable[TextState, String] =
       Runnable.fromStream[TextState, String]((input: TextState) =>
-        val outStr: String = "StreamableLambda: " + input.text
+        val outStr: String      = "StreamableLambda: " + input.text
         val words: List[String] = outStr.split(" ").toList
         Stream.emits(words).map((word: String) => word + " ")
       )
@@ -109,10 +107,11 @@ object StateGraphExample extends IOApp.Simple:
       Runnable.full[TextState, String](
         invokeFn = (input: TextState) => IO.pure("TransformableLambda: " + input.text),
         streamFn = (input: TextState) =>
-          val prefix: String = "TransformableLambda: "
+          val prefix: String            = "TransformableLambda: "
           val prefixWords: List[String] = prefix.split(" ").toList.map(_ + " ")
-          val inputWords: List[String] = input.text.split(" ").toList.map(_ + " ")
-          Stream.emits(prefixWords ++ inputWords),
+          val inputWords: List[String]  = input.text.split(" ").toList.map(_ + " ")
+          Stream.emits(prefixWords ++ inputWords)
+        ,
         collectFn = (inputStream: Stream[IO, TextState]) =>
           inputStream.compile.lastOrError.map((s: TextState) => "TransformableLambda: " + s.text),
         transformFn = (inputStream: Stream[IO, TextState]) =>
@@ -170,6 +169,8 @@ object StateGraphExample extends IOApp.Simple:
         graph.toRunnable match
           case Right(runnable) => IO.pure(runnable)
           case Left(errors) =>
-            IO.raiseError(new IllegalStateException(
-              s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
-            ))
+            IO.raiseError(
+              new IllegalStateException(
+                s"Graph compilation failed: ${errors.toNonEmptyList.toList.mkString(", ")}"
+              )
+            )

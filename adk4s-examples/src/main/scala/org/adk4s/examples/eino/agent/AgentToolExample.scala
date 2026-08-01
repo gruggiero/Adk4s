@@ -1,9 +1,9 @@
 package org.adk4s.examples.eino.agent
 
-import cats.effect.{IO, IOApp}
-import org.adk4s.core.component.{Agent, AgentTool, AgentToolConfig, ChatModel, ChatModelConfig, InvokableTool, Tool}
+import cats.effect.{ IO, IOApp }
+import org.adk4s.core.component.{ Agent, AgentTool, AgentToolConfig, ChatModel, ChatModelConfig, InvokableTool, Tool }
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.llm4s.llmconnect.model.{AssistantMessage, Completion, Conversation, Message, StreamedChunk, UserMessage}
+import org.llm4s.llmconnect.model.{ AssistantMessage, Completion, Conversation, Message, StreamedChunk, UserMessage }
 
 import java.util.UUID
 
@@ -17,7 +17,7 @@ object AgentToolExample extends IOApp.Simple:
 
   /** A mock sub-agent that simulates database queries. */
   private val dbAgent: Agent = new Agent:
-    val name: String = "database-agent"
+    val name: String        = "database-agent"
     val description: String = "Handles database queries and returns structured results"
     def generate(messages: List[Message], maxSteps: Int): IO[AssistantMessage] =
       val query: String = messages.collect { case m: UserMessage => m.content }.lastOption.getOrElse("")
@@ -31,18 +31,18 @@ object AgentToolExample extends IOApp.Simple:
     for
       _ <- ExampleUtils.printSection("AgentTool Example: Supervisor + Database Agent")
 
-      // Create the AgentTool wrapping the database agent 
+      // Create the AgentTool wrapping the database agent
       agentTool <- AgentTool.fromAgent(dbAgent)
-      _ <- IO.println(s"Created AgentTool: name=${agentTool.info.name}, desc=${agentTool.info.description}")
+      _         <- IO.println(s"Created AgentTool: name=${agentTool.info.name}, desc=${agentTool.info.description}")
 
       // Invoke the agent tool as if the LLM decided to call it
-      _ <- ExampleUtils.printSubSection("Invoking agent-tool with user query request")
+      _       <- ExampleUtils.printSubSection("Invoking agent-tool with user query request")
       result1 <- agentTool.run(ujson.Obj("request" -> "Find all users in the system"))
-      _ <- IO.println(s"Agent tool result: $result1")
+      _       <- IO.println(s"Agent tool result: $result1")
 
-      _ <- ExampleUtils.printSubSection("Invoking agent-tool with order query")
+      _       <- ExampleUtils.printSubSection("Invoking agent-tool with order query")
       result2 <- agentTool.run(ujson.Obj("request" -> "Show recent orders"))
-      _ <- IO.println(s"Agent tool result: $result2")
+      _       <- IO.println(s"Agent tool result: $result2")
 
       _ <- IO.println("\nAgentTool example complete.")
     yield ()

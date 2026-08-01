@@ -1,14 +1,22 @@
 package org.adk4s.examples.eino.agent
 
-import cats.effect.{IO, IOApp}
+import cats.effect.{ IO, IOApp }
 import cats.syntax.traverse.toTraverseOps
-import org.adk4s.core.component.{AdkToolInfo, Agent, AgentTool, ChatModel, ChatModelConfig, InvokableTool}
+import org.adk4s.core.component.{ AdkToolInfo, Agent, AgentTool, ChatModel, ChatModelConfig, InvokableTool }
 import org.adk4s.core.error.AgentInterruptedException
-import org.adk4s.core.interrupt.{AddressSegment, AgentEventEmitter, InterruptResult, InterruptSignal}
+import org.adk4s.core.interrupt.{ AddressSegment, AgentEventEmitter, InterruptResult, InterruptSignal }
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.orchestration.agent.{AgentRunner, ReactAgent, RunResult}
+import org.adk4s.orchestration.agent.{ AgentRunner, ReactAgent, RunResult }
 import org.adk4s.orchestration.interrupt.InMemoryCheckpointStore
-import org.llm4s.llmconnect.model.{AssistantMessage, Completion, Conversation, Message, StreamedChunk, ToolCall, UserMessage}
+import org.llm4s.llmconnect.model.{
+  AssistantMessage,
+  Completion,
+  Conversation,
+  Message,
+  StreamedChunk,
+  ToolCall,
+  UserMessage
+}
 
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -47,7 +55,7 @@ object StatefulResumeExample extends IOApp.Simple:
       ujson.Obj(
         "type" -> "object",
         "properties" -> ujson.Obj(
-          "dataset" -> ujson.Obj("type" -> "string", "description" -> "Dataset to migrate"),
+          "dataset"     -> ujson.Obj("type" -> "string", "description" -> "Dataset to migrate"),
           "destination" -> ujson.Obj("type" -> "string", "description" -> "Target destination")
         ),
         "required" -> ujson.Arr("dataset", "destination")
@@ -57,9 +65,9 @@ object StatefulResumeExample extends IOApp.Simple:
     def asToolFunction: Option[org.llm4s.toolapi.ToolFunction[Any, Any]] = None
 
     def run(arguments: ujson.Value): IO[ujson.Value] =
-      val dataset: String = arguments.obj.get("dataset").map(_.str).getOrElse("unknown")
+      val dataset: String     = arguments.obj.get("dataset").map(_.str).getOrElse("unknown")
       val destination: String = arguments.obj.get("destination").map(_.str).getOrElse("unknown")
-      val currentStep: Int = stepCounter.incrementAndGet()
+      val currentStep: Int    = stepCounter.incrementAndGet()
 
       currentStep match
         case 1 =>
@@ -68,19 +76,23 @@ object StatefulResumeExample extends IOApp.Simple:
 
         case 2 =>
           // Step 2: Request approval (interrupts)
-          IO.raiseError(AgentInterruptedException(
-            InterruptSignal.stateful(
-              s"Approval needed: Migrate $dataset to $destination (1000 records)?",
-              ujson.Obj(
-                "dataset" -> dataset,
-                "destination" -> destination,
-                "recordCount" -> 1000,
-                "currentStep" -> 2,
-                "totalSteps" -> 3,
-                "validationPassed" -> true
-              )
-            ).withAddress(List(AddressSegment.Tool("data_migration")))
-          ))
+          IO.raiseError(
+            AgentInterruptedException(
+              InterruptSignal
+                .stateful(
+                  s"Approval needed: Migrate $dataset to $destination (1000 records)?",
+                  ujson.Obj(
+                    "dataset"          -> dataset,
+                    "destination"      -> destination,
+                    "recordCount"      -> 1000,
+                    "currentStep"      -> 2,
+                    "totalSteps"       -> 3,
+                    "validationPassed" -> true
+                  )
+                )
+                .withAddress(List(AddressSegment.Tool("data_migration")))
+            )
+          )
 
         case 3 =>
           // Step 3: Execute migration (after resume)
@@ -101,12 +113,12 @@ object StatefulResumeExample extends IOApp.Simple:
           // Check if we have tool results in conversation (indicates we're continuing)
           val hasToolResults: Boolean = conversation.messages.exists {
             case _: org.llm4s.llmconnect.model.ToolMessage => true
-            case _ => false
+            case _                                         => false
           }
 
           val previousSteps: Int = conversation.messages.count {
             case _: org.llm4s.llmconnect.model.ToolMessage => true
-            case _ => false
+            case _                                         => false
           }
 
           if count == 0 && !hasToolResults then
@@ -120,7 +132,7 @@ object StatefulResumeExample extends IOApp.Simple:
               id = UUID.randomUUID().toString,
               name = "data_migration",
               arguments = ujson.Obj(
-                "dataset" -> "customer_profiles",
+                "dataset"     -> "customer_profiles",
                 "destination" -> "cloud_warehouse"
               )
             )
@@ -137,7 +149,6 @@ object StatefulResumeExample extends IOApp.Simple:
               model = "mock-model",
               message = msg
             )
-
           else if previousSteps < 3 then
             // Continue workflow: invoke tool again for next step
             val lastResult: String = conversation.messages
@@ -149,7 +160,7 @@ object StatefulResumeExample extends IOApp.Simple:
               id = UUID.randomUUID().toString,
               name = "data_migration",
               arguments = ujson.Obj(
-                "dataset" -> "customer_profiles",
+                "dataset"     -> "customer_profiles",
                 "destination" -> "cloud_warehouse"
               )
             )
@@ -166,7 +177,6 @@ object StatefulResumeExample extends IOApp.Simple:
               model = "mock-model",
               message = msg
             )
-
           else
             // Final response: workflow complete
             val allResults: String = conversation.messages
@@ -189,13 +199,28 @@ object StatefulResumeExample extends IOApp.Simple:
 
       def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
       def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-      def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+      def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
     emitter match
       case Some(e) =>
-        ReactAgent.create("workflow-agent", "Agent that executes multi-step workflows with approval gates", model, List(migrationTool), None, 10, e)
+        ReactAgent.create(
+          "workflow-agent",
+          "Agent that executes multi-step workflows with approval gates",
+          model,
+          List(migrationTool),
+          None,
+          10,
+          e
+        )
       case None =>
-        ReactAgent.create("workflow-agent", "Agent that executes multi-step workflows with approval gates", model, List(migrationTool), None, 10)
+        ReactAgent.create(
+          "workflow-agent",
+          "Agent that executes multi-step workflows with approval gates",
+          model,
+          List(migrationTool),
+          None,
+          10
+        )
 
   def run: IO[Unit] =
     for
@@ -221,26 +246,31 @@ object StatefulResumeExample extends IOApp.Simple:
                 name = "workflow-agent",
                 arguments = ujson.Obj("request" -> "Migrate customer_profiles to cloud_warehouse")
               )
-              IO.pure(Completion(
-                id = UUID.randomUUID().toString,
-                created = System.currentTimeMillis(),
-                content = "Starting workflow",
-                model = "mock-model",
-                message = AssistantMessage(contentOpt = Some("Starting..."), toolCalls = Seq(tc))
-              ))
+              IO.pure(
+                Completion(
+                  id = UUID.randomUUID().toString,
+                  created = System.currentTimeMillis(),
+                  content = "Starting workflow",
+                  model = "mock-model",
+                  message = AssistantMessage(contentOpt = Some("Starting..."), toolCalls = Seq(tc))
+                )
+              )
             else
               // Second call: respond after workflow completes
-              IO.pure(Completion(
-                id = UUID.randomUUID().toString,
-                created = System.currentTimeMillis(),
-                content = "Workflow executed successfully!",
-                model = "mock-model",
-                message = AssistantMessage(contentOpt = Some("Workflow executed successfully!"), toolCalls = Seq.empty)
-              ))
+              IO.pure(
+                Completion(
+                  id = UUID.randomUUID().toString,
+                  created = System.currentTimeMillis(),
+                  content = "Workflow executed successfully!",
+                  model = "mock-model",
+                  message =
+                    AssistantMessage(contentOpt = Some("Workflow executed successfully!"), toolCalls = Seq.empty)
+                )
+              )
           }
         def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
         def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-        def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+        def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
       parentAgent = ReactAgent.create(
         "parent-agent",
@@ -253,7 +283,7 @@ object StatefulResumeExample extends IOApp.Simple:
       )
 
       // Phase 1: Run until interrupt
-      _ <- ExampleUtils.printSubSection("Phase 1: Executing workflow (will interrupt at step 2)")
+      _     <- ExampleUtils.printSubSection("Phase 1: Executing workflow (will interrupt at step 2)")
       store <- InMemoryCheckpointStore.create
       runner = AgentRunner.create(parentAgent, store, emitter)
       result1 <- runner.run(List(UserMessage("Start migration workflow")))
@@ -261,54 +291,58 @@ object StatefulResumeExample extends IOApp.Simple:
       checkpointId <- result1 match
         case RunResult.Interrupted(id, signal) =>
           IO.println("✓ Workflow interrupted for approval!") *>
-          IO.println("") *>
-          (signal match
-            case stateful: InterruptSignal.Stateful =>
-              IO.println("Interrupt Details:") *>
-              IO.println(s"  Info: ${stateful.info}") *>
-              IO.println(s"  Address: ${stateful.address.map(_.name).mkString(" > ")}") *>
-              IO.println("") *>
-              IO.println("State Saved:") *>
-              IO.println(s"  Dataset: ${stateful.state.obj("dataset").str}") *>
-              IO.println(s"  Destination: ${stateful.state.obj("destination").str}") *>
-              IO.println(s"  Record Count: ${stateful.state.obj("recordCount").num.toInt}") *>
-              IO.println(s"  Current Step: ${stateful.state.obj("currentStep").num.toInt}/3") *>
-              IO.println(s"  Validation: ${if stateful.state.obj("validationPassed").bool then "PASSED" else "FAILED"}")
+            IO.println("") *>
+            (signal match
+              case stateful: InterruptSignal.Stateful =>
+                IO.println("Interrupt Details:") *>
+                  IO.println(s"  Info: ${stateful.info}") *>
+                  IO.println(s"  Address: ${stateful.address.map(_.name).mkString(" > ")}") *>
+                  IO.println("") *>
+                  IO.println("State Saved:") *>
+                  IO.println(s"  Dataset: ${stateful.state.obj("dataset").str}") *>
+                  IO.println(s"  Destination: ${stateful.state.obj("destination").str}") *>
+                  IO.println(s"  Record Count: ${stateful.state.obj("recordCount").num.toInt}") *>
+                  IO.println(s"  Current Step: ${stateful.state.obj("currentStep").num.toInt}/3") *>
+                  IO.println(
+                    s"  Validation: ${if stateful.state.obj("validationPassed").bool then "PASSED" else "FAILED"}"
+                  )
 
-            case composite: InterruptSignal.Composite =>
-              // AgentTool wraps inner signals in Composite to preserve state
-              IO.println(s"Composite interrupt from AgentTool (${composite.children.length} inner signal(s)):") *>
-              IO.println(s"  AgentTool info: ${composite.info}") *>
-              IO.println(s"  AgentTool address: ${composite.address.map(_.name).mkString(" > ")}") *>
-              IO.println("") *>
-              composite.children.traverse { (child: InterruptSignal) =>
-                child match
-                  case stateful: InterruptSignal.Stateful =>
-                    IO.println("Inner Interrupt Details:") *>
-                    IO.println(s"  Info: ${stateful.info}") *>
-                    IO.println(s"  Address: ${stateful.address.map(_.name).mkString(" > ")}") *>
-                    IO.println("") *>
-                    IO.println("State Saved:") *>
-                    IO.println(s"  Dataset: ${stateful.state.obj("dataset").str}") *>
-                    IO.println(s"  Destination: ${stateful.state.obj("destination").str}") *>
-                    IO.println(s"  Record Count: ${stateful.state.obj("recordCount").num.toInt}") *>
-                    IO.println(s"  Current Step: ${stateful.state.obj("currentStep").num.toInt}/3") *>
-                    IO.println(s"  Validation: ${if stateful.state.obj("validationPassed").bool then "PASSED" else "FAILED"}")
-                  case other =>
-                    IO.println(s"  - ${other.info}")
-              }.void
+              case composite: InterruptSignal.Composite =>
+                // AgentTool wraps inner signals in Composite to preserve state
+                IO.println(s"Composite interrupt from AgentTool (${composite.children.length} inner signal(s)):") *>
+                  IO.println(s"  AgentTool info: ${composite.info}") *>
+                  IO.println(s"  AgentTool address: ${composite.address.map(_.name).mkString(" > ")}") *>
+                  IO.println("") *>
+                  composite.children.traverse { (child: InterruptSignal) =>
+                    child match
+                      case stateful: InterruptSignal.Stateful =>
+                        IO.println("Inner Interrupt Details:") *>
+                          IO.println(s"  Info: ${stateful.info}") *>
+                          IO.println(s"  Address: ${stateful.address.map(_.name).mkString(" > ")}") *>
+                          IO.println("") *>
+                          IO.println("State Saved:") *>
+                          IO.println(s"  Dataset: ${stateful.state.obj("dataset").str}") *>
+                          IO.println(s"  Destination: ${stateful.state.obj("destination").str}") *>
+                          IO.println(s"  Record Count: ${stateful.state.obj("recordCount").num.toInt}") *>
+                          IO.println(s"  Current Step: ${stateful.state.obj("currentStep").num.toInt}/3") *>
+                          IO.println(
+                            s"  Validation: ${if stateful.state.obj("validationPassed").bool then "PASSED" else "FAILED"}"
+                          )
+                      case other =>
+                        IO.println(s"  - ${other.info}")
+                  }.void
 
-            case simple: InterruptSignal.Simple =>
-              IO.println(s"Simple interrupt: ${simple.info}")
-          ) *>
-          IO.println("") *>
-          IO.println(s"Checkpoint ID: $id") *>
-          IO.println("State persisted: ✓ Conversation history + iteration count") *>
-          IO.pure(id)
+              case simple: InterruptSignal.Simple =>
+                IO.println(s"Simple interrupt: ${simple.info}")
+            ) *>
+            IO.println("") *>
+            IO.println(s"Checkpoint ID: $id") *>
+            IO.println("State persisted: ✓ Conversation history + iteration count") *>
+            IO.pure(id)
 
         case other =>
           IO.println(s"Unexpected result: $other") *>
-          IO.pure("none")
+            IO.pure("none")
 
       // Phase 2: Simulate approval delay
       _ <- ExampleUtils.printSubSection("Phase 2: Awaiting human approval")
@@ -335,23 +369,25 @@ object StatefulResumeExample extends IOApp.Simple:
             .collect { case m: UserMessage => m.content }
             .filter(_.startsWith("[Resume approval"))
             .mkString("; ")
-          val output: String = if resumeContext.nonEmpty then
-            s"Workflow resumed with approval. Migration completed successfully.\nApproval context: $resumeContext"
-          else
-            "Workflow resumed and completed."
-          IO.pure(Completion(
-            id = UUID.randomUUID().toString,
-            created = System.currentTimeMillis(),
-            content = output,
-            model = "mock-model",
-            message = AssistantMessage(contentOpt = Some(output), toolCalls = Seq.empty)
-          ))
+          val output: String =
+            if resumeContext.nonEmpty then
+              s"Workflow resumed with approval. Migration completed successfully.\nApproval context: $resumeContext"
+            else "Workflow resumed and completed."
+          IO.pure(
+            Completion(
+              id = UUID.randomUUID().toString,
+              created = System.currentTimeMillis(),
+              content = output,
+              model = "mock-model",
+              message = AssistantMessage(contentOpt = Some(output), toolCalls = Seq.empty)
+            )
+          )
         def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
         def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-        def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+        def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
       parentAgent2 = ReactAgent.create("parent-agent", "Parent", parentModel2, List(workflowTool2), None, 10, emitter2)
-      runner2 = AgentRunner.create(parentAgent2, store, emitter2)
+      runner2      = AgentRunner.create(parentAgent2, store, emitter2)
 
       result2 <- runner2.resume(
         checkpointId,
@@ -359,9 +395,9 @@ object StatefulResumeExample extends IOApp.Simple:
           InterruptResult(
             address = List(AddressSegment.Tool("data_migration")),
             data = ujson.Obj(
-              "approved" -> true,
+              "approved"   -> true,
               "approvedBy" -> "admin@company.com",
-              "timestamp" -> System.currentTimeMillis()
+              "timestamp"  -> System.currentTimeMillis()
             )
           )
         )
@@ -370,9 +406,9 @@ object StatefulResumeExample extends IOApp.Simple:
       _ <- result2 match
         case RunResult.Completed(output, _) =>
           IO.println("✓ Workflow completed after resume!") *>
-          IO.println("") *>
-          IO.println("Final output:") *>
-          IO.println(s"  ${output.split("\n").mkString("\n  ")}")
+            IO.println("") *>
+            IO.println("Final output:") *>
+            IO.println(s"  ${output.split("\n").mkString("\n  ")}")
 
         case RunResult.Interrupted(_, signal) =>
           IO.println(s"Workflow interrupted again: ${signal.info}")

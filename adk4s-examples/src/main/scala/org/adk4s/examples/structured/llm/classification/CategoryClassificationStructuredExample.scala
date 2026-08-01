@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.llm.classification
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
 import org.adk4s.structured.test.CategoryClassification
 
 /**
@@ -30,13 +30,13 @@ object CategoryClassificationStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[CategoryClassification]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Category Classification (Structured)")
+      _         <- ExampleUtils.printSection("Category Classification (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
@@ -48,9 +48,9 @@ object CategoryClassificationStructuredExample extends IOApp.Simple:
         s"Classify this query: $query1"
       )
       result1 <- structured.complete[CategoryClassification](prompt1)
-      _ <- IO.println(s"   Query: $query1")
-      _ <- IO.println(s"   Category: ${result1.category}")
-      _ <- IO.println(s"   Confidence: ${result1.confidence}")
+      _       <- IO.println(s"   Query: $query1")
+      _       <- IO.println(s"   Category: ${result1.category}")
+      _       <- IO.println(s"   Confidence: ${result1.confidence}")
 
       // Example 2: Science question
       _ <- ExampleUtils.printSubSection("2. Science Question Classification")
@@ -60,9 +60,9 @@ object CategoryClassificationStructuredExample extends IOApp.Simple:
         s"Classify this query: $query2"
       )
       result2 <- structured.complete[CategoryClassification](prompt2)
-      _ <- IO.println(s"   Query: $query2")
-      _ <- IO.println(s"   Category: ${result2.category}")
-      _ <- IO.println(s"   Confidence: ${result2.confidence}")
+      _       <- IO.println(s"   Query: $query2")
+      _       <- IO.println(s"   Category: ${result2.category}")
+      _       <- IO.println(s"   Confidence: ${result2.confidence}")
 
       // Example 3: History question
       _ <- ExampleUtils.printSubSection("3. History Question Classification")
@@ -72,9 +72,9 @@ object CategoryClassificationStructuredExample extends IOApp.Simple:
         s"Classify this query: $query3"
       )
       result3 <- structured.complete[CategoryClassification](prompt3)
-      _ <- IO.println(s"   Query: $query3")
-      _ <- IO.println(s"   Category: ${result3.category}")
-      _ <- IO.println(s"   Confidence: ${result3.confidence}")
+      _       <- IO.println(s"   Query: $query3")
+      _       <- IO.println(s"   Category: ${result3.category}")
+      _       <- IO.println(s"   Confidence: ${result3.confidence}")
 
       // Example 4: Other category
       _ <- ExampleUtils.printSubSection("4. Other Category Classification")
@@ -84,9 +84,9 @@ object CategoryClassificationStructuredExample extends IOApp.Simple:
         s"Classify this query: $query4"
       )
       result4 <- structured.complete[CategoryClassification](prompt4)
-      _ <- IO.println(s"   Query: $query4")
-      _ <- IO.println(s"   Category: ${result4.category}")
-      _ <- IO.println(s"   Confidence: ${result4.confidence}")
+      _       <- IO.println(s"   Query: $query4")
+      _       <- IO.println(s"   Category: ${result4.category}")
+      _       <- IO.println(s"   Confidence: ${result4.confidence}")
 
       _ <- IO.println("\nCategory classification example completed.")
     yield ()

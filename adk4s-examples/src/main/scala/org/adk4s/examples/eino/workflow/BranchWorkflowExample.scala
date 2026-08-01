@@ -34,7 +34,7 @@ object BranchWorkflowExample extends IOApp.Simple:
 
   object Ctx extends WorkflowContext:
     sealed trait BranchState
-    final case class InputState(category: String, value: Int) extends BranchState
+    final case class InputState(category: String, value: Int)      extends BranchState
     final case class OutputState(category: String, result: String) extends BranchState
 
     sealed trait BranchEvent
@@ -61,25 +61,25 @@ object BranchWorkflowExample extends IOApp.Simple:
               IO.raiseError(new IllegalStateException(errors.toNonEmptyList.toList.mkString(", ")))
 
       // Test with "high" category
-      _ <- ExampleUtils.printSubSection("1. High Priority Input")
+      _       <- ExampleUtils.printSubSection("1. High Priority Input")
       result1 <- executeWio(wio, InputState("high", 100))
       _ <- result1 match
         case output: OutputState => IO.println(s"   Category: ${output.category}, Result: ${output.result}")
-        case other => IO.println(s"   Unexpected: $other")
+        case other               => IO.println(s"   Unexpected: $other")
 
       // Test with "low" category
-      _ <- ExampleUtils.printSubSection("2. Low Priority Input")
+      _       <- ExampleUtils.printSubSection("2. Low Priority Input")
       result2 <- executeWio(wio, InputState("low", 5))
       _ <- result2 match
         case output: OutputState => IO.println(s"   Category: ${output.category}, Result: ${output.result}")
-        case other => IO.println(s"   Unexpected: $other")
+        case other               => IO.println(s"   Unexpected: $other")
 
       // Test with unknown category (falls to otherwise)
-      _ <- ExampleUtils.printSubSection("3. Unknown Category (otherwise)")
+      _       <- ExampleUtils.printSubSection("3. Unknown Category (otherwise)")
       result3 <- executeWio(wio, InputState("unknown", 42))
       _ <- result3 match
         case output: OutputState => IO.println(s"   Category: ${output.category}, Result: ${output.result}")
-        case other => IO.println(s"   Unexpected: $other")
+        case other               => IO.println(s"   Unexpected: $other")
 
       _ <- IO.println("\nBranch workflow example completed.")
     yield ()
@@ -91,19 +91,25 @@ object BranchWorkflowExample extends IOApp.Simple:
       WIONodeRef[Ctx.Ctx, InputState, BranchState](NodeKey.unsafeApply("fork"))
 
     val highBranch: WIO[InputState, Nothing, OutputState, Ctx.Ctx] =
-      WIONode.pure[Ctx.Ctx, InputState, OutputState]((input: InputState) =>
-        OutputState(input.category, s"HIGH priority processing: value=${input.value}, expedited!")
-      ).toWIO
+      WIONode
+        .pure[Ctx.Ctx, InputState, OutputState]((input: InputState) =>
+          OutputState(input.category, s"HIGH priority processing: value=${input.value}, expedited!")
+        )
+        .toWIO
 
     val lowBranch: WIO[InputState, Nothing, OutputState, Ctx.Ctx] =
-      WIONode.pure[Ctx.Ctx, InputState, OutputState]((input: InputState) =>
-        OutputState(input.category, s"LOW priority processing: value=${input.value}, queued.")
-      ).toWIO
+      WIONode
+        .pure[Ctx.Ctx, InputState, OutputState]((input: InputState) =>
+          OutputState(input.category, s"LOW priority processing: value=${input.value}, queued.")
+        )
+        .toWIO
 
     val defaultBranch: WIO[InputState, Nothing, OutputState, Ctx.Ctx] =
-      WIONode.pure[Ctx.Ctx, InputState, OutputState]((input: InputState) =>
-        OutputState(input.category, s"DEFAULT processing: value=${input.value}, standard handling.")
-      ).toWIO
+      WIONode
+        .pure[Ctx.Ctx, InputState, OutputState]((input: InputState) =>
+          OutputState(input.category, s"DEFAULT processing: value=${input.value}, standard handling.")
+        )
+        .toWIO
 
     val forkNode: WIOForkNode[Ctx.Ctx, InputState, Nothing, OutputState] =
       WIOForkNode.withOtherwise[Ctx.Ctx, InputState, Nothing, OutputState](
@@ -140,16 +146,16 @@ object BranchWorkflowExample extends IOApp.Simple:
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx.Ctx]
     ): IO[(ActiveWorkflow[Ctx.Ctx], Boolean)] =
-      val liftEffect: WCEffectLift[Ctx.Ctx, IO] = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val liftEffect: WCEffectLift[Ctx.Ctx, IO]      = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
       val wakeup: WakeupResult[IO, WCEvent[Ctx.Ctx]] = workflow.proceed(Instant.EPOCH, liftEffect)
       wakeup match
         case WakeupResult.Noop() => IO.pure((workflow, false))
         case WakeupResult.Processed(io) =>
           io.asInstanceOf[IO[Ior[Instant, WCEvent[Ctx.Ctx]]]].map { (result: Ior[Instant, WCEvent[Ctx.Ctx]]) =>
             val eventOpt: Option[WCEvent[Ctx.Ctx]] = result match
-              case Ior.Right(event) => Some(event)
+              case Ior.Right(event)   => Some(event)
               case Ior.Both(_, event) => Some(event)
-              case Ior.Left(_) => None
+              case Ior.Left(_)        => None
             eventOpt match
               case Some(event) =>
                 (workflow.handleEvent(event).getOrElse(workflow), true)

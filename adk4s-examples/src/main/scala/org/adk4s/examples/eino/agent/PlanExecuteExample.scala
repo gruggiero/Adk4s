@@ -26,21 +26,21 @@ object PlanExecuteExample extends IOApp.Simple:
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Plan-Execute Example (Eino: agent/plan_execute)")
+      _         <- ExampleUtils.printSection("Plan-Execute Example (Eino: agent/plan_execute)")
       chatModel <- ExampleUtils.createChatModel
 
       task = "Write a haiku about Scala programming, then translate it to Japanese, then explain the translation."
 
       // Step 1: Plan
-      _ <- ExampleUtils.printSubSection("1. Planning Phase")
-      _ <- IO.println(s"   Task: $task")
+      _    <- ExampleUtils.printSubSection("1. Planning Phase")
+      _    <- IO.println(s"   Task: $task")
       plan <- createPlan(chatModel, task)
       _ <- plan.zipWithIndex.foldLeft(IO.unit) { case (acc, (step: PlanStep, _: Int)) =>
         acc *> IO.println(s"   Step ${step.index}: ${step.description}")
       }
 
       // Step 2: Execute each step
-      _ <- ExampleUtils.printSubSection("2. Execution Phase")
+      _            <- ExampleUtils.printSubSection("2. Execution Phase")
       finalResults <- executePlan(chatModel, plan)
       _ <- finalResults.foldLeft(IO.unit) { case (acc, step: PlanStep) =>
         acc *>
@@ -56,18 +56,22 @@ object PlanExecuteExample extends IOApp.Simple:
     yield ()
 
   private def createPlan(chatModel: ChatModel[IO], task: String): IO[List[PlanStep]] =
-    val plannerConv: Conversation = Conversation(Seq(
-      SystemMessage(
-        """You are a task planner. Break down the given task into 3-5 simple sequential steps.
+    val plannerConv: Conversation = Conversation(
+      Seq(
+        SystemMessage(
+          """You are a task planner. Break down the given task into 3-5 simple sequential steps.
           |Output each step on a separate line, numbered like:
           |1. First step
           |2. Second step
           |3. Third step""".stripMargin
-      ),
-      UserMessage(s"Plan this task: $task")
-    ))
+        ),
+        UserMessage(s"Plan this task: $task")
+      )
+    )
     chatModel.generate(plannerConv).map { (completion: Completion) =>
-      val lines: List[String] = completion.content.split("\n").toList
+      val lines: List[String] = completion.content
+        .split("\n")
+        .toList
         .map(_.trim)
         .filter(_.nonEmpty)
         .filter((line: String) => line.headOption.exists(_.isDigit))
@@ -97,12 +101,16 @@ object PlanExecuteExample extends IOApp.Simple:
           .map { case (r: String, i: Int) => s"Step ${i + 1} result: $r" }
           .mkString("\n")
 
-        val executorConv: Conversation = Conversation(Seq(
-          SystemMessage("You are a task executor. Complete the given step concisely. Use any provided context from previous steps."),
-          UserMessage(
-            s"${if context.nonEmpty then s"Previous results:\n$context\n\n" else ""}Execute step ${step.index}: ${step.description}"
+        val executorConv: Conversation = Conversation(
+          Seq(
+            SystemMessage(
+              "You are a task executor. Complete the given step concisely. Use any provided context from previous steps."
+            ),
+            UserMessage(
+              s"${if context.nonEmpty then s"Previous results:\n$context\n\n" else ""}Execute step ${step.index}: ${step.description}"
+            )
           )
-        ))
+        )
 
         chatModel.generate(executorConv).map { (completion: Completion) =>
           completed :+ step.copy(result = Some(completion.content))

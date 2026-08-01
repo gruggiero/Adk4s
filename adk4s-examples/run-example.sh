@@ -77,6 +77,9 @@ usage() {
     echo "  crossrunmemory     Cross-run durable memory (FileBackedAgentMemory)"
     echo "  memoryretriever    Bridge AgentMemory to Retriever interface"
     echo ""
+    echo "Eval Examples:"
+    echo "  evalharness        Eval harness: score a program over a devset, CSV+JSON export"
+    echo ""
     echo "Agent Orchestration Examples (NEW - Gap Resolution):"
     echo "  agenttool          Basic agent-as-tool delegation"
     echo "  nestedagent        Multi-level nested agent delegation (3 levels)"
@@ -143,7 +146,7 @@ FORCE_MOCK=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        all|chain|simple|workflow|lambda|chatmodel|chattemplate|docloader|retriever|toolschema|simplegraph|toolcallagent|twomodelchat|stategraph|toolcallonce|asyncnode|reactinterrupt|simpleworkflow|branchworkflow|staticvalues|fieldmapping|dataonly|streamfieldmap|reactmemory|multiagenthost|planexecute|reactagent|dynamicoption|batch|chat|categoryclassification|roledetection|queryclassification|chainroute|planextraction|stepsextraction|listparsing|schemaextraction|specialistdelegation|multiagenthostex|typedintermediates|chaincomposition|transformchain|graphintegration|asyncnodestructured|saperrorrecovery|reactagentstructured|dynamictoolregistry|wiographtool|agenttool|nestedagent|compositeinterrupt|agenttooladvanced|hierarchicalevents|statefulresume|interruptresume|eventstream|crossrunmemory|memoryretriever)
+        all|chain|simple|workflow|lambda|chatmodel|chattemplate|docloader|retriever|toolschema|simplegraph|toolcallagent|twomodelchat|stategraph|toolcallonce|asyncnode|reactinterrupt|simpleworkflow|branchworkflow|staticvalues|fieldmapping|dataonly|streamfieldmap|reactmemory|multiagenthost|planexecute|reactagent|dynamicoption|batch|chat|categoryclassification|roledetection|queryclassification|chainroute|planextraction|stepsextraction|listparsing|schemaextraction|specialistdelegation|multiagenthostex|typedintermediates|chaincomposition|transformchain|graphintegration|asyncnodestructured|saperrorrecovery|reactagentstructured|dynamictoolregistry|wiographtool|agenttool|nestedagent|compositeinterrupt|agenttooladvanced|hierarchicalevents|statefulresume|interruptresume|eventstream|crossrunmemory|memoryretriever|evalharness)
             EXAMPLE="$1"
             shift
             ;;
@@ -405,6 +408,9 @@ resolve_main_class() {
         ;;
     memoryretriever)
         echo "org.adk4s.examples.memory.MemoryRetrieverExample"
+        ;;
+    evalharness)
+        echo "org.adk4s.examples.eval.EvalHarnessExample"
         ;;
     esac
 }

@@ -52,7 +52,7 @@ object TwoModelChatExample extends IOApp.Simple:
     final case class FinalState(topic: String, finalDraft: String, rounds: Int, history: List[String]) extends LoopState
 
     sealed trait LoopEvent
-    final case class WriterCompleted(draft: String) extends LoopEvent
+    final case class WriterCompleted(draft: String)    extends LoopEvent
     final case class CriticCompleted(feedback: String) extends LoopEvent
 
     override type State = LoopState
@@ -65,27 +65,29 @@ object TwoModelChatExample extends IOApp.Simple:
   import Ctx.LoopState
   import Ctx.WriterCompleted
 
-  private given ErrorMeta[Nothing] = ErrorMeta.noError
+  private given ErrorMeta[Nothing]        = ErrorMeta.noError
   private given ClassTag[WriterCompleted] = scala.reflect.ClassTag(classOf[WriterCompleted])
   private given ClassTag[CriticCompleted] = scala.reflect.ClassTag(classOf[CriticCompleted])
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Two Model Chat Example (Eino: graph/two_model_chat)")
+      _         <- ExampleUtils.printSection("Two Model Chat Example (Eino: graph/two_model_chat)")
       chatModel <- ExampleUtils.createChatModel
 
       // Build the loop body as a WIO
       loopBody: WIO[ChatState, Nothing, ChatState, Ctx.Ctx] = buildLoopBody(chatModel)
 
       // Create the loop using WIONode.loop
-      loopWIO: WIO[ChatState, Nothing, ChatState, Ctx.Ctx] = WIONode.loop[Ctx.Ctx, ChatState, Nothing, ChatState](
-        body = loopBody,
-        stopCondition = (state: ChatState) => state.currentRound >= maxRounds,
-        restart = WIO.Pure[Ctx.Ctx, ChatState, Nothing, ChatState](
-          _ => (s: ChatState) => Right(s),
-          WIO.Pure.Meta(ErrorMeta.noError, None)
+      loopWIO: WIO[ChatState, Nothing, ChatState, Ctx.Ctx] = WIONode
+        .loop[Ctx.Ctx, ChatState, Nothing, ChatState](
+          body = loopBody,
+          stopCondition = (state: ChatState) => state.currentRound >= maxRounds,
+          restart = WIO.Pure[Ctx.Ctx, ChatState, Nothing, ChatState](
+            _ => (s: ChatState) => Right(s),
+            WIO.Pure.Meta(ErrorMeta.noError, None)
+          )
         )
-      ).toWIO
+        .toWIO
 
       // Wrap in a graph: init → loop → finalize
       initialState = ChatState(
@@ -122,15 +124,16 @@ object TwoModelChatExample extends IOApp.Simple:
       WIONode.runIO[Ctx.Ctx, ChatState, WriterCompleted, ChatState](
         runIO = (state: ChatState) =>
           val prompt: String =
-            if state.writerDraft.isEmpty then
-              s"Write a short paragraph about: ${state.topic}"
-            else
-              s"Revise this draft based on feedback.\nDraft: ${state.writerDraft}\nFeedback: ${state.criticFeedback}"
-          val conversation: Conversation = Conversation(Seq(
-            SystemMessage("You are a writer. Write concise, clear prose."),
-            UserMessage(prompt)
-          ))
-          chatModel.generate(conversation).map((c: Completion) => WriterCompleted(c.content)),
+            if state.writerDraft.isEmpty then s"Write a short paragraph about: ${state.topic}"
+            else s"Revise this draft based on feedback.\nDraft: ${state.writerDraft}\nFeedback: ${state.criticFeedback}"
+          val conversation: Conversation = Conversation(
+            Seq(
+              SystemMessage("You are a writer. Write concise, clear prose."),
+              UserMessage(prompt)
+            )
+          )
+          chatModel.generate(conversation).map((c: Completion) => WriterCompleted(c.content))
+        ,
         handleEvent = (state: ChatState, evt: WriterCompleted) =>
           state.copy(
             writerDraft = evt.draft,
@@ -142,11 +145,14 @@ object TwoModelChatExample extends IOApp.Simple:
     val criticNode: WIORunIONode[Ctx.Ctx, ChatState, Nothing, CriticCompleted, ChatState] =
       WIONode.runIO[Ctx.Ctx, ChatState, CriticCompleted, ChatState](
         runIO = (state: ChatState) =>
-          val conversation: Conversation = Conversation(Seq(
-            SystemMessage("You are a critic. Give brief, constructive feedback."),
-            UserMessage(s"Review this draft:\n${state.writerDraft}")
-          ))
-          chatModel.generate(conversation).map((c: Completion) => CriticCompleted(c.content)),
+          val conversation: Conversation = Conversation(
+            Seq(
+              SystemMessage("You are a critic. Give brief, constructive feedback."),
+              UserMessage(s"Review this draft:\n${state.writerDraft}")
+            )
+          )
+          chatModel.generate(conversation).map((c: Completion) => CriticCompleted(c.content))
+        ,
         handleEvent = (state: ChatState, evt: CriticCompleted) =>
           state.copy(
             criticFeedback = evt.feedback,
@@ -170,16 +176,16 @@ object TwoModelChatExample extends IOApp.Simple:
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx.Ctx]
     ): IO[(ActiveWorkflow[Ctx.Ctx], Boolean)] =
-      val liftEffect: WCEffectLift[Ctx.Ctx, IO] = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val liftEffect: WCEffectLift[Ctx.Ctx, IO]      = [A] => (fa: WCEffect[Ctx.Ctx][A]) => fa.asInstanceOf[IO[A]]
       val wakeup: WakeupResult[IO, WCEvent[Ctx.Ctx]] = workflow.proceed(Instant.EPOCH, liftEffect)
       wakeup match
         case WakeupResult.Noop() => IO.pure((workflow, false))
         case WakeupResult.Processed(io) =>
           io.asInstanceOf[IO[Ior[Instant, WCEvent[Ctx.Ctx]]]].map { (result: Ior[Instant, WCEvent[Ctx.Ctx]]) =>
             val eventOpt: Option[WCEvent[Ctx.Ctx]] = result match
-              case Ior.Right(event) => Some(event)
+              case Ior.Right(event)   => Some(event)
               case Ior.Both(_, event) => Some(event)
-              case Ior.Left(_) => None
+              case Ior.Left(_)        => None
             eventOpt match
               case Some(event) =>
                 (workflow.handleEvent(event).getOrElse(workflow), true)

@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.llm.chain
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.examples.eino.common.ExampleUtils
-import org.adk4s.structured.core.{Prompt, Schema, StructuredLLM}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM }
 import org.adk4s.structured.test.TypedIntermediate
 
 /**
@@ -32,19 +32,20 @@ object TypedIntermediatesStructuredExample extends IOApp.Simple:
   )(using summon[smithy4s.schema.Schema[TypedIntermediate]])
 
   private def createLLMClient: IO[org.llm4s.llmconnect.LLMClient] =
-    ExampleUtils.createLLMClient.recoverWith {
-      case _: UnsupportedOperationException => IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
+    ExampleUtils.createLLMClient.recoverWith { case _: UnsupportedOperationException =>
+      IO.pure(new org.adk4s.examples.structured.StructuredMockLLMClient())
     }
 
   def run: IO[Unit] =
     for
-      _ <- ExampleUtils.printSection("Typed Intermediates Chain (Structured)")
+      _         <- ExampleUtils.printSection("Typed Intermediates Chain (Structured)")
       llmClient <- createLLMClient
       structured = StructuredLLM.fromClient[IO](llmClient)
 
       // Example: Multi-stage content processing pipeline
       _ <- ExampleUtils.printSubSection("Content Processing Pipeline")
-      originalText = "Artificial intelligence is revolutionizing software development by enabling automated code generation, intelligent debugging, and predictive analytics."
+      originalText =
+        "Artificial intelligence is revolutionizing software development by enabling automated code generation, intelligent debugging, and predictive analytics."
 
       // Stage 1: Analysis
       _ <- IO.println(s"\n   Original text: $originalText\n")
@@ -54,9 +55,9 @@ object TypedIntermediatesStructuredExample extends IOApp.Simple:
         s"Analyze: $originalText"
       )
       stage1 <- structured.complete[TypedIntermediate](prompt1)
-      _ <- IO.println(s"   → Stage: ${stage1.stage}")
-      _ <- IO.println(s"   → Result: ${stage1.result}")
-      _ <- IO.println(s"   → Next: ${stage1.nextAction}")
+      _      <- IO.println(s"   → Stage: ${stage1.stage}")
+      _      <- IO.println(s"   → Result: ${stage1.result}")
+      _      <- IO.println(s"   → Next: ${stage1.nextAction}")
 
       // Stage 2: Summarization (using stage1 result)
       _ <- IO.println("\n   Stage 2: Summarizing analysis...")
@@ -65,9 +66,9 @@ object TypedIntermediatesStructuredExample extends IOApp.Simple:
         s"Previous analysis: ${stage1.result}\nOriginal text: $originalText"
       )
       stage2 <- structured.complete[TypedIntermediate](prompt2)
-      _ <- IO.println(s"   → Stage: ${stage2.stage}")
-      _ <- IO.println(s"   → Result: ${stage2.result}")
-      _ <- IO.println(s"   → Next: ${stage2.nextAction}")
+      _      <- IO.println(s"   → Stage: ${stage2.stage}")
+      _      <- IO.println(s"   → Result: ${stage2.result}")
+      _      <- IO.println(s"   → Next: ${stage2.nextAction}")
 
       // Stage 3: Refinement (using stage2 result)
       _ <- IO.println("\n   Stage 3: Refining summary...")
@@ -76,9 +77,9 @@ object TypedIntermediatesStructuredExample extends IOApp.Simple:
         s"Previous summary: ${stage2.result}"
       )
       stage3 <- structured.complete[TypedIntermediate](prompt3)
-      _ <- IO.println(s"   → Stage: ${stage3.stage}")
-      _ <- IO.println(s"   → Result: ${stage3.result}")
-      _ <- IO.println(s"   → Next: ${stage3.nextAction}")
+      _      <- IO.println(s"   → Stage: ${stage3.stage}")
+      _      <- IO.println(s"   → Result: ${stage3.result}")
+      _      <- IO.println(s"   → Next: ${stage3.nextAction}")
 
       // Final output
       _ <- IO.println("\n   Pipeline complete!")
