@@ -45,7 +45,7 @@ operational principle
 | action `update` | `Optimizable.update(p, path, f): P` (fold over updateEither) |
 | action `updateAll` | `Optimizable.updateAll(p, f): P` (filter non-frozen, foldLeft update) |
 | helper `predictorsImpl` | inline derivation via `predictorsWalk` -> `predictField` -> `predictCollection` |
-| helper `updateEitherImpl` | inline derivation via `updateWalk` -> `updateField` -> `updateVectorViaPredict` / `updateScalarField` |
+| helper `updateEitherImpl` | inline derivation via `updateWalk` -> `updateVectorViaPredict` / `updateScalarField` |
 | helper `predictCollectionWithUpdater` | resolves `HasPredictorState[Elem]` via `summonFrom` and returns updater closures |
 | error `UnknownPath` | `OptimizeError.UnknownPath(path: PredictorPath)` |
 | error `FrozenPath` | `OptimizeError.FrozenPath(path: PredictorPath)` |

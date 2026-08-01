@@ -21,7 +21,7 @@
 | Scala version | 3.8.4 (main modules); 3.7.2 (`verified` module — Stainless frontend pin) | build.sbt, project/Versions.scala |
 | sbt version | 1.12.12 | project/build.properties |
 | JDK | 26 (Homebrew OpenJDK) | runtime |
-| Modules | 8: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-orchestration`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
+| Modules | 9: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
 | Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule). Any change extending a sealed ADT (e.g. `AgentEvent`, `AdkError`) MUST handle the new variant in every existing match or Ring 0 fails. | build.sbt scala3Options |
 | scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, exhaustiveness `-Wconf` escalations (shared via `scala3Options` val) | build.sbt |
 | Dependency management | Centralized: `project/Versions.scala` (all versions), `project/Dependencies.scala` (all ModuleIDs), `build.sbt` imports `Dependencies._` | project/*.scala |
@@ -33,6 +33,7 @@
 adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models
 adk4s-examples % Test → adk4s-memory-testkit                (test-scope — FileBackedAgentMemorySpec laws; landed by archived 2026-07-26-add-cross-run-memory-example)
 adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api
+adk4s-optimize → structured-llm, verified % Test              (Ring 6 bridge; landed by archived 2026-08-01-add-optimizable-surface)
 adk4s-memory-testkit → adk4s-memory-api                     (main-scope munit — behavioral laws)
 adk4s-memory-api → adk4s-core                               (for Retriever/Document/RetrieverConfig)
 adk4s-core → structured-llm, llm4s/core
@@ -80,7 +81,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Tool | Active Rules | Inactive/Excluded | Evidence |
 |------|-------------|--------------------|----------|
 | Scalafix | `DisableSyntax` (noVars, noThrows, noNulls, noReturns, noWhileLoops, noAsInstanceOf, noIsInstanceOf, noFinalize + custom regex: NoConfigFactory, NoSysEnv, NoSystemGetenv, NoKeywordTry/Catch/Finally), `RemoveUnused` (imports, privates, locals, patternvars), `OrganizeImports` (Merge, grouped) | Scoped guards for adk4s-core and structured-llm main sources (NoAdk4sConfig, NoPureConfigDefault, NoEnvReads) — aspirational (PureConfig not yet a dependency). `scalafixOnCompile := false` (run on demand). | .scalafix.conf |
-| WartRemover | `Warts.unsafe` minus excluded set (see right) | Temporarily excluded: `TripleQuestionMark` (intentional), `Any` (s"..." interpolation false positive), `DefaultArguments`, `IterableOps`, `AsInstanceOf`, `Throw`, `Var`, `OptionPartial`, `StringPlusAny`. Re-enable each as code is refactored. `verified` module: `wartremoverErrors := Seq.empty` (exempt). `adk4s-examples`: same relaxed set. | build.sbt |
+| WartRemover | `Warts.unsafe` minus excluded set (see right) | Temporarily excluded (3 only): `TripleQuestionMark` (intentional — stubs), `Any` (s"..." string interpolation false positive — StringContext.s takes `Any*`), `DefaultArguments` (valid API design feature for config case classes). All other unsafe warts are ACTIVE: `IterableOps`, `AsInstanceOf`, `Throw`, `Var`, `OptionPartial`, `StringPlusAny`, etc. `verified` module: `wartremoverErrors := Seq.empty` (exempt). `adk4s-examples`: same 3-exclusion relaxed set. | build.sbt |
 | scalafmt | Config present: scala3 dialect, maxColumn=120, align.preset=more | — | .scalafmt.conf |
 
 ## Code Intelligence
@@ -92,7 +93,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 
 | Item | Detected Value | Evidence |
 |------|---------------|----------|
-| Metals MCP endpoint | `http://localhost:8394/mcp` — PER-PROJECT instance (Metals is workspace-scoped; graphStore runs its own on :8395); discovery via `.metals/mcp.url`; start/stop: `scanner/metals-start.sh` (auto-detects JDK 17+, free port) | `scanner/metals-call.sh probe` |
+| Metals MCP endpoint | `http://localhost:8394/mcp` — PER-PROJECT instance (Metals is workspace-scoped; graphStore runs its own on :8395); discovery via `.metals/mcp.url`; start/stop: `openspec/schemas/verified-scala3/scanner/metals-start.sh` (auto-detects JDK 17+, free port) | `openspec/schemas/verified-scala3/scanner/metals-call.sh probe` |
 | Metals version | 1.6.7 (pinned — MCP tool names are not yet a stable contract) | `cs install metals-mcp` |
 | JDK for Metals | 17+ required; default java on this host is 11 → set `JAVA_HOME` to the Homebrew JDK 26 | UnsupportedClassVersionError without it |
 | External-dep API lookup | cellar CLI available (`~/.local/share/coursier/bin/cellar`) — use for llm4s/workflows4s APIs instead of sources-jar extraction | which cellar |
@@ -103,10 +104,10 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Purpose | Command |
 |---------|---------|
 | Main compile (all) | `sbt compile` |
-| Main compile (per module) | `sbt structured-llm/compile`, `sbt adk4s-core/compile`, `sbt adk4s-memory-api/compile`, `sbt adk4s-memory-testkit/compile`, `sbt adk4s-orchestration/compile`, `sbt adk4s-examples/compile`, `sbt structured-llm-test-models/compile` |
+| Main compile (per module) | `sbt structured-llm/compile`, `sbt adk4s-core/compile`, `sbt adk4s-memory-api/compile`, `sbt adk4s-memory-testkit/compile`, `sbt adk4s-optimize/compile`, `sbt adk4s-orchestration/compile`, `sbt adk4s-examples/compile`, `sbt structured-llm-test-models/compile` |
 | Test compile (typed contracts) | `sbt <module>/Test/compile` |
 | Run tests (all) | `sbt test` |
-| Run tests (per module) | `sbt adk4s-core/test`, `sbt adk4s-orchestration/test`, `sbt adk4s-memory-api/test`, `sbt structured-llm/test` |
+| Run tests (per module) | `sbt adk4s-core/test`, `sbt adk4s-orchestration/test`, `sbt adk4s-memory-api/test`, `sbt adk4s-optimize/test`, `sbt structured-llm/test` |
 | Single test | `sbt "testOnly <fully.qualified.Spec>"` |
 | Lint (scalafix check) | `sbt scalafixAll --check` |
 | Lint (scalafix apply) | `sbt scalafixAll` |
@@ -134,6 +135,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | `org.adk4s.core.interrupt` (events) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, fs2, adk4s-core.error |
 | `org.adk4s.memory` (memory capability) | workflows4s, llm4s LLM client, fs2-io, adk4s-orchestration | cats-effect, fs2-core, adk4s-core (Retriever/Document) |
 | `org.adk4s.memory.testkit` (laws) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, munit (main), adk4s-memory-api |
+| `org.adk4s.optimize` (optimizable surface) | workflows4s, llm4s LLM client, adk4s-core, adk4s-orchestration | cats-effect, fs2-core, structured-llm, ujson, munit (main), hedgehog (main) |
 | `org.adk4s.orchestration.memory` (memory orchestration hook) | workflows4s, llm4s LLM client, logback, http | cats-effect, fs2, adk4s-orchestration.agent, adk4s-core.interrupt, adk4s-memory-api, llm4s `Message` types (for context injection only) |
 | `org.adk4s.orchestration.*` (workflow layer) | logback, http | cats-effect, fs2, workflows4s, adk4s-core, structured-llm |
 | `org.adk4s.examples.*` (application edge) | — | everything (examples are edge code) |
@@ -152,7 +154,7 @@ The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend
 | 3 Property tests | ✅ | Hedgehog 0.13.1 via hedgehog-munit. Properties extend `HedgehogSuite`. Concurrency scenarios use `TestControl`. |
 | 4 Compatibility | ⚠️ Manual | No fixture-based compatibility framework. Applies only to changes touching serialization/wire data. |
 | 5 Mutation | ✅ | sbt-stryker4s 0.21.0 + stryker4s.conf. Retarget `mutate` list to each spec's changed files before running. |
-| 6 Formal | ✅ available — applicability by ALGORITHMIC purity (schema v10) | Stainless via the `verified` leaf module. Ring 6 is NOT limited to code that is itself PureScala: where the shipped code uses `Mirror`/`inline`/`ujson`/Iron/cats/`IO`, the VERIFIED-MIRROR pattern applies — a PureScala model of the algorithm reduced to observable effect, plus a mandatory bridge property test binding shipped code to the model (templates/verified-mirror.md). Candidate kernels in this repo: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation, and `optimizable-surface` predictor enumeration order / update purity / path-set preservation. **Status**: the active `add-optimizable-surface` change is the first adopter — it commits to `PredictorKernel` (predictor-enumeration mirror) in `verified/` plus `adk4s-optimize dependsOn(verified % Test)` and a `PredictorModelBridgeSpec` bridge property. Until that lands, `verified/` is package-doc only. |
+| 6 Formal | ✅ available — applicability by ALGORITHMIC purity (schema v10) | Stainless via the `verified` leaf module. Ring 6 is NOT limited to code that is itself PureScala: where the shipped code uses `Mirror`/`inline`/`ujson`/Iron/cats/`IO`, the VERIFIED-MIRROR pattern applies — a PureScala model of the algorithm reduced to observable effect, plus a mandatory bridge property test binding shipped code to the model (templates/verified-mirror.md). **Status**: `verified/` contains `PredictorKernel` (predictor-enumeration mirror, landed by archived `2026-08-01-add-optimizable-surface`). `adk4s-optimize dependsOn(verified % Test)` is wired; `PredictorModelBridgeSpec` bridge test runs in `adk4s-optimize/test`. Stainless 0.9.9.3 with smt-z3 fallback (Z3 4.13.4). Candidate kernels for future changes: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation. |
 | 7 Model checking | ❌ | No TLA+/Apalache. Skip with stated correctness impact. |
 | 8 Adversarial review | ✅ (manual — always available) | Runs BEFORE Rings 5/6/7 in the apply sequence (fresh-context reviewer). |
 | 9 Telemetry | ❌ | No otel4s/Daut. Skip with stated impact. |
