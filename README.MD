@@ -13,6 +13,7 @@ graph TD
     structured["<b>structured-llm</b><br/>StructuredLLM,<br/>Schema[A],<br/>SAP Parser,<br/>Prompt Templates"]
     memoryApi["<b>adk4s-memory-api</b><br/>AgentMemory,<br/>Episode, MemoryHit,<br/>MemoryRetriever,<br/>InMemoryAgentMemory"]
     memoryTestkit["<b>adk4s-memory-testkit</b><br/>AgentMemoryLaws<br/>(reusable contract)"]
+    eval["<b>adk4s-eval</b><br/>Evaluate, Metric,<br/>Judges,<br/>Dataset, Metrics"]
 
     llm4s["<b>llm4s</b><br/>LLMClient,<br/>Conversation,<br/>ToolFunction"]
     workflows4s["<b>workflows4s</b><br/>WIO monad,<br/>WorkflowContext,<br/>Event sourcing"]
@@ -29,6 +30,7 @@ graph TD
     structured --> workflows4s
     memoryApi --> core
     memoryTestkit --> memoryApi
+    eval --> structured
 ```
 
 ## What LLM4S Provides (Foundation)
@@ -370,6 +372,68 @@ val runnable: Runnable[Input, Output] = graph.toRunnable
 
 Node types: `WIOPureNode` (pure), `WIORunIONode` (effectful), `WIORunnableNode` (Runnable-based), `WIOForkNode` (conditional branching), `WIOForEachNode` (collection processing), `WIOSubGraphNode` (nested graphs). Nodes support modifiers: checkpoint, retry, and interruption.
 
+### Evaluation — Parallel Eval Harness with LLM Judges
+
+The `adk4s-eval` module provides a DSPy-inspired evaluation harness: run a program over a labeled dataset in parallel, score each result with a `Metric`, and aggregate into a mean score with per-example rows. It depends only on `structured-llm` (for LLM judges) and Cats Effect/fs2 — no dependency on `adk4s-core`, `adk4s-orchestration`, or the llm4s client.
+
+```scala
+import cats.effect.IO
+import org.adk4s.eval.*
+
+// 1. Define a devset of labeled examples
+val devset: Vector[Example[String, String]] = Vector(
+  Example("What is 1+1?", "2", Some("ex-1")),
+  Example("Capital of France?", "Paris", Some("ex-2"))
+)
+
+// 2. Run evaluation with a pure string metric
+val result: IO[EvaluationResult[String, String]] =
+  Evaluate[IO, String, String](
+    program = (input: String) => IO.pure("2"),  // your program
+    devset = devset,
+    metric = Metrics.exactMatch[IO],
+    config = EvalConfig(parallelism = 4, failureScore = 0.0)
+  )
+
+// 3. Export results
+result.map(_.toJson)   // JSON with formatVersion=1
+result.map(_.toCsv)    // CSV: id, score, feedback, outcome, meta
+```
+
+**Core types** (all in `org.adk4s.eval`):
+- `Example[I, O]` — one evaluation datum: input, gold output, optional id, metadata map
+- `Score(value: Double, feedback: Option[String])` — a metric score; feedback is inert (preserved in exports, never affects the aggregate)
+- `Metric[F, I, O]` — the scoring interface: `apply(gold: Example[I, O], pred: O, trace: Option[Trace]): F[Score]`. The `trace` argument toggles evaluation (`None`) vs optimization (`Some`) mode — the harness always passes `None`
+- `EvalConfig(parallelism, failureScore, maxErrors, seed)` — harness configuration. `maxErrors = Some(n)` raises `EvalError.TooManyErrors` after `n+1` failures and cancels in-flight work
+- `EvaluationResult[I, O]` — aggregate mean score + per-example `EvalRow` rows, with `toJson`/`fromJson`/`toCsv` export
+
+**Built-in metrics** (`Metrics` object):
+- `Metrics.exactMatch[F]` — exact string equality, `Score(1.0)` or `Score(0.0)`
+- `Metrics.containsAll[F]` — every gold token present in the prediction
+
+**LLM judges** (`Judges` object) — structured-LLM-backed metrics for semantic scoring:
+- `Judges.semanticF1[F](structured, threshold)` — calls a structured LLM judge for precision/recall, computes F1. Binarized (`Score(1.0)`/`Score(0.0)`) when `trace.isDefined`; raw F1 with reasoning feedback in eval mode. Out-of-range values clamped to [0, 1] via `Constraint.check`
+- `Judges.completeAndGrounded[F](structured, threshold)` — calls a structured LLM judge for completeness/groundedness, computes the average. Same binarize-on-trace and clamping behavior
+
+```scala
+import org.adk4s.structured.core.StructuredLLM
+
+val structured: StructuredLLM[IO] = StructuredLLM.fromClient(llmClient)
+val judgeMetric: Metric[IO, String, String] =
+  Judges.semanticF1[IO](structured, threshold = 0.66)
+
+val result: IO[EvaluationResult[String, String]] =
+  Evaluate[IO, String, String](program, devset, judgeMetric)
+```
+
+**Dataset loading** — `Dataset.fromJsonl[F, I, O](path)` reads a JSONL file (one JSON object per line with `input`, `gold`, optional `id`/`meta` fields) into a `Vector[Example[I, O]]`. Malformed lines raise a `MalformedLineException` naming the line number.
+
+**Semantics**:
+- Rows are returned in devset declaration order regardless of completion order (fs2 `parEvalMap` — ordered)
+- Program and metric failures are caught per-example: the row gets `EvalOutcome.Failed` and `Score(config.failureScore)`, and the run continues
+- When failures exceed `maxErrors`, the harness raises `EvalError.TooManyErrors` carrying the partial rows and cancels in-flight work
+- The aggregate score is the arithmetic mean of all row scores (including substituted failure scores); the empty devset yields `score = 0.0`
+
 ## Modules
 
 | Module | Purpose |
@@ -380,6 +444,7 @@ Node types: `WIOPureNode` (pure), `WIORunIONode` (effectful), `WIORunnableNode` 
 | **adk4s-orchestration** | ReactAgent, AgentRunner, MemoryAwareRunner, WIOGraph, Workflow DSL, State management, Graph execution |
 | **structured-llm** | StructuredLLM, Schema[A], SchemaAlignedParser, PromptTemplate |
 | **structured-llm-test-models** | Smithy schema definitions and tests for structured-llm |
+| **adk4s-eval** | Evaluate harness, Metric, Score, Example, Judges (SemanticF1, CompleteAndGrounded), Dataset, Metrics |
 | **adk4s-examples** | 55+ runnable examples across all modules |
 
 ### External Dependencies
@@ -536,6 +601,7 @@ Type-safe structured outputs with Schema-Aligned Parser.
 sbt compile                    # compile all modules
 sbt test                       # run all tests
 sbt "adk4s-core/test"          # test core module only
+sbt "adk4s-eval/test"          # test eval module only (70 tests)
 sbt "adk4s-memory-api/test"    # test memory API module only
 sbt "adk4s-memory-testkit/test" # run the AgentMemoryLaws contract suite
 sbt "adk4s-orchestration/test" # test orchestration module only
