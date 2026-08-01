@@ -71,6 +71,24 @@ object EvalGenerators:
       r <- genScoreValue
     yield (p, r)
 
+  /** A completeness/groundedness pair in 0.0..1.0. */
+  def genCompletenessGroundedness: Gen[(Double, Double)] =
+    for
+      c <- genScoreValue
+      g <- genScoreValue
+    yield (c, g)
+
+  /** A reasoning string for judge outputs. */
+  def genReasoning: Gen[String] =
+    Gen.string(Gen.alphaNum, Range.linear(1, 30))
+
+  /** A Double outside [0, 1] (for out-of-range clamping tests). */
+  def genOutOfRange: Gen[Double] =
+    Gen.choice1(
+      Gen.double(Range.linearFrac(-1.0, -0.01)),
+      Gen.double(Range.linearFrac(1.01, 2.0))
+    )
+
   /**
    * Generate an EvaluationResult with mixed outcomes for round-trip testing.
    *
@@ -147,16 +165,16 @@ object EvalGenerators:
    */
   def resultEqual(a: EvaluationResult[String, String], b: EvaluationResult[String, String]): Boolean =
     a.score == b.score &&
-    a.rows.size == b.rows.size &&
-    a.rows.zip(b.rows).forall { case (ra, rb) =>
-      rowEqual(ra, rb)
-    }
+      a.rows.size == b.rows.size &&
+      a.rows.zip(b.rows).forall { case (ra, rb) =>
+        rowEqual(ra, rb)
+      }
 
   /** Custom row equality — compares outcome by type + message, not reference. */
   private def rowEqual(a: EvalRow[String, String], b: EvalRow[String, String]): Boolean =
     a.example == b.example &&
-    outcomeEqual(a.outcome, b.outcome) &&
-    a.score == b.score
+      outcomeEqual(a.outcome, b.outcome) &&
+      a.score == b.score
 
   /** Custom outcome equality — `Failed` compared by class name + message. */
   private def outcomeEqual(a: EvalOutcome[String], b: EvalOutcome[String]): Boolean =

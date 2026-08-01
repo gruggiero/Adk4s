@@ -77,5 +77,56 @@
 
 ## Spec 2/2: llm-judges
 
-- **BASELINE SHA**: (to be recorded after spec 1 checkpoint)
-- **State**: not started
+- **BASELINE SHA**: `8b0316fab9dc32de82c118164fb69f91bac6c77d` (recorded 2026-08-01; working tree clean)
+- **State**: in progress — Step 1
+
+### Step 0 — baseline + module setup
+- [x] working tree clean
+- [x] record `git rev-parse HEAD` as BASELINE SHA above — `8b0316fab9dc32de82c118164fb69f91bac6c77d`
+- [x] verify `sbt adk4s-eval/compile` — success (1s; module from spec 1)
+- [x] DSPy source confirmed — commit `2974a655` (SemanticRecallPrecision / AnswerCompleteness / AnswerGroundedness signatures ported as prompt text; CompleteAndGrounded uses average per spec, not DSPy's f1_score)
+
+### Step 1 — typed contract (HUMAN GATE 1 of 2)
+- [x] `SemanticF1Judge` case class (precision, recall, reasoning) + smithy4s Schema.struct + Schema.instance
+- [x] `CompleteAndGroundedJudge` case class (completeness, groundedness, reasoning) + smithy4s Schema.struct + Schema.instance
+- [x] `Judges.semanticF1[F]` / `Judges.completeAndGrounded[F]` factory signatures returning `Metric[F, String, String]` (??? bodies)
+- [x] `JudgesTypeContract` in `adk4s-eval/src/test/scala/org/adk4s/eval/typecontract/` — 8 tests (schema signatures, Schema.instance resolution, factory signatures, default threshold, no-test-models audit)
+- [x] compiles via `sbt adk4s-eval/Test/compile` — success (6s)
+- [x] all 8 type contract tests pass
+- [x] judge schemas compile WITHOUT smithy4s-sbt-codegen plugin (hand-written Schema.instance + smithy4s.Schema.struct derivation)
+- [ ] **STOP for human approval** ◄ WAITING
+
+### Step 2 — test oracle (HUMAN GATE 2 of 2)
+- [x] `JudgesSpec` — 4 Hedgehog properties (semantic-f1-eval-mode, semantic-f1-optimization-mode-binarized, out-of-range-clamped, complete-and-grounded-eval-mode) + 10 scenario tests (eval mode, opt mode pass/fail, CompleteAndGrounded eval+opt, unparseable judge, precision>1.0, recall<0.0, CompleteAndGrounded out-of-range)
+- [x] `MockStructuredLLM` — uses real SAP parser to decode pre-baked JSON (tests full parse path; garbled text → ParseFailed)
+- [x] new generators in `EvalGenerators`: genCompletenessGroundedness, genReasoning, genOutOfRange
+- [x] ORACLE POLARITY run: 14 RED (NotImplementedError from `???` stubs), 0 GREEN-by-design
+- [x] compiles via `sbt adk4s-eval/Test/compile` — success (6s)
+- [ ] **STOP for human approval** ◄ WAITING
+
+### Step 3 — implementation
+- [x] `Judges.semanticF1` — calls `structured.complete[SemanticF1Judge]`, computes F1 with edge-case guard (0.0 when p+r==0), binarize on trace.isDefined, Constraint.check for out-of-range detection + clamp + feedback note
+- [x] `Judges.completeAndGrounded` — calls `structured.complete[CompleteAndGroundedJudge]`, computes average (completeness+groundedness)/2, binarize on trace.isDefined, Constraint.check for out-of-range detection + clamp + feedback note
+- [x] prompt text ported from DSPy commit 2974a655 (SemanticRecallPrecision docstring for semanticF1; from-scratch for completeAndGrounded following AnswerCompleteness/AnswerGroundedness structure)
+- [x] parse failure propagates as raise (StructuredLLMError.ParseFailed from structured.complete) — no catch in metric, harness catches it
+
+### Rings
+- [x] Ring R0 — `sbt adk4s-eval/compile` + `sbt adk4s-eval/Test/compile` pass; judge schemas compile without codegen plugin
+- [x] Ring R1 — `adk4s-eval/scalafmt` passes (Judges.scala + test files formatted); WartRemover pass (isInstanceOf replaced with pattern matching); pre-existing Evaluate.scala scalafmt issue is out of scope (from commit 8b0316f)
+- [x] Ring R2 — import audit: Judges.scala imports only cats.effect.Async, cats.syntax.all, org.adk4s.structured.core (Constraint, Prompt, Schema, StructuredLLM, ValidationResult), smithy4s.schema.Schema; no forbidden imports (workflows4s, llm4s client, adk4s-core, adk4s-orchestration, adk4s-optimize, structured-llm-test-models)
+- [x] Ring R3 — all 4 properties pass; all 10 scenario tests pass; 14/14 total; full adk4s-eval suite 70/70 pass
+
+### Ring R8 — adversarial review (fresh context)
+- [x] Verdict: **4 PASS, 1 PARTIAL, 0 FAIL**
+- [x] R1.10 (binarize on trace.isDefined): PASS — both metrics use `trace match { case None => ... case Some(_) => Score.bool(...) }`
+- [x] R1.11 (judge schemas in adk4s-eval not test-models): PASS — schemas in Judges.scala, no imports from structured-llm-test-models, type contract test verifies
+- [x] R1.12 (parse failure → metric raises, not crash): PASS — no error handling in metric, parse errors propagate as StructuredLLMError.ParseFailed, test verifies raise
+- [x] R1.13 (Constraint.check for clamping): PARTIAL — detection uses Constraint.check, clamping transformation uses math.max/min. **Justified**: the spec's own property example (lines 254-256) uses `math.max(0.0, math.min(1.0, rawPrecision))` for clamping, confirming Constraint.check is intended for detection/flagging only, not the transformation. Constraint.check is a validation mechanism, not a transformation.
+- [x] F1 edge case (precision+recall==0 → 0.0): PASS
+- [x] Binarized score carries NO feedback: PASS — Score.bool returns feedback=None
+- [x] No silent fallback (metric catches parse errors → Score(0.0)): PASS — no catch/attempt/recover in metric
+
+### Step 12 — concept delta + inventory update
+- [x] Added `SemanticF1Judge` and `CompleteAndGroundedJudge` to Case Classes table in `openspec/concept-inventory.md`
+- [x] Added new "Objects (Factories and Utilities)" section with `Evaluate`, `Dataset`, `Metrics`, `Judges` objects
+- [x] Added "add-eval-core change — llm-judges spec concepts" provenance subsection

@@ -96,9 +96,7 @@ object Evaluate:
           .handleErrorWith {
             case _: EvalError.TooManyErrors[?, ?] =>
               rowsRef.get.flatMap(partial =>
-                failCountRef.get.flatMap(count =>
-                  F.raiseError(EvalError.TooManyErrors[I, O](count, cap, partial))
-                )
+                failCountRef.get.flatMap(count => F.raiseError(EvalError.TooManyErrors[I, O](count, cap, partial)))
               )
             case other => F.raiseError(other)
           }

@@ -155,6 +155,8 @@
 | `EvalConfig` | `parallelism: Int, failureScore: Double, maxErrors: Option[Int], seed: Long` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `EvalRow[I, O]` | `example: Example[I, O], outcome: EvalOutcome[O], score: Score` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `EvaluationResult[I, O]` | `score: Double, rows: Vector[EvalRow[I, O]]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `SemanticF1Judge` | `precision: Double, recall: Double, reasoning: String` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
+| `CompleteAndGroundedJudge` | `completeness: Double, groundedness: Double, reasoning: String` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
 
 ## Service Traits
 
@@ -180,6 +182,17 @@
 | `Optimizable[P]` | `P` (no F constraint) | `predictors(p: P): Vector[(PredictorPath, PredictorState)]`, `update(p, path, f): P`, `updateEither(p, path, f): Either[OptimizeError, P]`, `updateAll(p, f): P` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `HasPredictorState[Self]` | `Self` (no F constraint) | `state(self: Self): PredictorState`, `withState(self: Self, s: PredictorState): Self` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `Metric[F[_], I, O]` | `F` (Applicative bound) | `apply(gold: Example[I, O], pred: O, trace: Option[Trace]): F[Score]`, `map(f: Score => Score): Metric[F, I, O]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+
+## Objects (Factories and Utilities)
+
+<!-- Object-level factories and utility singletons in library modules. -->
+
+| Object | Kind | Methods | Package | Introduced By |
+|--------|------|---------|---------|---------------|
+| `Evaluate` | object (factory) | `apply[F, I, O](program, devset, metric, config): F[EvaluationResult[I, O]]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `Dataset` | object (factory) | `fromCsv[F, I, O](path, parse): F[Vector[Example[I, O]]]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `Metrics` | object | `exactMatch[F]: Metric[F, String, String]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `Judges` | object (factory) | `semanticF1[F](structured, threshold): Metric[F, String, String]`, `completeAndGrounded[F](structured, threshold): Metric[F, String, String]`, `defaultThreshold: Double` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
 
 ## Smithy Models
 
@@ -273,6 +286,16 @@ The following 14 concepts were introduced by `spec:add-eval-core/eval-core` and 
 | `MalformedLineException` | class (extends RuntimeException) | `org.adk4s.eval` | shipped |
 
 Behavioral concept files created: `openspec/concepts/eval-harness.md`, `openspec/concepts/metric-contract.md`.
+
+### add-eval-core change — llm-judges spec concepts
+
+The following 3 concepts were introduced by `spec:add-eval-core/llm-judges` and are now in the main tables above (Case Classes, Objects). Recorded here for provenance:
+
+| Type | Kind | Package | Status |
+|------|------|---------|--------|
+| `SemanticF1Judge` | case class | `org.adk4s.eval` | shipped |
+| `CompleteAndGroundedJudge` | case class | `org.adk4s.eval` | shipped |
+| `Judges` | object (factory) | `org.adk4s.eval` | shipped |
 
 ## Consistency Check
 
