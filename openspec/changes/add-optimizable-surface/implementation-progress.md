@@ -16,7 +16,7 @@
 ## Spec 1/1: optimizable-surface
 
 - **BASELINE SHA**: `773900b9f89a48fe760eba4c6921f4c1dec49d68` (recorded 2026-07-27; working tree clean)
-- **State**: in progress — Step 13 (checkpoint + commit)
+- **State**: complete — Step 13 (checkpoint + commit) done, human-approved, archiving
 
 ### Step 0 — baseline + concept check
 - [x] working tree clean
@@ -72,6 +72,6 @@
 - [x] append `adk4s-optimize` row to `openspec/project.md` module dependency graph + module descriptions
 
 ### Step 13 — checkpoint + commit
-- [ ] regenerate `tasks.md` checkboxes from this file
-- [ ] commit the spec
-- [ ] **STOP for human validation** ◄ WAITING (none — this is the only spec)
+- [x] regenerate `tasks.md` checkboxes from this file
+- [x] commit the spec
+- [x] **STOP for human validation** ◄ APPROVED — archiving (none — this is the only spec)
