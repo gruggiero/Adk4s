@@ -66,6 +66,12 @@ object Dependencies {
   val munitCatsEffect: ModuleID =
     "org.typelevel" %% "munit-cats-effect" % Versions.MunitCatsEffect % Test
 
+  /** cats-effect-testkit — provides `TestControl` for deterministic
+    * concurrency testing (cancellation probes, tick-based time). Test scope
+    * only; version matches the cats-effect runtime. */
+  val catsEffectTestkit: ModuleID =
+    "org.typelevel" %% "cats-effect-testkit" % Versions.CatsEffect % Test
+
   /** Common test dependencies shared across all modules.
    *  Includes munit + munit-cats-effect + hedgehog-munit. */
   val testDeps: Seq[ModuleID] = Seq(munit, munitCatsEffect, hedgehogMunit)

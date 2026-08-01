@@ -142,6 +142,27 @@ lazy val `adk4s-optimize` = (project in file("adk4s-optimize"))
     scalacOptions ++= scala3Options
   )
 
+// ── adk4s-eval — eval harness (DSPy port Phase 1) ──────────────────────────
+// Parallel evaluation harness: run a program over a labeled dataset, score
+// each result with a Metric, aggregate into a mean score with per-example
+// rows. Includes Example/Score/Metric/Trace data types, Evaluate harness
+// with failure-score substitution + maxErrors cancellation, EvaluationResult
+// with JSON/CSV export, Dataset JSONL reader, built-in string metrics, and
+// LLM judges (SemanticF1, CompleteAndGrounded).
+// Depends on structured-llm for judges (StructuredLLM, Schema, Prompt,
+// Constraint). MUST NOT depend on adk4s-core, adk4s-orchestration,
+// workflows4s, llm4s LLM client, or adk4s-optimize (Ring 2 purity rule).
+lazy val `adk4s-eval` = (project in file("adk4s-eval"))
+  .dependsOn(`structured-llm`)
+  .settings(
+    name := "adk4s-eval",
+    libraryDependencies ++= Seq(
+      catsEffect,
+      fs2Core
+    ) ++ testDeps :+ catsEffectTestkit,
+    scalacOptions ++= scala3Options
+  )
+
 lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
   .dependsOn(
     `adk4s-core`,

@@ -21,7 +21,7 @@
 | Scala version | 3.8.4 (main modules); 3.7.2 (`verified` module — Stainless frontend pin) | build.sbt, project/Versions.scala |
 | sbt version | 1.12.12 | project/build.properties |
 | JDK | 26 (Homebrew OpenJDK) | runtime |
-| Modules | 9: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
+| Modules | 10: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
 | Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule). Any change extending a sealed ADT (e.g. `AgentEvent`, `AdkError`) MUST handle the new variant in every existing match or Ring 0 fails. | build.sbt scala3Options |
 | scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, exhaustiveness `-Wconf` escalations (shared via `scala3Options` val) | build.sbt |
 | Dependency management | Centralized: `project/Versions.scala` (all versions), `project/Dependencies.scala` (all ModuleIDs), `build.sbt` imports `Dependencies._` | project/*.scala |
@@ -32,6 +32,8 @@
 ```
 adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models
 adk4s-examples % Test → adk4s-memory-testkit                (test-scope — FileBackedAgentMemorySpec laws; landed by archived 2026-07-26-add-cross-run-memory-example)
+adk4s-eval → structured-llm                                  (eval harness; landed by add-eval-core)
+adk4s-eval % Test → cats-effect-testkit                      (TestControl for deterministic concurrency)
 adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api
 adk4s-optimize → structured-llm, verified % Test              (Ring 6 bridge; landed by archived 2026-08-01-add-optimizable-surface)
 adk4s-memory-testkit → adk4s-memory-api                     (main-scope munit — behavioral laws)

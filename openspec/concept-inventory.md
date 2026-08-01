@@ -90,6 +90,8 @@
 | `SectionType` | enum | `System`, `User`, `Assistant`, `Raw` | `org.adk4s.structured.template` | scan:PromptSyntax.scala (found by fixed multi-module scanner, v6 migration) |
 | `OptimizeError` | enum | `UnknownPath`, `FrozenPath` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `Prog` (model) | sealed trait | `Pred`, `Plain`, `Sub`, `Coll` | `org.adk4s.verified.PredictorKernel` | spec:add-optimizable-surface/optimizable-surface (Ring 6 PureScala model) |
+| `EvalOutcome[+O]` | enum | `Succeeded(value: O)`, `Failed(error: Throwable)` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `EvalError` | sealed trait (extends Throwable) | `TooManyErrors[I, O](count, max, partial)` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 
 > Note: `adk4s-examples` defines many per-example `sealed trait` state/event
 > types. These are application-edge code, not reusable library concepts, and
@@ -146,6 +148,13 @@
 | `Demo` | `input: ujson.Value, output: ujson.Value` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `PredictorPath` | `segments: Vector[String]` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `Predict0` | `state: PredictorState, template: PromptTemplate, schema: Schema, structured: StructuredLLM[F]` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface (Phase 0 placeholder) |
+| `Example[I, O]` | `input: I, gold: O, id: Option[String], meta: Map[String, String]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `Score` | `value: Double, feedback: Option[String]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `TraceEntry` | `path: String, input: ujson.Value, output: ujson.Value` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `Trace` | `entries: Vector[TraceEntry]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `EvalConfig` | `parallelism: Int, failureScore: Double, maxErrors: Option[Int], seed: Long` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `EvalRow[I, O]` | `example: Example[I, O], outcome: EvalOutcome[O], score: Score` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `EvaluationResult[I, O]` | `score: Double, rows: Vector[EvalRow[I, O]]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 
 ## Service Traits
 
@@ -170,6 +179,7 @@
 | `CheckpointStore` | (no type param — concrete trait) | `set(checkpointId: String, data: Array[Byte]): F[Unit]`, `get(checkpointId: String): F[Option[Array[Byte]]]`, `delete(checkpointId: String): F[Unit]` | `org.adk4s.orchestration.interrupt` | pre-existing — **REUSED by this change** (`MemoryAwareRunner` delegates resume to the underlying `AgentRunner` which owns the store) |
 | `Optimizable[P]` | `P` (no F constraint) | `predictors(p: P): Vector[(PredictorPath, PredictorState)]`, `update(p, path, f): P`, `updateEither(p, path, f): Either[OptimizeError, P]`, `updateAll(p, f): P` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `HasPredictorState[Self]` | `Self` (no F constraint) | `state(self: Self): PredictorState`, `withState(self: Self, s: PredictorState): Self` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
+| `Metric[F[_], I, O]` | `F` (Applicative bound) | `apply(gold: Example[I, O], pred: O, trace: Option[Trace]): F[Score]`, `map(f: Score => Score): Metric[F, I, O]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 
 ## Smithy Models
 
@@ -240,6 +250,29 @@
 | `MemoryRetrieverExample` | `IOApp.Simple` object (retriever seam demo) | `org.adk4s.examples.memory` | spec:add-cross-run-memory-example (application-edge — omitted from main tables per policy) |
 | JSON-lines `Episode` wire format | wire format (upickle `ReadWriter[Episode]`, one episode per line) | `org.adk4s.examples.memory` | spec:add-cross-run-memory-example (application-edge — omitted from main tables per policy) |
 | `adk4s-examples % Test → adk4s-memory-testkit` | build wiring (Test scope) | `build.sbt` | spec:add-cross-run-memory-example (recorded in capability-profile.md module graph) |
+
+### add-eval-core change — eval-core spec concepts
+
+The following 14 concepts were introduced by `spec:add-eval-core/eval-core` and are now in the main tables above (Sealed Traits, Case Classes, Service Traits). Recorded here for provenance:
+
+| Type | Kind | Package | Status |
+|------|------|---------|--------|
+| `Example[I, O]` | case class | `org.adk4s.eval` | shipped |
+| `Score` | case class | `org.adk4s.eval` | shipped |
+| `TraceEntry` | case class | `org.adk4s.eval` | shipped |
+| `Trace` | case class | `org.adk4s.eval` | shipped |
+| `EvalConfig` | case class | `org.adk4s.eval` | shipped |
+| `EvalOutcome[+O]` | enum | `org.adk4s.eval` | shipped |
+| `EvalRow[I, O]` | case class | `org.adk4s.eval` | shipped |
+| `EvaluationResult[I, O]` | case class | `org.adk4s.eval` | shipped |
+| `EvalError` | sealed trait (extends Throwable) | `org.adk4s.eval` | shipped |
+| `Metric[F, I, O]` | trait | `org.adk4s.eval` | shipped |
+| `Evaluate` | object (factory) | `org.adk4s.eval` | shipped |
+| `Dataset` | object (factory) | `org.adk4s.eval` | shipped |
+| `Metrics` | object | `org.adk4s.eval` | shipped |
+| `MalformedLineException` | class (extends RuntimeException) | `org.adk4s.eval` | shipped |
+
+Behavioral concept files created: `openspec/concepts/eval-harness.md`, `openspec/concepts/metric-contract.md`.
 
 ## Consistency Check
 
