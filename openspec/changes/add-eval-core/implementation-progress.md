@@ -72,8 +72,7 @@
 - [x] create openspec/concepts/eval-harness.md + openspec/concepts/metric-contract.md
 
 ### Step 13 — checkpoint + commit
-- [ ] regenerate tasks.md from implementation-progress.md
-- [ ] commit checkpoint
+- [x] commit checkpoint — SHA `6f1ae54` (26 files, 1933 insertions)
 - [ ] **STOP for human approval before spec 2** ◄ WAITING
 
 ## Spec 2/2: llm-judges
