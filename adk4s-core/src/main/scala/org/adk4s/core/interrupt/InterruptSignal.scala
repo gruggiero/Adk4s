@@ -1,5 +1,8 @@
 package org.adk4s.core.interrupt
 
+import org.adk4s.core.json.*
+import org.adk4s.core.json.given
+import smithy4s.Document
 import upickle.default.*
 
 /** Represents an agent's request to pause execution and await external input. */
@@ -23,7 +26,7 @@ object InterruptSignal:
   final case class Stateful(
     address: List[AddressSegment],
     info: String,
-    state: ujson.Value
+    state: JsonValue
   ) extends InterruptSignal derives ReadWriter:
     def withAddress(newAddress: List[AddressSegment]): Stateful =
       copy(address = newAddress)
@@ -32,7 +35,7 @@ object InterruptSignal:
   final case class Composite(
     address: List[AddressSegment],
     info: String,
-    state: ujson.Value,
+    state: JsonValue,
     children: List[InterruptSignal]
   ) extends InterruptSignal derives ReadWriter:
     def withAddress(newAddress: List[AddressSegment]): Composite =
@@ -41,8 +44,8 @@ object InterruptSignal:
   def simple(info: String): Simple =
     Simple(address = List.empty[AddressSegment], info = info)
 
-  def stateful(info: String, state: ujson.Value): Stateful =
+  def stateful(info: String, state: JsonValue): Stateful =
     Stateful(address = List.empty[AddressSegment], info = info, state = state)
 
-  def composite(info: String, state: ujson.Value, children: List[InterruptSignal]): Composite =
+  def composite(info: String, state: JsonValue, children: List[InterruptSignal]): Composite =
     Composite(address = List.empty[AddressSegment], info = info, state = state, children = children)

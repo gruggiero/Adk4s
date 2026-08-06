@@ -40,7 +40,7 @@ operational principle
 | parallel evaluation | fs2 `Stream.parEvalMap` (ordered — preserves devset order) |
 | per-example failure catching | `program(input).attempt.flatMap { ... metric(...).attempt.flatMap { ... } }` |
 | maxErrors cap | `Ref[F, Int]` failure counter + `F.raiseError(EvalError.TooManyErrors(...))` when count exceeds cap; fs2 scope cancellation cancels in-flight fibers |
-| mean aggregate | `rows.map(_.score.value).sum / rows.size` (0.0 for empty) |
+| mean aggregate | `rows.map(_.score.value).sum` divided by `rows.size` (0.0 for empty) (`Evaluate.scala`) |
 | trace = None | hardcoded `trace = None` in metric call |
 | error `TooManyErrors` | `EvalError.TooManyErrors(count: Int, max: Int, partial: Vector[EvalRow[I, O]])` |
 | config | `EvalConfig(parallelism: Int, failureScore: Double, maxErrors: Option[Int], seed: Long)` |

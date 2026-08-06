@@ -71,11 +71,11 @@ class EvalCoreTypeContract extends munit.FunSuite:
     assert(errors.isEmpty, s"Score must compile: $errors")
   }
 
-  test("TraceEntry and Trace signature: path + ujson values + forPredictor") {
+  test("TraceEntry and Trace signature: path + smithy4s.Document values + forPredictor") {
     val errors: String = compileErrors("""
-      import ujson.Value
+      import smithy4s.Document
       val entry: org.adk4s.eval.TraceEntry =
-        org.adk4s.eval.TraceEntry("pred_0", ujson.Str("in"), ujson.Str("out"))
+        org.adk4s.eval.TraceEntry("pred_0", Document.DString("in"), Document.DString("out"))
       val trace: org.adk4s.eval.Trace = org.adk4s.eval.Trace(Vector(entry))
       val sliced: org.adk4s.eval.Trace = trace.forPredictor("pred_0")
       val empty: org.adk4s.eval.Trace = org.adk4s.eval.Trace.empty

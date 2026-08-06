@@ -98,7 +98,7 @@ operational principle
 |---------|------|-------------|
 | `Example[I, O]` | case class | One evaluation datum: input, gold output, optional id, meta map |
 | `Score` | case class | `value: Double` + optional `feedback: String`; factory helpers `zero`, `bool`, `withFeedback` |
-| `TraceEntry` | case class | `(path: String, input: ujson.Value, output: ujson.Value)` — one predictor invocation record (data only) |
+| `TraceEntry` | case class | `(path: String, input: JsonValue, output: JsonValue)` — one predictor invocation record (data only); `JsonValue = smithy4s.Document` (immutable) |
 | `Trace` | case class | `entries: Vector[TraceEntry]` + `forPredictor(path): Trace` prefix filter |
 | `Metric[F, I, O]` | trait | `(Example[I, O], O, Option[Trace]) => F[Score]` — the metric contract with trace-toggle |
 | `EvalConfig` | case class | `parallelism: Int`, `failureScore: Double`, `maxErrors: Option[Int]`, `seed: Long` |
@@ -296,36 +296,73 @@ caller (the program and metric are responsible for their own retry).
 **When** the harness runs over a 20-example devset
 **Then** the counter reads exactly 20 after the run completes.
 
+### Requirement: TraceEntry field types migrate to JsonValue
+
+The `TraceEntry` case class SHALL carry `input: JsonValue` and `output: JsonValue` (immutable `smithy4s.Document`), NOT `ujson.Value`. The `path: String` field is unchanged. The `Trace.forPredictor` prefix filter is unchanged.
+
+**Given** a `TraceEntry(path = "program.predictor_0", input = DObject(Map("q" -> DString("hello"))), output = DObject(Map("a" -> DString("world"))))`
+**When** the entry's fields are inspected
+**Then** `input` and `output` are `JsonValue` (immutable `smithy4s.Document`), and the entry is serializable via `smithy4s.json.Json`
+
+**Rationale**: `TraceEntry` is a public type in `org.adk4s.eval` whose `ujson.Value` fields introduce an undeclared transitive dependency (upickle arrives via llm4s, but `adk4s-eval` MUST NOT depend on the llm4s LLM client per the Ring 2 purity rule in `build.sbt`). Migrating to `JsonValue` closes this gap and makes `adk4s-eval` genuinely `ujson`-free in its own types.
+
+#### Scenario: TraceEntry with JsonValue fields
+
+**Given** a predictor invocation with input `{"q": "hello"}` and output `{"a": "world"}`
+**When** a `TraceEntry` is constructed
+**Then** `input` is `DObject(Map("q" -> DString("hello")))` and `output` is `DObject(Map("a" -> DString("world")))` — both `JsonValue`
+
+#### Scenario: TraceEntry is immutable
+
+**Given** a `TraceEntry` with `input: JsonValue`
+**When** code attempts to mutate `input` in place
+**Then** compilation fails — `JsonValue` has no in-place `update` method
+
 ### Requirement: JSON export round-trip
 
 The JSON export SHALL include a `formatVersion: 1` field and a provided
-from-JSON reader SHALL re-read what the export wrote. The harness itself SHALL
-be codec-free — `Writer[I]`/`Writer[O]` are required on export only, not on
-the `Evaluate` call.
+from-JSON reader SHALL re-read what the export wrote. The export/import SHALL
+use `smithy4s.json.Json` for `JsonValue`-typed fields (`TraceEntry.input`/`output`),
+eliminating the unnecessary string round-trips (`writeJs(...).render()` on an
+already-built tree; `read[I](tree.render())` instead of `Value.transform`)
+present in the pre-change code. The harness itself SHALL be codec-free —
+`Writer[I]`/`Writer[O]` are required on export only, not on the `Evaluate` call.
 
 **Given** an `EvaluationResult[I, O]` with `Writer[I]` and `Writer[O]` in scope
 **When** `result.toJson` is called and then `EvaluationResult.fromJson` reads
 the JSON
 **Then** the round-tripped result equals the original (value equality on score,
-rows, outcomes, and feedback).
+rows, outcomes, and feedback), and the `TraceEntry.input`/`output` fields are
+`JsonValue` throughout.
 
 **Rationale**: Compiled-state persistence (Phase 2) and CI artifact storage
 depend on the export being re-readable. Versioning the format allows future
 migrations. Keeping `Evaluate` codec-free means callers without upickle
-writers can still run evaluations — export is opt-in.
+writers can still run evaluations — export is opt-in. Using `smithy4s.json.Json`
+directly eliminates the round-trips and makes the codec boundary explicit.
 
 #### Scenario: Round-trip with feedback and failures
 
-**Given** a result with 3 succeeded rows and 1 failed row, some with feedback
+**Given** a result with 3 succeeded rows and 1 failed row, some with feedback,
+and `TraceEntry` fields as `JsonValue`
 **When** `toJson` then `fromJson` round-trips
 **Then** the re-read result has the same score, the same number of rows, the
-same outcomes (Succeeded/Failed), and the same feedback strings.
+same outcomes (Succeeded/Failed), the same feedback strings, and the
+`TraceEntry.input`/`output` fields are `JsonValue` (not `ujson.Value`).
 
 #### Scenario: formatVersion present
 
 **Given** any `EvaluationResult`
 **When** `toJson` is called
 **Then** the JSON object has a `"formatVersion": 1` field at the top level.
+
+#### Scenario: No unnecessary string round-trip
+
+**Given** a `TraceEntry` with `input: JsonValue`
+**When** `toJson` serializes it
+**Then** the serialization uses `smithy4s.json.Json` directly on the `JsonValue`
+— no intermediate `ujson.Value` tree is built and no `.render()` call occurs on
+an already-built tree.
 
 ### Requirement: Determinism under parallelism
 
@@ -375,15 +412,24 @@ column contract is fixed so downstream tooling can parse it without guessing.
 ### Requirement: JSONL dataset reader
 
 The dataset reader SHALL read a JSONL file (one JSON object per line) into a
-`Vector[Example[I, O]]` using caller-supplied upickle readers for `I` and `O`.
-Malformed lines SHALL raise a descriptive error naming the line number.
+`Vector[Example[I, O]]` using caller-supplied readers for `I` and `O`. For
+`JsonValue`-typed fields, the reader SHALL use `smithy4s.json.Json.read`.
+Malformed lines SHALL raise a descriptive error naming the line number AND the
+actual cause (schema mismatch vs. JSON syntax error), NOT a generic "malformed
+JSON" message.
 
-**Given** a JSONL file with 20 valid lines and 1 malformed line at position 15
+**Given** a JSONL file with 20 valid lines and 1 line at position 15 that is
+valid JSON but does not match the expected schema
 **When** `Dataset.fromJsonl[I, O](path)` is called
-**Then** the reader raises an error naming line 15 as the malformed line.
+**Then** the reader raises an error naming line 15 AND identifying the cause as
+a schema mismatch (not "malformed JSON").
 
 **Rationale**: CI datasets are JSONL. The reader is ~20 lines and needed for
 the acceptance example. Malformed-line reporting prevents silent data loss.
+Distinguishing schema mismatch from JSON syntax error is a debugging aid for
+CI dataset maintainers — the pre-change code reported "malformed JSON" for any
+parse failure, including schema mismatches, which is misleading when the line
+is syntactically valid JSON that simply doesn't match the expected shape.
 
 #### Scenario: Valid JSONL
 
@@ -391,12 +437,20 @@ the acceptance example. Malformed-line reporting prevents silent data loss.
 **When** `Dataset.fromJsonl[I, O](path)` is called with matching readers
 **Then** the result is a `Vector` of 10 `Example` values.
 
-#### Scenario: Malformed line at position 15
+#### Scenario: Malformed JSON at position 15
 
 **Given** a 20-line JSONL file where line 15 is not valid JSON
 **When** `Dataset.fromJsonl[I, O](path)` is called
 **Then** the reader raises an error whose message names line 15 as the
-malformed line.
+malformed line and identifies the cause as a JSON syntax error.
+
+#### Scenario: Schema mismatch at position 15
+
+**Given** a 20-line JSONL file where line 15 is valid JSON but missing a
+required field
+**When** `Dataset.fromJsonl[I, O](path)` is called
+**Then** the reader raises an error whose message names line 15 and identifies
+the cause as a schema mismatch (not "malformed JSON").
 
 #### Scenario: Empty JSONL
 

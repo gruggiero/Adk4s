@@ -55,7 +55,7 @@ class DatasetSpec extends FunSuite:
       runIO(Dataset.fromJsonl[IO, String, String](path))
     assert(examples.isEmpty)
 
-  test("malformed line at position 15 → error naming line 15"):
+  test("malformed line at position 15 → error naming line 15 and JSON syntax error"):
     val lines: Vector[String] = (0 until 20).toVector.map(i =>
       if i == 14 then "this is not valid json"
       else s"""{"input":"input-$i","gold":"gold-$i","id":"$i"}"""
@@ -63,6 +63,21 @@ class DatasetSpec extends FunSuite:
     val path: String = writeTempFile(lines)
     val error: Throwable =
       runIOFailed(Dataset.fromJsonl[IO, String, String](path))
-    // The error message should mention line 15 (1-indexed)
+    // The error message should mention line 15 (1-indexed) and identify as JSON syntax error
     val msg: String = error.getMessage
     assert(msg.contains("15"), s"Error message should mention line 15, got: $msg")
+    assert(msg.contains("JSON syntax error"), s"Error message should identify JSON syntax error, got: $msg")
+
+  test("schema mismatch at position 15 → error naming line 15 and schema mismatch"):
+    val lines: Vector[String] = (0 until 20).toVector.map(i =>
+      if i == 14 then s"""{"input":"input-$i"}"""
+      else s"""{"input":"input-$i","gold":"gold-$i","id":"$i"}"""
+    )
+    val path: String = writeTempFile(lines)
+    val error: Throwable =
+      runIOFailed(Dataset.fromJsonl[IO, String, String](path))
+    // The error message should mention line 15 and identify as schema mismatch (not malformed JSON)
+    val msg: String = error.getMessage
+    assert(msg.contains("15"), s"Error message should mention line 15, got: $msg")
+    assert(msg.contains("Schema mismatch"), s"Error message should identify schema mismatch, got: $msg")
+    assert(!msg.contains("Malformed JSON"), s"Error message should NOT say 'Malformed JSON' for schema mismatch, got: $msg")

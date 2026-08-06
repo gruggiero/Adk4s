@@ -5,9 +5,11 @@ import cats.syntax.traverse.toTraverseOps
 import org.adk4s.core.component.{ AdkToolInfo, ChatModel, ChatModelConfig, InvokableTool, Tool }
 import org.adk4s.core.error.AgentInterruptedException
 import org.adk4s.core.interrupt.{ AddressSegment, AgentEventEmitter, InterruptResult, InterruptSignal }
+import org.adk4s.core.json.JsonValue
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.agent.{ AgentRunner, ReactAgent, RunResult }
 import org.adk4s.orchestration.interrupt.InMemoryCheckpointStore
+import smithy4s.Document
 import org.llm4s.llmconnect.model.{ AssistantMessage, Completion, Conversation, StreamedChunk, ToolCall, UserMessage }
 
 import java.util.UUID
@@ -65,7 +67,11 @@ object CompositeInterruptExample extends IOApp.Simple:
             InterruptSignal
               .stateful(
                 s"Payment approval needed: $$$amount to $recipient (exceeds threshold)",
-                ujson.Obj("amount" -> amount, "recipient" -> recipient, "threshold" -> 1000.0)
+                Document.obj(
+                  "amount" -> Document.fromDouble(amount),
+                  "recipient" -> Document.fromString(recipient),
+                  "threshold" -> Document.fromDouble(1000.0)
+                )
               )
               .withAddress(List(AddressSegment.Tool("process_payment")))
           )
@@ -105,7 +111,11 @@ object CompositeInterruptExample extends IOApp.Simple:
             InterruptSignal
               .stateful(
                 s"Email verification needed: sending to sensitive recipient $to",
-                ujson.Obj("to" -> to, "subject" -> subject, "reason" -> "sensitive_recipient")
+                Document.obj(
+                  "to" -> Document.fromString(to),
+                  "subject" -> Document.fromString(subject),
+                  "reason" -> Document.fromString("sensitive_recipient")
+                )
               )
               .withAddress(List(AddressSegment.Tool("send_email")))
           )

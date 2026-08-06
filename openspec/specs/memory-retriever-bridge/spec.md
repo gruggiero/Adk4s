@@ -33,19 +33,19 @@ The system SHALL provide `MemoryRetriever.apply[F[_]: Sync](memory: AgentMemory[
 
 ### Requirement: MemoryRetriever maps MemoryHit to Document with synthesized id and metadata
 
-The system SHALL map each `MemoryHit` to a `Document(id: String, content: String, metadata: Map[String, ujson.Value])` where `id` is a synthesized stable identifier, `content` is `hit.text`, and `metadata` carries `score` (as `ujson.Num`), `provenance` (as `ujson.Str` when present), and the entries of `hit.payload` (as `ujson.Str`).
+The system SHALL map each `MemoryHit` to a `Document(id: String, content: String, metadata: Map[String, JsonValue])` where `id` is a synthesized stable identifier, `content` is `hit.text`, and `metadata` carries `score` (as `JsonValue` `DNumber`), `provenance` (as `JsonValue` `DString` when present), and the entries of `hit.payload` (as `JsonValue` `DString`). The `metadata` value type SHALL be `JsonValue` (immutable), NOT `ujson.Value` (mutable).
 
 **Given** a `MemoryHit(text = "Alice works at Meta", score = 0.9, provenance = Some("g1"), payload = Map("role" -> "user"))`
 **When** `MemoryRetriever` maps it to a `Document`
-**Then** `content == "Alice works at Meta"`, `metadata("score") == ujson.Num(0.9)`, `metadata("provenance") == ujson.Str("g1")`, `metadata("role") == ujson.Str("user")`, and `id` is non-empty
+**Then** `content == "Alice works at Meta"`, `metadata("score") == JsonValue.DNumber(0.9)`, `metadata("provenance") == JsonValue.DString("g1")`, `metadata("role") == JsonValue.DString("user")`, and `id` is non-empty
 
-**Rationale**: `Document` (verified shape: `id: String, content: String, metadata: Map[String, ujson.Value]`) has no `score` field, so score must ride inside `metadata` as a ujson value. A synthesized `id` is required because `MemoryHit` has no identifier field.
+**Rationale**: `Document` (verified shape: `id: String, content: String, metadata: Map[String, ujson.Value]`) has no `score` field, so score must ride inside `metadata`. The value type migrates to `JsonValue` so `Document` — a public API type — no longer carries the mutable `ujson` AST or the undeclared transitive dependency. A synthesized `id` is required because `MemoryHit` has no identifier field.
 
-#### Scenario: score carried as ujson.Num
+#### Scenario: score carried as JsonValue DNumber
 
 **Given** a hit with `score = 0.5`
 **When** mapped to `Document`
-**Then** `metadata("score")` is `ujson.Num(0.5)`
+**Then** `metadata("score")` is `JsonValue.DNumber(0.5)` (a `smithy4s.Document.DNumber`, not `ujson.Num`)
 
 #### Scenario: provenance omitted when None
 
@@ -53,17 +53,23 @@ The system SHALL map each `MemoryHit` to a `Document(id: String, content: String
 **When** mapped to `Document`
 **Then** `metadata` does not contain the key "provenance"
 
-#### Scenario: payload entries become ujson.Str values
+#### Scenario: payload entries become JsonValue DString values
 
 **Given** a hit with `payload = Map("k1" -> "v1")`
 **When** mapped to `Document`
-**Then** `metadata("k1") == ujson.Str("v1")`
+**Then** `metadata("k1") == JsonValue.DString("v1")`
 
 #### Scenario: synthesized id is stable for the same hit
 
 **Given** the same `MemoryHit` mapped twice
 **When** both `Document.id` values are compared
 **Then** they are equal (the id is a pure function of the hit's fields, not random)
+
+#### Scenario: metadata is immutable
+
+**Given** a `Document` produced by `MemoryRetriever`
+**When** code attempts to mutate `metadata` in place
+**Then** compilation fails — `Map[String, JsonValue]` is an immutable `Map` of immutable values; no in-place `update` exists
 
 ### Requirement: MemoryRetriever honors RetrieverConfig.topK as an upper bound
 

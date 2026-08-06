@@ -5,9 +5,11 @@ import cats.syntax.traverse.toTraverseOps
 import org.adk4s.core.component.{ AdkToolInfo, Agent, AgentTool, ChatModel, ChatModelConfig, InvokableTool }
 import org.adk4s.core.error.AgentInterruptedException
 import org.adk4s.core.interrupt.{ AddressSegment, AgentEventEmitter, InterruptResult, InterruptSignal }
+import org.adk4s.core.json.JsonValue
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.agent.{ AgentRunner, ReactAgent, RunResult }
 import org.adk4s.orchestration.interrupt.InMemoryCheckpointStore
+import smithy4s.Document
 import org.llm4s.llmconnect.model.{
   AssistantMessage,
   Completion,
@@ -81,13 +83,13 @@ object StatefulResumeExample extends IOApp.Simple:
               InterruptSignal
                 .stateful(
                   s"Approval needed: Migrate $dataset to $destination (1000 records)?",
-                  ujson.Obj(
-                    "dataset"          -> dataset,
-                    "destination"      -> destination,
-                    "recordCount"      -> 1000,
-                    "currentStep"      -> 2,
-                    "totalSteps"       -> 3,
-                    "validationPassed" -> true
+                  Document.obj(
+                    "dataset"          -> Document.fromString(dataset),
+                    "destination"      -> Document.fromString(destination),
+                    "recordCount"      -> Document.fromInt(1000),
+                    "currentStep"      -> Document.fromInt(2),
+                    "totalSteps"       -> Document.fromInt(3),
+                    "validationPassed" -> Document.fromBoolean(true)
                   )
                 )
                 .withAddress(List(AddressSegment.Tool("data_migration")))
@@ -299,12 +301,12 @@ object StatefulResumeExample extends IOApp.Simple:
                   IO.println(s"  Address: ${stateful.address.map(_.name).mkString(" > ")}") *>
                   IO.println("") *>
                   IO.println("State Saved:") *>
-                  IO.println(s"  Dataset: ${stateful.state.obj("dataset").str}") *>
-                  IO.println(s"  Destination: ${stateful.state.obj("destination").str}") *>
-                  IO.println(s"  Record Count: ${stateful.state.obj("recordCount").num.toInt}") *>
-                  IO.println(s"  Current Step: ${stateful.state.obj("currentStep").num.toInt}/3") *>
+                  IO.println(s"  Dataset: ${docStr(stateful.state, "dataset")}") *>
+                  IO.println(s"  Destination: ${docStr(stateful.state, "destination")}") *>
+                  IO.println(s"  Record Count: ${docNum(stateful.state, "recordCount").toInt}") *>
+                  IO.println(s"  Current Step: ${docNum(stateful.state, "currentStep").toInt}/3") *>
                   IO.println(
-                    s"  Validation: ${if stateful.state.obj("validationPassed").bool then "PASSED" else "FAILED"}"
+                    s"  Validation: ${if docBool(stateful.state, "validationPassed") then "PASSED" else "FAILED"}"
                   )
 
               case composite: InterruptSignal.Composite =>
@@ -321,12 +323,12 @@ object StatefulResumeExample extends IOApp.Simple:
                           IO.println(s"  Address: ${stateful.address.map(_.name).mkString(" > ")}") *>
                           IO.println("") *>
                           IO.println("State Saved:") *>
-                          IO.println(s"  Dataset: ${stateful.state.obj("dataset").str}") *>
-                          IO.println(s"  Destination: ${stateful.state.obj("destination").str}") *>
-                          IO.println(s"  Record Count: ${stateful.state.obj("recordCount").num.toInt}") *>
-                          IO.println(s"  Current Step: ${stateful.state.obj("currentStep").num.toInt}/3") *>
+                          IO.println(s"  Dataset: ${docStr(stateful.state, "dataset")}") *>
+                          IO.println(s"  Destination: ${docStr(stateful.state, "destination")}") *>
+                          IO.println(s"  Record Count: ${docNum(stateful.state, "recordCount").toInt}") *>
+                          IO.println(s"  Current Step: ${docNum(stateful.state, "currentStep").toInt}/3") *>
                           IO.println(
-                            s"  Validation: ${if stateful.state.obj("validationPassed").bool then "PASSED" else "FAILED"}"
+                            s"  Validation: ${if docBool(stateful.state, "validationPassed") then "PASSED" else "FAILED"}"
                           )
                       case other =>
                         IO.println(s"  - ${other.info}")
@@ -427,3 +429,25 @@ object StatefulResumeExample extends IOApp.Simple:
 
       _ <- IO.println("\nStateful resume example complete.")
     yield ()
+
+  // --- Helpers for extracting fields from smithy4s.Document state ---
+
+  private def docField(doc: Document, key: String): Option[Document] =
+    doc match
+      case Document.DObject(fields) => fields.get(key)
+      case _                        => None
+
+  private def docStr(doc: Document, key: String): String =
+    docField(doc, key) match
+      case Some(Document.DString(s)) => s
+      case _                         => "?"
+
+  private def docNum(doc: Document, key: String): BigDecimal =
+    docField(doc, key) match
+      case Some(Document.DNumber(n)) => n
+      case _                         => BigDecimal(0)
+
+  private def docBool(doc: Document, key: String): Boolean =
+    docField(doc, key) match
+      case Some(Document.DBoolean(b)) => b
+      case _                          => false

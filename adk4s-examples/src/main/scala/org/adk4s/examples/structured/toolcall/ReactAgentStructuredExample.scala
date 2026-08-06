@@ -6,6 +6,7 @@ import cats.syntax.foldable.*
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.tools.{ StructuredToolCall, ToolSchema, TypedTool }
 import org.adk4s.examples.eino.common.ExampleUtils
+import smithy4s.schema.Schema as Smithy4sSchema
 
 /**
  * Demonstrates StructuredToolCall ReAct agent pattern with typed tools.
@@ -30,6 +31,33 @@ object ReactAgentStructuredExample extends IOApp.Simple:
 
   case class WeatherInput(city: String, units: String)
   case class WeatherResult(temperature: Double, condition: String, city: String)
+
+  // Smithy4s schemas (for smithy4s-based decode/encode)
+  given s4sCalcIn: Smithy4sSchema[CalculatorInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[CalculatorInput]("operation", _.operation),
+    smithy4s.Schema.double.required[CalculatorInput]("x", _.x),
+    smithy4s.Schema.double.required[CalculatorInput]("y", _.y)
+  )(CalculatorInput.apply)
+  given s4sCalcOut: Smithy4sSchema[CalculatorResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.double.required[CalculatorResult]("result", _.result),
+    smithy4s.Schema.string.required[CalculatorResult]("explanation", _.explanation)
+  )(CalculatorResult.apply)
+  given s4sSearchIn: Smithy4sSchema[SearchInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[SearchInput]("query", _.query)
+  )(SearchInput.apply)
+  given s4sSearchOut: Smithy4sSchema[SearchResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[SearchResult]("topResult", _.topResult),
+    smithy4s.Schema.double.required[SearchResult]("relevance", _.relevance)
+  )(SearchResult.apply)
+  given s4sWeatherIn: Smithy4sSchema[WeatherInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[WeatherInput]("city", _.city),
+    smithy4s.Schema.string.required[WeatherInput]("units", _.units)
+  )(WeatherInput.apply)
+  given s4sWeatherOut: Smithy4sSchema[WeatherResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.double.required[WeatherResult]("temperature", _.temperature),
+    smithy4s.Schema.string.required[WeatherResult]("condition", _.condition),
+    smithy4s.Schema.string.required[WeatherResult]("city", _.city)
+  )(WeatherResult.apply)
 
   // Derive ToolSchema instances automatically
   given ToolSchema[CalculatorInput]  = ToolSchema.derive[CalculatorInput]

@@ -9,6 +9,7 @@ import org.adk4s.core.interrupt.AgentEventEmitter
 import org.adk4s.core.interrupt.InterruptSignal
 import org.adk4s.core.interrupt.RunPath
 import org.adk4s.core.interrupt.RunStep
+import org.adk4s.core.json.*
 import org.llm4s.llmconnect.model.AssistantMessage
 import org.llm4s.llmconnect.model.Message
 import org.llm4s.llmconnect.model.UserMessage
@@ -138,10 +139,11 @@ final class AgentTool private (
         stateRef.set(Some(innerState)) *> {
           // Wrap child interrupt as Composite with AgentTool's own state
           val agentToolStateJson: ujson.Value = upickle.default.writeJs(innerState)
+          val state: JsonValue = JsonValueCodec.fromUjson(agentToolStateJson)
           val compositeSignal: InterruptSignal.Composite = InterruptSignal.Composite(
             address = List(AddressSegment.Agent(innerAgent.name)),
             info = s"AgentTool '${innerAgent.name}' interrupted",
-            state = agentToolStateJson,
+            state = state,
             children = List(interrupted.signal)
           )
           scopedEmitter.fold(IO.unit)(_.emit(AgentEvent.Interrupted(RunPath.of(innerAgent.name), compositeSignal))) *>

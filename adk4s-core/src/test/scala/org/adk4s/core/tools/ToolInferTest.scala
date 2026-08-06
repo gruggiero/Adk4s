@@ -2,12 +2,22 @@ package org.adk4s.core.tools
 
 import cats.effect.IO
 import munit.CatsEffectSuite
+import smithy4s.schema.Schema as Smithy4sSchema
 
 class ToolInferTest extends CatsEffectSuite:
 
   final case class BookingArgs(destination: String, passengers: Int, premium: Boolean)
+  given s4sBookingArgs: Smithy4sSchema[BookingArgs] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[BookingArgs]("destination", _.destination),
+    smithy4s.Schema.int.required[BookingArgs]("passengers", _.passengers),
+    smithy4s.Schema.boolean.required[BookingArgs]("premium", _.premium)
+  )(BookingArgs.apply)
 
   final case class SearchArgs(query: String, maxResults: Option[Int])
+  given s4sSearchArgs: Smithy4sSchema[SearchArgs] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[SearchArgs]("query", _.query),
+    smithy4s.Schema.int.optional[SearchArgs]("maxResults", _.maxResults)
+  )(SearchArgs.apply)
 
   test("schemaFor derives correct JSON Schema for flat case class") {
     val schema: ujson.Value = ToolInfer.schemaFor[BookingArgs]

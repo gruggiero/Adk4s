@@ -7,6 +7,7 @@ import hedgehog.munit.HedgehogSuite
 import munit.FunSuite
 import org.adk4s.structured.core.*
 import org.adk4s.structured.core.DynamicTypeBuilder.*
+import smithy4s.Document
 import smithy4s.schema.Schema as Smithy4sSchema
 
 // spec: dynamic-type-builder — Test oracle
@@ -89,4 +90,67 @@ class DynamicTypeBuilderSpec extends HedgehogSuite:
     DynamicValue.parse("true") match
       case Right(dyn) => assertEquals(dyn.asBoolean, Some(true))
       case Left(err)  => fail(s"Parse failed: $err")
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // spec: dynamic-type-builder — Property: Long precision preserved in parse
+  // ORACLE POLARITY: RED before code change (ujson.Num truncates Longs > 2^53)
+  // → GREEN after code change (smithy4s.json.Json.readDocument preserves BigDecimal)
+  // ════════════════════════════════════════════════════════════════════════
+
+  property("Long precision preserved in parse") {
+    val twoPow53: Long = 1L << 53
+    val genLargeLong: Gen[Long] = Gen.choice1(
+      Gen.long(Range.linear(twoPow53 + 1, Long.MaxValue)),
+      Gen.long(Range.linear(Long.MinValue, -(twoPow53 + 1)))
+    )
+    genLargeLong.forAll.map { (n: Long) =>
+      val jsonString: String = n.toString
+      DynamicValue.parse(jsonString) match
+        case Right(dyn) => dyn.document ==== Document.DNumber(BigDecimal(n))
+        case Left(err)  => false ==== true
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // spec: dynamic-type-builder — Scenario: Null parse
+  // ════════════════════════════════════════════════════════════════════════
+
+  test("DynamicValue.parse parses null as DNull") {
+    DynamicValue.parse("null") match
+      case Right(dyn) => assertEquals(dyn.document, Document.DNull)
+      case Left(err)  => fail(s"Parse failed: $err")
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // spec: dynamic-type-builder — Scenario: Object parse (explicit fixture)
+  // ════════════════════════════════════════════════════════════════════════
+
+  test("DynamicValue.parse parses object with string and number fields") {
+    DynamicValue.parse("""{"name": "John", "age": 42}""") match
+      case Right(dyn) =>
+        assertEquals(dyn.field("name").flatMap(_.asString), Some("John"))
+        assertEquals(dyn.field("age").flatMap(_.asInt), Some(42))
+      case Left(err) => fail(s"Parse failed: $err")
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // spec: dynamic-type-builder — Scenario: Array parse (explicit fixture)
+  // ════════════════════════════════════════════════════════════════════════
+
+  test("DynamicValue.parse parses array of numbers") {
+    DynamicValue.parse("[1, 2, 3]") match
+      case Right(dyn) =>
+        assertEquals(dyn.asArray.map(_.length), Some(3))
+      case Left(err) => fail(s"Parse failed: $err")
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // spec: dynamic-type-builder — Typed contract pin: signature unchanged
+  // The parse method must return Either[String, DynamicValue].
+  // ════════════════════════════════════════════════════════════════════════
+
+  test("DynamicValue.parse signature is String => Either[String, DynamicValue]") {
+    val result: Either[String, DynamicValue] = DynamicValue.parse("null")
+    assert(result.isRight)
   }

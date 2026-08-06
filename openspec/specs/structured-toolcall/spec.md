@@ -5,7 +5,13 @@ TBD - created by archiving change add-structured-toolcall. Update Purpose after 
 ## Requirements
 ### Requirement: ToolSchema Typeclass
 
-The system SHALL provide a `ToolSchema[A]` typeclass for defining tool argument and result schemas with JSON encoding and decoding capabilities.
+The system SHALL provide a `ToolSchema[A]` typeclass for defining tool argument and result schemas with JSON encoding and decoding capabilities. The `ToolSchema.derive` method SHALL derive both the JSON Schema (for `AdkToolInfo.parameters`) and the decoder/encoder from a smithy4s `Schema[A]` (or `JsonCodecMaker.make[A]` if a case class has no natural Smithy shape), matching `structured-llm`'s existing `Schema[A]` design so there is one schema system instead of two. The derivation SHALL NOT use `asInstanceOf` (removing the four existing sites in `ToolInfer`/`ToolSchema.derive`), SHALL support nested case classes, collections, and enums (beyond the current six primitives + `Option[primitive]`), and SHALL NOT have a silent `case other => ujson.Str(other.toString)` fallback.
+
+**Given** a case class `WeatherRequest(location: String, unit: String, days: Option[Int], tags: List[String])` with nested types and collections
+**When** `ToolSchema.derive[WeatherRequest]` is called
+**Then** a `ToolSchema[WeatherRequest]` is derived that decodes JSON with `location`, `unit`, optional `days`, and `tags` array — no `asInstanceOf`, no silent string fallback, and `ToolSchemaError`'s specific cases are populated on failure
+
+**Rationale**: The pre-change `ToolInfer`/`ToolSchema.derive` uses four `asInstanceOf` casts (against the project's "NEVER use asInstanceOf" rule), supports only six primitive types + `Option[primitive]` (no nested case classes, no collections, no enums), has a silent `case other => ujson.Str(other.toString)` fallback that hides type errors, and discards `ToolSchemaError`'s rich cases (`MissingRequiredField`, `TypeMismatch`, `InvalidEnumValue`, each carrying a `path`) in favor of a flattened `getMessage` string. The fix unifies the two schema systems (ADK `Schema[A]` + tool codec) on smithy4s.
 
 #### Scenario: Create ToolSchema instance
 - **GIVEN** a case class type representing tool arguments
@@ -17,20 +23,45 @@ The system SHALL provide a `ToolSchema[A]` typeclass for defining tool argument 
 - **WHEN** the decoder is applied to the JSON
 - **THEN** a `Right[A]` containing the decoded value is returned
 
-#### Scenario: Decode invalid JSON returns error
-- **GIVEN** a `ToolSchema[A]` instance and JSON with missing required fields
-- **WHEN** the decoder is applied to the JSON
-- **THEN** a `Left[ToolSchemaError]` with validation details is returned
+#### Scenario: Decode invalid JSON returns specific ToolSchemaError
+
+**Given** a `ToolSchema[A]` instance and JSON with a missing required field "location"
+**When** the decoder is applied to the JSON
+**Then** a `Left[ToolSchemaError.MissingRequiredField]` is returned carrying the field path `["location"]` — NOT a flattened `getMessage` string
+
+#### Scenario: Type mismatch produces ToolSchemaError.TypeMismatch
+
+**Given** JSON with a string value `"hot"` where `Int` is expected for field `temperature`
+**When** the decoder is applied
+**Then** a `Left[ToolSchemaError.TypeMismatch]` is returned carrying the field path `["temperature"]`, the expected type `Int`, and the actual value
+
+#### Scenario: Invalid enum value produces ToolSchemaError.InvalidEnumValue
+
+**Given** JSON with a value `"Pending"` not in the allowed enum set `["Active", "Inactive"]`
+**When** the decoder is applied
+**Then** a `Left[ToolSchemaError.InvalidEnumValue]` is returned carrying the field path, the invalid value `"Pending"`, and the allowed values
 
 #### Scenario: Encode typed value to JSON
 - **GIVEN** a `ToolSchema[A]` instance and a typed value
 - **WHEN** the encoder is applied
-- **THEN** a `ujson.Value` representing the JSON is returned
+- **THEN** a `ujson.Value` representing the JSON is returned (unchanged — `jsonSchema` and encoder output stay `ujson.Value` because they feed `AdkToolInfo.parameters` → `org.llm4s.toolapi`, which is boundary data)
 
 #### Scenario: Access JSON schema definition
 - **GIVEN** a `ToolSchema[A]` instance
 - **WHEN** `jsonSchema` is accessed
-- **THEN** the JSON schema definition is returned as `ujson.Value`
+- **THEN** the JSON schema definition is returned as `ujson.Value` (unchanged — boundary data for `AdkToolInfo.parameters`)
+
+#### Scenario: Derive schema for nested case class with collections
+
+**Given** a case class `Order(items: List[Item], total: BigDecimal)` where `Item` is a nested case class
+**When** `ToolSchema.derive[Order]` is called
+**Then** the derived schema decodes JSON with a `items` array of nested `Item` objects and a `total` `BigDecimal` — no `asInstanceOf`, no silent fallback, no six-primitive limit
+
+#### Scenario: No silent string fallback
+
+**Given** a JSON value of an unexpected type for a field
+**When** the decoder is applied
+**Then** a `Left[ToolSchemaError]` is returned (specific case) — NOT a `Right` with the value silently converted via `other.toString`
 
 ### Requirement: StructuredToolCall Trait
 
@@ -106,22 +137,37 @@ The system SHALL provide a sealed error ADT for all structured tool call failure
 
 ### Requirement: ToolSchemaError
 
-The system SHALL provide error types for schema-level validation and decoding failures.
+The system SHALL provide error types for schema-level validation and decoding failures. The decoder SHALL populate the specific cases (`MissingRequiredField`, `TypeMismatch`, `InvalidEnumValue`, `DecodingFailed`) with field paths and contextual details, NOT a flattened `getMessage` string. Every match over `ToolSchemaError` SHALL be exhaustive — no catch-all arm is permitted (enforced by the project's exhaustiveness escalation).
+
+**Given** JSON missing a required field defined in the schema
+**When** decoding is attempted
+**Then** a `ToolSchemaError.MissingRequiredField` is returned carrying the field path
+
+**Rationale**: `ToolSchemaError`'s sealed hierarchy already defines `MissingRequiredField`, `TypeMismatch`, `InvalidEnumValue`, and `DecodingFailed` (verified in the concept inventory — 4 variants). The pre-change decoder discards these in favor of a flattened `getMessage` string, hiding the structured error information that callers and debuggers need. Populating the specific cases makes the error algebra useful and enables callers to pattern-match on the failure kind.
 
 #### Scenario: Missing required field error
-- **GIVEN** JSON missing a required field defined in the schema
-- **WHEN** decoding is attempted
-- **THEN** a `ToolSchemaError` indicating the missing field is returned
+
+**Given** JSON missing a required field "location" defined in the schema
+**When** decoding is attempted
+**Then** a `ToolSchemaError.MissingRequiredField(path = List("location"))` is returned
 
 #### Scenario: Type mismatch error
-- **GIVEN** JSON with a string value where number is expected
-- **WHEN** decoding is attempted
-- **THEN** a `ToolSchemaError` indicating the type mismatch is returned
+
+**Given** JSON with a string value where number is expected at field "temperature"
+**When** decoding is attempted
+**Then** a `ToolSchemaError.TypeMismatch(path = List("temperature"), expected = "Int", actual = "String")` is returned
 
 #### Scenario: Invalid enum value error
-- **GIVEN** JSON with a value not in the allowed enum set
-- **WHEN** decoding is attempted
-- **THEN** a `ToolSchemaError` indicating invalid enum value is returned
+
+**Given** JSON with a value not in the allowed enum set at field "status"
+**When** decoding is attempted
+**Then** a `ToolSchemaError.InvalidEnumValue(path = List("status"), value = "Pending", allowed = List("Active", "Inactive"))` is returned
+
+#### Scenario: Decoding failure (catch-all for smithy4s decode errors)
+
+**Given** a JSON value that fails smithy4s decoding for a reason not covered by the above cases
+**When** decoding is attempted
+**Then** a `ToolSchemaError.DecodingFailed(path, message)` is returned carrying the smithy4s error message
 
 ### Requirement: StructuredToolFunction Wrapper
 

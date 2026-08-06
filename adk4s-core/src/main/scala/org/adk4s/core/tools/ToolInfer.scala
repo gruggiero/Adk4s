@@ -4,18 +4,23 @@ import cats.effect.IO
 import org.adk4s.core.component.AdkToolInfo
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.component.Tool
+import smithy4s.Blob
+import smithy4s.json.Json
+import smithy4s.schema.Schema as Smithy4sSchema
 import scala.deriving.Mirror
 import scala.compiletime.constValueTuple
 import scala.compiletime.erasedValue
-import scala.compiletime.summonInline
 
 /**
  * Compile-time tool schema inference from Scala 3 case classes.
  *
  * Eino equivalent: jsonschema package that derives JSON Schema from Go structs.
- * In Scala 3, we use Mirror + inline macros to derive schemas at compile time.
+ * In Scala 3, we use Mirror + inline macros to derive JSON Schema at compile time,
+ * and smithy4s `Schema[A]` for decoding/encoding (no `asInstanceOf`).
  *
- * Supports: String, Int, Double, Boolean, Long, Float, Option[T] field types.
+ * Supports: String, Int, Double, Boolean, Long, Float, Option[T] field types
+ * for JSON Schema generation. Decoding/encoding uses smithy4s, which supports
+ * nested case classes, collections, enums, and BigDecimal.
  */
 object ToolInfer:
 
@@ -25,6 +30,7 @@ object ToolInfer:
    * Usage:
    * ```
    * case class BookingArgs(destination: String, passengers: Int, premium: Boolean)
+   * given Smithy4sSchema[BookingArgs] = smithy4s.Schema.derive[BookingArgs]
    * val tool = ToolInfer.infer[BookingArgs]("book", "Book a trip") { args =>
    *   IO.pure(Right(ujson.Str(s"Booked to ${args.destination}")))
    * }
@@ -35,7 +41,7 @@ object ToolInfer:
     description: String
   )(
     fn: I => IO[Either[String, ujson.Value]]
-  )(using m: Mirror.ProductOf[I]): InvokableTool[IO] =
+  )(using m: Mirror.ProductOf[I], smithySchema: Smithy4sSchema[I]): InvokableTool[IO] =
     val schema: ujson.Value = deriveSchema[I]
     val decoder: ujson.Value => Either[String, I] = (json: ujson.Value) => decodeProduct[I](json)
     createTool(name, description, schema, decoder, fn)
@@ -72,7 +78,7 @@ object ToolInfer:
 
       def asToolFunction: Option[org.llm4s.toolapi.ToolFunction[Any, Any]] = None
 
-  // --- Schema derivation ---
+  // --- Schema derivation (JSON Schema for LLM prompt) ---
 
   inline def deriveSchema[I <: Product](using m: Mirror.ProductOf[I]): ujson.Value =
     val fieldNames: List[String] = getFieldNames[m.MirroredElemLabels]
@@ -88,14 +94,14 @@ object ToolInfer:
       "required" -> ujson.Arr(requiredFields.map(ujson.Str.apply)*)
     )
 
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline def getFieldNames[T <: Tuple]: List[String] =
     inline erasedValue[T] match
       case _: EmptyTuple => Nil
       case _: (head *: tail) =>
         inline erasedValue[head] match
           case _: String =>
-            scala.compiletime.constValue[head].asInstanceOf[String] :: getFieldNames[tail]
+            val name: String = scala.compiletime.constValue[head].toString
+            name :: getFieldNames[tail]
 
   inline def getFieldSchemas[T <: Tuple]: List[ujson.Value] =
     inline erasedValue[T] match
@@ -126,39 +132,17 @@ object ToolInfer:
       case _: Option[Double]  => ujson.Obj("type" -> "number")
       case _: Option[Boolean] => ujson.Obj("type" -> "boolean")
 
-  // --- Decoding ---
+  // --- Decoding (via smithy4s — no asInstanceOf) ---
 
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  inline def decodeProduct[I <: Product](json: ujson.Value)(using m: Mirror.ProductOf[I]): Either[String, I] =
-    val fieldNames: List[String] = getFieldNames[m.MirroredElemLabels]
-    try
-      val values: m.MirroredElemTypes = decodeFields[m.MirroredElemTypes](json, fieldNames).asInstanceOf[m.MirroredElemTypes]
-      Right(m.fromTuple(values))
-    catch
-      case e: Exception => Left(e.getMessage)
-
-  inline def decodeFields[T <: Tuple](json: ujson.Value, names: List[String]): Tuple =
-    inline erasedValue[T] match
-      case _: EmptyTuple => EmptyTuple
-      case _: (head *: tail) =>
-        names match
-          case name :: rest =>
-            val value: head = decodeField[head](json, name)
-            value *: decodeFields[tail](json, rest)
-          case Nil => EmptyTuple
-
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  inline def decodeField[T](json: ujson.Value, name: String): T =
-    inline erasedValue[T] match
-      case _: String  => json(name).str.asInstanceOf[T]
-      case _: Int     => json(name).num.toInt.asInstanceOf[T]
-      case _: Long    => json(name).num.toLong.asInstanceOf[T]
-      case _: Float   => json(name).num.toFloat.asInstanceOf[T]
-      case _: Double  => json(name).num.asInstanceOf[T]
-      case _: Boolean => json(name).bool.asInstanceOf[T]
-      case _: Option[String]  => json.obj.get(name).flatMap(v => if v.isNull then None else Some(v.str)).asInstanceOf[T]
-      case _: Option[Int]     => json.obj.get(name).flatMap(v => if v.isNull then None else Some(v.num.toInt)).asInstanceOf[T]
-      case _: Option[Long]    => json.obj.get(name).flatMap(v => if v.isNull then None else Some(v.num.toLong)).asInstanceOf[T]
-      case _: Option[Float]   => json.obj.get(name).flatMap(v => if v.isNull then None else Some(v.num.toFloat)).asInstanceOf[T]
-      case _: Option[Double]  => json.obj.get(name).flatMap(v => if v.isNull then None else Some(v.num)).asInstanceOf[T]
-      case _: Option[Boolean] => json.obj.get(name).flatMap(v => if v.isNull then None else Some(v.bool)).asInstanceOf[T]
+  /** Decode a JSON value into a product type using smithy4s.
+    *
+    * This delegates to `smithy4s.json.Json.read`, which supports nested case
+    * classes, collections, enums, and BigDecimal — no `asInstanceOf`, no
+    * silent string fallback, no six-primitive limit.
+    */
+  inline def decodeProduct[I <: Product](json: ujson.Value)(using m: Mirror.ProductOf[I], smithySchema: Smithy4sSchema[I]): Either[String, I] =
+    val jsonString: String = json.render()
+    val blob: Blob = Blob(jsonString)
+    Json.read[I](blob)(using smithySchema) match
+      case Right(value) => Right(value)
+      case Left(error)  => Left(error.getMessage)

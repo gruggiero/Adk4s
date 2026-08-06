@@ -282,6 +282,7 @@ object StructuredToolCall:
     impl: I => F[O]
   )(using
     m: scala.deriving.Mirror.ProductOf[I],
+    smithySchema: smithy4s.schema.Schema[I],
     outputSchema: ToolSchema[O],
     F: cats.effect.Sync[F]
   ): TypedTool[F, I, O] =

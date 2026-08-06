@@ -4,6 +4,8 @@ import cats.effect.kernel.Sync
 import cats.syntax.functor.toFunctorOps
 import fs2.Stream
 import org.adk4s.core.component.{ Document, Retriever, RetrieverConfig }
+import org.adk4s.core.json.*
+import smithy4s.Document as S4sDocument
 import java.security.MessageDigest
 
 /**
@@ -15,9 +17,9 @@ import java.security.MessageDigest
  *
  * Each `MemoryHit` is mapped to a `Document` via [[toDocument]]:
  *   - `content` = `hit.text`
- *   - `metadata("score")` = `ujson.Num(hit.score)`
- *   - `metadata("provenance")` = `ujson.Str(...)` when present (omitted when `None`)
- *   - `metadata` entries from `hit.payload` as `ujson.Str`
+ *   - `metadata("score")` = `DNumber(hit.score)`
+ *   - `metadata("provenance")` = `DString(...)` when present (omitted when `None`)
+ *   - `metadata` entries from `hit.payload` as `DString`
  *   - `id` is a deterministic hash of the hit's fields (pure function)
  */
 object MemoryRetriever:
@@ -50,16 +52,16 @@ object MemoryRetriever:
    * Pure mapping from `MemoryHit` to `Document`.
    *
    * Synthesizes a stable `id` from the hit's fields, packs `score` /
-   * `provenance` / `payload` into `metadata` as ujson values.
+   * `provenance` / `payload` into `metadata` as JsonValue (smithy4s.Document) values.
    */
   private val reservedKeys: Set[String] = Set("score", "provenance")
 
   def toDocument(hit: MemoryHit): Document =
-    val payloadMeta: Map[String, ujson.Value] =
-      hit.payload.view.filterKeys(k => !reservedKeys.contains(k)).mapValues(ujson.Str(_)).toMap
-    val withScore: Map[String, ujson.Value]   = payloadMeta.updated("score", ujson.Num(hit.score))
-    val metadata: Map[String, ujson.Value]    = hit.provenance match
-      case Some(p) => withScore.updated("provenance", ujson.Str(p))
+    val payloadMeta: Map[String, JsonValue] =
+      hit.payload.view.filterKeys(k => !reservedKeys.contains(k)).mapValues(v => S4sDocument.DString(v)).toMap
+    val withScore: Map[String, JsonValue]   = payloadMeta.updated("score", S4sDocument.DNumber(BigDecimal(hit.score)))
+    val metadata: Map[String, JsonValue]    = hit.provenance match
+      case Some(p) => withScore.updated("provenance", S4sDocument.DString(p))
       case None    => withScore
     Document(id = synthesizeId(hit), content = hit.text, metadata = metadata)
 

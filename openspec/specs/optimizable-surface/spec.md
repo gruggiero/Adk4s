@@ -5,13 +5,13 @@ TBD - created by archiving change add-optimizable-surface. Update Purpose after 
 ## Requirements
 ### Requirement: predictor-state is pure immutable data
 
-The system SHALL provide a predictor-state value with three fields: an instructions string, a list of demo examples (each an input/output pair of JSON values), and a frozen flag. The state SHALL be plain immutable data with no behavior.
+The system SHALL provide a predictor-state value with three fields: an instructions string, a list of demo examples (each an input/output pair of `JsonValue` values), and a frozen flag. The state SHALL be plain immutable data with no behavior. The `Demo` case class SHALL carry `input: JsonValue` and `output: JsonValue` (immutable `smithy4s.Document`), NOT `ujson.Value` (mutable). The `Demo` scaladoc's existing claim of "plain immutable data" SHALL become true (it is currently false because `ujson.Value` is mutable).
 
-**Given** a predictor-state with instructions "Answer the question", one demo, and frozen flag false
+**Given** a predictor-state with instructions "Answer the question", one demo with `input: JsonValue = DObject(Map("q" -> DString("hello")))` and `output: JsonValue = DString("world")`, and frozen flag false
 **When** the state's fields are read
-**Then** the instructions string is "Answer the question", the demo list has one example, and the frozen flag is false
+**Then** the instructions string is "Answer the question", the demo list has one example with `JsonValue` fields (immutable), and the frozen flag is false
 
-**Rationale**: This is the data every optimizer reads and writes. It must be plain immutable data (serializable-ready for Phase 2 persistence) with no behavior, so optimizers can manipulate it without knowing the predictor's concrete type.
+**Rationale**: This is the data every optimizer reads and writes. It must be plain immutable data (serializable-ready for Phase 2 persistence) with no behavior, so optimizers can manipulate it without knowing the predictor's concrete type. `Demo`'s own scaladoc claims "plain immutable data," but `ujson.Value` is mutable (`Obj` wraps `LinkedHashMap`, `Arr` wraps `mutable.ArrayBuffer`). Migrating to `JsonValue` makes the claim true and removes the undeclared transitive `upickle` dependency from `adk4s-optimize`'s public type signatures.
 
 #### Scenario: Default predictor-state
 
@@ -19,11 +19,29 @@ The system SHALL provide a predictor-state value with three fields: an instructi
 **When** the state's fields are read
 **Then** the instructions string is empty, the demo list is empty, and the frozen flag is false
 
+#### Scenario: Demo with JsonValue fields
+
+**Given** a `Demo` with `input: JsonValue = DObject(Map("q" -> DString("hello")))` and `output: JsonValue = DString("world")`
+**When** the demo's fields are inspected
+**Then** `input` and `output` are `JsonValue` (immutable `smithy4s.Document`), and the demo is genuinely "plain immutable data" (no mutable AST)
+
+#### Scenario: Demo is immutable
+
+**Given** a `Demo` with `input: JsonValue`
+**When** code attempts to mutate `input` in place
+**Then** compilation fails — `JsonValue` has no in-place `update` method
+
 #### Scenario: Frozen predictor-state is constructible
 
 **Given** a predictor-state with frozen flag true
 **When** the frozen flag is read
 **Then** it is true (a frozen state is a valid value — freezing is data, not a type-level distinction)
+
+#### Scenario: Demo state is serializable-ready
+
+**Given** a `Demo` with `JsonValue` fields
+**When** the demo is serialized via `smithy4s.json.Json`
+**Then** it round-trips (serialize then deserialize yields an equal `Demo`), and all fields are plain immutable values suitable for Phase 2 serialization (no closures, no effect type, no live references, no mutable AST)
 
 ### Requirement: predictor path addressing
 

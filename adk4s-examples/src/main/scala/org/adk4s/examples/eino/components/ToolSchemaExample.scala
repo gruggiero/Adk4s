@@ -2,7 +2,7 @@ package org.adk4s.examples.eino.components
 
 import cats.effect.IO
 import cats.effect.IOApp
-import org.adk4s.core.tools.JsonFixMiddleware
+import org.adk4s.structured.sap.JsonishParser
 import org.adk4s.core.tools.ToolInfer
 import org.adk4s.core.tools.{ StructuredToolCall, ToolSchema, TypedTool }
 import org.adk4s.examples.eino.common.ExampleUtils
@@ -27,17 +27,31 @@ object ToolSchemaExample extends IOApp.Simple:
     passengers: Int,
     premium: Boolean
   )
+  given smithy4s.schema.Schema[BookingArgs] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[BookingArgs]("destination", _.destination),
+    smithy4s.Schema.int.required[BookingArgs]("passengers", _.passengers),
+    smithy4s.Schema.boolean.required[BookingArgs]("premium", _.premium)
+  )(BookingArgs.apply)
 
   final case class SearchArgs(
     query: String,
     maxResults: Option[Int]
   )
+  given smithy4s.schema.Schema[SearchArgs] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[SearchArgs]("query", _.query),
+    smithy4s.Schema.int.optional[SearchArgs]("maxResults", _.maxResults)
+  )(SearchArgs.apply)
 
   final case class BookingResult(
     confirmation: String,
     premium: Boolean,
     price: Double
   )
+  given smithy4s.schema.Schema[BookingResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[BookingResult]("confirmation", _.confirmation),
+    smithy4s.Schema.boolean.required[BookingResult]("premium", _.premium),
+    smithy4s.Schema.double.required[BookingResult]("price", _.price)
+  )(BookingResult.apply)
 
   // --- Scenarios ---
 
@@ -98,7 +112,7 @@ object ToolSchemaExample extends IOApp.Simple:
 
       _ <- testCases.foldLeft(IO.unit) { case (acc, (label, input)) =>
         acc *> {
-          val fixed: String = JsonFixMiddleware.repair(input)
+          val fixed: String = JsonishParser.repair(input)
           IO.println(s"   $label:")
             *> IO.println(s"     Input:  $input")
             *> IO.println(s"     Output: $fixed")

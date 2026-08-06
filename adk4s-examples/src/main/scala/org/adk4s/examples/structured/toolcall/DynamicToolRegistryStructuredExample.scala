@@ -6,6 +6,7 @@ import cats.syntax.foldable.*
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.tools.{ StructuredToolCall, ToolSchema, TypedTool }
 import org.adk4s.examples.eino.common.ExampleUtils
+import smithy4s.schema.Schema as Smithy4sSchema
 
 /**
  * Demonstrates dynamic tool creation and management with StructuredToolCall.
@@ -30,6 +31,31 @@ object DynamicToolRegistryStructuredExample extends IOApp.Simple:
 
   case class SentimentInput(text: String)
   case class SentimentResult(sentiment: String, score: Double)
+
+  // Smithy4s schemas (for smithy4s-based decode/encode)
+  given s4sTranslateIn: Smithy4sSchema[TranslateInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[TranslateInput]("text", _.text),
+    smithy4s.Schema.string.required[TranslateInput]("targetLanguage", _.targetLanguage)
+  )(TranslateInput.apply)
+  given s4sTranslateOut: Smithy4sSchema[TranslateResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[TranslateResult]("translatedText", _.translatedText),
+    smithy4s.Schema.string.required[TranslateResult]("sourceLanguage", _.sourceLanguage)
+  )(TranslateResult.apply)
+  given s4sSummarizeIn: Smithy4sSchema[SummarizeInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[SummarizeInput]("text", _.text),
+    smithy4s.Schema.int.required[SummarizeInput]("maxWords", _.maxWords)
+  )(SummarizeInput.apply)
+  given s4sSummarizeOut: Smithy4sSchema[SummarizeResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[SummarizeResult]("summary", _.summary),
+    smithy4s.Schema.int.required[SummarizeResult]("wordCount", _.wordCount)
+  )(SummarizeResult.apply)
+  given s4sSentimentIn: Smithy4sSchema[SentimentInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[SentimentInput]("text", _.text)
+  )(SentimentInput.apply)
+  given s4sSentimentOut: Smithy4sSchema[SentimentResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[SentimentResult]("sentiment", _.sentiment),
+    smithy4s.Schema.double.required[SentimentResult]("score", _.score)
+  )(SentimentResult.apply)
 
   // Derive ToolSchema instances
   given ToolSchema[TranslateInput]  = ToolSchema.derive[TranslateInput]

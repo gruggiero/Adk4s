@@ -10,7 +10,9 @@ import org.adk4s.core.component.AgentTool
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.error.{AdkError, AgentInterruptedException, ToolNotFoundError, ToolExecutionError}
 import org.adk4s.core.interrupt.{AgentEvent, AgentEventEmitter, InterruptSignal, RunPath, RunStep}
+import org.adk4s.core.json.*
 import org.adk4s.core.runnable.Runnable
+import smithy4s.Document
 import upickle.default.*
 import scala.util.Try
 import fs2.Stream
@@ -164,7 +166,7 @@ class ToolsNode(config: ToolsNodeConfig):
           case single :: Nil => Some(single)
           case multiple =>
             val info: String = multiple.map(_.info).mkString("; ")
-            Some(InterruptSignal.composite(info, ujson.Obj(), multiple))
+            Some(InterruptSignal.composite(info, Document.DObject(Map.empty), multiple))
         ToolExecutionResult(outputs, failures, compositeSignal)
       }
 

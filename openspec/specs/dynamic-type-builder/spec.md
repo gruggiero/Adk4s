@@ -45,6 +45,46 @@ The system SHALL provide a `SchemaBuilder` that constructs `Schema` instances at
 **When** `builder.list(elementSchema)`
 **Then** the resulting schema parses `["a", "b", "c"]` into `Vector[String]`
 
+### Requirement: DynamicValue.parse uses smithy4s.json.Json directly
+
+The `DynamicTypeBuilder.DynamicValue.parse` method SHALL parse a raw JSON string into a `smithy4s.Document` (the underlying type of `JsonValue`) using `smithy4s.json.Json.read[Document]` directly, NOT via a ujson-then-hand-walk conversion. The method's signature (`String => DynamicValue` or equivalent) and observable behavior SHALL be unchanged — for every input string, the parsed result SHALL equal the pre-change result.
+
+**Given** a JSON string `{"name": "John", "age": 42}`
+**When** `DynamicValue.parse` is called
+**Then** the result is a `DynamicValue` backed by `DObject(Map("name" -> DString("John"), "age" -> DNumber(42)))`, equal to the pre-change result for the same input
+
+**Rationale**: The pre-change code parses via `ujson.read`, then hand-walks the `ujson.Value` tree to build a `smithy4s.Document` via `ujsonValueToDocument`. This is an unnecessary double-parse: `smithy4s.json.Json.read[Document]` parses directly into `Document` using the jsoniter-scala backend (already a declared dependency). Removing the ujson step makes `structured-llm` entirely `ujson`-free.
+
+#### Scenario: Object parse
+
+**Given** the JSON string `{"name": "John", "age": 42}`
+**When** `DynamicValue.parse` is called
+**Then** the result is a `DynamicValue` with `DObject(Map("name" -> DString("John"), "age" -> DNumber(42)))`
+
+#### Scenario: Array parse
+
+**Given** the JSON string `[1, 2, 3]`
+**When** `DynamicValue.parse` is called
+**Then** the result is a `DynamicValue` with `DArray(Vector(DNumber(1), DNumber(2), DNumber(3)))`
+
+#### Scenario: Long precision preserved
+
+**Given** the JSON string `{"id": 9007199254740993}` (2^53 + 1)
+**When** `DynamicValue.parse` is called
+**Then** the result has `DNumber(9007199254740993L)` — exact Long, no `Double` truncation (contrast: the pre-change ujson path would truncate via `ujson.Num(Double)`)
+
+#### Scenario: Null parse
+
+**Given** the JSON string `null`
+**When** `DynamicValue.parse` is called
+**Then** the result is a `DynamicValue` with `DNull`
+
+#### Scenario: Invalid JSON raises an error
+
+**Given** the JSON string `{not valid json`
+**When** `DynamicValue.parse` is called
+**Then** a parse error is raised (the error type matches the pre-change behavior — `smithy4s.json.Json.read` raises on invalid JSON)
+
 ## Properties (Ring 3)
 
 ### Property: Dynamic schema round-trips JSON

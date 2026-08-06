@@ -1,6 +1,7 @@
 package org.adk4s.optimize
 
 import munit.FunSuite
+import smithy4s.Document
 
 /**
  * Scenario tests for predictor-state, predictor-path, and the placeholder
@@ -17,7 +18,7 @@ import munit.FunSuite
 class Predict0Spec extends FunSuite:
 
   test("predictor-state exposes instructions, demos, frozen as read data"):
-    val demo: Demo            = Demo(ujson.Str("q"), ujson.Str("a"))
+    val demo: Demo            = Demo(Document.DString("q"), Document.DString("a"))
     val state: PredictorState = PredictorState("Answer the question", Vector(demo), false)
     assertEquals(state.instructions, "Answer the question")
     assertEquals(state.demos.size, 1)
@@ -57,7 +58,7 @@ class Predict0Spec extends FunSuite:
     assertEquals(leaf.state(predictor).frozen, false)
 
   test("placeholder predictor carries state but does not render demos"):
-    val demo: Demo                                          = Demo(ujson.Str("q"), ujson.Str("a"))
+    val demo: Demo                                          = Demo(Document.DString("q"), Document.DString("a"))
     val state: PredictorState                               = PredictorState("instr", Vector(demo), false)
     val predictor: Predict0[cats.effect.IO, String, String] = ToyPrograms.predWithState(state)
     // The demo is present in the predictor-state
@@ -67,10 +68,10 @@ class Predict0Spec extends FunSuite:
     // the Predict0 case class has no such method.)
 
   test("placeholder state is serializable-ready (plain immutable values)"):
-    val demo: Demo            = Demo(ujson.Str("q"), ujson.Str("a"))
+    val demo: Demo            = Demo(Document.DString("q"), Document.DString("a"))
     val state: PredictorState = PredictorState("instr", Vector(demo), true)
     // All fields are plain immutable values: String, Vector[Demo], Boolean,
-    // ujson.Value — no closures, no effect types, no live references.
+    // smithy4s.Document — no closures, no effect types, no live references.
     val instructions: String = state.instructions
     val demos: Vector[Demo]  = state.demos
     val frozen: Boolean      = state.frozen

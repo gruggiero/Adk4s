@@ -2,6 +2,7 @@ package org.adk4s.core.tools
 
 import cats.effect.IO
 import munit.CatsEffectSuite
+import smithy4s.schema.Schema as Smithy4sSchema
 
 class TypedToolTest extends CatsEffectSuite:
 
@@ -9,7 +10,17 @@ class TypedToolTest extends CatsEffectSuite:
   final case class BookingArgs(destination: String, passengers: Int)
   final case class BookingResult(confirmation: String, price: Double)
 
-  // Derive schemas
+  // Derive smithy4s schemas (for smithy4s-based decode/encode)
+  given s4sBookingArgs: Smithy4sSchema[BookingArgs] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[BookingArgs]("destination", _.destination),
+    smithy4s.Schema.int.required[BookingArgs]("passengers", _.passengers)
+  )(BookingArgs.apply)
+  given s4sBookingResult: Smithy4sSchema[BookingResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[BookingResult]("confirmation", _.confirmation),
+    smithy4s.Schema.double.required[BookingResult]("price", _.price)
+  )(BookingResult.apply)
+
+  // Derive tool schemas
   given ToolSchema[BookingResult] = ToolSchema.derive[BookingResult]
 
   test("createTool creates a working TypedTool") {

@@ -79,7 +79,7 @@ lazy val `adk4s-core` = (project in file("adk4s-core"))
     libraryDependencies ++= Seq(
       llm4s,
       catsEffect
-    ) ++ fs2 ++ testDeps,
+    ) ++ fs2 ++ upickle ++ testDeps,
     scalacOptions ++= scala3Options
   )
 

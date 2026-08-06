@@ -6,6 +6,9 @@ import hedgehog.Syntax
 import hedgehog.munit.HedgehogSuite
 import munit.FunSuite
 import org.adk4s.structured.core.*
+import org.adk4s.structured.sap.CompletionState
+import org.adk4s.structured.sap.JsonishParser
+import org.adk4s.structured.sap.JsonishValue
 import org.adk4s.structured.sap.SchemaAlignedParser
 import org.adk4s.structured.sap.UnicodeQuoteNormalizer
 import smithy4s.schema.Schema as Smithy4sSchema
@@ -109,4 +112,50 @@ class UnicodeQuoteNormalizationSpec extends HedgehogSuite:
       case ParseResult.Success(value, _) =>
         assertEquals(value.name, "John Smith")
       case other => fail(s"Expected Success, got: $other")
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Scenario: Smart quotes AND apostrophes in the same value
+  // spec: unicode-quote-normalization — Scenario: smart quotes AND apostrophes
+  // ════════════════════════════════════════════════════════════════════════
+
+  test("smart quotes normalized AND apostrophes preserved in the same value") {
+    // \u201C = " (left double), \u201D = " (right double)
+    // The apostrophes in "it's" and "isn't" should be preserved by
+    // JsonishParser's quote-state-tracking scanner after normalization
+    // converts the smart double quotes to ASCII.
+    val input: String = """{"name": "it\u2019s \u201Cfine\u201D, isn\u2019t it"}"""
+    SchemaAlignedParser.parse[NameObj](input) match
+      case ParseResult.Success(value, _) =>
+        assertEquals(value.name, """it's "fine", isn't it""")
+      case other => fail(s"Expected Success with preserved apostrophes, got: $other")
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Property 3: Normalization + JsonishParser preserves apostrophe-containing values
+  // spec: unicode-quote-normalization — Property: normalization + JsonishParser
+  // Compatibility gate: verifies the normalization step does not interfere
+  // with JsonishParser's apostrophe-preservation.
+  // ════════════════════════════════════════════════════════════════════════
+
+  property("normalize then JsonishParser.parse preserves apostrophes in string values") {
+    val charGen: Gen[Char] = Gen.frequency1(
+      5 -> Gen.constant('\''),
+      3 -> Gen.constant('a'),
+      2 -> Gen.constant(' '),
+      1 -> Gen.constant('n')
+    )
+    val stringGen: Gen[String] = Gen.string(charGen, Range.linear(2, 30))
+    stringGen.forAll.map { (s: String) =>
+      val json: String = s"""{"note": "$s"}"""
+      val normalized: String = UnicodeQuoteNormalizer.normalize(json)
+      val parsed: JsonishValue = JsonishParser.parse(normalized)
+      parsed match
+        case JsonishValue.Obj(fields, _) =>
+          fields.find(_._1 == "note") match
+            case Some((_, JsonishValue.Str(value, _))) =>
+              value ==== s
+            case _ => hedgehog.Result.failure
+        case _ => hedgehog.Result.failure
+    }
   }

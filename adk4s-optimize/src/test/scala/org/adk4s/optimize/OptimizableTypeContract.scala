@@ -1,12 +1,13 @@
 package org.adk4s.optimize
 
 import munit.FunSuite
+import smithy4s.Document
 
 /**
  * Typed contract for the optimizable-surface spec (Step 1 — HUMAN GATE 1).
  *
  * Verifies that every signature from design.md compiles with exact types:
- *  - `Demo` case class with `input: ujson.Value, output: ujson.Value`
+ *  - `Demo` case class with `input: smithy4s.Document, output: smithy4s.Document`
  *  - `PredictorState` case class with `instructions: String, demos: Vector[Demo], frozen: Boolean`
  *  - `PredictorPath` case class with `segments: Vector[String]` and `def render: String`
  *  - `OptimizeError` enum with `UnknownPath(path)` and `FrozenPath(path)`
@@ -18,12 +19,12 @@ import munit.FunSuite
  */
 class OptimizableTypeContract extends FunSuite:
 
-  test("Demo has exactly input: ujson.Value, output: ujson.Value"):
-    val demo: Demo          = Demo(input = ujson.Str("in"), output = ujson.Str("out"))
-    val input: ujson.Value  = demo.input
-    val output: ujson.Value = demo.output
-    assertEquals(input, ujson.Str("in"))
-    assertEquals(output, ujson.Str("out"))
+  test("Demo has exactly input: Document, output: Document"):
+    val demo: Demo            = Demo(input = Document.DString("in"), output = Document.DString("out"))
+    val input: Document       = demo.input
+    val output: Document      = demo.output
+    assertEquals(input, Document.DString("in"))
+    assertEquals(output, Document.DString("out"))
 
   test("PredictorState has exactly instructions, demos, frozen"):
     val state: PredictorState = PredictorState("instr", Vector.empty, false)

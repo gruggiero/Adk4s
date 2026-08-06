@@ -1,5 +1,6 @@
 package org.adk4s.structured.core
 
+import smithy4s.json.Json
 import smithy4s.schema.Schema as SmithySchema
 import smithy4s.{ Document, ShapeId }
 
@@ -97,21 +98,11 @@ final case class DynamicValue(document: Document):
   def field(name: String): Option[DynamicValue] = asObject.flatMap(_.get(name))
 
 object DynamicValue:
-  /** Parse a JSON string into a DynamicValue using ujson. */
+  /** Parse a JSON string into a DynamicValue using smithy4s.json.Json.
+    *
+    * Uses `smithy4s.json.Json.readDocument` which parses directly into a
+    * `smithy4s.Document` via the jsoniter-scala backend, preserving Long
+    * precision (BigDecimal-backed numbers, no Double truncation).
+    */
   def parse(json: String): Either[String, DynamicValue] =
-    try
-      val ujsonValue: ujson.Value = ujson.read(json)
-      val doc: Document           = ujsonValueToDocument(ujsonValue)
-      Right(DynamicValue(doc))
-    catch case e: Exception => Left(e.getMessage)
-
-  /**
-   * Convert ujson.Value to smithy4s Document.
-   */
-  private def ujsonValueToDocument(value: ujson.Value): Document = value match
-    case ujson.Null        => Document.DNull
-    case ujson.Bool(b)     => Document.DBoolean(b)
-    case ujson.Num(n)      => Document.DNumber(n)
-    case ujson.Str(s)      => Document.DString(s)
-    case ujson.Arr(items)  => Document.DArray(items.map(ujsonValueToDocument).toIndexedSeq)
-    case ujson.Obj(fields) => Document.DObject(fields.view.mapValues(ujsonValueToDocument).toMap)
+    Json.readDocument(json).left.map(_.getMessage).map(DynamicValue.apply)

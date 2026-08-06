@@ -49,6 +49,16 @@
 | `ToolSchema[A]` | `ToolSchema.SchemaData[A]` | (none — plain opaque type) | `org.adk4s.core.tools` | pre-existing |
 | `Schema[A]` | `Schema.SchemaData[A]` | (none — plain opaque type) | `org.adk4s.structured.core` | pre-existing |
 
+## Type Aliases
+
+<!-- Type aliases that serve as the public-facing name for an underlying type.
+     These are NOT opaque types — they are transparent `type X = Y` aliases.
+     Listed here so subsequent specs can reuse them instead of re-creating. -->
+
+| Type | Underlying | Package | Introduced By |
+|------|-----------|---------|---------------|
+| `JsonValue` | `smithy4s.Document` | `org.adk4s.core.json` | spec:migrate-json-codec/json-value-model |
+
 ## Sealed Traits and Enums
 
 <!-- Closed type hierarchies that enable exhaustive pattern matching.
@@ -57,7 +67,7 @@
 | Type | Kind | Variants | Package | Introduced By |
 |------|------|----------|---------|---------------|
 | `AdkError` | sealed trait | `LlmCallError`, `StructuredOutputError`, `TypeMismatchError`, `MissingFieldError`, `NodeNotFoundError`, `EdgeValidationError`, `MaxStepsExceededError`, `GraphCompiledError`, `GraphEntryMissingError`, `GraphEndNodesMissingError`, `ToolNotFoundError`, `ToolExecutionError`, `StateTypeMismatchError`, `NodeAlreadyExistsError`, `SourceNodeNotFoundError`, `NodeDoesNotExistError`, `FanInError`, `BranchTargetError`, `AgentInterruptedException`, `CheckpointNotFoundError`, `GenericError`, `NodeKeyError` | `org.adk4s.core.error` | pre-existing |
-| `ToolSchemaError` | sealed trait | `MissingRequiredField`, `TypeMismatch` | `org.adk4s.core.tools` | pre-existing |
+| `ToolSchemaError` | sealed trait | `MissingRequiredField`, `TypeMismatch`, `InvalidEnumValue`, `DecodingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `StructuredToolCallError` | sealed trait | `UnknownTool`, `InvalidArguments`, `ExecutionFailed`, `ResultParsingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `InterruptSignal` | sealed trait (derives ReadWriter) | `Simple`, `Stateful`, `Composite` | `org.adk4s.core.interrupt` | pre-existing |
 | `AgentEvent` | sealed trait | `MessageOutput`, `ToolCallRequested`, `ToolCallCompleted`, `IterationCompleted`, `Interrupted`, `ErrorOccurred`, `TokenDelta` | `org.adk4s.core.interrupt` | pre-existing — **EXTENDED by this change** (events spec adds `MemoryRecalled`, `MemoryWritten`) |
@@ -193,6 +203,7 @@
 | `Dataset` | object (factory) | `fromCsv[F, I, O](path, parse): F[Vector[Example[I, O]]]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `Metrics` | object | `exactMatch[F]: Metric[F, String, String]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `Judges` | object (factory) | `semanticF1[F](structured, threshold): Metric[F, String, String]`, `completeAndGrounded[F](structured, threshold): Metric[F, String, String]`, `defaultThreshold: Double` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
+| `JsonValueCodec` | object (boundary adapter) | `toUjson(JsonValue): ujson.Value`, `fromUjson(ujson.Value): JsonValue` | `org.adk4s.core.json` | spec:migrate-json-codec/json-value-model |
 
 ## Smithy Models
 

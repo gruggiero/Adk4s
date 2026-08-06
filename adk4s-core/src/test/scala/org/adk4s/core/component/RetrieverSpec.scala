@@ -3,6 +3,8 @@ package org.adk4s.core.component
 import cats.effect.*
 import cats.effect.unsafe.implicits.global
 import munit.*
+import org.adk4s.core.json.*
+import smithy4s.Document as S4sDocument
 import upickle.default.*
 
 class RetrieverSpec extends CatsEffectSuite:
@@ -82,12 +84,12 @@ class RetrieverSpec extends CatsEffectSuite:
     val doc = Document(
       "doc1",
       "Sample content",
-      Map("category" -> ujson.Str("tech"), "priority" -> ujson.Num(5))
+      Map("category" -> S4sDocument.DString("tech"), "priority" -> S4sDocument.DNumber(BigDecimal(5)))
     )
 
     assertEquals(doc.id, "doc1", "Should have correct id")
     assertEquals(doc.content, "Sample content", "Should have correct content")
     assertEquals(doc.metadata.size, 2, "Should have 2 metadata fields")
-    assertEquals(doc.metadata("category"), ujson.Str("tech"), "Should preserve category")
-    assertEquals(doc.metadata("priority"), ujson.Num(5), "Should preserve priority")
+    assertEquals(doc.metadata("category"), S4sDocument.DString("tech"), "Should preserve category")
+    assertEquals(doc.metadata("priority"), S4sDocument.DNumber(BigDecimal(5)), "Should preserve priority")
   }

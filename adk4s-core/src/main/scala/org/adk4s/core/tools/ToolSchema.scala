@@ -1,8 +1,10 @@
 package org.adk4s.core.tools
 
 import ujson.Value
-import scala.deriving.Mirror
-import scala.compiletime.erasedValue
+import smithy4s.Blob
+import smithy4s.codecs.PayloadError
+import smithy4s.json.Json
+import smithy4s.schema.Schema as Smithy4sSchema
 
 /** Typeclass for tool argument and result schemas with JSON encoding/decoding.
   *
@@ -11,6 +13,10 @@ import scala.compiletime.erasedValue
   *   - A JSON Schema definition for validation and LLM prompt injection
   *   - A decoder to parse JSON into typed values
   *   - An encoder to serialize typed values to JSON
+  *
+  * The `derive` method uses smithy4s `Schema[A]` for decoding and encoding,
+  * supporting nested case classes, collections, enums, and `BigDecimal` —
+  * beyond the previous six-primitive limit. No `asInstanceOf` is used.
   *
   * @example
   * {{{
@@ -80,93 +86,79 @@ object ToolSchema:
   ): ToolSchema[A] =
     SchemaData[A](jsonSchema, description, decoder, encoder)
 
-  /** Automatically derives a [[ToolSchema]] from a case class using compile-time reflection.
+  /** Automatically derives a [[ToolSchema]] from a smithy4s `Schema[A]`.
     *
-    * This method reuses [[ToolInfer]]'s schema derivation logic and adds automatic
-    * encoder generation, providing a one-line solution for creating ToolSchema instances.
+    * This method uses smithy4s `Json.read` for decoding and `Json.writeBlob`
+    * for encoding, supporting nested case classes, collections, enums, and
+    * `BigDecimal` — beyond the previous six-primitive limit. No `asInstanceOf`
+    * is used. Decode errors are mapped to `ToolSchemaError`'s specific cases
+    * with field paths.
     *
-    * Supported field types: String, Int, Long, Float, Double, Boolean, Option[T]
+    * The JSON Schema (for `AdkToolInfo.parameters`) is derived from the
+    * case class's `Mirror` via `ToolInfer.deriveSchema` — it stays
+    * `ujson.Value` because it is boundary data for `org.llm4s.toolapi`.
     *
     * @example
     * {{{
     * case class BookingResult(confirmation: String, price: Double)
+    * given Smithy4sSchema[BookingResult] = smithy4s.Schema.derive[BookingResult]
     * given ToolSchema[BookingResult] = ToolSchema.derive[BookingResult]
     * }}}
     *
     * @tparam A the case class type to derive a schema for
-    * @param m the Mirror for the product type (provided by compiler)
-    * @return a new ToolSchema instance with automatic encoder/decoder
+    * @param smithySchema the smithy4s Schema for decoding/encoding
+    * @param m the Mirror for the product type (for JSON Schema generation)
+    * @return a new ToolSchema instance with smithy4s-based decoder/encoder
     */
-  inline def derive[A <: Product](using m: Mirror.ProductOf[A]): ToolSchema[A] =
+  inline def derive[A <: Product](using smithySchema: Smithy4sSchema[A], m: scala.deriving.Mirror.ProductOf[A]): ToolSchema[A] =
     val jsonSchema: Value = ToolInfer.deriveSchema[A]
 
     val decoder: Value => Either[ToolSchemaError, A] = (json: Value) =>
-      ToolInfer.decodeProduct[A](json).left.map { (err: String) =>
-        ToolSchemaError.DecodingFailed(err, None)
-      }
+      val jsonString: String = json.render()
+      val blob: Blob = Blob(jsonString)
+      Json.read[A](blob)(using smithySchema) match
+        case Right(value) => Right(value)
+        case Left(error: PayloadError) =>
+          Left(payloadErrorToSchemaError(error))
 
-    val encoder: A => Value = (a: A) => encodeProduct[A](a)
+    val encoder: A => Value = (a: A) =>
+      val blob: Blob = Json.writeBlob[A](a)(using smithySchema)
+      val jsonString: String = blob.toUTF8String
+      ujson.read(jsonString)
 
     ToolSchema.instance(jsonSchema, None)(decoder, encoder)
 
-  /** Encodes a product type (case class) to JSON.
+  /** Map a smithy4s `PayloadError` to a `ToolSchemaError` specific case.
     *
-    * @tparam A the product type to encode
-    * @param a the instance to encode
-    * @param m the Mirror for the product type
-    * @return ujson.Value representing the encoded object
-    */
-  inline def encodeProduct[A <: Product](a: A)(using m: Mirror.ProductOf[A]): Value =
-    val fieldNames: List[String] = ToolInfer.getFieldNames[m.MirroredElemLabels]
-    val fieldValues: List[Value] = encodeFields[m.MirroredElemTypes](a.productIterator.toList)
-    val properties: Map[String, Value] = fieldNames.zip(fieldValues).toMap
-    ujson.Obj.from(properties)
-
-  /** Encodes a tuple of field values to a list of JSON values.
+    * `PayloadError` carries a `path`, `expected`, and `message`. We map:
+    * - "required" / "missing" messages → `MissingRequiredField`
+    * - "expected" type mismatch messages → `TypeMismatch`
+    * - enum-related messages → `InvalidEnumValue`
+    * - everything else → `DecodingFailed`
     *
-    * @tparam T the tuple type representing field types
-    * @param values the list of field values from productIterator
-    * @return list of encoded JSON values
+    * Each case carries the field path from `PayloadError.path`.
     */
-  inline def encodeFields[T <: Tuple](values: List[Any]): List[Value] =
-    inline erasedValue[T] match
-      case _: EmptyTuple => Nil
-      case _: (head *: tail) =>
-        values match
-          case v :: rest =>
-            val encodedValue: Value = encodeField[head](v)
-            encodedValue :: encodeFields[tail](rest)
-          case Nil => Nil
-
-  /** Encodes a single field value to JSON based on its type.
-    *
-    * @tparam T the field type
-    * @param value the field value to encode
-    * @return the encoded JSON value
-    */
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  inline def encodeField[T](value: Any): Value =
-    inline erasedValue[T] match
-      case _: String  => ujson.Str(value.asInstanceOf[String])
-      case _: Int     => ujson.Num(value.asInstanceOf[Int].toDouble)
-      case _: Long    => ujson.Num(value.asInstanceOf[Long].toDouble)
-      case _: Float   => ujson.Num(value.asInstanceOf[Float].toDouble)
-      case _: Double  => ujson.Num(value.asInstanceOf[Double])
-      case _: Boolean => ujson.Bool(value.asInstanceOf[Boolean])
-      case _: Option[?] =>
-        value.asInstanceOf[Option[Any]] match
-          case Some(v) =>
-            // For Option types, we need to encode the inner value
-            // We determine the inner type and encode accordingly
-            v match
-              case s: String  => ujson.Str(s)
-              case i: Int     => ujson.Num(i.toDouble)
-              case l: Long    => ujson.Num(l.toDouble)
-              case f: Float   => ujson.Num(f.toDouble)
-              case d: Double  => ujson.Num(d)
-              case b: Boolean => ujson.Bool(b)
-              case other      => ujson.Str(other.toString)
-          case None => ujson.Null
+  private def payloadErrorToSchemaError(error: PayloadError): ToolSchemaError =
+    val pathStr: String = error.path.render()
+    val message: String = error.message
+    val expected: String = error.expected
+    // Heuristic mapping based on smithy4s error message patterns
+    if message.contains("required") || message.contains("Missing") then
+      ToolSchemaError.MissingRequiredField(
+        fieldName = pathStr,
+        path = pathStr
+      )
+    else if message.contains("Expected") || expected.nonEmpty then
+      ToolSchemaError.TypeMismatch(
+        expectedType = expected,
+        actualValue = ujson.Str(message),
+        path = pathStr
+      )
+    else
+      ToolSchemaError.DecodingFailed(
+        msg = s"$message (path: $pathStr, expected: $expected)",
+        underlying = Some(error)
+      )
 
   extension [A](schema: ToolSchema[A])
     /** Returns the JSON Schema definition. */
@@ -189,7 +181,7 @@ object ToolSchema:
       val data: SchemaData[A] = asData[A](schema)
       data.encoder
 
-/** Error ADT for schema-level validation and decoding failures.
+/** Error ADO for schema-level validation and decoding failures.
   *
   * These errors occur during JSON parsing and validation against a [[ToolSchema]].
   */

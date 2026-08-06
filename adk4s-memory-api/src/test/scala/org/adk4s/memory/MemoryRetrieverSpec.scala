@@ -10,7 +10,7 @@ import hedgehog.Syntax
 import hedgehog.munit.HedgehogSuite
 import java.time.Instant
 import org.adk4s.core.component.{ Document, RetrieverConfig }
-import ujson.{Num, Str}
+import smithy4s.Document as S4sDocument
 
 // Test oracle for spec:memory-retriever-bridge.
 // Tests written from the spec + approved typed contract ONLY, before
@@ -98,11 +98,11 @@ class MemoryRetrieverSpec extends HedgehogSuite:
 
   // ── Scenario: score carried as ujson.Num ─────────────────────────────────
 
-  test("score carried as ujson.Num") {
-    // spec: memory-retriever-bridge — Scenario: score carried as ujson.Num
+  test("score carried as DNumber") {
+    // spec: memory-retriever-bridge — Scenario: score carried as JsonValue DNumber
     val hit = MemoryHit(text = "test", score = 0.5, provenance = None, payload = Map.empty)
     val doc = MemoryRetriever.toDocument(hit)
-    assertEqualsM(doc.metadata("score"), Num(0.5))
+    assertEqualsM(doc.metadata("score"), S4sDocument.DNumber(BigDecimal(0.5)))
   }
 
   // ── Scenario: provenance omitted when None ───────────────────────────────
@@ -116,20 +116,20 @@ class MemoryRetrieverSpec extends HedgehogSuite:
 
   // ── Scenario: provenance included as ujson.Str when Some ─────────────────
 
-  test("provenance included as ujson.Str when Some") {
-    // spec: memory-retriever-bridge — Scenario: provenance included as ujson.Str when Some
+  test("provenance included as DString when Some") {
+    // spec: memory-retriever-bridge — Scenario: provenance included as DString when Some
     val hit = MemoryHit(text = "test", score = 0.5, provenance = Some("g1"), payload = Map.empty)
     val doc = MemoryRetriever.toDocument(hit)
-    assertEqualsM(doc.metadata("provenance"), Str("g1"))
+    assertEqualsM(doc.metadata("provenance"), S4sDocument.DString("g1"))
   }
 
   // ── Scenario: payload entries become ujson.Str values ────────────────────
 
-  test("payload entries become ujson.Str values") {
-    // spec: memory-retriever-bridge — Scenario: payload entries become ujson.Str values
+  test("payload entries become DString values") {
+    // spec: memory-retriever-bridge — Scenario: payload entries become DString values
     val hit = MemoryHit(text = "test", score = 0.5, provenance = None, payload = Map("k1" -> "v1"))
     val doc = MemoryRetriever.toDocument(hit)
-    assertEqualsM(doc.metadata("k1"), Str("v1"))
+    assertEqualsM(doc.metadata("k1"), S4sDocument.DString("v1"))
   }
 
   // ── Scenario: synthesized id is stable for the same hit ──────────────────
@@ -211,9 +211,9 @@ class MemoryRetrieverSpec extends HedgehogSuite:
       payload = Map("score" -> "evil", "provenance" -> "evil", "k1" -> "v1")
     )
     val doc = MemoryRetriever.toDocument(hit)
-    assertEqualsM(doc.metadata("score"), Num(0.5))
-    assertEqualsM(doc.metadata("provenance"), Str("g1"))
-    assertEqualsM(doc.metadata("k1"), Str("v1"))
+    assertEqualsM(doc.metadata("score"), S4sDocument.DNumber(BigDecimal(0.5)))
+    assertEqualsM(doc.metadata("provenance"), S4sDocument.DString("g1"))
+    assertEqualsM(doc.metadata("k1"), S4sDocument.DString("v1"))
   }
 
   // ── Scenario: minScore boundary — score == minScore is included ──────────
@@ -348,7 +348,7 @@ class MemoryRetrieverSpec extends HedgehogSuite:
         r     = MemoryRetriever(mem, k = 20)
         docs <- r.retrieve(query, RetrieverConfig(topK = 20, minScore = minScore))
       yield docs).unsafeRunSync()
-      (docs.forall(d => d.metadata("score").num >= minScore)) ==== true
+      (docs.forall(d => d.metadata("score") match { case S4sDocument.DNumber(n) => n.toDouble >= minScore; case _ => false })) ==== true
   }
 
   property("bridge-stream-equals-retrieve: stream == batch") {

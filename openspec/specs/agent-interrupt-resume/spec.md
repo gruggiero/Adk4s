@@ -7,19 +7,36 @@ Provides hierarchical interrupt/resume protocol for human-in-the-loop workflows,
 
 ### Requirement: InterruptSignal sealed trait hierarchy
 
-The system SHALL provide an `InterruptSignal` sealed trait representing an agent's request to pause execution and await external input. Three variants SHALL exist: stateless, stateful, and composite.
+The system SHALL provide an `InterruptSignal` sealed trait representing an agent's request to pause execution and await external input. Three variants SHALL exist: stateless, stateful, and composite. The `Stateful` and `Composite` variants SHALL carry their serialized agent state as `JsonValue` (an immutable type alias over `smithy4s.Document`), NOT `ujson.Value`. The `derives ReadWriter` serialization SHALL continue to round-trip the state field through JSON text byte-for-byte compatible with the pre-change wire format.
+
+**Rationale**: `ujson.Value`'s mutable AST (`Obj` wraps `LinkedHashMap`, `Arr` wraps `mutable.ArrayBuffer`) is held by a checkpointed, compared-by-`equals` value — contradicting the project's immutability rule. `JsonValue` is immutable and exact on `Long`/`BigDecimal`. The wire format MUST NOT change so existing in-flight checkpoints remain resumable.
 
 #### Scenario: Create stateless interrupt
 - **WHEN** `InterruptSignal.simple(info)` is called with info describing why the interrupt is needed
 - **THEN** an `InterruptSignal.Simple` is created with the info payload and no persisted state
 
-#### Scenario: Create stateful interrupt
-- **WHEN** `InterruptSignal.stateful(info, state)` is called with info and an agent's internal state
-- **THEN** an `InterruptSignal.Stateful` is created carrying both the user-facing info and the serializable agent state
+#### Scenario: Create stateful interrupt with JsonValue state
 
-#### Scenario: Create composite interrupt
-- **WHEN** `InterruptSignal.composite(info, state, childSignals)` is called with one or more child `InterruptSignal` values
-- **THEN** an `InterruptSignal.Composite` is created that wraps the child signals with the parent's own info and state
+**Given** `InterruptSignal.stateful(info, state)` is called with `state: JsonValue = DObject(Map("iteration" -> DNumber(3)))`
+**When** the `Stateful` is constructed
+**Then** it carries the `JsonValue` state (not `ujson.Value`), and the state is immutable
+
+#### Scenario: Create composite interrupt with JsonValue state
+
+**Given** `InterruptSignal.composite(info, state, childSignals)` is called with `state: JsonValue` and one or more child `InterruptSignal` values
+**Then** an `InterruptSignal.Composite` is created carrying the `JsonValue` state and wrapping the child signals
+
+#### Scenario: Stateful state is immutable
+
+**Given** an `InterruptSignal.Stateful` with `state: JsonValue = DObject(Map("k" -> DString("v")))`
+**When** code attempts to mutate the state in place
+**Then** compilation fails — `JsonValue` (=`smithy4s.Document`) has no in-place `update` method
+
+#### Scenario: Checkpoint wire-format compatibility
+
+**Given** a checkpoint saved by the pre-change `ujson.Value`-based code with state `{"iteration": 3}`
+**When** the post-change `JsonValue`-based code loads the checkpoint
+**Then** the `state` field deserializes to `DObject(Map("iteration" -> DNumber(3)))` — the wire JSON text is compatible
 
 ### Requirement: Address-based interrupt identification
 

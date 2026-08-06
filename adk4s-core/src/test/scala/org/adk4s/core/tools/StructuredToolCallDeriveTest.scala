@@ -6,12 +6,24 @@ import munit.CatsEffectSuite
 import org.adk4s.core.component.Tool
 import org.llm4s.toolapi.ToolRegistry
 import org.llm4s.llmconnect.model.ToolCall
+import smithy4s.schema.Schema as Smithy4sSchema
 
 class StructuredToolCallDeriveTest extends CatsEffectSuite:
 
   // Input/Output types with derived schemas
   final case class WeatherQuery(city: String, unit: String)
   final case class WeatherResult(temperature: Double, condition: String, city: String)
+
+  // smithy4s schemas (for smithy4s-based decode/encode)
+  given s4sWeatherQuery: Smithy4sSchema[WeatherQuery] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[WeatherQuery]("city", _.city),
+    smithy4s.Schema.string.required[WeatherQuery]("unit", _.unit)
+  )(WeatherQuery.apply)
+  given s4sWeatherResult: Smithy4sSchema[WeatherResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.double.required[WeatherResult]("temperature", _.temperature),
+    smithy4s.Schema.string.required[WeatherResult]("condition", _.condition),
+    smithy4s.Schema.string.required[WeatherResult]("city", _.city)
+  )(WeatherResult.apply)
 
   given ToolSchema[WeatherQuery] = ToolSchema.derive[WeatherQuery]
   given ToolSchema[WeatherResult] = ToolSchema.derive[WeatherResult]

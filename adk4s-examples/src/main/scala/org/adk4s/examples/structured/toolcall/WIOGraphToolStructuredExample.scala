@@ -13,6 +13,7 @@ import org.adk4s.orchestration.wiograph.WIONodeRef
 import org.adk4s.orchestration.wiograph.WIORunnableNode
 import workflows4s.wio.ErrorMeta
 import workflows4s.wio.WorkflowContext
+import smithy4s.schema.Schema as Smithy4sSchema
 
 import scala.reflect.ClassTag
 
@@ -63,6 +64,28 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
 
   case class FormattingInput(content: String)
   case class FormattingResult(formatted: String)
+
+  // Smithy4s schemas (for smithy4s-based decode/encode)
+  given s4sValidationIn: Smithy4sSchema[ValidationInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[ValidationInput]("text", _.text)
+  )(ValidationInput.apply)
+  given s4sValidationOut: Smithy4sSchema[ValidationResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.boolean.required[ValidationResult]("isValid", _.isValid),
+    smithy4s.Schema.string.required[ValidationResult]("reason", _.reason)
+  )(ValidationResult.apply)
+  given s4sProcessingIn: Smithy4sSchema[ProcessingInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[ProcessingInput]("data", _.data)
+  )(ProcessingInput.apply)
+  given s4sProcessingOut: Smithy4sSchema[ProcessingResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[ProcessingResult]("output", _.output),
+    smithy4s.Schema.string.required[ProcessingResult]("status", _.status)
+  )(ProcessingResult.apply)
+  given s4sFormattingIn: Smithy4sSchema[FormattingInput] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[FormattingInput]("content", _.content)
+  )(FormattingInput.apply)
+  given s4sFormattingOut: Smithy4sSchema[FormattingResult] = smithy4s.Schema.struct(
+    smithy4s.Schema.string.required[FormattingResult]("formatted", _.formatted)
+  )(FormattingResult.apply)
 
   given ToolSchema[ValidationInput]  = ToolSchema.derive[ValidationInput]
   given ToolSchema[ValidationResult] = ToolSchema.derive[ValidationResult]

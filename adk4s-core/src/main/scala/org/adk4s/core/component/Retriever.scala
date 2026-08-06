@@ -3,12 +3,13 @@ package org.adk4s.core.component
 import cats.effect.*
 import cats.syntax.all.*
 import fs2.Stream
-import upickle.default.*
+import org.adk4s.core.json.*
+import smithy4s.Document
 
 final case class Document(
   id: String,
   content: String,
-  metadata: Map[String, ujson.Value] = Map.empty
+  metadata: Map[String, JsonValue] = Map.empty
 )
 
 final case class RetrieverConfig(

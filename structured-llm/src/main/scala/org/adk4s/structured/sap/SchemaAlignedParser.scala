@@ -263,25 +263,19 @@ object SchemaAlignedParser:
     leadingCommaPattern.replaceAllIn(text, "")
 
   /**
-   * Fix quote issues:
-   * - Convert single quotes to double quotes (when used for strings)
-   * - Add quotes to unquoted keys
+   * Fix quote issues using a quote-state-tracking scanner (NOT regex).
+   *
+   * The previous regex-based approach (`'([^']*)'`) corrupted string values
+   * containing apostrophes — e.g., `"it's fine, isn't it"` was rewritten to
+   * `"it"s fine, isn"t it"`. The scanner tracks whether we're inside a
+   * double-quoted string and only replaces single quotes outside of them.
+   *
+   * This delegates to `JsonishParser`'s scanner, which was absorbed from
+   * `JsonFixMiddleware` (the correct implementation).
    */
   private def fixQuotes(text: String): (String, Boolean) =
-    val singleQuotePattern: Regex = """'([^']*)'""".r
-    val replacedSingle: String    = singleQuotePattern.replaceAllIn(text, "\"$1\"")
-    val singleChanged: Boolean    = replacedSingle != text
-
-    val unquotedKeyPattern: Regex = """(?m)^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:""".r
-    val quotedKeyCheck: Regex     = """"[^"]+"\s*:""".r
-    val shouldQuoteKeys: Boolean =
-      unquotedKeyPattern.findFirstIn(replacedSingle).isDefined && !quotedKeyCheck.findFirstIn(replacedSingle).isDefined
-    val withQuotedKeys: String =
-      if shouldQuoteKeys then unquotedKeyPattern.replaceAllIn(replacedSingle, m => s""""${m.group(1)}":""")
-      else replacedSingle
-    val keyChanged: Boolean = withQuotedKeys != replacedSingle
-
-    (withQuotedKeys, singleChanged || keyChanged)
+    val fixed: String = JsonishParser.fixQuotesForSAP(text)
+    (fixed, fixed != text)
 
   /**
    * Remove trailing commas before ] and }.

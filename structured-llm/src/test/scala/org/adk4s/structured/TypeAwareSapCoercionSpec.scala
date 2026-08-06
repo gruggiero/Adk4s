@@ -192,3 +192,85 @@ class TypeAwareSapCoercionSpec extends HedgehogSuite:
     val score: CoercionScore = CoercionScore.fromFlags(allFlags)
     assert(score.value > 0)
   }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // spec: type-aware-sap-coercion — Regression: apostrophe bug fix
+  // The old regex-based fixQuotes corrupted string values containing
+  // apostrophes. The new quote-state-tracking scanner preserves them.
+  // ════════════════════════════════════════════════════════════════════════
+
+  test("apostrophes in string values are preserved (regression for fixQuotes bug)") {
+    val input: String = """{"note": "it's fine, isn't it"}"""
+    SchemaAlignedParser.parse[Person](input) match
+      case ParseResult.Success(value, _) =>
+        assertEquals(value.name, "it's fine, isn't it")
+      case other => fail(s"Expected Success with preserved apostrophes, got: $other")
+  }
+
+  test("JsonishParser.parse preserves apostrophes in string values") {
+    val input: String = """{"name": "it's fine, isn't it"}"""
+    val parsed: JsonishValue = JsonishParser.parse(input)
+    parsed match
+      case JsonishValue.Obj(fields, _) =>
+        fields.find(_._1 == "name") match
+          case Some((_, JsonishValue.Str(value, _))) =>
+            assertEquals(value, "it's fine, isn't it")
+          case _ => fail("Expected name field with string value")
+      case _ => fail(s"Expected Obj, got: $parsed")
+  }
+
+  test("JsonishParser.parse handles markdown fences") {
+    val input: String = "```json\n{\"name\": \"John\"}\n```"
+    val parsed: JsonishValue = JsonishParser.parse(input)
+    parsed match
+      case JsonishValue.Obj(fields, _) =>
+        fields.find(_._1 == "name") match
+          case Some((_, JsonishValue.Str(value, _))) =>
+            assertEquals(value, "John")
+          case _ => fail("Expected name field")
+      case _ => fail(s"Expected Obj, got: $parsed")
+  }
+
+  test("JsonishParser.parse strips comments") {
+    val input: String = """{"name": "John", /* comment */ "age": 42}"""
+    val parsed: JsonishValue = JsonishParser.parse(input)
+    parsed match
+      case JsonishValue.Obj(fields, _) =>
+        assertEquals(fields.length, 2)
+      case _ => fail(s"Expected Obj, got: $parsed")
+  }
+
+  test("JsonishParser.repair fixes trailing commas") {
+    val input: String = """{"name": "test",}"""
+    val repaired: String = JsonishParser.repair(input)
+    assertEquals(repaired, """{"name": "test"}""")
+  }
+
+  test("JsonishParser.repair fixes single-quoted strings") {
+    val input: String = """{'name': 'test'}"""
+    val repaired: String = JsonishParser.repair(input)
+    assertEquals(repaired, """{"name": "test"}""")
+  }
+
+  test("TypeCoercer.parseAndCoerce is no longer a stub") {
+    // The old stub returned (response, Vector.empty).
+    // The new implementation parses via JsonishParser and coerces.
+    val input: String = """{"name": "John", "age": 30}"""
+    val (json, flags) = TypeCoercer.parseAndCoerce(input)
+    assert(json.nonEmpty, s"parseAndCoerce should return non-empty JSON, got: $json")
+    // Valid JSON input should produce no coercion flags
+    assert(flags.isEmpty, s"parseAndCoerce should produce no flags for valid JSON, got: $flags")
+  }
+
+  test("ParsingContext tracks depth and path") {
+    val ctx: ParsingContext = ParsingContext.empty
+    assertEquals(ctx.depth, 0)
+    assertEquals(ctx.path, Vector.empty)
+    val nested: ParsingContext = ctx.nest("field1")
+    assertEquals(nested.depth, 1)
+    assertEquals(nested.path, Vector("field1"))
+    assertEquals(nested.pathString, "field1")
+    val deeper: ParsingContext = nested.nest("field2")
+    assertEquals(deeper.depth, 2)
+    assertEquals(deeper.pathString, "field1.field2")
+  }

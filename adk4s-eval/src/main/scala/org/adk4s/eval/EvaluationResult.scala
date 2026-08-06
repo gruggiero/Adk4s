@@ -35,7 +35,7 @@ final case class EvaluationResult[I, O](
       "score"         -> ujson.Num(score),
       "rows"          -> rowsJson
     )
-    upickle.default.writeJs(obj).render()
+    obj.render()
 
   /** CSV export: header row + one row per example. Columns: id, score, feedback, outcome, meta. */
   def toCsv: String =
@@ -90,8 +90,8 @@ object EvaluationResult:
     js: ujson.Value
   )(using readerI: Reader[I], readerO: Reader[O]): EvalRow[I, O] =
     val exampleJs: ujson.Value = js("example")
-    val input: I               = upickle.default.read[I](exampleJs("input").render())
-    val gold: O                = upickle.default.read[O](exampleJs("gold").render())
+    val input: I               = exampleJs("input").transform(readerI)
+    val gold: O                = exampleJs("gold").transform(readerO)
     val id: Option[String] = exampleJs("id") match
       case ujson.Null => None
       case v          => Some(v.str)
@@ -99,7 +99,7 @@ object EvaluationResult:
     val example: Example[I, O]    = Example(input, gold, id, meta)
 
     val outcome: EvalOutcome[O] = js("outcome")("type").str match
-      case "succeeded" => EvalOutcome.Succeeded(upickle.default.read[O](js("outcome")("value").render()))
+      case "succeeded" => EvalOutcome.Succeeded(js("outcome")("value").transform(readerO))
       case "failed"    => EvalOutcome.Failed(new RuntimeException(js("outcome")("error").str))
       case other       => throw new RuntimeException(s"Unknown outcome type: $other")
 

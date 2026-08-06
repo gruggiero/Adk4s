@@ -39,6 +39,14 @@ object Dependencies {
     "com.disneystreaming.smithy4s" %% "smithy4s-json" % Versions.Smithy4s
   )
 
+  /** upickle/ujson — explicitly declared (was transitive via llm4s 0.3.4).
+    * Version MUST match the transitive version to avoid conflicts.
+    * Used at the llm4s boundary (Tool, ToolsNode, ToolWrapper, etc.) and
+    * by the JsonValueCodec adapter. */
+  val upickle: Seq[ModuleID] = Seq(
+    "com.lihaoyi" %% "upickle" % Versions.Upickle
+  )
+
   val logback: ModuleID =
     "ch.qos.logback" % "logback-classic" % Versions.Logback
 
