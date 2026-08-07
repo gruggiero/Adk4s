@@ -24,6 +24,7 @@
     <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
     <li><a class="current" href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
     <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+    <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
   </ul>
   <div class="toc-title">On this page</div>
   <ul id="toc"></ul>
@@ -453,6 +454,18 @@ $ scanner/openspec-graph.py obligations
   is to shrink the first two so ruthlessly that human attention is spent
   entirely on the third.
 </p>
+
+<div class="box insight">
+  <div class="box-title">A column this table does not have</div>
+  <p style="margin-bottom:0">
+    Every tool above is <em>opt-in</em>. The CONTEXT block cures N/A-by-assumption
+    only if <code>spec-lint.sh</code> runs at all; the drift check reports a
+    stale skill only to whoever invoked it. Mechanising a check answers
+    <em>what happens when it runs</em> and leaves <em>whether it runs</em>
+    untouched — which is a separate mechanism, and
+    <a href="11-enforcement.html">chapter 11</a>.
+  </p>
+</div>
 
 <h2>Setup, briefly</h2>
 

@@ -55,36 +55,26 @@
 #   W3  requirements matched by F2 — listed so the human can confirm the
 #       scenario input is genuinely forbidden, not just present
 #
-# Usage: spec-lint.sh [--artifacts] [change-dir | repo-root]
-#   change-dir: lint that change's specs/**/spec.md
-#   repo-root:  lint every active change (openspec/changes/*, archive excluded)
-#   --artifacts: also run F9 (post-implementation; see above)
+# Usage: spec-lint.sh [--artifacts] [--context-only] [change-dir | repo-root]
+#   change-dir:     lint that change's specs/**/spec.md
+#   repo-root:      lint every active change (openspec/changes/*, archive excluded)
+#   --artifacts:    also run F9 (post-implementation; see above)
+#   --context-only: print the CONTEXT block and exit 0, linting nothing. This is
+#                   the single source of the applicability facts — hooks/gate.sh
+#                   consumes it rather than recomputing them, so a session-start
+#                   injection and a lint run can never disagree.
 set -euo pipefail
 
 ARTIFACTS=0
+CONTEXT_ONLY=0
 TARGET="."
 for arg in "$@"; do
   case "$arg" in
-    --artifacts) ARTIFACTS=1 ;;
-    *)           TARGET="$arg" ;;
+    --artifacts)    ARTIFACTS=1 ;;
+    --context-only) CONTEXT_ONLY=1 ;;
+    *)              TARGET="$arg" ;;
   esac
 done
-
-specs=""
-if [ -d "$TARGET/specs" ]; then
-  specs="$(find "$TARGET/specs" -name 'spec.md' | sort)"
-elif [ -d "$TARGET/openspec/changes" ]; then
-  specs="$(find "$TARGET/openspec/changes" -path '*/specs/*' -name 'spec.md' \
-    ! -path '*/archive/*' | sort)"
-else
-  echo "spec-lint: no specs found under $TARGET (expected <change>/specs/ or openspec/changes/)" >&2
-  exit 2
-fi
-
-if [ -z "$specs" ]; then
-  echo "spec-lint: no spec files to lint under $TARGET"
-  exit 0
-fi
 
 # ── CONTEXT: applicability of the conditional judgment checks ─────────────
 # Printed ALWAYS, and stating the negative case as loudly as the positive.
@@ -186,7 +176,30 @@ if [ "$has_registry" -eq 1 ] && [ -n "$inv_types" ]; then
     | tr '\n' ' ' | sed 's/[ \t]*$//'
   )"
 fi
+
+# --context-only stops here: the facts above are the whole product. Callers
+# that need them WITHOUT a lint run (hooks/gate.sh at session start) take this
+# path, so there is exactly one implementation of the applicability facts.
+if [ "$CONTEXT_ONLY" -eq 1 ]; then
+  exit 0
+fi
 echo
+
+specs=""
+if [ -d "$TARGET/specs" ]; then
+  specs="$(find "$TARGET/specs" -name 'spec.md' | sort)"
+elif [ -d "$TARGET/openspec/changes" ]; then
+  specs="$(find "$TARGET/openspec/changes" -path '*/specs/*' -name 'spec.md' \
+    ! -path '*/archive/*' | sort)"
+else
+  echo "spec-lint: no specs found under $TARGET (expected <change>/specs/ or openspec/changes/)" >&2
+  exit 2
+fi
+
+if [ -z "$specs" ]; then
+  echo "spec-lint: no spec files to lint under $TARGET"
+  exit 0
+fi
 
 fails=0
 warns=0
