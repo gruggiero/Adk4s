@@ -1,4 +1,45 @@
 # Changelog:
+#  11 — APPLICABILITY IS A MACHINE FACT. A review marked the ALTITUDE rule
+#       "N/A" on a repository holding 30 concept files, having assumed
+#       openspec/concepts/ did not exist without ever looking. The reasoning
+#       that followed was sound; the fact it rested on was invented. A
+#       conditional check has two halves — does this rule APPLY here (a
+#       repository fact), and does this spec OBEY it (judgment) — and only the
+#       second belongs to the reviewer. spec-lint.sh now prints a CONTEXT
+#       block unconditionally, stating each conditional check's applicability,
+#       INCLUDING the negative case, so that even "N/A" is machine-attested.
+#       Checks 3, 6, 17 and 18 are wired to it; a report may not record N/A
+#       for a check the CONTEXT block says APPLIES.
+#       New mechanical coverage of the altitude rule itself:
+#       F10 — a behavioural registry exists but a spec with requirements has
+#            no "## Concepts Used (behavioral)" section. The structural half
+#            needs no semantics, so it should never have been judgment.
+#       W7 — code-identifier candidates inside a Given/When/Then clause: build
+#            commands, source files, fully-qualified names, and tokens the
+#            project's own two ledgers classify as code (present in
+#            concept-inventory.md, absent from the registry). Candidates, not
+#            verdicts — and silence is not a pass, since it matches shapes,
+#            not prose.
+#       A second cause, found while verifying the first: the skills carry
+#       "generatedBy: verified-scala3-schema/<N>" and NOTHING EVER READ IT.
+#       The field sat at 7.0.0 while the schema reached 11, and the installed
+#       copy was older still — it stopped at check 12 and did not contain the
+#       altitude rule at all. An agent can follow stale instructions perfectly
+#       and miss a check added three versions later. spec-lint.sh now reads
+#       the field across the common install roots and prints INSTRUCTION DRIFT
+#       on mismatch. Recorded-but-never-checked is the defect class this
+#       workflow exists to remove; it had one of its own.
+#       Two silent-empty-scan parser bugs fixed, both the same shape — a
+#       parser that accepted one legitimate notation and read the other as
+#       nothing, then reported OK:
+#        - spec-lint inventory lookup: backticked AND bare type cells (adk4s
+#          writes one, graphStore the other), plus a zero-row parse warning.
+#        - registry-check pass 3: Concepts Used rows cited BARE, not only
+#          backticked or linked. adk4s's active change was reading as ZERO
+#          references checked. Table header rows are now dropped generically
+#          (the row a |---| separator follows), so a second table in the
+#          section no longer leaks its header as a concept name, and a table
+#          with rows but no parsed reference FAILS instead of passing.
 #  10 — Ring 6 by ALGORITHMIC purity (the verified-mirror pattern). Ring 6 was
 #       being skipped by reflex with two rationales that are statements about
 #       the shipped code's TYPES, not about the algorithm: "our code uses
@@ -79,7 +120,7 @@
 #   2.1 — first concept-registry support.
 #   2 — ring pipeline + typed contract + test oracle.
 name: verified-scala3
-version: 10
+version: 11
 description: >
   Depth-first verified Scala 3 workflow for functional, type-safe codebases.
   Correctness-first: every spec flows through
@@ -579,10 +620,38 @@ artifacts:
               supersedes the old row-count heuristic (W2).
          W4 = ordinal requirement references (positional; prefer titles).
          W5 = an impossibility claim enforced only by tests (see specs rule 8).
+         F10 = a behavioural registry exists but a spec with requirements has
+              no "## Concepts Used (behavioral)" section (ALTITUDE, structural
+              half — check 17).
+         W7 = a code identifier inside a Given/When/Then clause (ALTITUDE,
+              candidates only — the reviewer decides each one).
          F9 is NOT run here — it is a post-implementation check; see apply
          Step 12.
-      The judgment checks (observability, testability, type-feasibility,
-      altitude) remain below — the script does not replace them.
+
+      3. READ THE SCRIPT'S "CONTEXT" BLOCK AND COPY IT INTO THE REPORT.
+
+      APPLICABILITY IS NOT A JUDGMENT CALL. A conditional check has two
+      halves: does this rule apply to this repository, and does this spec
+      obey it. The first half is a repository FACT — a directory exists or it
+      does not — and the reviewer must never infer it. The script prints
+      every such fact unconditionally, INCLUDING the negative case, so that
+      "N/A" is something a machine attested rather than something an agent
+      assumed. Concretely:
+        - checks 3 and 18 are conditional on openspec/capability-profile.md
+        - check 6 is conditional on openspec/concept-inventory.md
+        - check 17 is conditional on openspec/concepts/
+      Record a conditional check as N/A ONLY when a CONTEXT line says so, and
+      quote that line. If the script says a check APPLIES, the report may not
+      contain N/A for it — that combination is itself a lint failure.
+
+      This rule exists because a review once marked the ALTITUDE rule N/A on a
+      repository with 30 concept files, having assumed the registry did not
+      exist without looking. The failure was not in the reasoning; it was in
+      answering a factual question from memory.
+
+      The judgment checks (observability, testability, type-feasibility, and
+      altitude COMPLIANCE) remain below — the script does not replace them. It
+      decides only whether they apply.
 
       Lint EVERY spec file under `specs/` against these checks and record one
       row per check per spec in the report:
@@ -636,11 +705,23 @@ artifacts:
           marked "MUST-CONFIRM" with a pointer to the real source. (specs
           rule 16.) Invented plausible values FAIL — the apply phase cannot
           proceed on fabricated data.
-      17. ALTITUDE RULE (if openspec/concepts/ exists) — no Given/When/Then
-          clause contains code identifiers (module names, error class names,
-          build commands). These belong in "## Implementation Anchors".
-          Cited concepts in "## Concepts Used (behavioral)" link to registry
-          files. (specs rule 14.)
+      17. ALTITUDE RULE — no Given/When/Then clause contains code identifiers
+          (module names, error class names, build commands). These belong in
+          "## Implementation Anchors". Cited concepts in "## Concepts Used
+          (behavioral)" link to registry files. (specs rule 14.)
+          APPLICABILITY: decided by the script's CONTEXT block, never by the
+          reviewer. Do not write N/A here unless that block reports the
+          registry ABSENT.
+          MECHANICAL: F10 fails a spec that omits the "## Concepts Used
+          (behavioral)" section while a registry exists. W7 lists identifier
+          candidates inside clauses — build commands, source files,
+          fully-qualified names, and tokens the project's own ledgers class as
+          code (in openspec/concept-inventory.md, absent from the registry).
+          JUDGMENT: W7 candidates are not verdicts. A name can sit in both
+          ledgers and be legitimate domain vocabulary; decide each, and say in
+          the report which candidates you accepted and why. W7 SILENCE IS NOT
+          A PASS — it catches shapes, not prose, and a clause can breach
+          altitude in plain English with no backticks at all.
       18. CONCURRENCY RULE — every requirement/scenario about concurrent
           behavior names a deterministic observable and is testable with the
           detected deterministic test kit. (specs rule 17.) A wall-clock
