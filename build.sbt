@@ -225,6 +225,15 @@ lazy val `verified` = (project in file("verified"))
       "-Wconf:src=.*stainless-library.*:silent"
     ),
     wartremoverErrors := Seq.empty,
+    // The sbt-wartremover AutoPlugin unconditionally adds the wartremover
+    // compiler plugin to every project's libraryDependencies. WartRemover
+    // 3.6.1 is not published for Scala 3.7.2 (the verified module's Scala
+    // version for Stainless), which breaks dependency resolution. Since
+    // wartremoverErrors is empty above, the plugin does nothing here anyway —
+    // filter it out of libraryDependencies so the jar is never resolved.
+    // scalacOptions is already a full override (no -Xplugin: survives), so no
+    // further cleanup is needed on the scalacOptions side.
+    libraryDependencies ~= (_.filterNot(_.organization == "org.wartremover")),
     semanticdbEnabled := false,
     // Default OFF: verified/compile is a plain, fast compile of the model.
     // Ring 6 turns verification ON explicitly via the `ring6` alias below.

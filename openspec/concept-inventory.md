@@ -70,7 +70,7 @@
 | `ToolSchemaError` | sealed trait | `MissingRequiredField`, `TypeMismatch`, `InvalidEnumValue`, `DecodingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `StructuredToolCallError` | sealed trait | `UnknownTool`, `InvalidArguments`, `ExecutionFailed`, `ResultParsingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `InterruptSignal` | sealed trait (derives ReadWriter) | `Simple`, `Stateful`, `Composite` | `org.adk4s.core.interrupt` | pre-existing |
-| `AgentEvent` | sealed trait | `MessageOutput`, `ToolCallRequested`, `ToolCallCompleted`, `IterationCompleted`, `Interrupted`, `ErrorOccurred`, `TokenDelta` | `org.adk4s.core.interrupt` | pre-existing — **EXTENDED by this change** (events spec adds `MemoryRecalled`, `MemoryWritten`) |
+| `AgentEvent` | sealed trait | `MessageOutput`, `ToolCallRequested`, `ToolCallCompleted`, `IterationCompleted`, `Interrupted`, `ErrorOccurred`, `TokenDelta`, `MemoryRecalled`, `MemoryWritten` | `org.adk4s.core.interrupt` | pre-existing (`MemoryRecalled`/`MemoryWritten` shipped by archived `2026-07-19-add-memory-orchestration-hook`) |
 | `AddressSegment` | sealed trait (derives ReadWriter) | `Agent`, `Tool` | `org.adk4s.core.interrupt` | pre-existing |
 | `RunResult` | sealed trait | `Completed`, `Interrupted`, `Failed` | `org.adk4s.orchestration.agent` | pre-existing — **REUSED by this change** (`MemoryAwareRunner` pattern-matches on it) |
 | `WIONode` | sealed trait | (multiple node variants — see `WIONode.scala`) | `org.adk4s.orchestration.wiograph` | pre-existing |

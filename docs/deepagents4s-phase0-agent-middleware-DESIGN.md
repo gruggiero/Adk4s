@@ -5,6 +5,19 @@
 **Depends on:** ADK4S `adk4s-core`, `adk4s-orchestration` (refactor target), llm4s message model
 **Informed by:** langchain-ai/deepagents 0.6.12 (`langchain.agents.middleware.types.AgentMiddleware`, `deepagents/graph.py`, `deepagents/middleware/*`), MIT-licensed
 
+> **Update note (post `migrate-json-codec`, 2026-08-06).** This design was
+> originally written when `ujson.Value`/`upickle` was ADK4S's JSON currency.
+> The `migrate-json-codec` change introduced `JsonValue`
+> (= `smithy4s.Document`) as ADK4S's internal, immutable JSON value type and
+> confined `ujson.Value` to the llm4s boundary via Scalafix rules
+> (`NoUjsonInCore`/`NoUjsonInOrchestration`/…). The code sketches below have
+> been updated to use `JsonValue` where they previously said `ujson.Obj`/
+> `ujson.Value` (§3.2 `StateCell.rw`, §3.3 `HarnessState.snapshot`, §3.4
+> `snapshot`/`restore`, §6.3 `CheckpointStateV2.harnessState`). The codec
+> typeclass remains `upickle.default.ReadWriter` (bridged for `JsonValue` via
+> `JsonValueReadWriter`); a future revision may switch the codec currency
+> entirely to `smithy4s.json.Json` once `CheckpointState` legacy is retired.
+
 ---
 
 ## 1. Motivation
@@ -66,7 +79,7 @@ orchestration layer and external projects:
 
 | Module | Contents | Depends on |
 |---|---|---|
-| `adk4s-harness-api` (new, in ADK4S) | `AgentMiddleware`, `HarnessState`, `StateCell`, `MiddlewareStack`, `ModelRequest`/`ModelResponse`, `ToolStep`, visibility/merge machinery | `adk4s-core` (for `InvokableTool`, `ToolInput`/`ToolOutput`), llm4s model types, upickle/ujson |
+| `adk4s-harness-api` (new, in ADK4S) | `AgentMiddleware`, `HarnessState`, `StateCell`, `MiddlewareStack`, `ModelRequest`/`ModelResponse`, `ToolStep`, visibility/merge machinery | `adk4s-core` (for `InvokableTool`, `ToolInput`/`ToolOutput`, `JsonValue`/`JsonValueCodec`), llm4s model types, smithy4s-json (`JsonValue` = `smithy4s.Document`; `ujson.Value` confined to the llm4s boundary) |
 | `adk4s-harness-testkit` (new, in ADK4S) | `AgentMiddlewareLaws`, deterministic `ChatModel` double, generators | `adk4s-harness-api`, Hedgehog |
 | `adk4s-orchestration` (refactor) | `HarnessAgent` loop; `ReactAgent` re-expressed as the empty-stack harness; `CheckpointStore[F]`; `CheckpointState` v2 | `adk4s-harness-api` |
 | `deepagents4s` (new repo, Phase 1+) | concrete middlewares, backends, `createDeepAgent`, prompt pack | `adk4s-harness-api`, `adk4s-orchestration`, `adk4s-memory-api` |
@@ -109,6 +122,7 @@ visibility, and merging:
 package org.adk4s.harness
 
 import upickle.default.ReadWriter
+import org.adk4s.core.json.JsonValue
 
 enum CellVisibility:
   /** Never crosses a sub-agent boundary; the child sees `initial`. */
@@ -123,7 +137,9 @@ final class StateCell[A] private (
   val visibility: CellVisibility,
   val initial: A,
   val merge: (A, A) => A,            // (parent, child) => merged; see 3.5
-  val rw: ReadWriter[A]              // checkpoint codec (ujson currency)
+  val rw: ReadWriter[A]              // checkpoint codec (JsonValue currency;
+                                     //   bridged via JsonValueReadWriter when
+                                     //   A is/contains JsonValue)
 ):
   override def equals(other: Any): Boolean = other match
     case that: StateCell[?] => this.id == that.id
@@ -150,12 +166,16 @@ object StateCell:
 Notes:
 
 - The **codec is mandatory at declaration**. A cell that cannot round-trip
-  through ujson cannot exist, which makes R2 unconditionally true — there is
-  no "oops, this middleware's state isn't checkpointable" failure mode at
-  runtime. upickle/ujson is chosen because it is already the serialization
-  currency of `InterruptSignal.Stateful` and `AgentRunner.CheckpointState`;
-  a smithy4s `Schema[A] => ReadWriter[A]` bridge can be added for cells whose
-  types already live in Smithy IDL, but is not required.
+  through the codec cannot exist, which makes R2 unconditionally true — there
+  is no "oops, this middleware's state isn't checkpointable" failure mode at
+  runtime. The codec typeclass is `upickle.default.ReadWriter`, chosen because
+  it is already the serialization currency of `InterruptSignal.Stateful`
+  (whose `state: JsonValue` is bridged via `JsonValueReadWriter`) and
+  `AgentRunner.CheckpointState`; the value currency is `JsonValue`
+  (= `smithy4s.Document`), not `ujson.Value` (which is confined to the llm4s
+  boundary by the `migrate-json-codec` Scalafix rules). A smithy4s
+  `Schema[A] => ReadWriter[A]` bridge can be added for cells whose types
+  already live in Smithy IDL, but is not required.
 - `id` is a *stable string*, not object identity. Object-identity keys (the
   `org.typelevel.vault.Vault` approach) were rejected — see §8.
 - Equality is by `id`. Uniqueness of ids within a stack is enforced at stack
@@ -180,7 +200,7 @@ final class HarnessState private (
   def update[A](cell: StateCell[A])(f: A => A): HarnessState =
     set(cell)(f(get(cell)))
 
-  def snapshot: ujson.Obj = ...            // §3.4
+  def snapshot: JsonValue = ...            // §3.4 (DObject)
   private[harness] def entries: Iterable[(StateCell[?], Any)] = cells.values
 
 object HarnessState:
@@ -210,18 +230,18 @@ restore just read as initial), and makes the lens laws in §7 clean.
 ### 3.4 Snapshot / restore
 
 ```scala
-def snapshot: ujson.Obj =
-  ujson.Obj.from(
+def snapshot: JsonValue =
+  smithy4s.Document.DObject(
     cells.values.map { case (cell, value) =>
       cell.id.value -> writeJs(value)(using cell.rw.asInstanceOf[ReadWriter[Any]])
-    }
+    }.toMap
   )
 
 object HarnessState:
   /** Unknown ids in `json` are ignored; declared-but-absent cells read as initial. */
   def restore(
     declared: List[StateCell[?]],
-    json: ujson.Obj
+    json: JsonValue            // expected: DObject; non-DObject is a decode error
   ): Either[StateDecodeError, HarnessState] = ...
 ```
 
@@ -229,7 +249,7 @@ Restore is *lenient by construction* (R5): the declared cell list — obtained
 from the middleware stack — drives decoding; anything else in the snapshot is
 ignored, anything missing defaults. A cell that fails to decode is a hard
 `Left` (corrupted checkpoint beats silent data loss), reported with the cell
-id and the upickle failure.
+id and the codec failure.
 
 This snapshot becomes a new field of `CheckpointState` (§6.3).
 
@@ -669,7 +689,7 @@ private[agent] final case class CheckpointStateV2(
   messages: List[CheckpointMessage],   // full-fidelity: role, content,
                                        //   toolCalls, toolCallId — NOT the
                                        //   current lossy role+content pair
-  harnessState: ujson.Obj,             // HarnessState.snapshot
+  harnessState: JsonValue,            // HarnessState.snapshot (DObject)
   interruptSignalJson: String,
   agentName: String
 ) derives ReadWriter
