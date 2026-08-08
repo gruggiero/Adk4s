@@ -116,21 +116,53 @@ setup() {
 
 # spec: correctness-invariant — Scenario: no document asserts the superseded rule
 # spec: correctness-invariant — Property: No workflow document asserts the superseded dependency rule
-@test "PROPERTY no tracked workflow document asserts that a JSON processor is forbidden" {
-  # Generator strategy (enumerated): every tracked *.md and *.sh under the
-  # schema directory, discovered at test time so a new file is covered
-  # automatically. Edge case: a file mentioning jq in a PERMITTED context —
-  # the prerequisite table itself — must not be flagged, so the match is on
-  # the prohibition phrasing, not on the tool name.
-  local offenders=""
-  local f
+@test "PROPERTY no tracked workflow document asserts the superseded dependency rule" {
+  # Generator strategy (enumerated): every tracked *.md, *.sh, *.yaml/*.yml and
+  # docs/*.html under the schema directory, discovered at test time so a new
+  # file is covered automatically.
+  #
+  # WIDENED at Ring 8 on two axes, because the original was unable to catch its
+  # own motivating case:
+  #  - DOMAIN: *.md and *.sh only, which excluded schema.yaml and docs/*.html.
+  #    The worst offender was docs/09-tooling.html, stating the rule AS A RULE.
+  #  - MATCHER: three literal jq spellings, unbackticked. The baseline text read
+  #    "no `jq`" WITH backticks and never matched. Now keyed on assertion SHAPE
+  #    ("dependency-free", "bash and git only", "no JSON processor",
+  #    backtick-tolerant jq) — the spec Scenario's own wording included.
+  #
+  # Edge case: a document may QUOTE the old rule if it marks it superseded
+  # within two lines. Mentioning jq in a permitted context (the prerequisite
+  # table) is not a prohibition and is not matched.
+  local offenders="" f n=0
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    if grep -qiE 'no[[:space:]]+jq|without[[:space:]]+jq|never[[:space:]]+use[[:space:]]+jq' "$ROOT/$f" 2>/dev/null; then
-      offenders="$offenders$f"$'\n'
-    fi
+    n=$((n + 1))
+    local hits
+    hits="$(superseded_rule_hits "$ROOT/$f")"
+    [ -z "$hits" ] || offenders="$offenders$hits"$'\n'
   done < <(schema_docs_and_scripts)
-  assert_empty_list "$offenders" "these documents still assert the superseded no-jq rule:"
+
+  # A domain that parsed to nothing FAILS rather than passing vacuously.
+  [ "$n" -ge 20 ] || {
+    printf 'only %s files enumerated; the domain did not resolve\n' "$n" >&2
+    return 1
+  }
+  assert_empty_list "$offenders" "these documents still assert the superseded dependency rule:"
+}
+
+# spec: correctness-invariant — Scenario: no document asserts the superseded rule
+@test "PROPERTY the superseded-rule detector can actually fail" {
+  # Polarity guard for the detector itself. The original matcher passed on text
+  # it was written to catch; nothing proved it could fire. This runs it against
+  # the exact baseline phrasing that escaped it.
+  local tmp="$BATS_TEST_TMPDIR/old-portability.md"
+  printf '## Portability\n\n`gate.sh` is bash + git only — no JVM, no network, no `jq` — the same rule as\nthe gate checks.\n' >"$tmp"
+  local hits
+  hits="$(superseded_rule_hits "$tmp")"
+  [ -n "$hits" ] || {
+    printf 'the detector did not fire on the baseline phrasing it exists to catch\n' >&2
+    return 1
+  }
 }
 
 # spec: correctness-invariant — Scenario: the prerequisite set is discoverable
@@ -144,31 +176,71 @@ setup() {
 
 # spec: correctness-invariant — Property: Every declared prerequisite is justified by a named consumer
 @test "PROPERTY every declared prerequisite names the ring or function requiring it" {
-  # Generator strategy (enumerated): the prerequisite rows are READ from the
-  # table at test time rather than hard-coded, so adding a prerequisite with
-  # no justification fails this property. Edge case: an empty justification
-  # cell must fail, not pass as present-but-blank.
-  local unjustified=""
-  local row tool why
-  while IFS= read -r row; do
-    tool="$(printf '%s' "$row" | awk -F'|' '{gsub(/[ `]/,"",$2); print $2}')"
-    why="$(printf '%s' "$row" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}')"
+  # Generator strategy (enumerated): rows are read from the table at test time
+  # and selected STRUCTURALLY — every data row between the header separator and
+  # the next non-table line.
+  #
+  # FIXED at Ring 8: the first version listed the six tool names in its awk
+  # selector, contradicting this very strategy line. A seventh prerequisite
+  # selected ZERO rows and the property passed, so the declared failure mode
+  # ("adding a prerequisite without a justification fails") was unreachable.
+  # Structural selection puts any new row in the domain by construction.
+  local unjustified="" rows tool why words n=0
+  rows="$(prereq_rows "$HOOKS_README")"
+  while IFS="$(printf '\t')" read -r tool why; do
     [ -n "$tool" ] || continue
-    case "$tool" in Prerequisite|---*) continue ;; esac
-    if [ -z "$why" ]; then
-      unjustified="$unjustified$tool"$'\n'
+    n=$((n + 1))
+    words="$(printf '%s' "$why" | wc -w)"
+    # Non-empty is not enough: the requirement demands the ring or function
+    # that requires it. Word count is a mechanical proxy for "names something"
+    # versus "yes" — a stated limitation, not a semantic check.
+    if [ -z "$why" ] || [ "$words" -lt 3 ]; then
+      unjustified="$unjustified$tool (cell: '"'"'${why:-<empty>}'"'"')"$'"'"'\n'"'"'
     fi
-  done < <(awk '/^\| *`?(bash|git|jq|shellcheck|bats|shfmt)/' "$HOOKS_README" 2>/dev/null)
+  done <<EOF
+$rows
+EOF
 
-  # A table with no parsed rows FAILS rather than passing vacuously — the
+  # A table that parsed to nothing FAILS rather than passing vacuously — the
   # silent-empty-scan shape this workflow has shipped twice.
-  local rows
-  rows="$(awk '/^\| *`?(bash|git|jq|shellcheck|bats|shfmt)/' "$HOOKS_README" 2>/dev/null | grep -c . || true)"
-  [ "${rows:-0}" -gt 0 ] || {
-    printf 'no prerequisite rows parsed from hooks/README.md — empty scan, not a pass\n' >&2
+  [ "$n" -ge 7 ] || {
+    printf '"'"'only %s prerequisite rows parsed — empty or partial scan, not a pass\n'"'"' "$n" >&2
     return 1
   }
   assert_empty_list "$unjustified" "these prerequisites have no named consumer:"
+}
+
+# spec: correctness-invariant — Scenario: the prerequisite set is discoverable
+@test "PROPERTY the prerequisite check can actually fail" {
+  # Polarity guard against a COMMITTED fixture carrying the exact defects the
+  # spec'"'"'s Generator strategy names: a seventh tool (outside the original
+  # hard-coded domain), an empty cell, and a one-word cell.
+  local fixture="$SCHEMA/tests/fixtures/prereq-table-bad.md"
+  [ -f "$fixture" ] || {
+    printf '"'"'fixture missing: %s\n'"'"' "$fixture" >&2
+    return 1
+  }
+  local rows tool why bad="" n=0
+  rows="$(prereq_rows "$fixture")"
+  while IFS="$(printf '\t')" read -r tool why; do
+    [ -n "$tool" ] || continue
+    n=$((n + 1))
+    if [ -z "$why" ] || [ "$(printf '%s' "$why" | wc -w)" -lt 3 ]; then
+      bad="$bad$tool"$'"'"'\n'"'"'
+    fi
+  done <<EOF
+$rows
+EOF
+  # The seventh tool must be IN the domain — that is the regression this guards.
+  assert_contains "$rows" "yq" "fixture rows (a 7th tool must be selected, not skipped)"
+  [ "$n" -eq 4 ] || {
+    printf '"'"'expected 4 fixture rows, selected %s\n'"'"' "$n" >&2
+    return 1
+  }
+  local expect
+  for expect in yq podman curl; do
+    assert_contains "$bad" "$expect" "rows the property must reject"
+  done
 }
 
 @test "the gate script header no longer asserts the superseded rule" {
@@ -209,6 +281,59 @@ setup() {
   assert_status 0 "$status" "reading concept-inventory.md"
   assert_contains "$output" "Last verified:" "concept-inventory.md"
   assert_contains "$output" "SEMANTIC scanner" "concept-inventory.md"
+}
+
+# spec: correctness-invariant — Scenario: a recorded limitation carries no date or mechanism
+# spec: correctness-invariant — Scenario: a recorded limitation is re-tested and found obsolete
+@test "PROPERTY every re-established record in BOTH living documents names a date and a mechanism" {
+  # Generator strategy (enumerated): every re-establishment marker
+  # ("re-established", "superseding the earlier", "Last verified") in each of
+  # the two PROJECT-scoped living documents, discovered at test time.
+  #
+  # ADDED at Ring 8. Obligation #6 reads "scenario test over the living
+  # documentS' limitation ENTRIES"; it was discharged by two substring checks
+  # in ONE file. capability-profile.md — the other living document, edited by
+  # the same commit — was unchecked, and was carrying two records that commit
+  # had invalidated and not replaced.
+  local doc offending="" total=0
+  for doc in concept-inventory.md capability-profile.md; do
+    local path="$ROOT/openspec/$doc"
+    [ -f "$path" ] || {
+      printf 'living document missing: %s\n' "$doc" >&2
+      return 1
+    }
+    local markers
+    markers="$(grep -ciE 're-established|superseding the earlier|last verified' "$path" || true)"
+    total=$((total + markers))
+    # Each document must carry at least one dated re-establishment record;
+    # a living document with none has never been verified, which is not a pass.
+    [ "${markers:-0}" -gt 0 ] || {
+      printf '%s carries no re-establishment record at all\n' "$doc" >&2
+      return 1
+    }
+    local bad
+    bad="$(unsourced_limitation_records "$path")"
+    [ -z "$bad" ] || offending="$offending$doc: $bad"$'\n'
+  done
+  [ "$total" -ge 2 ] || {
+    printf 'only %s markers found across both documents — scan did not resolve\n' "$total" >&2
+    return 1
+  }
+  assert_empty_list "$offending" "these re-established records lack a date or a mechanism:"
+}
+
+# spec: correctness-invariant — Scenario: a recorded limitation carries no date or mechanism
+@test "PROPERTY the limitation-record check can actually fail" {
+  # Polarity guard: a record that supersedes an earlier one but names neither
+  # a date nor a mechanism must be reported.
+  local tmp="$BATS_TEST_TMPDIR/bad-living-doc.md"
+  printf '# Doc\n\nThe scanner returns no results, superseding the earlier note.\nNo date, no tool named.\n' >"$tmp"
+  local bad
+  bad="$(unsourced_limitation_records "$tmp")"
+  [ -n "$bad" ] || {
+    printf 'the check did not fire on a record with neither date nor mechanism\n' >&2
+    return 1
+  }
 }
 
 # ─────────────────────────────────────────────────────────────────────────

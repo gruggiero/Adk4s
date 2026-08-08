@@ -57,6 +57,14 @@ scripts predating it, only `metals-call.sh` and `spec-lint.sh` use 0/1/2,
 A test that only checks `status -ne 0` cannot tell a finding from a broken
 tool, which is the defect class this workflow exists to remove.
 
+**A justified occurrence carries its justification.** Where a property cannot
+mechanically distinguish a legitimate case from a violation, the legitimate one
+declares itself with an inline marker naming a reason — `deps-rule:allow
+<reason>` for the superseded-dependency-rule property, mirroring the existing
+`// danger-scan:allow <reason>`. Never widen a matcher to make a legitimate
+case pass: that weakens it for every future case too, and this project has
+already shipped one property that could not catch its own motivating text.
+
 **Never mutate the repository.** Tests run against a temporary copy or
 construct inputs under `BATS_TEST_TMPDIR`. A suite that edits tracked files
 makes its own result depend on the order tests ran in.
