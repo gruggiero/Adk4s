@@ -19,6 +19,7 @@ metals.sbt
 *.log
 *.cache
 *.tasty
+.scala-build/
 
 # OS
 .DS_Store
