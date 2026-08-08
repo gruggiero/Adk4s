@@ -48,6 +48,8 @@
 | `FieldPath` | `Vector[String]` | (none — plain opaque type) | `org.adk4s.core.types` | pre-existing |
 | `ToolSchema[A]` | `ToolSchema.SchemaData[A]` | (none — plain opaque type) | `org.adk4s.core.tools` | pre-existing |
 | `Schema[A]` | `Schema.SchemaData[A]` | (none — plain opaque type) | `org.adk4s.structured.core` | pre-existing |
+| `MiddlewareName` | `String` | (none — plain opaque type) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `StateCell.CellId` | `String` | (none — plain opaque type) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
 
 ## Type Aliases
 
@@ -66,7 +68,7 @@
 
 | Type | Kind | Variants | Package | Introduced By |
 |------|------|----------|---------|---------------|
-| `AdkError` | sealed trait | `LlmCallError`, `StructuredOutputError`, `TypeMismatchError`, `MissingFieldError`, `NodeNotFoundError`, `EdgeValidationError`, `MaxStepsExceededError`, `GraphCompiledError`, `GraphEntryMissingError`, `GraphEndNodesMissingError`, `ToolNotFoundError`, `ToolExecutionError`, `StateTypeMismatchError`, `NodeAlreadyExistsError`, `SourceNodeNotFoundError`, `NodeDoesNotExistError`, `FanInError`, `BranchTargetError`, `AgentInterruptedException`, `CheckpointNotFoundError`, `GenericError`, `NodeKeyError` | `org.adk4s.core.error` | pre-existing |
+| `AdkError` | sealed trait | `LlmCallError`, `StructuredOutputError`, `TypeMismatchError`, `MissingFieldError`, `NodeNotFoundError`, `EdgeValidationError`, `MaxStepsExceededError`, `GraphCompiledError`, `GraphEntryMissingError`, `GraphEndNodesMissingError`, `ToolNotFoundError`, `ToolExecutionError`, `StateTypeMismatchError`, `NodeAlreadyExistsError`, `SourceNodeNotFoundError`, `NodeDoesNotExistError`, `FanInError`, `BranchTargetError`, `AgentInterruptedException`, `CheckpointNotFoundError`, `GenericError`, `NodeKeyError`, `StateDecodeError` | `org.adk4s.core.error` | pre-existing (`StateDecodeError` shipped by `spec:add-harness-api-phase0/harness-state`) |
 | `ToolSchemaError` | sealed trait | `MissingRequiredField`, `TypeMismatch`, `InvalidEnumValue`, `DecodingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `StructuredToolCallError` | sealed trait | `UnknownTool`, `InvalidArguments`, `ExecutionFailed`, `ResultParsingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `InterruptSignal` | sealed trait (derives ReadWriter) | `Simple`, `Stateful`, `Composite` | `org.adk4s.core.interrupt` | pre-existing |
@@ -77,6 +79,7 @@
 | `WIONodeModifier` | sealed trait | `CheckpointModifier`, `RetryModifier`, `InterruptionModifier` | `org.adk4s.orchestration.wiograph` | pre-existing |
 | `WIOGraphError` | sealed trait | (see `WIOGraphError.scala`) | `org.adk4s.orchestration.wiograph` | pre-existing |
 | `ChainBranch` | sealed trait | (see `ChainBranch.scala`) | `org.adk4s.orchestration.chain` | pre-existing |
+| `CellVisibility` | enum | `Private`, `Inherited`, `Shared` | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
 | `ChainStep` | sealed trait | (see `Chain.scala`) | `org.adk4s.orchestration.chain` | pre-existing |
 | `GraphNode` | sealed trait | (see `GraphNode.scala`) | `org.adk4s.orchestration.graph` | pre-existing |
 | `Branch` | sealed trait | (see `Branch.scala`) | `org.adk4s.orchestration.branch` | pre-existing |
@@ -167,6 +170,11 @@
 | `EvaluationResult[I, O]` | `score: Double, rows: Vector[EvalRow[I, O]]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `SemanticF1Judge` | `precision: Double, recall: Double, reasoning: String` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
 | `CompleteAndGroundedJudge` | `completeness: Double, groundedness: Double, reasoning: String` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
+| `PromptSection` | `name: String, body: String` | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `SystemPrompt` | `base: Option[String], sections: List[PromptSection]` | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `StateCell[A]` | `id: StateCell.CellId, visibility: CellVisibility, initial: A, merge: (A, A) => A, rw: ReadWriter[A]` (private constructor; factory `StateCell.apply[A](owner, name, initial, visibility?, merge?)` with `ReadWriter` context bound) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `StateDecodeError` | `cellId: String, cause: Throwable` (extends `AdkError`, calls `initCause`) | `org.adk4s.core.error` | spec:add-harness-api-phase0/harness-state |
+| `HarnessState` | (private constructor; `cells: Map[CellId, (StateCell[?], Any)]`; public methods: `get[A]`, `set[A]`, `update[A]`, `snapshot`; companion: `empty`, `initial`, `project`, `mergeBack`, `restore`) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
 
 ## Service Traits
 

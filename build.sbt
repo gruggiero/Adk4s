@@ -83,6 +83,27 @@ lazy val `adk4s-core` = (project in file("adk4s-core"))
     scalacOptions ++= scala3Options
   )
 
+// ── adk4s-harness-api — agent middleware + harness state (Phase 0) ──────────
+// AgentMiddleware[F[_]] (four-hook trait), HarnessState (typed heterogeneous
+// map), StateCell[A] (visibility + merge + ReadWriter codec), MiddlewareStack[F]
+// (monoid with validated construction), ModelRequest/ModelResponse, ToolStep,
+// PromptSection/SystemPrompt, StackError, StateDecodeError.
+// Depends on adk4s-core for InvokableTool, ToolInput/ToolOutput, JsonValue/
+// JsonValueCodec, AdkError. Depends on `verified` at Test scope for the Ring 6
+// bridge (TASTy is backward compatible: 3.8.4 reads 3.7.2).
+// MUST NOT depend on workflows4s, llm4s LLM client, adk4s-orchestration,
+// fs2-io, or logback (Ring 2 purity rule).
+lazy val `adk4s-harness-api` = (project in file("adk4s-harness-api"))
+  .dependsOn(
+    `adk4s-core`,
+    `verified` % Test
+  )
+  .settings(
+    name := "adk4s-harness-api",
+    libraryDependencies ++= Seq(catsEffect) ++ upickle ++ testDeps,
+    scalacOptions ++= scala3Options
+  )
+
 // ── adk4s-memory-api — durable, recallable agent memory capability ─────────
 // Effect-polymorphic interface (AgentMemory[F]) + value types + in-process
 // test double (InMemoryAgentMemory) + Retriever bridge (MemoryRetriever).
