@@ -58,8 +58,9 @@ SCHEMA_YAML="$SELF_DIR/../schema.yaml"
 if [ -z "$REPO" ]; then
   # the event JSON carries "cwd"; this extracts it with sed. jq is a declared
   # prerequisite as of schema v12, so this could now be a jq expression —
-  # a candidate simplification, deliberately not taken here (design Decision 1:
-  # simplifying the existing escaping is a refactor, not an obligation).
+  # a candidate simplification, deliberately not taken here — see the
+  # PREREQUISITE RULE in openspec/capability-profile.md, consequence 2:
+  # simplifying the existing escaping is a refactor, not an obligation.
   if [ ! -t 0 ]; then
     payload="$(cat 2>/dev/null || true)"
     REPO="$(printf '%s' "$payload" \

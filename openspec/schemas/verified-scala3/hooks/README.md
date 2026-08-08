@@ -152,11 +152,13 @@ testing that had to be hand-rolled were where the defects lived.
 
 | Prerequisite | Required by |
 |---|---|
-| `bash`, `git` | everything — the baseline for every check and hook |
+| `bash` | every check and every hook — the interpreter they are written in |
+| `git` | every check — diff, ls-files, and the per-spec baseline |
 | `jq` | `gate.sh` and the scanners, for JSON parse and emit |
 | `shellcheck` | Ring 1 — shell lint, run in CI and at apply Step 4 |
 | `bats` | Ring 3 — the shell test suites in `../tests/`, run in CI and at apply Step 6 |
 | `shfmt` | Ring 1 — shell formatting check, run in CI and at apply Step 4 |
+| `openspec` | Ring 3 — the reachability tests render artifact instructions through the CLI, so the suite cannot run without it |
 
 Still excluded for any gate check: **JVM** and **network**.
 

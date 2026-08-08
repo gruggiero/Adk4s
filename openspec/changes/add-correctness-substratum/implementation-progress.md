@@ -43,7 +43,7 @@ aliased, widened, or has its variant set changed. No MUST-CONFIRM items.
 | R0 parse / `bash -n` | ✅ YAML parses; `openspec validate --strict` valid; all changed scripts `bash -n` clean |
 | R1 shellcheck + shfmt | ✅ shellcheck 0 findings across 11 `.sh` + 1 `.bash`; shfmt `-i 2 -ci` clean on the added file |
 | R3 bats | ✅ **24/24**; polarity confirmed (17 red→green, 3 green-by-design held) |
-| R8 adversarial | ✅ after fixing **1 FAIL** — see below. `fresh-context: NO` |
+| R8 adversarial | ✅ **`fresh-context: YES`** — subagent pass 2026-08-08. Found 3 PARTIAL + 1 failed obligation after the author-context pass reported clean; 6 of 9 fixes applied, 3 referred to the human gate below |
 | Concept delta | ✅ **EMPTY** — before/after scanner snapshots byte-identical |
 | Build-dependency delta | ✅ `build.sbt`/`project/` empty; **host prerequisites reported**: `jq`, `shellcheck`, `bats`, `shfmt` |
 | Commit | ✅ (see checkpoint) |
@@ -69,12 +69,35 @@ one script**, so it is not a violation, but the property's blind spot is real.
 Widening it changes an approved oracle, so it is referred to the human rather
 than done silently.
 
-**Ring 8 fresh-context: NO.** The schema mandates a reviewer with no
-implementation context. This session's operating rules forbid spawning a
-subagent unless the user asks, so the review was performed by the author
-context — the confirmation-bias setup the ring exists to defeat. It still
-found a FAIL, but the human should weigh the verdicts accordingly, and may
-re-run `openspec-adversarial-review` in a fresh session.
+**Ring 8 fresh-context pass (2026-08-08) — the mandate earned its keep.**
+The author-context pass found 1 FAIL and reported the spec complete. A
+fresh-context subagent, given only the spec, the approved contract and
+`git diff 291eb22 HEAD`, returned **1 PASS / 3 PARTIAL / 0 FAIL plus a failed
+Proof Obligation**. Findings and disposition:
+
+| # | Finding | Disposition |
+|---|---------|-------------|
+| 1 | **R1 PARTIAL** — the requirement says "carried into EVERY artifact instruction"; the author fix covered `apply` only, which is not an artifact. 0 of 8 artifact instructions carried it, and the REACHABILITY tests probed only the one instruction that had been fixed | **FIXED** — prelude added to all 8; property now enumerates artifact ids from `schema.yaml` at test time. Negative-tested: removing the prelude from one artifact fails the property and names it |
+| 2 | **R1** — 5 tests hard-coded `--change add-correctness-substratum`, so the suite would go permanently red once the change is archived, in a suite CI runs every pipeline | **FIXED** — `first_active_change()` discovers it at test time; skips honestly when none exists |
+| 3 | **R3 PARTIAL** — Property 1 **would not have caught the text it was written for**: the baseline `hooks/README.md` read ``no `jq` `` (backticked) and the matcher missed it. An implementation that left the old paragraph verbatim passed all 24 tests | **REFERRED** — widening the matcher changes an approved oracle (gate item 7) |
+| 4 | **R3** — Property 2's domain hard-codes the six tool names in its `awk` selector, contradicting its Generator strategy ("read from the table at test time… so adding a prerequisite without a justification fails"). Verified: a 7th row selects 0 rows | **REFERRED** — gate item 8 |
+| 5 | **R3** — `docs/09-tooling.html` still stated the superseded rule **as a Rule**; `docs/04-concepts.html`, `schema.yaml:212` and `concept-registry/README.md` repeated it; two docs stamped v11 | **FIXED** — all amended; tree sweep now shows only the two deliberate "superseded" notes |
+| 6 | **R3** — `openspec` is required by 5 tests, declared in no prerequisite table and installed by no CI template: **the shipped gate failed on its own introducing commit** | **FIXED** — added to the prerequisite table with its consumer, to all 3 templates, and to each verify loop |
+| 7 | **R4, Obligation #7 FAIL** — the retest rule reached no artifact instruction, including the two that read living documents | **FIXED** — the prelude carries it to all 8 (same fix as #1) |
+| 8 | **R4** — `capability-profile.md` carried two records this very commit invalidated (the shellcheck baseline; "CI runs only registry-check.sh"), relied upon and not replaced, in a file the commit edited | **FIXED** — both re-established with date and mechanism |
+| 9 | **danger-scan reported as clean was VACUOUS** — it filters `*.scala` + `/src/main/`, so it is structurally blind to a shell-only change | **FIXED** — recorded as N/A with the reason, in the profile |
+| 10 | Three **misattributed citations** shipped into permanent files, plus the exit-code convention stated as present fact when only 2 of 11 scripts follow it | **FIXED** — citations corrected; convention restated prescriptively |
+| 11 | Obligation #6 discharged by a weaker proxy (one file, two substrings, no entry enumeration) | **REFERRED** — gate item 9 |
+
+Every measurement recorded by the author pass was independently **verified
+true** by the reviewer (shfmt 1987/690/515/837; "~276 lines" exactly 276; the
+`description`-not-emitted claim; both shellcheck justifications; the empty
+concept delta; cross-change reachability).
+
+**Oracle-tampering check limitation, recorded not glossed:** the reviewer noted
+`correctness-invariant.bats` is introduced whole in one commit, so the
+Step-2-approved version has no committed form to diff against. Absence of
+detectable tampering here is not evidence of none.
 
 ### 2. evidence-ledger
 

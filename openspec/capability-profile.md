@@ -102,7 +102,7 @@ for the workflow: `gate.sh` runs on every session, and `spec-lint.sh` /
 
 | Item | Detected | Consequence |
 |------|----------|-------------|
-| `shellcheck` | ✅ **0.11.0** (`/home/linuxbrew/.linuxbrew/bin`) | Ring 1 for shell is **available**. Run on every changed script. **Baseline 2026-08-08: 8/11 scripts clean; 5 findings in 3 files** (`danger-scan.sh` SC2086 ×1 — intentional; `metals-call.sh` SC2034 ×1 — possibly dead code; `registry-check.sh` SC2016 ×3 — intentional awk quoting). Suppressions must carry a reason, mirroring the `// danger-scan:allow` convention. |
+| `shellcheck` | ✅ **0.11.0** (`/home/linuxbrew/.linuxbrew/bin`) | Ring 1 for shell is **available** and gates the whole tree. **Re-established 2026-08-08 by `spec:add-correctness-substratum/correctness-invariant`, superseding the earlier baseline** ("8/11 clean; 5 findings; `metals-call.sh` SC2034 possibly dead code"): all five findings now carry justifying annotations and shellcheck exits 0 over **12/12** files (11 `.sh` + `tests/helpers.bash`). The SC2034 question is answered — `init_resp` is unused deliberately; the assignment keeps the response body off stdout. Suppressions must carry a reason, mirroring the `// danger-scan:allow` convention. |
 | `bats` / `bats-core` | ✅ **1.14.0** (`/home/linuxbrew/.linuxbrew/bin`) | Ring 3 for shell is **available**. Bats is the detected framework — generate `.bats` files, NOT a hand-rolled assertion runner. |
 | `shfmt` | ✅ **3.13.1** (`/home/linuxbrew/.linuxbrew/bin`) | **Invoke as `shfmt -i 2 -ci`** — the project's observed convention is 2-space indent with indented `case` arms. Measured 2026-08-08 over the 11 tracked scripts: bare `shfmt` (tabs) = 1987 diff lines; `-i 2` = 690; **`-i 2 -ci` = 515**; `-i 2 -ci -sr` = 837. The setting is detected from the existing scripts, not chosen. The tree still predates the formatter, so `shfmt` gates **changed/new files only** until a one-time reformat lands. |
 | `jq` | ✅ **1.6** (`/bin/jq`) | **ALLOWED** — the previous ban is lifted (see the prerequisite rule below). New scripts may parse and emit JSON with `jq` instead of hand-rolled sed/awk. |
@@ -142,11 +142,22 @@ Consequences of the change:
    `openspec/schemas/verified-scala3/ci/` need an install step; until they have
    one, the prerequisite set is satisfied locally but not in CI.
 
-**CI COVERAGE** — `openspec/schemas/verified-scala3/ci/github-actions.yml`
-runs **only** `registry-check.sh`. `spec-lint.sh` and `danger-scan.sh` are
-**not** CI-enforced; they run only when an agent invokes them. This is the
-"opt-in check" gap `hooks/README.md` describes, and it bounds how much any
-hook-based enforcement can be relied on in a restricted runner.
+**CI COVERAGE** — **re-established 2026-08-08 by
+`spec:add-correctness-substratum/correctness-invariant`, superseding the
+earlier record** ("runs only `registry-check.sh`; `spec-lint.sh` and
+`danger-scan.sh` are not CI-enforced"). All three templates now install and
+**verify** the prerequisite set, then run shellcheck, shfmt (added files),
+bats, `registry-check.sh` and `spec-lint.sh`. `danger-scan.sh` remains
+apply-phase only: it is diff-scoped to a per-spec baseline, which CI does not
+have.
+
+**`danger-scan.sh` IS SCALA-ONLY.** It selects `git diff --name-only
+<baseline> -- '*.scala' | grep '/src/main/'`, so on a change shipping no Scala
+it reports "no production .scala files changed" and exits 0. That is **not
+applicable — never a clean scan.** Recording it as clean is the
+empty-scan-reported-as-OK shape the schema changelog names three times. A
+shell-only change is judged by shellcheck plus Ring 8 instead, and its
+danger-scan row is recorded N/A with this reason.
 
 ## Code Intelligence
 

@@ -26,6 +26,9 @@ jobs:
           sudo apt-get install -y shellcheck jq
           # bats and shfmt are not in apt on all runners; pin explicitly.
           sudo npm install -g bats@1.14.0
+          # openspec: the Ring 3 reachability tests render artifact instructions
+          # through the CLI, so the suite cannot run without it.
+          sudo npm install -g @openspec/cli
           curl -fsSL -o /tmp/shfmt \
             https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
           sudo install -m 0755 /tmp/shfmt /usr/local/bin/shfmt
@@ -33,7 +36,7 @@ jobs:
       - name: Verify prerequisites are present
         # A missing tool must fail here, not silently skip the ring below.
         run: |
-          for t in bash git jq shellcheck bats shfmt; do
+          for t in bash git jq shellcheck bats shfmt openspec; do
             command -v "$t" >/dev/null || { echo "missing prerequisite: $t"; exit 1; }
             printf '%-12s %s\n' "$t" "$(command -v "$t")"
           done

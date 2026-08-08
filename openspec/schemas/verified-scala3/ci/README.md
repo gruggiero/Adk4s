@@ -49,9 +49,12 @@ to old code. Promote to tree-wide after a one-time reformat commit
 (`shfmt -i 2 -ci -w` over the tracked scripts), not before.
 
 **Both lint steps cover `*.sh` and `*.bash`.** The bats helpers live in a
-`.bash` file; a `*.sh`-only glob would have left the newest shell code in the
-repository unchecked by the very gate that was added to check it.
+`.bash` file; a `*.sh`-only glob would have left them unchecked by the very
+gate added to check them. `.bats` suites are deliberately NOT in the glob —
+they are not valid bash (`@test` blocks), so shellcheck cannot parse them.
+Their correctness is established by running them, which the Ring 3 step does.
 
-**Why `shellcheck` is NOT scoped.** It starts near-green — 8 of 11 scripts are
-clean and the remaining findings carry justifying annotations — so it can gate
-the whole tree immediately.
+**Why `shellcheck` is NOT scoped.** The tree is **clean: 12/12 files, zero
+findings** (verified 2026-08-08). The five pre-existing findings carry
+justifying annotations with reasons, so shellcheck gates the whole tree from
+day one rather than only new files.

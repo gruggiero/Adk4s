@@ -209,8 +209,9 @@ description: >
   project's agent skill directories: .claude/skills/, .pi/skills/,
   .devin/skills/), the openspec-extract-concepts skill, and the
   templates/concept-registry/ templates; verify with
-  scanner/registry-check.sh, wired into CI (dependency-free: bash + git
-  grep). registry-check also verifies declared fold fields ("maps f1, f2, ..."
+  scanner/registry-check.sh, wired into CI (registry-check itself needs only
+  bash + git grep; the CI templates install the v12 prerequisite set for the
+  other gate checks). registry-check also verifies declared fold fields ("maps f1, f2, ..."
   rows must match the fold's file — the machine check for declared-but-never-
   folded state) and lints active change specs' "Concepts Used (behavioral)"
   tables against the registry. Registry-aware rules in the spec template and
@@ -223,6 +224,19 @@ artifacts:
     description: Intent, scope, verification strategy, correctness risk, and affected capabilities
     template: proposal.md
     instruction: |
+      ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+      Code is CORRECT iff every requirement is BOUND to an enforcement
+      mechanism, each mechanism is RESOLVED to an artifact that exists, and
+      each artifact is DISCHARGED — observed to run green in THIS session.
+      Obtained, not recalled.
+        NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+        A verdict you did not obtain in this session is not a verdict.
+        "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+      APPLICABILITY IS A FACT read from the repository, never inferred.
+      A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+      carries the date and the mechanism by which it was established, and a
+      later change re-tests it rather than inheriting it.
+      ═════════════════════════════════════════════════════════════════
       Write a clear proposal for the change. Beyond the standard scope and motivation,
       you MUST include:
 
@@ -301,6 +315,19 @@ artifacts:
       tests for the DETECTED stack, never an assumed one.
     template: capability-check.md
     instruction: |
+      ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+      Code is CORRECT iff every requirement is BOUND to an enforcement
+      mechanism, each mechanism is RESOLVED to an artifact that exists, and
+      each artifact is DISCHARGED — observed to run green in THIS session.
+      Obtained, not recalled.
+        NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+        A verdict you did not obtain in this session is not a verdict.
+        "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+      APPLICABILITY IS A FACT read from the repository, never inferred.
+      A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+      carries the date and the mechanism by which it was established, and a
+      later change re-tests it rather than inheriting it.
+      ═════════════════════════════════════════════════════════════════
       The capability profile is PROJECT-SCOPED: it lives at
       openspec/capability-profile.md (NOT in the change directory) because it
       describes the project's stack, which is change-independent. Per-change
@@ -420,6 +447,19 @@ artifacts:
       duplicate creation and enables concept reuse across specs AND changes.
     template: inventory-check.md
     instruction: |
+      ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+      Code is CORRECT iff every requirement is BOUND to an enforcement
+      mechanism, each mechanism is RESOLVED to an artifact that exists, and
+      each artifact is DISCHARGED — observed to run green in THIS session.
+      Obtained, not recalled.
+        NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+        A verdict you did not obtain in this session is not a verdict.
+        "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+      APPLICABILITY IS A FACT read from the repository, never inferred.
+      A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+      carries the date and the mechanism by which it was established, and a
+      later change re-tests it rather than inheriting it.
+      ═════════════════════════════════════════════════════════════════
       The concept inventory is PROJECT-SCOPED: it lives at
       openspec/concept-inventory.md (NOT in the change directory), sibling of
       the behavioral registry openspec/concepts/. It is a LIVING DOCUMENT:
@@ -515,6 +555,19 @@ artifacts:
       table mapping every requirement to an enforcement mechanism.
     template: spec.md
     instruction: |
+      ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+      Code is CORRECT iff every requirement is BOUND to an enforcement
+      mechanism, each mechanism is RESOLVED to an artifact that exists, and
+      each artifact is DISCHARGED — observed to run green in THIS session.
+      Obtained, not recalled.
+        NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+        A verdict you did not obtain in this session is not a verdict.
+        "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+      APPLICABILITY IS A FACT read from the repository, never inferred.
+      A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+      carries the date and the mechanism by which it was established, and a
+      later change re-tests it rather than inheriting it.
+      ═════════════════════════════════════════════════════════════════
       Create one spec file per capability under `specs/<capability-name>/spec.md`.
 
       CRITICAL RULES:
@@ -659,6 +712,19 @@ artifacts:
       spec is too ambiguous to implement safely.
     template: spec-lint.md
     instruction: |
+      ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+      Code is CORRECT iff every requirement is BOUND to an enforcement
+      mechanism, each mechanism is RESOLVED to an artifact that exists, and
+      each artifact is DISCHARGED — observed to run green in THIS session.
+      Obtained, not recalled.
+        NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+        A verdict you did not obtain in this session is not a verdict.
+        "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+      APPLICABILITY IS A FACT read from the repository, never inferred.
+      A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+      carries the date and the mechanism by which it was established, and a
+      later change re-tests it rather than inheriting it.
+      ═════════════════════════════════════════════════════════════════
       STEP 0 — MECHANICAL PRE-PASS (before any judgment):
       1. Run `openspec validate --strict` for the change — it must pass.
       2. Run `openspec/schemas/verified-scala3/scanner/spec-lint.sh <change-dir>`
@@ -800,6 +866,19 @@ artifacts:
       approach per module.
     template: design.md
     instruction: |
+      ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+      Code is CORRECT iff every requirement is BOUND to an enforcement
+      mechanism, each mechanism is RESOLVED to an artifact that exists, and
+      each artifact is DISCHARGED — observed to run green in THIS session.
+      Obtained, not recalled.
+        NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+        A verdict you did not obtain in this session is not a verdict.
+        "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+      APPLICABILITY IS A FACT read from the repository, never inferred.
+      A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+      carries the date and the mechanism by which it was established, and a
+      later change re-tests it rather than inheriting it.
+      ═════════════════════════════════════════════════════════════════
       Write a technical design document for this change. The design must cover:
 
       1. PACKAGE STRUCTURE: Which packages will contain domain types, service traits,
@@ -875,6 +954,19 @@ artifacts:
       typed-contract requirement (full / minimal / waiver).
     template: implementation-order.md
     instruction: |
+      ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+      Code is CORRECT iff every requirement is BOUND to an enforcement
+      mechanism, each mechanism is RESOLVED to an artifact that exists, and
+      each artifact is DISCHARGED — observed to run green in THIS session.
+      Obtained, not recalled.
+        NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+        A verdict you did not obtain in this session is not a verdict.
+        "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+      APPLICABILITY IS A FACT read from the repository, never inferred.
+      A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+      carries the date and the mechanism by which it was established, and a
+      later change re-tests it rather than inheriting it.
+      ═════════════════════════════════════════════════════════════════
       Analyze all specs and produce a dependency-ordered implementation sequence.
 
       PROCEDURE:
@@ -928,6 +1020,19 @@ artifacts:
       implementation-progress.md tracker.
     template: tasks.md
     instruction: |
+      ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+      Code is CORRECT iff every requirement is BOUND to an enforcement
+      mechanism, each mechanism is RESOLVED to an artifact that exists, and
+      each artifact is DISCHARGED — observed to run green in THIS session.
+      Obtained, not recalled.
+        NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+        A verdict you did not obtain in this session is not a verdict.
+        "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+      APPLICABILITY IS A FACT read from the repository, never inferred.
+      A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+      carries the date and the mechanism by which it was established, and a
+      later change re-tests it rather than inheriting it.
+      ═════════════════════════════════════════════════════════════════
       Generate a `tasks.md` checklist in the change root from the sequence in
       implementation-order.md. This file exists so the stock OpenSpec CLI
       (`openspec list`, task counts, `openspec validate`) can track progress;

@@ -42,8 +42,11 @@ spec's `**Generator strategy**` line. Where the true domain is unbounded, the
 enumeration is a stated finite subset and that limit belongs in the
 obligation — never claim sampled coverage for an enumerated test.
 
-**Assert the exit code, not just the output.** Scripts in this workflow use a
-three-way convention (design Decision 1 of `add-correctness-substratum`):
+**Assert the exit code, not just the output.** New scripts in this workflow
+SHALL use a three-way convention (design **Decision 2** of
+`add-correctness-substratum`). It is prescriptive, not descriptive: of the 11
+scripts predating it, only `metals-call.sh` and `spec-lint.sh` use 0/1/2,
+`install-hooks.sh` uses 0/2, and the rest are 0/1 or 0-only.
 
 | Code | Meaning |
 |------|---------|

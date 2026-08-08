@@ -216,7 +216,9 @@ setup() {
 # ─────────────────────────────────────────────────────────────────────────
 
 @test "the workflow definition still loads after the text changes" {
-  run bash -c "cd '$ROOT' && openspec status --change add-correctness-substratum 2>&1"
+  local chg
+  chg="$(first_active_change)" || skip "no active change to load"
+  run bash -c "cd '$ROOT' && openspec status --change '$chg' 2>&1"
   assert_status 0 "$status" "openspec must still load the schema"
   assert_contains "$output" "verified-scala3" "openspec status output"
 }
@@ -236,41 +238,99 @@ setup() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────
-# REACHABILITY — added at Ring 8 (spec 1), which found a FAIL the tests above
-# could not see. The definition was present in the schema `description` and
-# every presence test passed, but the CLI does NOT emit `description` to the
-# agent: `openspec instructions apply` returned ZERO matches for the operative
-# rule. Text nobody receives is documentation, not a substratum.
+# REACHABILITY — added at Ring 8, which found a FAIL these presence tests
+# could not see: the definition sat in the schema `description`, every presence
+# test passed, and the CLI does NOT emit `description`. Text nobody receives is
+# documentation, not a substratum.
 #
-# These tests assert the definition REACHES an agent, which is what the
-# requirement actually says. Presence in a file is necessary and not
-# sufficient, and every test above only checked presence.
+# A fresh-context Ring 8 pass then found the first version of these tests was
+# ALSO too weak twice over: it probed only `apply` — the one instruction that
+# had been fixed — while the requirement says EVERY ARTIFACT instruction; and
+# it hard-coded the change name, so the suite would go permanently red once
+# that change was archived. Both are corrected below: the artifact list is
+# enumerated from schema.yaml, and the change is discovered at test time.
 # ─────────────────────────────────────────────────────────────────────────
 
+# Enumerated from schema.yaml at test time, NOT listed here: a new artifact
+# added without the prelude must fail this property, which a hard-coded list
+# could not detect.
+artifact_ids() {
+  awk '
+    /^artifacts:/        { in_a = 1; next }
+    in_a && /^[a-z_-]+:/ { in_a = 0 }
+    in_a && /^  - id: /  { print $3 }
+  ' "$SCHEMA_YAML"
+}
+
 # spec: correctness-invariant — Scenario: all three conditions hold
-@test "REACHABILITY the operative rule reaches the agent via the apply instruction" {
-  run bash -c "cd '$ROOT' && openspec instructions apply --change add-correctness-substratum 2>/dev/null"
-  assert_status 0 "$status" "openspec instructions apply must succeed"
-  assert_contains "$output" "NEVER LET A CLAIM OUTRUN ITS EVIDENCE" "emitted apply instruction"
+# spec: correctness-invariant — Scenario: applicability asserted without looking
+# spec: correctness-invariant — Scenario: a recorded limitation is re-tested and found obsolete
+@test "REACHABILITY PROPERTY every artifact instruction carries the invariant and the retest rule" {
+  # Generator strategy (enumerated): every artifact id declared in schema.yaml,
+  # read at test time. Edge case: an artifact added later with no prelude.
+  local chg missing="" ids n=0
+  chg="$(first_active_change)" || skip "no active change to render instructions for"
+  ids="$(artifact_ids)"
+  [ -n "$ids" ] || {
+    printf 'no artifact ids parsed from schema.yaml — empty scan, not a pass\n' >&2
+    return 1
+  }
+  local a out
+  while IFS= read -r a; do
+    [ -n "$a" ] || continue
+    n=$((n + 1))
+    out="$(cd "$ROOT" && openspec instructions "$a" --change "$chg" 2>/dev/null)"
+    case "$out" in
+      *"NEVER LET A CLAIM OUTRUN ITS EVIDENCE"*) ;;
+      *) missing="$missing$a (invariant)"$'\n' ;;
+    esac
+    case "$out" in
+      *"RE-ESTABLISHED BEFORE IT IS RELIED UPON"*) ;;
+      *) missing="$missing$a (retest rule)"$'\n' ;;
+    esac
+  done <<EOF
+$ids
+EOF
+  [ "$n" -ge 8 ] || {
+    printf 'only %s artifacts enumerated; expected at least 8\n' "$n" >&2
+    return 1
+  }
+  assert_empty_list "$missing" "these artifact instructions do not carry the required text:"
 }
 
 # spec: correctness-invariant — Scenario: all three conditions hold
 @test "REACHABILITY all three clauses reach the agent, not just the slogan" {
-  run bash -c "cd '$ROOT' && openspec instructions apply --change add-correctness-substratum 2>/dev/null"
-  assert_contains "$output" "BOUND" "emitted apply instruction"
-  assert_contains "$output" "RESOLVED" "emitted apply instruction"
-  assert_contains "$output" "DISCHARGED" "emitted apply instruction"
+  local chg
+  chg="$(first_active_change)" || skip "no active change to render instructions for"
+  run bash -c "cd '$ROOT' && openspec instructions proposal --change '$chg' 2>/dev/null"
+  assert_status 0 "$status" "openspec instructions must succeed"
+  assert_contains "$output" "BOUND" "emitted artifact instruction"
+  assert_contains "$output" "RESOLVED" "emitted artifact instruction"
+  assert_contains "$output" "DISCHARGED" "emitted artifact instruction"
 }
 
 # spec: correctness-invariant — Scenario: applicability asserted without looking
 @test "REACHABILITY the applicability corollary reaches the agent" {
-  run bash -c "cd '$ROOT' && openspec instructions apply --change add-correctness-substratum 2>/dev/null"
-  assert_contains "$output" "never inferred" "emitted apply instruction"
+  local chg
+  chg="$(first_active_change)" || skip "no active change to render instructions for"
+  run bash -c "cd '$ROOT' && openspec instructions proposal --change '$chg' 2>/dev/null"
+  assert_contains "$output" "never inferred" "emitted artifact instruction"
 }
 
 # spec: correctness-invariant — Scenario: outcome carried over from a previous session
 @test "REACHABILITY the four disguising phrasings reach the agent" {
-  run bash -c "cd '$ROOT' && openspec instructions apply --change add-correctness-substratum 2>/dev/null"
-  assert_contains "$output" '"N/A"' "emitted apply instruction"
-  assert_contains "$output" '"already handled"' "emitted apply instruction"
+  local chg
+  chg="$(first_active_change)" || skip "no active change to render instructions for"
+  run bash -c "cd '$ROOT' && openspec instructions proposal --change '$chg' 2>/dev/null"
+  assert_contains "$output" '"N/A"' "emitted artifact instruction"
+  assert_contains "$output" '"already handled"' "emitted artifact instruction"
+}
+
+# spec: correctness-invariant — Scenario: all three conditions hold
+@test "REACHABILITY the apply instruction also carries the invariant" {
+  local chg
+  chg="$(first_active_change)" || skip "no active change to render instructions for"
+  run bash -c "cd '$ROOT' && openspec instructions apply --change '$chg' 2>/dev/null"
+  assert_status 0 "$status" "openspec instructions apply must succeed"
+  assert_contains "$output" "NEVER LET A CLAIM OUTRUN ITS EVIDENCE" "emitted apply instruction"
 }

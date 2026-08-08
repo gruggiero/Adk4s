@@ -38,6 +38,22 @@ schema_scripts() {
   (cd "$root" && git ls-files "$rel/**/*.sh" "$rel/*.sh")
 }
 
+# ── active change discovery ──────────────────────────────────────────────
+# Reachability tests must not name a change: a suite hard-coded to the change
+# that introduced it goes permanently red the moment that change is archived,
+# in a suite CI runs on every pipeline. Discovered at test time instead.
+first_active_change() {
+  local root d
+  root="$(repo_root)"
+  for d in "$root"/openspec/changes/*/; do
+    [ -d "$d" ] || continue
+    case "$d" in */archive/*) continue ;; esac
+    basename "$d"
+    return 0
+  done
+  return 1
+}
+
 # ── assertions ───────────────────────────────────────────────────────────
 # Each prints WHY it failed and against WHAT. A bare `[ "$status" -eq 0 ]`
 # reports "returned 1" and leaves the reader to guess.
