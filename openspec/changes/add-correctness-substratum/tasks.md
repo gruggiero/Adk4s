@@ -13,24 +13,24 @@ recorded once, with impact, in `implementation-progress.md`.
 
 Prerequisite work (first, because every later spec's tests depend on it):
 
-- [ ] Create `openspec/schemas/verified-scala3/tests/` and `tests/fixtures/`
-- [ ] Establish `.bats` naming and helper conventions — none exist for the 11 tracked scripts; document them in `tests/README.md`
-- [ ] Add tool install steps (`shellcheck`, `shfmt`, `bats`, `jq`) to `ci/github-actions.yml`, `ci/gitlab-ci.yml`, `ci/azure-pipelines.yml`
-- [ ] Add `shellcheck`, `shfmt -d` and `bats` invocations to the three CI templates
-- [ ] Annotate the 5 pre-existing shellcheck findings with reasons: `danger-scan.sh:62` SC2086 (intentional optional-arg idiom), `registry-check.sh:143,235,289` SC2016 (intentional awk quoting)
-- [ ] Verify `metals-call.sh:95` `init_resp` SC2034 — remove if genuinely dead, annotate if not
+- [x] Create `openspec/schemas/verified-scala3/tests/` and `tests/fixtures/`
+- [x] Establish `.bats` naming and helper conventions — none exist for the 11 tracked scripts; document them in `tests/README.md`
+- [x] Add tool install steps (`shellcheck`, `shfmt`, `bats`, `jq`) to `ci/github-actions.yml`, `ci/gitlab-ci.yml`, `ci/azure-pipelines.yml`
+- [x] Add `shellcheck`, `shfmt -d` and `bats` invocations to the three CI templates
+- [x] Annotate the 5 pre-existing shellcheck findings with reasons: `danger-scan.sh:62` SC2086 (intentional optional-arg idiom), `registry-check.sh:143,235,289` SC2016 (intentional awk quoting)
+- [x] Verify `metals-call.sh:95` `init_resp` SC2034 — remove if genuinely dead, annotate if not
 
 Spec cycle:
 
-- [ ] Step 0 — clean tree, record baseline SHA, inventory snapshot, verify Proof Obligations complete
-- [ ] Step 1 — typed-contract **waiver** presented for explicit human approval (no Scala; the normative text is the deliverable) → **GATE**
-- [ ] Step 2 — write `tests/correctness-invariant.bats` from the spec only; run for ORACLE POLARITY (red / green-by-design) → **GATE**
-- [ ] Step 3 (R0) — add the three-clause definition and operative rule to `schema.yaml` (version → 12, changelog entry) and `templates/spec.md`; amend `hooks/README.md` and `gate.sh`'s header for the prerequisite set; `schema.yaml` parses and `openspec status` resolves
-- [ ] Step 4 (R1) — `shellcheck` and `shfmt -d` clean on every changed script
-- [ ] Step 6 (R3) — `bats tests/correctness-invariant.bats` green; polarity confirmed (red → green)
-- [ ] Step 8 (R8) — adversarial review in a **fresh context**: does any workflow document still assert the superseded rule?
-- [ ] Step 12 — concept delta (expected **empty**); build-dependency delta must **report the host prerequisites** `jq`/`shellcheck`/`bats`/`shfmt`
-- [ ] Step 13 — update `implementation-progress.md`, regenerate this file, commit, **STOP**
+- [x] Step 0 — clean tree, record baseline SHA, inventory snapshot, verify Proof Obligations complete
+- [x] Step 1 — typed-contract **waiver** presented for explicit human approval (no Scala; the normative text is the deliverable) → **GATE**
+- [x] Step 2 — write `tests/correctness-invariant.bats` from the spec only; run for ORACLE POLARITY (red / green-by-design) → **GATE**
+- [x] Step 3 (R0) — add the three-clause definition and operative rule to `schema.yaml` (version → 12, changelog entry) and `templates/spec.md`; amend `hooks/README.md` and `gate.sh`'s header for the prerequisite set; `schema.yaml` parses and `openspec status` resolves
+- [x] Step 4 (R1) — `shellcheck` and `shfmt -d` clean on every changed script
+- [x] Step 6 (R3) — `bats tests/correctness-invariant.bats` green; polarity confirmed (red → green)
+- [x] Step 8 (R8) — adversarial review in a **fresh context**: does any workflow document still assert the superseded rule?
+- [x] Step 12 — concept delta (expected **empty**); build-dependency delta must **report the host prerequisites** `jq`/`shellcheck`/`bats`/`shfmt`
+- [x] Step 13 — update `implementation-progress.md`, regenerate this file, commit, **STOP**
 
 ## 2. evidence-ledger
 

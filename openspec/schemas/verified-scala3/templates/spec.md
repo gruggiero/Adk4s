@@ -8,6 +8,15 @@
      Each spec is implemented and verified INDEPENDENTLY through the full
      ring pipeline. Keep specs self-contained — one capability per spec.
 
+     THE INVARIANT (schema v12) — applies while writing this spec and while
+     reporting on it:
+       Never let a claim outrun its evidence. A verdict you did not obtain in
+       this session is not a verdict.
+     Concretely for this file: every requirement must be named by at least one
+     Proof Obligation (bound), every obligation must name an artifact that
+     will exist (resolved), and after implementation that artifact must have a
+     recorded run (discharged).
+
      WRITING RULES (enforced by spec-lint):
      - Every requirement opens with a normative statement containing SHALL or
        MUST (required by `openspec validate --strict`), followed by the

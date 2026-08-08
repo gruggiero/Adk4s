@@ -141,8 +141,25 @@ export VERIFIED_SCALA3_HOOKS=off      # honoured by gate.sh, no uninstall needed
 Or remove `.pi/extensions/verified-scala3-gate.ts`, `.devin/hooks.v1.json`, and
 the `SessionStart` entry from `.claude/settings.json`.
 
-## Portability
+## Prerequisites
 
-`gate.sh` is bash + git only — no JVM, no network, no `jq` — the same rule as
-the gate checks, for the same reason: a check that only runs on one machine is
-a check that stops running.
+The workflow declares an explicit, installable prerequisite set. It does not
+depend on nothing — it depends on a stated list, for the same reason the old
+zero-dependency rule existed: **a check that only runs on one machine is a
+check that stops running.** Declaring and installing the set serves that
+reasoning better than having no dependencies did, because the escaping and
+testing that had to be hand-rolled were where the defects lived.
+
+| Prerequisite | Required by |
+|---|---|
+| `bash`, `git` | everything — the baseline for every check and hook |
+| `jq` | `gate.sh` and the scanners, for JSON parse and emit |
+| `shellcheck` | Ring 1 — shell lint, run in CI and at apply Step 4 |
+| `bats` | Ring 3 — the shell test suites in `../tests/`, run in CI and at apply Step 6 |
+| `shfmt` | Ring 1 — shell formatting check, run in CI and at apply Step 4 |
+
+Still excluded for any gate check: **JVM** and **network**.
+
+Superseded (schema v12): the rule was previously *"bash + git only — no JVM,
+no network, no JSON processor"*, and `gate.sh` hand-rolled its JSON escaping
+in `sed`/`awk` to honour it. That escaping is no longer required.

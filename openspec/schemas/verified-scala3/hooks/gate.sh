@@ -15,9 +15,13 @@
 # the agent, and that risk is only worth taking once the non-blocking path has
 # proven itself.
 #
-# PORTABILITY — bash + git only, same rule as the gate checks. No JVM, no
-# network, no jq. It must run wherever the workflow runs, including a
-# restricted CI runner, or it is not a dependable part of the workflow.
+# PREREQUISITES (schema v12) — bash, git and jq at runtime; no JVM, no
+# network. The rule was previously "bash and git only, nothing else", and the
+# reasoning behind it is retained: a check that only runs on one machine is a
+# check that stops running. What changed is the mechanism — the dependency set
+# is now DECLARED and installable rather than empty, because the escaping and
+# testing that had to be hand-rolled to keep it empty were where the defects
+# lived. See ./README.md for the full set and what requires each entry.
 #
 # Usage:
 #   gate.sh --event session-start [--format hook-json|text] [--repo PATH]
@@ -52,7 +56,10 @@ SCHEMA_YAML="$SELF_DIR/../schema.yaml"
 # Hooks are invoked from an unpredictable cwd, so the repo is resolved from
 # the most explicit signal available and only then guessed.
 if [ -z "$REPO" ]; then
-  # the event JSON carries "cwd"; extract it without jq, which may not exist
+  # the event JSON carries "cwd"; this extracts it with sed. jq is a declared
+  # prerequisite as of schema v12, so this could now be a jq expression —
+  # a candidate simplification, deliberately not taken here (design Decision 1:
+  # simplifying the existing escaping is a refactor, not an obligation).
   if [ ! -t 0 ]; then
     payload="$(cat 2>/dev/null || true)"
     REPO="$(printf '%s' "$payload" \
@@ -153,7 +160,10 @@ case "$FORMAT" in
     printf '%s\n' "$body"
     ;;
   hook-json)
-    # JSON-escape without jq: backslash, quote, then newlines to \n.
+    # JSON-escape by hand: backslash, quote, then newlines to \n. Written this
+    # way when the workflow depended on bash and git alone; jq is a declared
+    # prerequisite as of schema v12, so `jq -Rs .` would now do this correctly
+    # in one call. Left as-is on purpose — see the note above.
     esc="$(printf '%s' "$body" \
       | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
       | awk '{ printf "%s\\n", $0 }')"

@@ -140,6 +140,8 @@ for f in "$CONCEPTS_DIR"/*.md; do
   # row (FILE-SCOPED BINDING — see header).
   while IFS= read -r row; do
     [ -z "$row" ] && continue
+    # shellcheck disable=SC2016  # single quotes are intentional: this is a grep
+    # PATTERN containing backticks, not a string meant to expand.
     row_tokens="$(printf '%s\n' "$row" | grep -o '`[^`]*`' | tr -d '`' || true)"
     [ -z "$row_tokens" ] && continue
 
@@ -232,6 +234,8 @@ EOF
   fold_rows="$(printf '%s\n' "$lines" | grep -- 'maps [A-Za-z_]' || true)"
   while IFS= read -r row; do
     [ -z "$row" ] && continue
+    # shellcheck disable=SC2016  # single quotes are intentional: this is a grep
+    # PATTERN containing backticks, not a string meant to expand.
     fold_file="$(printf '%s' "$row" | grep -o '`[^`]*/[^`]*\.[a-z]*`' | head -1 | tr -d '\`')"
     if [ -z "$fold_file" ] || ! file_exists "$fold_file"; then
       echo "STALE  $base: fold row declares mapped fields but names no resolvable file: $row"
@@ -286,6 +290,8 @@ for spec in "$ROOT"/openspec/changes/*/specs/*/spec.md; do
   # ...or bare, which is just as common in practice. A parser that accepted
   # only the first two forms read a whole change as zero references and
   # reported OK — the silent-empty-scan failure, again.
+  # shellcheck disable=SC2016  # single quotes are intentional: this is a grep
+  # PATTERN containing backticks, not a string meant to expand.
   refs="$( { printf '%s\n' "$eligible" | grep -o '`[^`]*`' | tr -d '\`';
              printf '%s\n' "$eligible" | grep -oE '\[[A-Za-z][A-Za-z0-9/]*\]' | tr -d '[]';
              printf '%s\n' "$eligible" | sed 's/^[ \t]*//; s/[ \t]*$//' \
