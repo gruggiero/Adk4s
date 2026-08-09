@@ -12,7 +12,7 @@ Seeded unchecked 2026-08-08.
 ## Sequence
 
 - [x] 1. `specs/correctness-invariant/spec.md`
-- [ ] 2. `specs/evidence-ledger/spec.md`
+- [x] 2. `specs/evidence-ledger/spec.md`
 - [ ] 3. `specs/chain-state/spec.md`
 - [ ] 4. `specs/gate-payload/spec.md`
 - [ ] 5. `specs/checkpoint-from-ledger/spec.md`
@@ -101,15 +101,76 @@ detectable tampering here is not evidence of none.
 
 ### 2. evidence-ledger
 
+**Step 0 complete 2026-08-08** — tree clean; baseline recorded; registry gate
+passed (740 tokens / 15 spec refs); inventory snapshot at
+`inventory-snapshots/evidence-ledger-before.md`. Concept check: "Concepts Used
+(from inventory)" declares **none** — no Scala type read or written, nothing to
+import or avoid recreating. Zero MUST-CONFIRM items. Public-type-change impact
+scan: **not applicable** — no public type aliased, widened, or given new
+variants. Proof Obligations verified complete at spec-lint (F4/F6/F7/F8 clean),
+including the three added when design Decision 1 changed the record format.
+
+**Ring 8 will run in a FRESH-CONTEXT SUBAGENT** — standing authorization given
+2026-08-08 after the spec 1 result (author context found 1 finding, fresh
+context found 11).
+
 | Field | Value |
 |-------|-------|
-| Baseline SHA | _(Step 0)_ |
-| Gate 1 — typed contract (full: ledger record contract) | ☐ |
-| Gate 2 — test oracle + polarity | ☐ |
-| R0 · R1 · R2 · R3 · **R4** · R8 | |
-| Concept delta (expected: empty) | |
-| Build-dependency delta (expected: none) | |
-| Commit | |
+| Baseline SHA | `723f22fe327fa1600e32d3960580fd807236ee83` |
+| Gate 1 — typed contract (full: ledger record contract) | ☑ **approved** 2026-08-08 |
+| Gate 2 — test oracle + polarity | ☑ **approved** (21 RED / 2 green-by-design) |
+| R0 | ✅ `bash -n`; contract executes; 15 rejection paths each named |
+| R1 | ✅ shellcheck 0 findings; `shfmt -i 2 -ci` clean on added files |
+| R2 | ✅ prerequisite rule (bash/git/jq only, no JVM, no network); runs identically from any cwd |
+| R3 | ✅ **52/52** across both suites; polarity confirmed (21 red→green, 2 green-by-design held) |
+| **R4** | ✅ committed `evidence-ledger-v1.jsonl` (5 rows) re-parses; unknown `v` → undetermined; nothing regenerates it |
+| R8 | ✅ **`fresh-context: YES`** after fixing **3 FAIL + 1 PARTIAL** — see below |
+| Concept delta | ✅ **empty** — before/after snapshots differ only in the scan-date comment |
+| Build-dependency delta | ✅ `build.sbt`/`project/` none; no new host prerequisite beyond spec 1's set |
+
+**Typed contract note.** For a shell spec the analogue of "genuinely compiled"
+is genuinely executable: `scanner/ledger-record-contract.jq` IS the contract
+and its checker, shared by the implementation and the oracle so the two cannot
+drift by disagreeing about what a row is. Running it at Gate 1 found a real
+bug — `rings | index(.ring)` rebinds `.` to the array, so the conformant record
+was being rejected. Prose would have shipped that.
+
+**Ring 8 fresh-context pass — 3 FAIL, 1 PARTIAL, all fixed.** The code passed
+52/52 tests, shellcheck, shfmt and every gate, and was broken in six ways:
+
+| Finding | Fix |
+|---|---|
+| **FAIL** append onto a file with no trailing newline **concatenated onto the prior row**, corrupting it and making the ledger permanently unreadable. The reader explicitly supports such files, so this is a supported input shape | writer now owns the record separator (`tail -c1` check) |
+| **FAIL** an unreadable ledger (`chmod 000`) read as **exit 0, zero rows** — the unchecked `done <"$FILE"` redirect. A directory gave exit 1 (a finding, not undetermined). A newline-only file read clean | explicit `-f`/`-r` guards → undetermined; a blank line is now an unparseable record, not skipped |
+| **FAIL** `*) shift ;;` silently swallowed unknown flags, so a typo'd `--baselin` **disabled the staleness filter** and returned superseded evidence with exit 0 | unrecognised arguments are refused as findings |
+| **PARTIAL** a dangling flag **hung forever** — `shift 2` does not shift with one argument left, so no exit code was ever returned. In a hook that strands the session | each flag requires a value; a missing one is a finding |
+| **PARTIAL** `--exit 007` stored as `7`; `--exit 99999999999999999999` stored as `1e+20` | strict integer form; the stored value is the supplied one |
+| the `update` refusal never fired — `--row` was rejected as unknown first, so the caller never learned the ledger is append-only | subcommand refusal moved ahead of argument parsing |
+
+It also found **4 enumerated domains narrower than their declared Generator
+strategies**, two of them exactly where the code broke: P1 varied ledger *size*
+but never *shape*, so the no-trailing-newline case was outside the domain; P4
+held only content corruptions of a readable file; the empty-string value
+declared by both P1 and P2 was absent; P4's "file of only whitespace" was
+implemented as a whitespace *line* appended to a good ledger. All widened to
+what the spec declares — a correction of my Step 2 error, not a change to the
+approved spec.
+
+Two of my own bugs surfaced while fixing: `${OBL:-default}` in the test helper
+substituted for **empty as well as unset**, so the empty-value case never
+reached the writer; and a `'"'"'`-style quoting sequence leaked literally from
+a heredoc into the argument-error message.
+
+**Corrected false claim.** `design.md` states *"there is no read path that
+ignores baseline"*. That was false — `--baseline` is optional on read, so the
+default path ignores it. The typo hole is fixed; whether to make `--baseline`
+mandatory is a CLI-contract change and is a gate item, not applied silently.
+
+**Deferred to the gate (would change the approved oracle):** the spec's Then is
+"the row is **reported as stale** and the obligation is reported as not
+discharged". Only the second half is implemented — a stale row is excluded but
+not named. Reporting it on stderr violates an approved assertion, because bats
+merges stderr into `$output` and the approved test asserts the row is absent.
 
 ### 3. chain-state
 

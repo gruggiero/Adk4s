@@ -34,17 +34,17 @@ Spec cycle:
 
 ## 2. evidence-ledger
 
-- [ ] Step 0 — baseline SHA, inventory snapshot, obligations complete
-- [ ] Step 1 — ledger record contract: field names, types, required set, `v=1`, append-only semantics → **GATE**
-- [ ] Step 2 — `tests/evidence-ledger.bats` from spec only: 4 enumerated properties + 16 scenarios; polarity run → **GATE**
-- [ ] Step 3 (R0) — `scanner/ledger.sh` with `append` and `read`; `jq` encode/decode; `bash -n` clean
-- [ ] Step 4 (R1) — `shellcheck` + `shfmt -d` clean; `danger-scan.sh` reports no unjustified pattern
-- [ ] Step 5 (R2) — prerequisite rule asserted: no JVM, no network; runs identically from a shell prompt and from a hook
-- [ ] Step 6 (R3) — bats green; polarity confirmed
-- [ ] Step 7 (**R4**) — commit `tests/fixtures/evidence-ledger-v1.jsonl`; assert it re-parses and is never regenerated to make a test pass; assert an unrecognised `v` yields undetermined, not skipped rows
-- [ ] Step 8 (R8) — fresh-context review: can a row be written bypassing the writer? can a modifying invocation succeed? does an unknown version silently drop rows?
-- [ ] Step 12 — concept delta (expected empty); build-dependency delta (expected none)
-- [ ] Step 13 — tracker, regenerate, commit, **STOP**
+- [x] Step 0 — baseline SHA, inventory snapshot, obligations complete
+- [x] Step 1 — ledger record contract: field names, types, required set, `v=1`, append-only semantics → **GATE**
+- [x] Step 2 — `tests/evidence-ledger.bats` from spec only: 4 enumerated properties + 16 scenarios; polarity run → **GATE**
+- [x] Step 3 (R0) — `scanner/ledger.sh` with `append` and `read`; `jq` encode/decode; `bash -n` clean
+- [x] Step 4 (R1) — `shellcheck` + `shfmt -d` clean; `danger-scan.sh` reports no unjustified pattern
+- [x] Step 5 (R2) — prerequisite rule asserted: no JVM, no network; runs identically from a shell prompt and from a hook
+- [x] Step 6 (R3) — bats green; polarity confirmed
+- [x] Step 7 (**R4**) — commit `tests/fixtures/evidence-ledger-v1.jsonl`; assert it re-parses and is never regenerated to make a test pass; assert an unrecognised `v` yields undetermined, not skipped rows
+- [x] Step 8 (R8) — fresh-context review: can a row be written bypassing the writer? can a modifying invocation succeed? does an unknown version silently drop rows?
+- [x] Step 12 — concept delta (expected empty); build-dependency delta (expected none)
+- [x] Step 13 — tracker, regenerate, commit, **STOP**
 
 ## 3. chain-state
 
