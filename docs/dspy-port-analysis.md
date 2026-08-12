@@ -1,20 +1,21 @@
 # Porting DSPy's Concepts to ADK4S — Feasibility & Value Analysis
 
-*2026-07-23 — based on dspy.ai (Getting Started + Diving Deeper + API reference, July 2026 state) and the local ADK4S checkout. Companion to `activegraph-port-analysis.md`; same approach: port the ideas, not the code.*
+*Originally 2026-07-23; updated 2026-08-12 to reflect Phase 0 (`add-optimizable-surface`, archived 2026-08-01) and Phase 1 (`add-eval-core`, archived 2026-08-01) now being **implemented and archived**, and the `add-harness-api-phase0` / `add-correctness-substratum` work (archived 2026-08-12) that introduced `AgentMiddleware` / `HarnessAgent` / `HarnessState` and refactored the ReAct loop. Based on dspy.ai (Getting Started + Diving Deeper + API reference, July 2026 state) and the local ADK4S checkout. Companion to `activegraph-port-analysis.md`; same approach: port the ideas, not the code.*
 
 ## 1. Executive summary
 
 DSPy's pitch is "program, don't prompt": declare each LLM step as a typed input/output contract (**Signature**), compose steps as **Modules**, render contracts to the wire through pluggable **Adapters**, score programs with **Metrics**, and let **Optimizers** (teleprompters) rewrite instructions, select few-shot demos, or fine-tune weights against those metrics. The compiled program is a portable artifact: compile once, save, serve.
 
-**Verdict: highly feasible, and more naturally fitted to ADK4S than ActiveGraph was.** Roughly half of DSPy's stack — typed structured outputs, lenient parsing, constraints, retries, tool loops, parallel batch execution — *already exists* in ADK4S, often in stronger form (SAP's type-aware coercion vs `json_repair` + `ast.literal_eval`; Smithy schemas vs Pydantic; `Constraint.check/assert` vs nothing). What ADK4S completely lacks is DSPy's actual innovation: **the evaluation + optimization layer**, i.e. treating prompts and demos as *learnable parameters* searched against a metric. That layer is mostly pure orchestration code (run program → score → mutate → repeat) and ports cleanly to Cats Effect. The `structured-llm-baml-gap-analysis.md` already flagged "GEPA prompt optimization" as a known gap (§4.9, rated LOW at the time); this analysis argues it should be re-rated: it is the one capability that no amount of BAML-porting will provide, and it compounds the value of everything ADK4S already has.
+**Verdict: highly feasible, and more naturally fitted to ADK4S than ActiveGraph was.** Roughly half of DSPy's stack — typed structured outputs, lenient parsing, constraints, retries, tool loops, parallel batch execution — *already exists* in ADK4S, often in stronger form (SAP's type-aware coercion vs `json_repair` + `ast.literal_eval`; Smithy schemas vs Pydantic; `Constraint.check/assert` vs nothing). What ADK4S originally lacked was DSPy's actual innovation: **the evaluation + optimization layer**, i.e. treating prompts and demos as *learnable parameters* searched against a metric. That layer is mostly pure orchestration code (run program → score → mutate → repeat) and ports cleanly to Cats Effect. **As of 2026-08-12, the first two phases of this port are implemented and archived**: the `Optimizable[P]` predictor surface (Phase 0) and the `Evaluate`/`Metric`/`Example`/`Judges` eval harness (Phase 1). The eval harness alone is independently valuable — agent regression testing, CI scoring, model comparison — and is the substrate every remaining optimizer phase consumes. The `structured-llm-baml-gap-analysis.md` previously flagged "GEPA prompt optimization" as a known gap (§4.9, rated LOW at the time); this analysis argued it should be re-rated: it is the one capability that no amount of BAML-porting will provide, and it compounds the value of everything ADK4S already has.
 
-| Scope | Estimate (focused person-weeks) | What you get |
-|---|---|---|
-| **Eval core only** (Example/Metric/Evaluate) | **3–4 pw** | Agent regression testing + the substrate every optimizer needs; valuable standalone |
-| **MVP "compiler"** (+ signature-as-data, demos, Bootstrap family, save/load) | **12–16 pw** | The 80% of DSPy people actually use |
-| **Full concept parity** (+ trace capture, COPRO/GEPA-style reflective optimizer, caching, BestOfN/Refine, KNN demos) | **24–30 pw** | Instruction optimization, the state-of-the-art part |
+| Scope | Estimate (focused person-weeks) | Status | What you get |
+|---|---|---|---|
+| **Predictor surface** (Optimizable/PredictorState/OptimizerLaws) | **1–1.5 pw** | ✅ Done (Phase 0, archived 2026-08-01) | Type-erased predictor enumeration + update; `Mirror`-derived; Ring 6 verified |
+| **Eval core** (Example/Metric/Evaluate/Judges) | **3–4 pw** | ✅ Done (Phase 1, archived 2026-08-01) | Agent regression testing + the substrate every optimizer needs; valuable standalone |
+| **MVP "compiler"** (+ signature-as-data, demos, Bootstrap family, save/load) | **12–16 pw** | Not started (Phase 2) | The 80% of DSPy people actually use |
+| **Full concept parity** (+ trace capture, COPRO/GEPA-style reflective optimizer, caching, BestOfN/Refine, KNN demos) | **24–30 pw** | Not started (Phases 3–4) | Instruction optimization, the state-of-the-art part |
 
-The single biggest design decision is not any optimizer — it's making **prompts data instead of functions**. Today a `PromptTemplate[I]` is an opaque `I => Prompt`; nothing can introspect or rewrite it. Everything downstream (demos, instruction rewriting, save/load of compiled state) hinges on a `Signature`-like value with a readable/replaceable instruction string and field list. That refactor is prerequisite work, and it improves `structured-llm` even if no optimizer is ever built.
+The single biggest design decision remaining is not any optimizer — it's making **prompts data instead of functions**. Today a `PromptTemplate[I]` is an opaque `I => Prompt`; nothing can introspect or rewrite it. Everything downstream (demos, instruction rewriting, save/load of compiled state) hinges on a `Signature`-like value with a readable/replaceable instruction string and field list. That refactor is prerequisite work for Phase 2, and it improves `structured-llm` even if no optimizer is ever built.
 
 ## 2. DSPy component inventory — what there is to port
 
@@ -39,24 +40,27 @@ From the docs (Diving Deeper pages are explicit about internal design decisions,
 | DSPy concept | ADK4S asset | Fit |
 |---|---|---|
 | Typed output contract + coercion | `structured-llm`: `Schema[A]` (Smithy IDL + smithy4s), SAP with type-aware coercion + scoring, `OutputFormatOptions` (BAML-style rendering) | **Direct, and stronger.** SAP ≥ `parse_value`; Smithy schema injection ≈ JSONAdapter/BAMLAdapter's schema block |
-| `Predict` as callable function | `StructuredLLM.function[I, A]: I => F[A]`, `completeTemplate` | Direct — but opaque; see §4.1 |
-| Prompt construction | `Prompt` (wraps llm4s `Conversation`), `PromptTemplate[I]`, `prompt"..."` interpolator DSL | Adaptable — templates must become inspectable data |
-| Constraints on outputs | `Constraint.check` / `Constraint.assert`, `completeValidated` | **Direct** — maps to DSPy assertions and to reward/feedback signals |
+| `Predict` as callable function | `StructuredLLM.function[I, A]: I => F[A]`, `completeTemplate` | Direct — but opaque; Phase 2 makes it inspectable via `Signature`/`Predict` |
+| Prompt construction | `Prompt` (wraps llm4s `Conversation`), `PromptTemplate[I]`, `prompt"..."` interpolator DSL | Adaptable — templates must become inspectable data (Phase 2) |
+| Constraints on outputs | `Constraint.check` / `Constraint.assert`, `completeValidated` | **Direct** — maps to DSPy assertions and to reward/feedback signals; already used by `Judges` for range clamping |
 | Retry / fallback | `Retry` policies (`RetryTrigger.ParseFailure/ValidationFailure`), `ClientStrategy` fallback + round-robin | Direct — `Refine`-lite already exists (retry on validation failure) |
-| ReAct | `ReactAgent` + `ToolsNode` + middleware | Direct — richer than `dspy.ReAct` (streaming, interrupts, events) |
+| ReAct | `HarnessAgent` (refactored ReAct loop with middleware stack) + `ToolsNode`; `ReactAgent` is now a thin adapter over `HarnessAgent` | Direct — richer than `dspy.ReAct` (streaming, interrupts, events, middleware) |
+| Agent middleware (no DSPy equivalent) | `AgentMiddleware[F]` (four-hook trait: `beforeAgent`/`afterAgent`/`wrapModelCall`/`wrapToolCall`), `MiddlewareStack`, `HarnessState`, `StateCell` | **New since original analysis.** Provides a natural vehicle for trace capture (Phase 3) and agent-level optimization (Phase 4) — `wrapModelCall` is exactly the hook an instrumented predictor needs |
 | `Parallel` / `Module.batch` | `BatchExecutor`, fs2 `parEvalMap` | Direct |
 | `Embedder` (for KNNFewShot) | `Embedder` component | Direct |
-| Trace / observability | `AgentEvent` + `AgentEventEmitter` + `RunPath` | Adaptable — needs (predictor, input, output) triples as values, §5.2 |
+| Trace / observability | `AgentEvent` + `AgentEventEmitter` + `RunPath`; `Trace`/`TraceEntry` data types in `adk4s-eval` | `Trace`/`TraceEntry` types now exist (Phase 1); *capture* is Phase 2/3. `AgentEvent` telemetry and the `wrapModelCall` middleware hook are the two capture vehicles |
 | Composition | `Runnable[I, O]`, `Lambda`, `Chain`, `WIOGraph` | Direct as execution substrate; orthogonal to optimization |
-| Test harness | `StructuredTestFramework` (parse-only + integration tests) | Seed of the `Evaluate` harness |
-| Multi-step programs | `WIOGraph` / `GraphExecutor` / `Workflow` | The "module tree" equivalent — but nodes aren't optimizer-visible yet |
-| Metrics, Example, Evaluate | — | **Gap** |
-| Demos on predictors | — | **Gap** |
-| Any optimizer | — | **Gap** |
-| Compiled-state save/load | — (checkpoints exist for *runs*, not for *programs*) | **Gap** |
-| LM cache keyed by content + rollout id | — | **Gap** (also flagged in the ActiveGraph analysis as "recording middleware") |
+| Test harness | `StructuredTestFramework` (parse-only + integration tests) | Supplemented by `Evaluate` (Phase 1) — the production eval harness |
+| Multi-step programs | `WIOGraph` / `GraphExecutor` / `Workflow` | The "module tree" equivalent — but nodes aren't optimizer-visible yet (Phase 4) |
+| **Metrics, Example, Evaluate** | `adk4s-eval`: `Example`, `Score`, `Metric[F,I,O]`, `Evaluate`, `EvaluationResult`, `EvalConfig`, `EvalOutcome`/`EvalRow`, `EvalError`, `Dataset.fromJsonl`, built-in `Metrics.exactMatch`/`containsAll` | **Implemented (Phase 1).** Matches DSPy semantics: failure-score substitution, `maxErrors` cancellation, mean aggregation, `trace=None` eval-vs-optimization toggle |
+| **LLM judges** | `adk4s-eval`: `Judges.semanticF1`, `Judges.completeAndGrounded` — `StructuredLLM` programs over hand-written `Schema.instance` definitions | **Implemented (Phase 1).** Eval-vs-optimization binarization on `trace.isDefined`; out-of-range clamping via `Constraint.check`; prompt text ported from DSPy commit 2974a655 |
+| **Predictor surface** (no DSPy equivalent — DSPy uses reflection) | `adk4s-optimize`: `Optimizable[P]` typeclass with `Mirror`-based derivation, `PredictorState`/`PredictorPath`/`Demo`, `HasPredictorState`, `OptimizeError`, `OptimizerLaws` testkit, `Predict0` placeholder | **Implemented (Phase 0).** Replaces DSPy's `self.__dict__` walking + `deepcopy` with compile-time derivation + case-class copies. Ring 6 formally verified via `verified/PredictorKernel.scala` |
+| Demos on predictors | `Demo` data type exists (Phase 0); not yet rendered into prompts | **Gap** — Phase 2 (adapter demo rendering + `BootstrapFewShot`) |
+| Any optimizer | — | **Gap** — Phases 2-3 (`BootstrapFewShot`/`RS`, `COPRO`, GEPA, `BestOfN`/`Refine`, `KnnFewShot`) |
+| Compiled-state save/load | — (checkpoints exist for *runs* via `CheckpointStore`, not for *programs*) | **Gap** — Phase 2 (`CompiledState` JSON round-trip) |
+| LM cache keyed by content + rollout id | — | **Gap** — Phase 2 (`CompletionCache` / `CachedChatModel`). Also flagged in the ActiveGraph analysis as "recording middleware" |
 
-Reading of the table: ADK4S has the *forward pass* fully covered and partially superior. DSPy's remaining contribution is the *backward pass* — the metric-driven feedback loop — plus the signature discipline that makes the backward pass possible.
+Reading of the table: ADK4S has the *forward pass* fully covered and partially superior, and now has the *eval substrate* (Phase 1) and the *predictor surface* (Phase 0) that the backward pass requires. DSPy's remaining contribution is the *optimization loop itself* — signature-as-data, demo rendering, the optimizer zoo — plus the signature discipline that makes the backward pass possible.
 
 ## 4. The concept mapping — how each idea lands in Scala 3
 
@@ -80,6 +84,8 @@ final case class Signature[I, O](
 - Existing `PromptTemplate[I]` / the `prompt"..."` interpolator stay as *sugar* that produces a `Signature`, not as the primary representation.
 
 ### 4.2 Predict / Module: parameter discovery without reflection (the hard part)
+
+> **Status: the `Optimizable` surface is implemented and frozen (Phase 0, archived 2026-08-01).** The `Optimizable[P]` typeclass with `Mirror`-based derivation, `HasPredictorState`, `PredictorState`/`PredictorPath`/`Demo`, `OptimizeError`, and the `OptimizerLaws` testkit are all in `adk4s-optimize`. Two toy optimizers (`UppercaseInstructions`, `StaticDemoInjector`) validated the surface. The `verified` module's `PredictorKernel.scala` provides a Ring 6 formal-verification model of the traversal algorithm. The `Predict0` placeholder carries state but does not render; the real `Predict` is Phase 2. The design below is the original analysis; the implementation matches it, with the DECISION items resolved as noted.
 
 `Predict` itself is easy — it's `StructuredLLM.completeTemplate` plus state:
 
@@ -117,6 +123,8 @@ trait Adapter:
 
 ### 4.4 Metrics and Evaluate: greenfield, and the easiest win
 
+> **Status: implemented and archived (Phase 1, 2026-08-01).** `adk4s-eval` ships `Example`, `Score`, `Metric[F,I,O]`, `Evaluate`, `EvaluationResult`, `EvalConfig`, `EvalOutcome`/`EvalRow`, `EvalError`, `Dataset.fromJsonl`, built-in `Metrics.exactMatch`/`containsAll`, and two LLM judges (`Judges.semanticF1`, `Judges.completeAndGrounded`). Judge schemas are hand-written `Schema.instance` definitions (not in `structured-llm-test-models`, which is test-only codegen). The `trace=None` eval-vs-optimization toggle, failure-score substitution, `maxErrors` cancellation, and `formatVersion: 1` JSON round-trip are all implemented and property-tested. The design below is the original analysis; the implementation matches it.
+
 ```scala
 final case class Example[I, O](input: I, gold: O, meta: Map[String, String] = Map.empty)
 final case class Score(value: Double, feedback: Option[String] = None)   // DSPy's Prediction(score, feedback)
@@ -134,6 +142,8 @@ Direct translations of DSPy's documented decisions: failures score `failureScore
 This layer is independently valuable *before any optimizer exists*: it is agent regression testing, CI scoring of prompt changes, and model-comparison harness in one — arguably the most-requested missing piece for anyone running ADK4S in production.
 
 ### 4.5 Trace capture: from mutable global to Writer-style value
+
+> **Status: `Trace`/`TraceEntry` data types exist in `adk4s-eval` (Phase 1); capture is Phase 2/3.** Since the original analysis, the `AgentMiddleware.wrapModelCall` hook (added in `add-harness-api-phase0`) provides a second capture vehicle alongside `AgentEventEmitter`: a trace-capturing middleware can intercept every model call without modifying the loop. Phase 3's `Traced.capture` can be implemented either as an `IOLocal`-scoped collector or as a `TraceMiddleware` that plugs into `MiddlewareStack`.
 
 DSPy threads a mutable `settings.trace` (list of `(predictor, inputs, outputs)` triples) through thread-locals; optimizers slice it per predictor (`pred_trace`) so metrics can grade a single step. The FP translation: instrumented predictors append `TraceEntry(predictorPath, inputJson, outputJson)` to an `IOLocal`-scoped collector (or emit through the existing `AgentEventEmitter` and fold events into a `Trace` value after the run). `RunPath`/`AddressSegment` already provide the naming scheme for `predictorPath`. Per-predictor sub-traces for GEPA become a pure filter. This is strictly better than the original: traces are immutable values you can persist, diff, and property-test, and nothing depends on which thread ran what — which matters, because DSPy's own docs admit the settings/trace machinery is the price they pay for composition.
 
@@ -181,11 +191,11 @@ The **rollout-id LM cache**, however, *should* be ported: optimizers re-run iden
 ## 6. Where Scala 3 + ADK4S improves on the original
 
 - **Signatures without metaclasses.** `Mirror`-derived fields, opaque `Schema[A]`, and compile-time field access replace `SignatureMeta`, stack-frame type resolution, and `result.haiku`-style stringly access. A whole documented class of DSPy failure modes ("weird signature errors originate in the metaclass") disappears.
-- **Immutability is native, not simulated.** DSPy's docs spend pages on deepcopy semantics, `reset_copy`, in-place-mutation hazards between optimizer candidates, and `_compiled` bookkeeping. Candidate programs as case-class copies make the entire optimizer loop referentially transparent — and property-testable (an `OptimizerLaws` testkit in the spirit of `AgentMemoryLaws`: compile never mutates the student; frozen subtrees are untouched; save∘load = identity).
-- **Typed metrics and honest effects.** A metric is `(Example, O, Option[Trace]) => F[Score]` — no duck-typed 5-arg convention, no "wrong return shape fails at eval time." Parallel evaluation via fs2 gets cancellation, backpressure, and deterministic resource cleanup instead of thread-pool + thread-local snapshots.
-- **Parsing already ahead.** SAP's coercion scoring is the BAML lineage DSPy only reaches through its optional `BAMLAdapter`; ADK4S's default is DSPy's best case. Constraints (`check`/`assert`) integrate directly as reward/feedback sources for `Refine` and GEPA metrics — a synergy DSPy itself doesn't have (its assertions module was deprecated; refine/reward took its place).
+- **Immutability is native, not simulated.** DSPy's docs spend pages on deepcopy semantics, `reset_copy`, in-place-mutation hazards between optimizer candidates, and `_compiled` bookkeeping. Candidate programs as case-class copies make the entire optimizer loop referentially transparent — and property-testable (the `OptimizerLaws` testkit, shipped in Phase 0: compile never mutates the student; frozen subtrees are untouched; path-set is preserved). The `verified` module's `PredictorKernel.scala` goes further: Ring 6 formal verification of the traversal algorithm in Stainless, proving the derivation walk is correct by algorithmic purity — something DSPy's runtime reflection cannot even state, let alone prove.
+- **Typed metrics and honest effects.** A metric is `(Example, O, Option[Trace]) => F[Score]` — no duck-typed 5-arg convention, no "wrong return shape fails at eval time." Parallel evaluation via fs2 gets cancellation, backpressure, and deterministic resource cleanup instead of thread-pool + thread-local snapshots. **Shipped in Phase 1.**
+- **Parsing already ahead.** SAP's coercion scoring is the BAML lineage DSPy only reaches through its optional `BAMLAdapter`; ADK4S's default is DSPy's best case. Constraints (`check`/`assert`) integrate directly as reward/feedback sources for `Refine` and GEPA metrics — a synergy DSPy itself doesn't have (its assertions module was deprecated; refine/reward took its place). Phase 1's `Judges` already use `Constraint.check` for out-of-range clamping.
 - **Streaming coexists with optimization.** DSPy's optimizers and streaming are essentially disjoint worlds; ADK4S's `streamPartial`/`StreamState` means a compiled program still streams typed partials at serving time.
-- **One trace system.** `AgentEvent` telemetry, optimizer traces, and (future) ActiveGraph-style replay recording can share the recording middleware and event vocabulary instead of being three parallel mechanisms.
+- **One trace system.** `AgentEvent` telemetry, optimizer traces, and (future) ActiveGraph-style replay recording can share the recording middleware and event vocabulary instead of being three parallel mechanisms. The `AgentMiddleware.wrapModelCall` hook (added in `add-harness-api-phase0`) makes trace capture a middleware, not a loop modification — a cleaner integration point than DSPy's global `settings.trace`.
 
 Friction points, honestly: existential predictor types will produce some genuinely ugly signatures in the optimizer internals (keep them internal); JSON demo storage for heterogeneous predictors means runtime codecs must ride along with each predictor; the reflection-LM prompts inside COPRO/GEPA are prompt-engineering artifacts that must be written and tuned from scratch (DSPy's are the product of years of iteration — port their published prompt shapes as the starting point); and without a large user community, the optimizer's default hyperparameters won't be battle-calibrated — ship conservative defaults and `stopAtScore` everywhere.
 
@@ -199,16 +209,16 @@ Friction points, honestly: existential predictor types will produce some genuine
 
 ## 8. Suggested phasing
 
-1. **Phase 0 (1–1.5 pw) — Spike the keystone.** `Signature[I, O]` + `Predict` + minimal `Evaluate` + `Optimizable` derivation for a two-predictor toy program; implement `LabeledFewShot` *and* a naive instruction rewriter against the same erased surface. Exit: both optimizers compile the toy program without touching its types; the surface survives contact with two different optimizer shapes.
-2. **Phase 1 (4–5 pw) — Eval core, production-grade.** `Example`/`Metric`/`Score`/`Evaluate` + two LLM-judges + CSV/JSON result export + docs + examples. Independently announceable ("ADK4S gets an eval harness").
-3. **Phase 2 (6–8 pw) — The compiler MVP.** Signature refactor through structured-llm; adapter demo-rendering + `MarkerAdapter` + `TwoStepAdapter`; `BootstrapFewShot` + `BootstrapRS`; `ChainOfThought`; save/load; content-hash cache with rollout ids. Exit: a RAG-style two-predictor example measurably improves on a public dataset and round-trips through save/load.
-4. **Phase 3 (6–8 pw) — Instruction optimization.** Trace capture; `COPRO`; GEPA-style reflective optimizer with Pareto sampling + feedback metrics; `BestOfN`/`Refine`; `KNNFewShot`. Exit: instruction optimization beats the Phase-2 demo baseline on the same example.
-5. **Phase 4 (opportunistic) — Integration.** Optimizer-visible WIOGraph nodes; `ReactAgent` signature wrapper (optimize the system prompt + tool descriptions of an agent — DSPy's agent-optimization story, which pairs naturally with ADK4S's richer agent runtime); finetune export if ever needed.
+1. **Phase 0 (1–1.5 pw) — Spike the keystone.** ✅ **Done (archived 2026-08-01 as `add-optimizable-surface`).** `Optimizable[P]` + `PredictorState`/`PredictorPath`/`Demo` + `HasPredictorState` + `Mirror`-based derivation + `OptimizerLaws` testkit + two toy optimizers (`UppercaseInstructions`, `StaticDemoInjector`) + `Predict0` placeholder. Ring 6 verified via `verified/PredictorKernel.scala`. The surface is declared frozen.
+2. **Phase 1 (4–5 pw) — Eval core, production-grade.** ✅ **Done (archived 2026-08-01 as `add-eval-core`).** `Example`/`Metric`/`Score`/`Evaluate` + `EvalConfig`/`EvalOutcome`/`EvalRow`/`EvalError` + `Dataset.fromJsonl` + built-in `Metrics.exactMatch`/`containsAll` + two LLM-judges (`Judges.semanticF1`, `Judges.completeAndGrounded`) + CSV/JSON export with `formatVersion` round-trip. Independently announceable ("ADK4S gets an eval harness").
+3. **Phase 2 (6–8 pw) — The compiler MVP.** Not started. Signature refactor through structured-llm; adapter demo-rendering + `MarkerAdapter` + `TwoStepAdapter`; `BootstrapFewShot` + `BootstrapRS`; `ChainOfThought`; save/load; content-hash cache with rollout ids. Exit: a RAG-style two-predictor example measurably improves on a public dataset and round-trips through save/load.
+4. **Phase 3 (6–8 pw) — Instruction optimization.** Not started. Trace capture (via `IOLocal` collector or `AgentMiddleware.wrapModelCall` hook — the middleware system added in `add-harness-api-phase0` is now the natural vehicle); `COPRO`; GEPA-style reflective optimizer with Pareto sampling + feedback metrics; `BestOfN`/`Refine`; `KNNFewShot`. Exit: instruction optimization beats the Phase-2 demo baseline on the same example.
+5. **Phase 4 (opportunistic) — Integration.** Not started. Optimizer-visible WIOGraph nodes; `HarnessAgent` signature wrapper (optimize the system prompt + tool descriptions of an agent — DSPy's agent-optimization story; the `HarnessAgent` refactor and `AgentMiddleware` system added in `add-harness-api-phase0` provide the integration point — the system prompt is already a `PromptSection` contributed by middleware, and `wrapModelCall` can intercept for tracing); finetune export if ever needed.
 
 ## 9. Bottom line
 
-- **Feasibility:** high. Unlike ActiveGraph (which needed a new runtime kernel), DSPy's port target is a *layer over* ADK4S's existing execution stack. The forward pass exists; only the backward pass is new.
-- **Value:** the eval harness alone justifies Phase 1; the optimizer stack converts ADK4S's structural advantages (typed schemas, SAP, constraints) into measurable quality gains and makes "small model + compiled prompts ≥ big model + hand prompts" — DSPy's headline economic argument — available to Scala shops.
-- **Easiest wins:** Evaluate/Metric, BootstrapFewShot, BestOfN/Refine, ChainOfThought — all cheap once signatures are data.
-- **Hardest part:** the type-erased predictor surface and its `Mirror`-based derivation — Python's reflection did real work there; spike it first, with two optimizers as the acceptance test.
+- **Feasibility:** high. Unlike ActiveGraph (which needed a new runtime kernel), DSPy's port target is a *layer over* ADK4S's existing execution stack. The forward pass exists; the backward pass is now partially built (Phase 0 + 1 done).
+- **Value:** the eval harness (Phase 1, shipped) alone justifies the effort; the optimizer stack (Phases 2–3) converts ADK4S's structural advantages (typed schemas, SAP, constraints) into measurable quality gains and makes "small model + compiled prompts ≥ big model + hand prompts" — DSPy's headline economic argument — available to Scala shops.
+- **Easiest wins:** Evaluate/Metric (done), BootstrapFewShot, BestOfN/Refine, ChainOfThought — all cheap once signatures are data (Phase 2).
+- **Hardest part:** the type-erased predictor surface and its `Mirror`-based derivation — **spiked and frozen (Phase 0, done)**, with two toy optimizers as the acceptance test and Ring 6 formal verification of the traversal algorithm.
 - **Biggest self-inflicted risk to avoid:** porting DSPy's global settings/trace machinery or chasing API fidelity. Port the discipline (contracts as data, metrics as the interface, compilation as a pure function from program + data to program), not the Python.

@@ -1,6 +1,6 @@
 # DSPy Port — Operative Plan (Phases 0–4 → OpenSpec changes)
 
-*2026-07-23 — operative companion to `dspy-port-analysis.md`. One section per phase; each section contains everything needed to author the corresponding OpenSpec change: proposed change id, capability specs, scope, typed contracts (full Scala signatures), SHALL-form requirement seeds with scenarios, error paths, concepts reused/introduced, ring strategy, ⚠ VERIFY items, exit criteria, and risks. Requirement seeds are numbered `R<phase>.<n>` so delta specs can cite them.*
+*Originally 2026-07-23; updated 2026-08-12. Phase 0 (`add-optimizable-surface`) and Phase 1 (`add-eval-core`) are **implemented and archived** (both 2026-08-01). Their sections are marked ✅ and annotated with implementation notes (deviations from the original seeds, resolved DECISION items, actual file locations). Phases 2–4 are updated to reflect the current codebase state, including the `AgentMiddleware`/`HarnessAgent`/`HarnessState` system added by `add-harness-api-phase0` (archived 2026-08-12). Operative companion to `dspy-port-analysis.md`. One section per phase; each section contains everything needed to author the corresponding OpenSpec change: proposed change id, capability specs, scope, typed contracts (full Scala signatures), SHALL-form requirement seeds with scenarios, error paths, concepts reused/introduced, ring strategy, ⚠ VERIFY items, exit criteria, and risks. Requirement seeds are numbered `R<phase>.<n>` so delta specs can cite them.*
 
 ---
 
@@ -11,13 +11,13 @@ Each phase becomes **one OpenSpec change** (Phase 2 contains four capability spe
 **Phase dependency graph** (arrows = "must be archived before"):
 
 ```
-Phase 0 (spike: erased surface)
+Phase 0 (spike: erased surface) ✅ archived 2026-08-01
    ├──► Phase 2 (compiler MVP)  ──► Phase 3 (instruction optimization) ──► Phase 4 (integration)
-Phase 1 (eval core) ──┘                      ▲
+Phase 1 (eval core) ──┘ ✅ archived 2026-08-01    ▲
    └────────────── (judges reused) ──────────┘
 ```
 
-Phase 1 has **no dependency on Phase 0** and can start immediately / run in parallel with it.
+Phase 0 and Phase 1 are **done**. Phase 2 is the next change to author. Phase 1 was built in parallel with Phase 0 (no dependency) — both are now available as dependencies for Phase 2.
 
 ---
 
@@ -25,12 +25,14 @@ Phase 1 has **no dependency on Phase 0** and can start immediately / run in para
 
 **Modules and packages.**
 
-| New module | Package | Depends on | Introduced in |
+| Module | Package | Depends on | Status |
 |---|---|---|---|
-| `adk4s-eval` | `org.adk4s.eval` | `structured-llm` (judges), cats-effect, fs2 | Phase 1 |
-| `adk4s-optimize` | `org.adk4s.optimize` | `adk4s-eval`, `structured-llm`, `adk4s-core` | Phase 0 (skeleton), 2, 3 |
+| `adk4s-optimize` | `org.adk4s.optimize` | `structured-llm`, `verified` (Test scope) | ✅ Phase 0 — skeleton + `Optimizable` surface + `OptimizerLaws` testkit. Phase 2 adds `adk4s-eval` dependency + real optimizers. |
+| `adk4s-eval` | `org.adk4s.eval` | `structured-llm` (judges), cats-effect, fs2 | ✅ Phase 1 — `Evaluate`/`Metric`/`Example`/`Judges`/`Dataset`. MUST NOT depend on `adk4s-core`, `adk4s-orchestration`, `adk4s-optimize` (Ring 2 purity rule). |
 
 Signature/adapter work lands **inside `structured-llm`** (package `org.adk4s.structured.signature` and `org.adk4s.structured.adapter`) because it generalizes `PromptTemplate`/`OutputFormatOptions`. The completion cache lands in **`adk4s-core`** (`org.adk4s.core.cache`) as `ChatModel` middleware. Examples go to `adk4s-examples/.../optimize/` with `run-example.sh` keys. Update the module graph in `openspec/project.md` and `capability-profile.md` in whichever change first adds a module.
+
+> **Note (2026-08-12):** The `adk4s-optimize` module currently depends only on `structured-llm` and `verified` (Test scope) — it does **not** yet depend on `adk4s-eval`. The `adk4s-eval` dependency is added in Phase 2 when `BootstrapFewShot`/`BootstrapRS` consume `Evaluate` for candidate scoring. The original plan's "depends on `adk4s-core`" was dropped: `adk4s-optimize` stays decoupled from `adk4s-core` to keep the optimizer layer pure (the `OptimizeError` ADT stands alone, not extending `AdkError`).
 
 **Effect discipline.** All new public APIs are `F[_]`-polymorphic (`Async`/`Concurrent` bounds, matching `structured-llm`), **not** IO-hardcoded like `Runnable`. No `throw` (WartRemover): error channels are `F.raiseError` with the typed ADTs defined per phase (`EvalError`, `OptimizeError`, `SignatureError`) hung off `AdkError` conventions — `⚠ VERIFY` whether new errors should extend `org.adk4s.core.error.AdkError` or stand alone (recommendation: stand alone in their module; bridge later).
 
@@ -44,9 +46,19 @@ Signature/adapter work lands **inside `structured-llm`** (package `org.adk4s.str
 
 ---
 
-# Phase 0 — Spike: the erased predictor surface
+# Phase 0 — Spike: the erased predictor surface ✅ DONE
 
-**Change id:** `add-optimizable-surface` · **Capability specs:** `optimizable-surface` (1 spec) · **Effort:** 1–1.5 pw · **Risk:** medium (design-freezing) · **Rings:** R0, R1, R3, R8
+**Change id:** `add-optimizable-surface` · **Capability specs:** `optimizable-surface` (1 spec) · **Effort:** 1–1.5 pw · **Risk:** medium (design-freezing) · **Rings:** R0, R1, R3, R8 · **Status:** Archived 2026-08-01
+
+> **Implementation notes (2026-08-12):** All artifacts are in `openspec/changes/archive/2026-08-01-add-optimizable-surface/`. The implemented code is in `adk4s-optimize/src/main/scala/org/adk4s/optimize/` and the `verified` module (`verified/src/main/scala/org/adk4s/verified/PredictorKernel.scala`). Key resolved DECISION items and deviations from the seeds below:
+> - **R0.4 DECISION resolved:** `update` is total on valid paths and raises `OptimizeError` on invalid ones; `updateEither` is the total (safe) variant returning `Either[OptimizeError, P]`. Both are exposed. The raising `update` has a targeted `@SuppressWarnings(Array("org.wartremover.warts.Throw"))`.
+> - **R0.2 DECISION resolved:** `Vector` recursion is supported (segment = index as string); `Map` recursion is deferred to Phase 3 as recommended.
+> - **VERIFY item 1 resolved:** `Mirror` + `inline` derivation works on Scala 3.8.4 for the mixed leaf/subtree/Vector rule. The implementation uses `summonFrom` at the top of each inline match to resolve typeclass instances at the inline expansion site.
+> - **VERIFY item 2 resolved:** `HasPredictorState` is a separate trait (not `Predictor[F]` supertrait), matching the recommendation.
+> - **VERIFY item 3 resolved:** `frozen` is per-leaf only; subtree freezing = freezing all leaves (done by `CompiledState.freeze` in Phase 2).
+> - **Deviation — Ring 6 added:** The original plan listed R0, R1, R3, R8. The implementation added Ring 6 (Stainless formal verification) via a `verified` module containing `PredictorKernel.scala` — a PureScala model mirroring the `Optimizable` traversal algorithm. The `verified` module is pinned to Scala 3.7.2 for Stainless and is a Test-scope dependency of `adk4s-optimize`.
+> - **`OptimizeError` stands alone:** Per the cross-phase convention, `OptimizeError` extends `Throwable` but does NOT extend `AdkError` — keeping `adk4s-optimize` decoupled from `adk4s-core`.
+> - The surface API is declared **frozen** in the change's `design.md`: any later change requires its own proposal.
 
 ## Why
 
@@ -125,9 +137,18 @@ Both toy optimizers pass `OptimizerLaws` against the toy program; a *third* prog
 
 ---
 
-# Phase 1 — Eval core (`adk4s-eval`)
+# Phase 1 — Eval core (`adk4s-eval`) ✅ DONE
 
-**Change id:** `add-eval-core` · **Capability specs:** `eval-core`, `llm-judges` (2 specs) · **Effort:** 4–5 pw · **Risk:** low-medium · **Rings:** R0, R1, R3, R4 (CSV/JSON export round-trip), R8
+**Change id:** `add-eval-core` · **Capability specs:** `eval-core`, `llm-judges` (2 specs) · **Effort:** 4–5 pw · **Risk:** low-medium · **Rings:** R0, R1, R3, R4 (CSV/JSON export round-trip), R8 · **Status:** Archived 2026-08-01
+
+> **Implementation notes (2026-08-12):** All artifacts are in `openspec/changes/archive/2026-08-01-add-eval-core/`. The implemented code is in `adk4s-eval/src/main/scala/org/adk4s/eval/`. Key resolved DECISION items and deviations from the seeds below:
+> - **R1.8 DECISION resolved:** `toJson`/`fromJson` require `upickle.default.Writer[I]`/`Writer[O]` on export and `Reader[I]`/`Reader[O]` on import only — `Evaluate` itself is codec-free. The JSON export includes `formatVersion: 1`.
+> - **R1.11 VERIFY resolved:** Judge schemas are hand-written `Schema.instance` definitions in `adk4s-eval/src/main/scala/org/adk4s/eval/Judges.scala` (NOT in `structured-llm-test-models`, which is test-only codegen). Each judge schema has a Smithy IDL string for prompt injection and a hand-written `smithy4s.schema.Schema` for JSON decoding. This compiles without the smithy4s-sbt-codegen plugin — matching the recommendation.
+> - **Two judges shipped:** `Judges.semanticF1` (F1 from precision/recall, ported from DSPy commit 2974a655) and `Judges.completeAndGrounded` (average of completeness/groundedness, written from scratch following DSPy's structure). Both use `Constraint.check` for out-of-range clamping (R1.13) and the `trace.isDefined` binarization toggle (R1.10).
+> - **`EvalError` stands alone:** `EvalError` extends `Throwable` but does NOT extend `AdkError` — keeping `adk4s-eval` decoupled from `adk4s-core` (same pattern as `OptimizeError`).
+> - **`parEvalMap` (ordered) used** for evaluation, not `parEvalMapUnordered` — matching the R1.1 ordering requirement and the risk mitigation.
+> - **`Dataset.fromJsonl` shipped** as a 20-line JSONL reader in `adk4s-eval/src/main/scala/org/adk4s/eval/Dataset.scala`.
+> - **Built-in metrics** in `Metrics.scala`: `exactMatch` and `containsAll` — both `Applicative[F]`-bound (no `Async` needed).
 
 ## Why
 
@@ -229,7 +250,12 @@ Judge prompt quality (mitigate: port DSPy's published SemanticF1 prompt shape as
 
 # Phase 2 — The compiler MVP
 
-**Change id:** `add-prompt-compiler-mvp` · **Capability specs (4):** `signature-as-data`, `adapter-demo-rendering`, `bootstrap-fewshot`, `compiled-state-and-cache` · **Effort:** 6–8 pw · **Risk:** medium-high (refactor touches structured-llm's public surface) · **Rings:** R0, R1, R2 (module graph changes), R3, R4 (save/load + cache persistence), R5 candidate (bootstrap demo-slot logic is mutation-testing-worthy), R8
+**Change id:** `add-prompt-compiler-mvp` · **Capability specs (4):** `signature-as-data`, `adapter-demo-rendering`, `bootstrap-fewshot`, `compiled-state-and-cache` · **Effort:** 6–8 pw · **Risk:** medium-high (refactor touches structured-llm's public surface) · **Rings:** R0, R1, R2 (module graph changes), R3, R4 (save/load + cache persistence), R5 candidate (bootstrap demo-slot logic is mutation-testing-worthy), R8 · **Status:** Not started — next change to author
+
+> **Update (2026-08-12):** Phase 0 and Phase 1 are done, so this change builds on:
+> - `adk4s-optimize` — `Demo`, `PredictorState`, `PredictorPath`, `HasPredictorState`, `Optimizable`, `OptimizeError`, `OptimizerLaws`, `Predict0` (placeholder). The `adk4s-optimize` module must gain an `adk4s-eval` dependency for `BootstrapRS` candidate scoring.
+> - `adk4s-eval` — `Example`, `Metric`, `Score`, `Evaluate`, `EvaluationResult`, `Trace`, `TraceEntry`. The `Trace`/`TraceEntry` types are already defined here; Phase 2's `TraceCollector` (Spec 2a) should reuse them, not duplicate.
+> - The `AgentMiddleware.wrapModelCall` hook (from `add-harness-api-phase0`) is now available as an alternative trace-capture vehicle — see Spec 2a's trace note.
 
 > **Deviation from the analysis doc, made explicit:** minimal trace capture moves *into* Phase 2, because `BootstrapFewShot` on multi-predictor programs requires (predictor, input, output) triples to mint demos. Phase 2 ships a Ref-based collector wired through `Predict`; Phase 3 only *generalizes* it (ambient capture, per-predictor metric slicing).
 
@@ -286,7 +312,7 @@ object TraceCollector:
   def ref[F[_]: Concurrent]: F[(TraceCollector[F], F[Trace])]
 ```
 
-**Module-direction issue (⚠ VERIFY / DECISION):** `Demo`/`PredictorState`/`PredictorPath` were introduced in `adk4s-optimize` (Phase 0), but `structured-llm` cannot depend on `adk4s-optimize` (would invert the graph). Resolution options: (a) move the three pure data types into `structured-llm` (or a tiny `adk4s-optimize-api`) during this change, with Phase 0's module re-exporting; (b) keep `Signature.demos: Vector[(ujson.Value, ujson.Value)]` raw. **Recommendation: (a) — move `Demo`, `PredictorState`, `PredictorPath`, `HasPredictorState` into `structured-llm`; `Optimizable` + derivation stay in `adk4s-optimize`.** State this explicitly in the proposal's What Changes.
+**Module-direction issue (⚠ VERIFY / DECISION — still open for Phase 2):** `Demo`/`PredictorState`/`PredictorPath`/`HasPredictorState` were introduced in `adk4s-optimize` (Phase 0, now frozen), but `structured-llm` cannot depend on `adk4s-optimize` (would invert the graph — `adk4s-optimize` depends on `structured-llm`). Resolution options: (a) move the four pure data types into `structured-llm` during this change, with `adk4s-optimize` re-exporting them (the Phase 0 surface is frozen on *API shape*, not on which module hosts the types — moving the types and re-exporting preserves the frozen API); (b) keep `Signature.demos: Vector[(ujson.Value, ujson.Value)]` raw and avoid the cross-module dependency. **Recommendation: (a) — move `Demo`, `PredictorState`, `PredictorPath`, `HasPredictorState` into `structured-llm`; `Optimizable` + derivation stay in `adk4s-optimize`.** State this explicitly in the proposal's What Changes. The `Trace`/`TraceEntry` types already live in `adk4s-eval` and should be reused as-is (do not move them — `structured-llm` already cannot depend on `adk4s-eval`; instead, `TraceCollector` can be defined in `adk4s-optimize` which depends on both, or `TraceEntry` can be a local type in `structured-llm` with a bridge).
 
 ### Requirement seeds
 
@@ -420,7 +446,9 @@ object CachedChatModel:
 
 # Phase 3 — Instruction optimization
 
-**Change id:** `add-instruction-optimizers` · **Capability specs (4):** `trace-capture-ambient`, `copro-optimizer`, `gepa-optimizer`, `inference-combinators` (BestOfN/Refine + KNNFewShot) · **Effort:** 6–8 pw · **Risk:** medium · **Rings:** R0, R1, R3, R8; R4 for GEPA run-log persistence
+**Change id:** `add-instruction-optimizers` · **Capability specs (4):** `trace-capture-ambient`, `copro-optimizer`, `gepa-optimizer`, `inference-combinators` (BestOfN/Refine + KNNFewShot) · **Effort:** 6–8 pw · **Risk:** medium · **Rings:** R0, R1, R3, R8; R4 for GEPA run-log persistence · **Status:** Not started
+
+> **Update (2026-08-12):** The `AgentMiddleware.wrapModelCall` hook (from `add-harness-api-phase0`, archived 2026-08-12) is now available as a trace-capture vehicle. A `TraceMiddleware` that plugs into `MiddlewareStack` can intercept every model call without modifying the `HarnessAgent` loop — this is a cleaner integration point than the `IOLocal`-only approach originally proposed. The `Traced.capture` design below should be updated to support both vehicles: (a) `IOLocal`-scoped ambient capture for standalone `Predict` programs, and (b) a `TraceMiddleware` for `HarnessAgent`-based programs. The `Trace`/`TraceEntry` types from `adk4s-eval` (Phase 1) are the canonical trace representation.
 
 ## Spec 3a — `trace-capture-ambient`
 
@@ -513,37 +541,39 @@ object KnnFewShot:
 
 # Phase 4 — Integration (opportunistic)
 
-**Change id(s):** `add-optimizable-orchestration` (+ later `add-finetune-export` if ever needed) · **Capability specs:** `wiograph-predict-node`, `react-agent-signature` · **Effort:** 4–6 pw · **Risk:** medium · **Rings:** R0, R1, R2 (orchestration layer), R3, R8
+**Change id(s):** `add-optimizable-orchestration` (+ later `add-finetune-export` if ever needed) · **Capability specs:** `wiograph-predict-node`, `harness-agent-signature` · **Effort:** 4–6 pw · **Risk:** medium · **Rings:** R0, R1, R2 (orchestration layer), R3, R8 · **Status:** Not started
+
+> **Update (2026-08-12):** The original plan targeted `ReactAgent` for agent-level optimization. Since then, `add-harness-api-phase0` (archived 2026-08-12) refactored the ReAct loop into `HarnessAgent` with an `AgentMiddleware` stack. `ReactAgent` is now a thin adapter (`ReactAgentAdapter`) over `HarnessAgent`. The spec is renamed from `react-agent-signature` to `harness-agent-signature` and the integration point shifts: the system prompt is already a `PromptSection` contributed by middleware, and `wrapModelCall` can intercept for tracing — the optimizer integration is cleaner than originally proposed.
 
 Kept intentionally lighter — author the full seeds when Phase 3 experience is in. The proposal skeleton:
 
 - **`wiograph-predict-node`.** A `PredictNode` wrapping `Predict` as a `WIONode`/`GraphNode`, plus `Optimizable` instances for graph/workflow types so a *workflow's* predictors are enumerable and updatable by path (path = node id chain — must be stable across graph rebuilds; that stability is the spec's hard requirement). Compile a workflow with `BootstrapFewShot`/`Gepa` unchanged (the optimizers must not know they're compiling a graph — that's the acceptance test). ⚠ VERIFY: how `WIONode` ids are assigned today and whether they survive DSL re-elaboration.
-- **`react-agent-signature`.** Expose `ReactAgent`'s tunable text — system prompt and per-tool `description` — as `PredictorState`s (instructions = system prompt; each tool description one pseudo-predictor, demos unused), so GEPA can optimize an *agent* against a task metric (DSPy's agent-optimization story). Requires an agent-level `ProgramRunner` that runs the ReAct loop under `Traced.capture` and a metric over final answers. Adversarial requirement: tool *schemas* (parameter shapes) are never touched by optimizers — only description strings.
+- **`harness-agent-signature`** (was `react-agent-signature`). Expose `HarnessAgent`'s tunable text — the base system prompt (`config.basePrompt`) and per-tool `description` — as `PredictorState`s (instructions = base system prompt; each tool description one pseudo-predictor, demos unused), so GEPA can optimize an *agent* against a task metric (DSPy's agent-optimization story). The `AgentMiddleware` system is the integration vehicle: a `TraceMiddleware` (Phase 3) plugged into `MiddlewareStack` provides the trace; the optimizer reads/writes `PredictorState` for the base prompt and tool descriptions. `ReactAgent` users get the optimization transparently via the `ReactAgentAdapter`. Requires an agent-level `ProgramRunner` that runs the `HarnessAgent` loop under tracing and a metric over final answers (`HarnessResult.Completed`). Adversarial requirement: tool *schemas* (parameter shapes) are never touched by optimizers — only description strings; `PromptSection`s contributed by middleware are optimizer-visible but their *source middleware* is not (the optimizer sees rendered text, not middleware identity).
 - **Deliberately not planned:** `BootstrapFinetune`/provider finetune export, MIPROv2's Bayesian search, ProgramOfThought/CodeAct-style code sandboxes, any `dspy.settings` equivalent. Each would need its own proposal with fresh justification.
 
-**Exit criteria:** a WIOGraph two-node pipeline and a one-tool ReactAgent each compiled by an existing optimizer with zero optimizer code changes; orchestration examples updated.
+**Exit criteria:** a WIOGraph two-node pipeline and a one-tool `HarnessAgent` each compiled by an existing optimizer with zero optimizer code changes; orchestration examples updated; `ReactAgent.create` source compatibility preserved (the `ReactAgentAdapter` delegates to the optimized `HarnessAgent`).
 
 ---
 
 ## Appendix A — Change-by-change summary table
 
-| Phase | Change id | Specs | Modules touched | New deps between modules | Effort | Blockers |
+| Phase | Change id | Specs | Modules touched | New deps between modules | Effort | Status |
 |---|---|---|---|---|---|---|
-| 0 | `add-optimizable-surface` | `optimizable-surface` | `adk4s-optimize` (new) | optimize → structured-llm | 1–1.5 pw | — |
-| 1 | `add-eval-core` | `eval-core`, `llm-judges` | `adk4s-eval` (new), examples | eval → structured-llm | 4–5 pw | — |
-| 2 | `add-prompt-compiler-mvp` | `signature-as-data`, `adapter-demo-rendering`, `bootstrap-fewshot`, `compiled-state-and-cache` | structured-llm, adk4s-core (cache), adk4s-optimize, examples | optimize → eval; state types move into structured-llm (see 2a DECISION) | 6–8 pw | 0, 1 |
-| 3 | `add-instruction-optimizers` | `trace-capture-ambient`, `copro-optimizer`, `gepa-optimizer`, `inference-combinators` | adk4s-optimize, structured-llm (Traced hooks), examples | — | 6–8 pw | 2 |
-| 4 | `add-optimizable-orchestration` | `wiograph-predict-node`, `react-agent-signature` | adk4s-orchestration, examples | orchestration → optimize (⚠ check graph direction; may need optimize-api split) | 4–6 pw | 3 |
+| 0 | `add-optimizable-surface` | `optimizable-surface` | `adk4s-optimize` (new), `verified` (new) | optimize → structured-llm, verified (Test) | 1–1.5 pw | ✅ Archived 2026-08-01 |
+| 1 | `add-eval-core` | `eval-core`, `llm-judges` | `adk4s-eval` (new), examples | eval → structured-llm | 4–5 pw | ✅ Archived 2026-08-01 |
+| 2 | `add-prompt-compiler-mvp` | `signature-as-data`, `adapter-demo-rendering`, `bootstrap-fewshot`, `compiled-state-and-cache` | structured-llm, adk4s-core (cache), adk4s-optimize, examples | optimize → eval; state types move into structured-llm (see 2a DECISION) | 6–8 pw | Not started (next) |
+| 3 | `add-instruction-optimizers` | `trace-capture-ambient`, `copro-optimizer`, `gepa-optimizer`, `inference-combinators` | adk4s-optimize, structured-llm (Traced hooks), examples | — | 6–8 pw | Not started |
+| 4 | `add-optimizable-orchestration` | `wiograph-predict-node`, `harness-agent-signature` | adk4s-orchestration, examples | orchestration → optimize (⚠ check graph direction; may need optimize-api split) | 4–6 pw | Not started |
 
 ## Appendix B — Global ⚠ VERIFY checklist (resolve at each change's spec time)
 
-1. smithy4s codegen wiring for non-test schemas (Phase 1 judges) — copy the `structured-llm-test-models` build.sbt pattern into `adk4s-eval` or hand-write `Schema.instance`.
-2. Exact current `PromptTemplate`/`function` call sites in `adk4s-examples` (Phase 2a must not break them — enumerate before freezing R2.1).
-3. `CompletionOptions`/message JSON shape from llm4s 0.3.4 for the cache key canonicalization (R2.23) — derive from source, not docs.
-4. `Embedder[F]` exact signature for `KnnFewShot` (R3.18).
-5. `IOLocal` propagation semantics across `parMapN`/`Supervisor` on cats-effect 3.7.0 for R3.2 — verify with a probe test before committing to the ambient design.
-6. `WIONode` id stability (Phase 4).
-7. Whether `AgentEventEmitter` should *also* receive trace entries (observability parity) — nice-to-have, decide in Phase 3 design.md.
+1. ~~smithy4s codegen wiring for non-test schemas (Phase 1 judges)~~ — ✅ **Resolved in Phase 1:** hand-written `Schema.instance` definitions in `Judges.scala`; no codegen plugin needed.
+2. Exact current `PromptTemplate`/`function` call sites in `adk4s-examples` (Phase 2a must not break them — enumerate before freezing R2.1). **Still open for Phase 2.**
+3. `CompletionOptions`/message JSON shape from llm4s 0.3.4 for the cache key canonicalization (R2.23) — derive from source, not docs. **Still open for Phase 2.**
+4. `Embedder[F]` exact signature for `KnnFewShot` (R3.18). **Still open for Phase 3.**
+5. `IOLocal` propagation semantics across `parMapN`/`Supervisor` on cats-effect 3.7.0 for R3.2 — verify with a probe test before committing to the ambient design. **Still open for Phase 3.** Note: the `AgentMiddleware.wrapModelCall` hook (added in `add-harness-api-phase0`) is an alternative capture vehicle that avoids `IOLocal` entirely for `HarnessAgent`-based programs.
+6. `WIONode` id stability (Phase 4). **Still open for Phase 4.**
+7. Whether `AgentEventEmitter` should *also* receive trace entries (observability parity) — nice-to-have, decide in Phase 3 design.md. **Still open for Phase 3.** The `AgentMiddleware.wrapModelCall` hook is now a third option alongside `IOLocal` and `AgentEventEmitter`.
 
 ## Appendix C — Cross-cutting adversarial review themes (Ring 8, every phase)
 
