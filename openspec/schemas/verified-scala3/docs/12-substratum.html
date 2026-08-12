@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>12 · The correctness substratum — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+    <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
+    <li><a class="current" href="12-substratum.html"><span class="num">12</span> The correctness substratum</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 12 · Schema v12</div>
+<h1>The correctness substratum</h1>
+<p class="lede">
+  Chapter 5 gave you two clauses of correctness: a requirement is
+  <strong>bound</strong> to an obligation, and the obligation's artifact
+  <strong>resolves</strong> to something that exists. Neither clause asks
+  whether that artifact was ever actually run. This chapter is the third
+  clause, and the tooling that makes it a fact rather than a memory.
+</p>
+
+<h2>The gap the first eleven chapters left</h2>
+
+<p>
+  Re-read chapter 5 carefully and the gap is exactly where you'd expect it,
+  because it is the same gap every earlier chapter found somewhere else.
+  F7 answers <em>is this requirement named by an obligation</em>. F9 answers
+  <em>does the obligation's artifact exist</em>. Once both are true, the
+  proof-obligations table reports a row complete — and stays reporting it
+  complete for as long as the artifact exists, whether or not anyone has run
+  it since the code around it last changed.
+</p>
+
+<div class="box danger">
+  <div class="box-title">The fault dataset was the schema's own changelog</div>
+  <p style="margin-bottom:0">
+    This chapter's motivating evidence did not come from a new incident. It
+    came from re-reading <code>schema.yaml</code>'s own version history as
+    what it actually is — a record of defects this workflow has already
+    found in itself — and noticing the same shape recurring:
+    <strong>a check reported PASS on evidence it never obtained.</strong>
+    The altitude rule read N/A from memory instead of the filesystem
+    (chapter 9). A version field sat three schema versions stale because
+    nothing compared it (chapter 9, again). Chapter 11 found gate.sh could
+    say nothing at all and be indistinguishable from working correctly,
+    until it started tracing its own silent runs. Three different rings,
+    three different artifacts, one recurring bug: a claim that outran its
+    evidence. That pattern, seen three times, is a substratum problem — it
+    needs one fix that applies everywhere, not a fourth patch to a fourth
+    symptom.
+  </p>
+</div>
+
+<h2>Three clauses, not two</h2>
+
+<p>
+  So the definition of correct gets a third clause, and the workflow states
+  it as a standing rule rather than a per-check property — something true
+  <em>no matter the ring, the step, or the artifact</em>:
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule · the operative sentence, verbatim, everywhere</div>
+  <p>
+    A requirement is correct when it is
+  </p>
+  <ol>
+    <li><strong>bound</strong> — named by a proof obligation (F7);</li>
+    <li><strong>resolved</strong> — the obligation's artifact exists (F9);</li>
+    <li><strong>discharged</strong> — the artifact was <em>observed to run
+        green, in this session, with a recorded command</em>.</li>
+  </ol>
+  <p style="margin-bottom:0">
+    And the sentence schema v12 injects into every artifact instruction and
+    every apply-phase turn, unabbreviated:
+    <strong>“NEVER LET A CLAIM OUTRUN ITS EVIDENCE.”</strong> —
+    <em>“N/A” / “passes” / “already handled” are CLAIMS, not verdicts.</em>
+  </p>
+</div>
+
+<p>
+  Clause 3 is the one no earlier chapter's tooling could answer, because
+  answering it needs something none of them kept: a durable record of which
+  commands were actually run, against which baseline, with what result. That
+  record is the evidence ledger, and it is the only genuinely new state this
+  chapter introduces — everything else is either derived from it or from the
+  F7/F9 machinery you already have.
+</p>
+
+<h2>The evidence ledger</h2>
+
+<p>
+  <code>scanner/ledger.sh</code> is deliberately the simplest thing that
+  could make clause 3 mechanical: an append-only log, one JSON object per
+  line, of commands that were actually run.
+</p>
+
+<pre data-lang="bash"><code>$ scanner/ledger.sh append --file evidence-ledger.jsonl \
+    --change my-change --spec my-spec --ring R3 \
+    --obligation "the parser round-trips" --artifact tests/ParserSpec.scala \
+    --command "sbt parserSuite/test" --exit 0 \
+    --baseline $(git rev-parse HEAD)
+
+$ scanner/ledger.sh read --file evidence-ledger.jsonl \
+    --change my-change --baseline $(git rev-parse HEAD)
+{"v":1,"ts":"2026-08-08T12:00:00Z","change":"my-change","spec":"my-spec",
+ "ring":"R3","obligation":"the parser round-trips",
+ "artifact":"tests/ParserSpec.scala","command":"sbt parserSuite/test",
+ "exit":0,"baseline":"a1b2c3d…"}</code></pre>
+
+<p>
+  Three design choices carry all the weight, and each closes a specific way
+  a claim was found to outrun its evidence during this exact chapter's own
+  construction:
+</p>
+
+<div class="two-col">
+  <div class="box">
+    <div class="box-title">Append-only, structurally</div>
+    <p style="margin-bottom:0">
+      There is no <code>update</code> or <code>delete</code> subcommand —
+      not a permission you could misuse, a verb that does not exist. A
+      recorded run is evidence; evidence that can be edited after the fact
+      is testimony. The one thing this does <em>not</em> prevent is
+      in-process forgery — nothing stops a caller appending a row for a
+      command it never ran. Recording the command makes a row
+      <em>re-checkable</em>, which moves forgery from the default path to a
+      deliberate act. That is the honestly-stated limit, not a claim of more.
+    </p>
+  </div>
+  <div class="box">
+    <div class="box-title">Baseline-scoped, exactly</div>
+    <p style="margin-bottom:0">
+      Every row carries the commit SHA it was run against. A row is
+      evidence for <em>that</em> baseline and no other — a green run before
+      an edit does not discharge the obligation after it. Reading without a
+      baseline (which the reader permits, for callers who genuinely want
+      everything) is different from a caller who <em>discharges</em>
+      something from a read: every caller that does, in this schema,
+      supplies the baseline itself, without exception.
+    </p>
+  </div>
+</div>
+
+<div class="box danger">
+  <div class="box-title">Two bugs the ledger shipped with, found by Ring 8, fixed before merge</div>
+  <p>
+    <strong>Trailing-newline corruption.</strong> Appending onto a file
+    whose last byte was not already a newline concatenated the new record
+    onto the previous row — silently, permanently. The reader explicitly
+    supports a file with no trailing newline (a legitimate shape), so the
+    writer now owns the record separator instead of assuming the file's
+    tail is clean.
+  </p>
+  <p style="margin-bottom:0">
+    <strong>An unreadable ledger read as a clean zero.</strong> A
+    <code>chmod 000</code> ledger produced exit 0 and zero rows — absence
+    of evidence presented as evidence of absence, the exact sentence the
+    operative rule forbids, found inside the very first script written to
+    enforce it. Fixed with explicit readability checks that fail to
+    <em>undetermined</em>, never to a silent, confident zero.
+  </p>
+</div>
+
+<h2>Chain state — never reimplemented</h2>
+
+<p>
+  <code>scanner/chain-state.sh</code> answers the question a checkpoint
+  actually needs: for this change, at this baseline, how many requirements
+  are bound, resolved, and discharged — and which ones are not, named.
+</p>
+
+<pre data-lang="bash"><code>$ scanner/chain-state.sh --change-dir openspec/changes/my-change \
+    --change my-change --baseline $(git rev-parse HEAD)
+{"total":9,"bound":9,"resolved":9,"discharged":7,
+ "unresolved":[
+   {"spec":"my-spec","requirement":"the parser round-trips","reasons":["undischarged"]}
+ ]}</code></pre>
+
+<p>
+  Follow chapter 9's own rule here: <em>bound</em> and <em>resolved</em> are
+  never recomputed. <code>chain-state.sh</code> reads <code>spec-lint.sh</code>'s
+  own F7 and F9 output and attributes each hit back to a requirement title —
+  a second implementation of reachability is the exact drift defect chapter
+  9 spent a whole section on. <em>Discharged</em> is the one genuinely new
+  computation: every mapped obligation must have at least one matching,
+  same-baseline ledger row.
+</p>
+
+<div class="box danger">
+  <div class="box-title">Found inside the tool built to prevent it</div>
+  <p>
+    The first version's exact-title matcher could find <strong>zero
+    rows</strong> for a title <code>spec-lint.sh</code>'s own — looser —
+    F7 already called bound (it accepts ordinals and case-insensitive
+    substrings; this script's matcher did not). The unmatched case left
+    <code>is_resolved</code>/<code>is_discharged</code> at their default of
+    <em>true</em>, never lowered by an empty loop. A title with
+    <strong>zero</strong> evidence examined reported as fully discharged,
+    exit 0 — the precise failure this whole chapter exists to eliminate,
+    reproduced inside the first script written to prevent it.
+  </p>
+  <p style="margin-bottom:0">
+    The fix added a fourth classification, <code>unattributable</code>,
+    checked before a title can ever be counted resolved or discharged: a
+    bound title this script cannot itself attribute evidence to is reported
+    as exactly that, never silently folded into “fine”. Two more bugs in the
+    same family — substring matches (<code>grep -qF</code> without
+    <code>-x</code>) letting one title's verdict bleed onto another whose
+    name happened to be a prefix, and onto an unrelated line number 260
+    lines away — were fixed by anchoring every lookup to the whole line, not
+    a fragment of it.
+  </p>
+</div>
+
+<h2>The checkpoint, generated</h2>
+
+<p>
+  Chapter 8 already told you what changed here; this is the mechanism
+  behind it. <code>scanner/checkpoint.sh report</code> reads the ledger and
+  a chain-state report and renders the same <strong>Rings:</strong> line the
+  checkpoint format has always had — except now every green citation traces
+  to a row, and a ring with none is <em>no recorded evidence</em>, never a
+  quiet green by omission.
+</p>
+
+<pre data-lang="bash"><code>$ scanner/checkpoint.sh report --ledger evidence-ledger.jsonl \
+    --change my-change --spec my-spec --baseline $(git rev-parse HEAD) \
+    --rings R0,R1,R3,R8 --chain-state-json &lt;(scanner/chain-state.sh …)
+  R0: green (bash -n scanner/checkpoint.sh)
+  R1: green (shellcheck scanner/checkpoint.sh)
+  R3: FAILED (bats tests/checkpoint-from-ledger.bats, exit 1)
+  R8: no recorded evidence</code></pre>
+
+<div class="box danger">
+  <div class="box-title">A row is evidence of what happened, not of success</div>
+  <p style="margin-bottom:0">
+    The first version reported <em>any</em> matching row as green — it
+    copied the row's own exit code into its output object two lines later
+    without ever reading it first. A ring that had regressed after an
+    earlier green run was still reported green, citing the now-failing
+    command. Fixed by gating status on <code>exit == 0</code>; a non-zero
+    row now reports <code>failed</code>, visibly distinct from
+    <em>no recorded evidence</em> — a human should be able to tell “never
+    ran” from “ran and broke” at a glance, and before this fix, the
+    checkpoint could not.
+  </p>
+</div>
+
+<p>
+  <code>checkpoint.sh regenerate-tasks</code> closes the other half of the
+  loop chapter 2 named: a spec counts as complete when its tracker entry's
+  <code>Commit</code> field holds a real hash, and <code>tasks.md</code>'s
+  checkboxes are rewritten from that — never hand-toggled, never able to
+  independently drift from the tracker again.
+</p>
+
+<h2>The one hook that blocks</h2>
+
+<p>
+  Chapter 11 told this part of the story in full, including the two bugs
+  that would have shipped a silently inert — or silently unbounded — block
+  if a fresh-context review had not caught them first. The short version,
+  for continuity: once chain state can answer <em>discharged</em>
+  mechanically, refusing a turn that claims completion while chain state
+  disagrees becomes possible for the first time, and it is deliberately the
+  <strong>last</strong> thing this chapter's tooling built — after the
+  ledger, after chain state, after the generated checkpoint had all run
+  cleanly on their own.
+</p>
+
+<div class="box insight">
+  <div class="box-title">Why this had to be last, not first</div>
+  <p style="margin-bottom:0">
+    A blocking gate is only as trustworthy as the evidence it blocks on. Had
+    the completion gate shipped before the ledger's trailing-newline bug or
+    chain-state's <code>unattributable</code> fix, it would have been
+    refusing turns — or worse, silently permitting them — on a chain-state
+    computation that was itself capable of reporting a clean zero on no
+    evidence at all. Sequencing the substratum's own construction this way
+    is the same lesson as chapter 11's Tier B before Tier A, applied one
+    level deeper: promote enforcement onto evidence you have already
+    verified is honest, never onto evidence you are still debugging.
+  </p>
+</div>
+
+<h2>Where it lives in the ladder</h2>
+
+<p>
+  Chapter 9 split every check into fully mechanical, judgement, and human
+  only. Chapter 11 gave enforcement five rungs, prose to CI. Clause 3 moved
+  across both in one release: it went from <em>not represented at all</em>
+  to fully mechanical (chapter 9's table — ledger and chain-state need no
+  human judgement to compute) and reached rung 4 of the enforcement ladder
+  the same day it shipped, because the hook and the mechanism it enforces
+  were designed together rather than bolted on afterward.
+</p>
+
+<div class="box analogy">
+  <div class="box-title">Analogy · a substratum, not a rule</div>
+  <p style="margin-bottom:0">
+    Every earlier chapter's mechanism answers a question about <em>one</em>
+    artifact — does this spec obey F7, does this diff pass Ring 1. The
+    operative rule is different in kind: it is not one more check alongside
+    the others, it is the standing condition all of them are supposed to
+    satisfy, restated wherever an agent is about to render a verdict. That
+    is why it is injected into every artifact instruction rather than
+    living in one spec-lint check (chapter 9's own CONTEXT-block lesson,
+    applied to the rule itself, not just to one rule's applicability facts).
+  </p>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz="q12"></div>
+<script type="application/json" id="q12">
+[
+  {
+    "q": "A proof-obligations table shows every row bound and resolved. Is the corresponding code correct, by this chapter's definition?",
+    "options": [
+      "Yes — bound and resolved is what F7/F9 already check",
+      "Not necessarily — a third clause, discharged, requires the artifact to have been OBSERVED TO RUN GREEN, with a recorded command, at the current baseline; bound+resolved alone only means the obligation names something that exists",
+      "Yes, as long as the tests are green somewhere in CI history",
+      "No — nothing before chapter 12 could ever be correct"
+    ],
+    "answer": 1,
+    "why": "Bound and resolved describe the SHAPE of the obligation chain — a claim names a mechanism, the mechanism exists. Neither says the mechanism was ever run. An artifact that compiles and has never executed since the code around it changed is resolved but not discharged, and chain-state.sh reports it as unresolved for exactly that reason."
+  },
+  {
+    "q": "chain-state.sh's first version defaulted a title's resolved/discharged flags to true, lowered only by a loop over matched ledger rows. What happened when the matcher found zero rows for a title spec-lint's own F7 called bound?",
+    "options": [
+      "It correctly reported the title as unbound",
+      "It reported the title as fully discharged with no evidence examined at all, exit 0 — the loop that would have lowered the flags never ran because it had nothing to iterate over",
+      "It crashed with an unbound variable error",
+      "It asked the human to classify it"
+    ],
+    "answer": 1,
+    "why": "Defaulting a flag to true and lowering it only inside a loop is the same shape as `case _ => validValue` — an empty input silently takes the 'everything is fine' branch. The fix, `unattributable`, is a fourth explicit state checked BEFORE the resolved/discharged loops, so zero attributable evidence can never be silently reported as success."
+  },
+  {
+    "q": "Why does checkpoint.sh check a ledger row's exit code before reporting a ring green, rather than treating any matching row as evidence of success?",
+    "options": [
+      "Performance",
+      "Because a row records what actually happened, including a FAILED run — the first version copied a row's exit code into its output without reading it first, so a regressed ring that had once passed was still reported green, citing the now-failing command",
+      "To make the output shorter",
+      "Because ledger.sh rejects failing rows at write time"
+    ],
+    "answer": 1,
+    "why": "ledger.sh deliberately accepts rows with any exit code — a failed run IS evidence, just not discharging evidence. A reader that treats row-presence as row-success conflates the two, exactly the class of bug this chapter's tooling exists to catch, and it was caught by a fresh-context Ring 8 pass, not by the tests the author had already written."
+  },
+  {
+    "q": "Why did the blocking completion gate ship last, after the ledger, chain-state, and generated checkpoint had all shipped and run cleanly?",
+    "options": [
+      "Alphabetical ordering of the specs",
+      "A blocking gate is only as trustworthy as the evidence it blocks on — shipping it before the mechanisms that COMPUTE that evidence were verified honest would risk refusing (or silently permitting) turns based on a chain-state computation that could itself report a clean zero on no evidence",
+      "Because completion detection is the easiest part to implement",
+      "It was a coincidence of scheduling"
+    ],
+    "answer": 1,
+    "why": "This is chapter 11's Tier-B-before-Tier-A argument one layer deeper: promote enforcement onto evidence you have already verified, never onto evidence still being debugged. Each of the substratum's own components had a real, found 'claim outran evidence' bug during construction — building the blocking gate on top of any of them before they were fixed would have made the block itself untrustworthy."
+  }
+]
+</script>
+
+<div class="checkpoint">
+  <h4>Before moving on, you should be able to say</h4>
+  <ul>
+    <li>The three clauses of correctness, and which one had no mechanism before this chapter.</li>
+    <li>Why the evidence ledger is append-only structurally, not by convention — and what it still cannot prevent.</li>
+    <li>Why chain-state.sh never recomputes bound/resolved itself, and what <code>unattributable</code> is for.</li>
+    <li>The difference between a ledger row that is <em>absent</em> and one that is <em>present but failed</em> — and why a checkpoint must never conflate them.</li>
+    <li>Why the one blocking hook in this schema shipped last, and what would have gone wrong had it shipped first.</li>
+  </ul>
+  <p style="margin-bottom:0">
+    If you can only take one idea from this whole tutorial, it is the
+    sentence this chapter states as a rule rather than derives from one:
+    never let a claim outrun its evidence — including this workflow's own
+    claims about itself, which is exactly where three of the bugs above
+    were found.
+  </p>
+</div>
+
+<div class="chapter-nav">
+  <a href="11-enforcement.html"><span class="dir">← Chapter 11</span> Making it stick</a>
+  <a class="next" href="index.html"><span class="dir">Back to</span> Start here</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

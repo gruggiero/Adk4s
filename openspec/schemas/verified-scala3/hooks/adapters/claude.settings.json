@@ -1,5 +1,5 @@
 {
-  "//": "verified-scala3 Tier B adapter — Claude Code. Merge this 'hooks' key into .claude/settings.json (project) or ~/.claude/settings.json (global). install-hooks.sh does the merge for you. $CLAUDE_PROJECT_DIR keeps the path project-relative, so the same fragment works in every repo that vendors the schema.",
+  "//": "verified-scala3 adapter — Claude Code. Merge this 'hooks' key into .claude/settings.json (project) or ~/.claude/settings.json (global). install-hooks.sh does the merge for you. $CLAUDE_PROJECT_DIR keeps the path project-relative, so the same fragment works in every repo that vendors the schema. $CLAUDE_CODE_SESSION_ID is set in the hook process's environment (verified directly, schema v12 gate-payload spec) and scopes gate.sh's per-session suppression and the completion gate's bounded refusal. Tier B (SessionStart, UserPromptSubmit) never blocks. Tier A (PostToolUse, Stop) is the promoted tier, added at spec:hook-tiers — PostToolUse never blocks either; Stop is the one hook in this file that can, via gate.sh's own bounded-refusal + escape-hatch (VERIFIED_SCALA3_HOOKS=off) discipline. Both read tool_input.file_path / transcript_path / stop_hook_active from the JSON Claude Code already pipes to the command's stdin — gate.sh needs no extra flags here, matching the 'adapter decides when to ask, script decides what' rule.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,8 +7,44 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/openspec/schemas/verified-scala3/hooks/gate.sh\" --event session-start --format hook-json",
+            "command": "\"$CLAUDE_PROJECT_DIR/openspec/schemas/verified-scala3/hooks/gate.sh\" --event session-start --format hook-json --session \"$CLAUDE_CODE_SESSION_ID\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/openspec/schemas/verified-scala3/hooks/gate.sh\" --event prompt-submit --format hook-json --session \"$CLAUDE_CODE_SESSION_ID\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/openspec/schemas/verified-scala3/hooks/gate.sh\" --event post-edit --format hook-json --session \"$CLAUDE_CODE_SESSION_ID\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/openspec/schemas/verified-scala3/hooks/gate.sh\" --event completion --format hook-json --session \"$CLAUDE_CODE_SESSION_ID\"",
+            "timeout": 15
           }
         ]
       }

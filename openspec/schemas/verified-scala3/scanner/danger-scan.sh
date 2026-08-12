@@ -59,6 +59,10 @@ hits=0
 scan() { # $1=label $2=ERE $3=file [$4=-i]
   local label="$1" pattern="$2" file="$3" ci="${4:-}"
   local found
+  # shellcheck disable=SC2086  # $ci is an OPTIONAL WORD (-i or empty), not a
+  # value: quoting it would pass an empty argument to grep, which grep reads as
+  # an empty pattern and matches every line. Word-splitting is the mechanism
+  # here, not an oversight.
   found="$(grep -nE $ci -- "$pattern" "$file" | grep -v 'danger-scan:allow' || true)"
   if [ -n "$found" ]; then
     printf '%s\n' "$found" | while IFS= read -r line; do

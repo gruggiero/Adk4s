@@ -25,6 +25,7 @@
     <li><a class="current" href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
     <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
     <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
+    <li><a href="12-substratum.html"><span class="num">12</span> The correctness substratum</a></li>
   </ul>
   <div class="toc-title">On this page</div>
   <ul id="toc"></ul>
@@ -52,12 +53,18 @@
 <div class="box rule">
   <div class="box-title">Rule · the gate checks must run anywhere</div>
   <p style="margin-bottom:0">
-    <code>registry-check.sh</code>, <code>spec-lint.sh</code> and
-    <code>danger-scan.sh</code> use <strong>bash and <code>git grep</code>
-    only</strong> — no JVM, no network, no artifact repository. They run on a
+    The gate checks depend on a <strong>declared prerequisite set</strong>
+    (schema v12): <code>bash</code>, <code>git</code>, <code>jq</code> at
+    runtime, plus <code>shellcheck</code>, <code>bats</code>,
+    <code>shfmt</code> and <code>openspec</code> in CI —
+    <strong>no JVM, no network, no artifact repository</strong>. They run on a
     restricted CI runner that cannot reach Maven Central. Portability
     <em>is</em> a correctness property for a gate: a check that only runs on a
-    developer's laptop is a check that stops running.
+    developer's laptop is a check that stops running. Before v12 the rule was
+    zero-dependency (bash and <code>git grep</code> only); the reasoning is
+    unchanged, but hand-rolled escaping and the absence of a test framework
+    were where the defects lived, so the dependency set is now declared and
+    installable rather than empty.
   </p>
 </div>
 
@@ -280,6 +287,63 @@ danger-scan: adk4s-core/src/main/scala/.../ToolsNode.scala
   compiler; this exists for portability and for patterns no rule expresses.
 </p>
 
+<h3>ledger.sh, chain-state.sh, checkpoint.sh — the discharged clause, mechanised</h3>
+
+<p>
+  Chapter 12 covers the reasoning; this is where the three scripts live in
+  the mechanical/judgement split. <code>F7</code> (above) and <code>F9</code>
+  answer <em>bound</em> and <em>resolved</em> — a requirement is named by an
+  obligation, and the obligation's artifact exists. Neither answers whether
+  that artifact was ever <strong>observed to run green</strong>, which is
+  the third clause of what this workflow means by correct, and it had no
+  mechanism at all before schema v12.
+</p>
+
+<pre data-lang="bash"><code>$ scanner/ledger.sh append --file evidence-ledger.jsonl --change my-change \
+    --spec my-spec --ring R3 --obligation "…" --artifact tests/foo.bats \
+    --command "bats tests/foo.bats" --exit 0 --baseline $(git rev-parse HEAD)
+
+$ scanner/chain-state.sh --change-dir openspec/changes/my-change \
+    --change my-change --baseline $(git rev-parse HEAD)
+{"total":9,"bound":9,"resolved":9,"discharged":7,
+ "unresolved":[{"spec":"my-spec","requirement":"…","reasons":["undischarged"]}]}
+
+$ scanner/checkpoint.sh report --ledger evidence-ledger.jsonl --change my-change \
+    --spec my-spec --baseline $(git rev-parse HEAD) --rings R0,R1,R3,R8 \
+    --chain-state-json &lt;(scanner/chain-state.sh …) --format text
+  R0: green (bash -n scanner/checkpoint.sh)
+  R3: no recorded evidence</code></pre>
+
+<p>
+  <code>ledger.sh</code> is append-only — there is no update or delete
+  subcommand, on purpose — and every row carries the command that produced
+  it, so a row is re-checkable, not merely trusted. <code>chain-state.sh</code>
+  never re-derives bound/resolved itself; it reads <code>spec-lint.sh</code>'s
+  own F7/F9 output and attributes it back to requirements, because a second
+  implementation of reachability is exactly the drift this workflow exists to
+  remove. <code>checkpoint.sh</code> in turn never re-derives ring outcomes —
+  it reads the ledger and reports a ring green only when a matching,
+  <strong>zero-exit</strong> row exists at the current baseline; a row
+  recording a failed run is reported <code>failed</code>, never green, and a
+  ring with no row at all is <code>no recorded evidence</code> — never
+  silently absent, never silently clean.
+</p>
+
+<div class="box danger">
+  <div class="box-title">Found inside the tool built to prevent it</div>
+  <p style="margin-bottom:0">
+    <code>chain-state.sh</code>'s first adversarial review found that its own
+    exact-title matcher could find <strong>zero rows</strong> for a title
+    <code>spec-lint.sh</code>'s own (looser) F7 already called bound — and the
+    unmatched case defaulted <code>resolved</code>/<code>discharged</code> to
+    <em>true</em>, never lowered by an empty loop. A title with no evidence
+    examined at all reported as fully discharged, exit 0. The exact defect
+    this trio exists to eliminate, found inside the first implementation of
+    the trio itself — which is the strongest argument in this whole chapter
+    for a fresh-context adversarial pass over an author's own.
+  </p>
+</div>
+
 <h2>The concept scanner</h2>
 
 <p>
@@ -426,7 +490,8 @@ $ scanner/openspec-graph.py obligations
         Fold-field declarations<br>
         Exhaustiveness (Ring 0)<br>
         Mutation score<br>
-        Concept &amp; dependency deltas
+        Concept &amp; dependency deltas<br>
+        Discharged evidence (ledger + chain-state)
       </td>
       <td>
         Observability of a <em>Then</em><br>
@@ -544,7 +609,7 @@ $ scanner/install-skills.sh</code></pre>
 <div class="checkpoint">
   <h4>Before moving on, you should be able to say</h4>
   <ul>
-    <li>Why gate checks are dependency-free and semantic tools are advisory.</li>
+    <li>Why gate checks depend only on a declared prerequisite set, and semantic tools are advisory.</li>
     <li>The three passes of registry-check and the seven spec-lint FAIL codes.</li>
     <li>The two scanner bugs and the general lesson about silent success.</li>
     <li>The freshness and resolve-first rules for semantic queries.</li>

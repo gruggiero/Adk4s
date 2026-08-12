@@ -1,11 +1,39 @@
-# Concept-registry drift check (verified-scala3 workflow).
+# Gate checks for the verified-scala3 workflow.
 # Add as a job to the existing .gitlab-ci.yml, or use standalone.
-registry-check:
+#
+# Installs the DECLARED PREREQUISITE SET (schema v12 — see ../hooks/README.md).
+# Without an install step the shell rings are developer-local only, which is
+# the same opt-in weakness the hooks exist to remove.
+verified-scala3-gate:
   stage: test
   image: alpine/git
+  before_script:
+    - apk add --no-cache bash jq shellcheck shfmt bats nodejs npm
+    # openspec: the Ring 3 reachability tests render artifact instructions
+    # through the CLI, so the suite cannot run without it.
+    - npm install -g @openspec/cli
+    # A missing tool must fail here, not silently skip the ring below.
+    - for t in bash git jq shellcheck bats shfmt openspec; do command -v "$t" >/dev/null || { echo "missing prerequisite -- $t"; exit 1; }; done
   script:
-    - apk add --no-cache bash
+    # Ring 1 — shell lint over every tracked script.
+    - git ls-files 'openspec/schemas/verified-scala3/**/*.sh' 'openspec/schemas/verified-scala3/**/*.bash' | xargs -r shellcheck -f gcc
+    # Ring 1 — formatting, ADDED FILES ONLY (--diff-filter=A). -i 2 -ci matches
+    # the project's observed convention (2-space indent, indented case arms);
+    # bare shfmt defaults to tabs. shfmt -d checks a WHOLE file, so gating on
+    # CHANGED files would fail any edit to a legacy script on its pre-existing
+    # formatting — a gate that punishes unrelated edits gets disabled. New
+    # files stay clean; the tree converges at the one-time reformat.
+    - |
+      if [ -n "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}" ]; then
+        added="$(git diff --name-only --diff-filter=A "$CI_MERGE_REQUEST_DIFF_BASE_SHA" -- '*.sh' '*.bash' || true)"
+        [ -z "$added" ] || printf '%s\n' "$added" | xargs -r shfmt -i 2 -ci -d
+      else
+        echo "no merge-request base to diff against; skipping (scoped check)"
+      fi
+    # Ring 3 — the workflow's own shell suites.
+    - bats openspec/schemas/verified-scala3/tests/
     - ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
+    - ./openspec/schemas/verified-scala3/scanner/spec-lint.sh .
   rules:
     - changes:
         - "openspec/**/*"

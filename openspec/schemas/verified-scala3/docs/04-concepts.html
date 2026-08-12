@@ -25,6 +25,7 @@
     <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
     <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
     <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
+    <li><a href="12-substratum.html"><span class="num">12</span> The correctness substratum</a></li>
   </ul>
   <div class="toc-title">On this page</div>
   <ul id="toc"></ul>
@@ -320,7 +321,8 @@ Deviation: best-effort — a recall failure is logged and the turn proceeds.</co
 
 <p>
   Prose ledgers rot. This one has <code>scanner/registry-check.sh</code> —
-  dependency-free bash and <code>git grep</code>, so it runs on any CI runner —
+  bash and <code>git grep</code> only (it predates the v12 prerequisite set and
+  still needs nothing more), so it runs on any CI runner —
   making three passes:
 </p>
 
@@ -467,6 +469,21 @@ Deviation: best-effort — a recall failure is logged and the turn proceeds.</co
   }
 ]
 </script>
+
+<div class="box caution">
+  <div class="box-title">A third thing also called a “ledger”, and it is not these two</div>
+  <p style="margin-bottom:0">
+    Chapter 12 introduces <code>evidence-ledger.jsonl</code> — an append-only
+    log of ring commands actually run, with their exit codes. Same word,
+    same append-only, provenance-carrying shape, but a different axis
+    entirely: these two ledgers answer <em>“what exists, and what is it
+    called”</em>, fixed at design time; the evidence ledger answers
+    <em>“was this specific claim actually checked, in this session”</em>,
+    written at verification time. Neither substitutes for the other — a
+    concept can be correctly registered and still have a discharged clause
+    nobody ever ran.
+  </p>
+</div>
 
 <h2>Further reading</h2>
 

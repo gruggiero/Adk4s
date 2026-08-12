@@ -8,5 +8,35 @@
         }
       ]
     }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "./openspec/schemas/verified-scala3/hooks/gate.sh --event prompt-submit --format hook-json"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "./openspec/schemas/verified-scala3/hooks/gate.sh --event post-edit --format hook-json"
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "./openspec/schemas/verified-scala3/hooks/gate.sh --event completion --format hook-json"
+        }
+      ]
+    }
   ]
 }

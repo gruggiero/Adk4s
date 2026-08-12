@@ -21,7 +21,7 @@
 | Scala version | 3.8.4 (main modules); 3.7.2 (`verified` module — Stainless frontend pin) | build.sbt, project/Versions.scala |
 | sbt version | 1.12.12 | project/build.properties |
 | JDK | 26 (Homebrew OpenJDK) | runtime |
-| Modules | 10: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
+| Modules | 11: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-harness-api`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt (`adk4s-harness-api` at build.sbt:96 — added by the in-flight `add-harness-api-phase0` change) |
 | Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule). Any change extending a sealed ADT (e.g. `AgentEvent`, `AdkError`) MUST handle the new variant in every existing match or Ring 0 fails. | build.sbt scala3Options |
 | scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, exhaustiveness `-Wconf` escalations (shared via `scala3Options` val) | build.sbt |
 | Dependency management | Centralized: `project/Versions.scala` (all versions), `project/Dependencies.scala` (all ModuleIDs), `build.sbt` imports `Dependencies._` | project/*.scala |
@@ -35,6 +35,7 @@ adk4s-examples % Test → adk4s-memory-testkit                (test-scope — Fi
 adk4s-eval → structured-llm                                  (eval harness; landed by add-eval-core)
 adk4s-eval % Test → cats-effect-testkit                      (TestControl for deterministic concurrency)
 adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api
+adk4s-harness-api → adk4s-core, verified % Test               (Ring 6 bridge wired; in-flight add-harness-api-phase0)
 adk4s-optimize → structured-llm, verified % Test              (Ring 6 bridge; landed by archived 2026-08-01-add-optimizable-surface)
 adk4s-memory-testkit → adk4s-memory-api                     (main-scope munit — behavioral laws)
 adk4s-memory-api → adk4s-core                               (for Retriever/Document/RetrieverConfig)
@@ -74,7 +75,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Property testing | Hedgehog 0.13.1 (hedgehog-munit % Test) | Properties extend `hedgehog.munit.HedgehogSuite` with `property("…") { for x <- gen.forAll yield <Result> }`. Integrated shrinking, NO `Arbitrary` typeclass, explicit `Range` sizing. NOT ScalaCheck/munit-scalacheck. Coverage ASSERTIONS via Hedgehog `cover` (fails when a label's percentage is unmet); seed-fixing via Hedgehog fixed `Seed`. |
 | Deterministic concurrency test kit | cats-effect `TestControl` (`cats.effect.unsafe.TestControl`) | Available transitively via cats-effect 3.7.0 (no extra dep needed). Any change touching concurrency/timeouts/cancellation/interruption MUST use `TestControl` to drive `IO` deterministically — never wall-clock sleeps. munit-cats-effect provides `munit.CatsEffectSuite` for IO assertions. |
 | Actor test kits | N/A | No actor framework detected |
-| Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list (currently `**/memory/MemoryRetriever.scala`) — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. |
+| Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list (currently `**/harness/HarnessState.scala`, stryker4s.conf:12) — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. Ring 5 covers **Scala only**: there is no mutation tooling for the workflow's bash scripts. |
 | Formal verification | Stainless (bundled jar + local Maven repo) | **Frontend Scala version**: 3.7.2 (the `verified` leaf module is pinned to it; the rest of the build stays on 3.8.4 — a version mismatch is NOT "Ring 6 unavailable", it is why the mirror is a separately-pinned leaf). **Mirror module**: `verified/` exists (StainlessPlugin, `stainlessEnabled := false` by default, not aggregated); alias `sbt -J-Xmx6g ring6`. **Contents**: `PredictorKernel` (predictor-enumeration mirror, landed by archived `2026-08-01-add-optimizable-surface`). `adk4s-optimize dependsOn(verified % Test)` is wired; `PredictorModelBridgeSpec` bridge test runs in `adk4s-optimize/test`. Stainless 0.9.9.3 with smt-z3 fallback (Z3 4.13.4). Candidate kernels for future changes: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation. |
 | Model checking | none | No TLA+/Apalache. Ring 7 skip. |
 | Memory test double | `InMemoryAgentMemory` (adk4s-memory-api, main scope) | Used as the `AgentMemory[IO]` implementation in hook tests — no LLM, no network. |
@@ -86,6 +87,77 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Scalafix | `DisableSyntax` (noVars, noThrows, noNulls, noReturns, noWhileLoops, noAsInstanceOf, noIsInstanceOf, noFinalize + custom regex: NoConfigFactory, NoSysEnv, NoSystemGetenv, NoKeywordTry/Catch/Finally, **NoUjsonIn{Core,StructuredLLM,Optimize,Eval,Orchestration}**), `RemoveUnused` (imports, privates, locals, patternvars), `OrganizeImports` (Merge, grouped) | Scoped guards for adk4s-core and structured-llm main sources (NoAdk4sConfig, NoPureConfigDefault, NoEnvReads) — aspirational (PureConfig not yet a dependency). `scalafixOnCompile := false` (run on demand). The `NoUjsonIn*` rules (landed by `migrate-json-codec`) confine `ujson.Value` to the llm4s boundary (`org.adk4s.core.json`, `org.adk4s.core.tools`); all other ADK4S-owned main sources must use `JsonValue`. | .scalafix.conf |
 | WartRemover | `Warts.unsafe` minus excluded set (see right) | Temporarily excluded (3 only): `TripleQuestionMark` (intentional — stubs), `Any` (s"..." string interpolation false positive — StringContext.s takes `Any*`), `DefaultArguments` (valid API design feature for config case classes; 47 sites across 15 files). All other unsafe warts are ACTIVE: `IterableOps`, `AsInstanceOf`, `Throw`, `Var`, `OptionPartial`, `StringPlusAny`, etc. `verified` module: `wartremoverErrors := Seq.empty` + `libraryDependencies ~= (_.filterNot(_.organization == "org.wartremover"))` (exempt — 3.6.1 not published for Scala 3.7.2). `adk4s-examples`: same 3-exclusion relaxed set. **Version**: sbt-wartremover 3.6.1 (in `project/plugins.sbt`); `project/Versions.scala` still has 3.5.8 (stale — the `sbtWartremover` val in `Dependencies.scala` is unused). **Known issue**: `-Xss4m` in `.jvmopts` works around a `Null`-wart `StackOverflowError` on deep ASTs (see `docs/known-issues/wartremover-null-stackoverflow.md`). | build.sbt, project/plugins.sbt |
 | scalafmt | Config present: scala3 dialect, maxColumn=120, align.preset=more | — | .scalafmt.conf |
+
+## Shell / Script Tooling (workflow scripts)
+
+<!-- Added 2026-08-08 by add-correctness-substratum. The workflow's own gate
+     checks are bash, and until now the profile described only the Scala
+     stack — so a change shipping bash had no detected stack to target and
+     would have had to assume one. Detected, not assumed. -->
+
+The schema ships **11 git-tracked shell scripts** under
+`openspec/schemas/verified-scala3/{scanner,hooks}/`. They are production code
+for the workflow: `gate.sh` runs on every session, and `spec-lint.sh` /
+`registry-check.sh` / `danger-scan.sh` decide whether a spec may proceed.
+
+| Item | Detected | Consequence |
+|------|----------|-------------|
+| `shellcheck` | ✅ **0.11.0** (`/home/linuxbrew/.linuxbrew/bin`) | Ring 1 for shell is **available** and gates the whole tree. **Re-established 2026-08-08 by `spec:add-correctness-substratum/correctness-invariant`, superseding the earlier baseline** ("8/11 clean; 5 findings; `metals-call.sh` SC2034 possibly dead code"): all five findings now carry justifying annotations and shellcheck exits 0 over **12/12** files (11 `.sh` + `tests/helpers.bash`). The SC2034 question is answered — `init_resp` is unused deliberately; the assignment keeps the response body off stdout. Suppressions must carry a reason, mirroring the `// danger-scan:allow` convention. |
+| `bats` / `bats-core` | ✅ **1.14.0** (`/home/linuxbrew/.linuxbrew/bin`) | Ring 3 for shell is **available**. Bats is the detected framework — generate `.bats` files, NOT a hand-rolled assertion runner. |
+| `shfmt` | ✅ **3.13.1** (`/home/linuxbrew/.linuxbrew/bin`) | **Invoke as `shfmt -i 2 -ci`** — the project's observed convention is 2-space indent with indented `case` arms. Measured 2026-08-08 over the 11 tracked scripts: bare `shfmt` (tabs) = 1987 diff lines; `-i 2` = 690; **`-i 2 -ci` = 515**; `-i 2 -ci -sr` = 837. The setting is detected from the existing scripts, not chosen. The tree still predates the formatter, so `shfmt` gates **changed/new files only** until a one-time reformat lands. |
+| `jq` | ✅ **1.6** (`/bin/jq`) | **ALLOWED** — the previous ban is lifted (see the prerequisite rule below). New scripts may parse and emit JSON with `jq` instead of hand-rolled sed/awk. |
+| Existing tests for the 11 scripts | ❌ **NONE** | Tooling now exists but no tests do. There is no precedent or convention to follow: the first change to ship bash establishes the `.bats` layout and conventions. |
+| `python3` | ✅ 3.14.5 | `scanner/openspec-graph.py` already depends on it — a soft dependency of the tooling, not of the gate checks. |
+| `scala-cli` | (needed by `scanner/concept-scanner.scala`) | The semantic inventory scanner is Scalameta-based and needs scala-cli; the gate checks do not. |
+
+**PREREQUISITE RULE (supersedes the old portability rule)** — changed
+2026-08-08 by human decision (`add-correctness-substratum`).
+
+The prior rule, from `hooks/README.md`, was *bash + git only — no JVM, no
+network, no `jq`* on the reasoning that *"a check that only runs on one machine
+is a check that stops running."* That reasoning is retained, but the mechanism
+changes: instead of a zero-dependency constraint, the workflow now declares an
+explicit, installable **prerequisite set**:
+
+| Prerequisite | Purpose | Required by |
+|---|---|---|
+| `bash`, `git` | baseline | everything |
+| `jq` | JSON parse/emit in hooks and scanners | `gate.sh` and future hook adapters |
+| `shellcheck` | Ring 1 (shell lint) | CI + apply Step 4 |
+| `bats` | Ring 3 (shell tests) | CI + apply Step 6 |
+| `shfmt` | shell format check | CI + apply Step 4 |
+
+Still excluded: **JVM** and **network** for any gate check.
+
+Consequences of the change:
+1. A shell test harness does NOT need to be hand-rolled — **use bats**.
+2. `gate.sh`'s hand-rolled sed/awk JSON escaping is no longer required (it may
+   be simplified to `jq`, but that is a refactor, not an obligation).
+3. **`hooks/README.md` and `gate.sh`'s header comment still assert the old
+   "no jq" rule and are now WRONG.** Amending them is in scope for
+   `add-correctness-substratum`; leaving them is exactly the
+   recorded-but-contradicted drift this workflow exists to remove.
+4. The tools live in `/home/linuxbrew/.linuxbrew/bin` on this host — a CI
+   runner must install them explicitly. The CI templates in
+   `openspec/schemas/verified-scala3/ci/` need an install step; until they have
+   one, the prerequisite set is satisfied locally but not in CI.
+
+**CI COVERAGE** — **re-established 2026-08-08 by
+`spec:add-correctness-substratum/correctness-invariant`, superseding the
+earlier record** ("runs only `registry-check.sh`; `spec-lint.sh` and
+`danger-scan.sh` are not CI-enforced"). All three templates now install and
+**verify** the prerequisite set, then run shellcheck, shfmt (added files),
+bats, `registry-check.sh` and `spec-lint.sh`. `danger-scan.sh` remains
+apply-phase only: it is diff-scoped to a per-spec baseline, which CI does not
+have.
+
+**`danger-scan.sh` IS SCALA-ONLY.** It selects `git diff --name-only
+<baseline> -- '*.scala' | grep '/src/main/'`, so on a change shipping no Scala
+it reports "no production .scala files changed" and exits 0. That is **not
+applicable — never a clean scan.** Recording it as clean is the
+empty-scan-reported-as-OK shape the schema changelog names three times. A
+shell-only change is judged by shellcheck plus Ring 8 instead, and its
+danger-scan row is recorded N/A with this reason.
 
 ## Code Intelligence
 
@@ -162,3 +234,30 @@ The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend
 | 7 Model checking | ❌ | No TLA+/Apalache. Skip with stated correctness impact. |
 | 8 Adversarial review | ✅ (manual — always available) | Runs BEFORE Rings 5/6/7 in the apply sequence (fresh-context reviewer). |
 | 9 Telemetry | ❌ | No otel4s/Daut. Skip with stated impact. |
+
+### Ring availability for SHELL components (workflow scripts)
+
+<!-- Added 2026-08-08 by add-correctness-substratum. The rows above describe
+     the Scala stack only. A change that ships bash needs its own row set,
+     or it silently inherits Scala verdicts that do not apply to it. -->
+
+| Ring | Available for shell? | Note |
+|------|---------------------|------|
+| 0 Compile | ⚠️ substitute | No compiler. `bash -n <script>` is the syntax gate; `schema.yaml` must parse as YAML and `openspec` must still load the schema. |
+| 1 Lint | ✅ | `shellcheck` 0.11.0 on every changed script + `shfmt -d` for formatting. Catches the quoting/word-splitting class that `bash -n` misses — the dominant bash defect class, and precisely where hand-rolled string surgery in `gate.sh` lives. |
+| 2 Architecture | ⚠️ substitute | No layer graph. The binding rule is the PREREQUISITE RULE above (declared set only; no JVM, no network), asserted per changed script. |
+| 3 Behavioural tests | ✅ **framework available, no tests yet** | bats 1.14.0. Generate `.bats` files. Zero tests exist for the 11 scripts, so the first bash change also establishes the layout/conventions — but this is now a convention gap, NOT a missing capability. |
+| 4 Compatibility | ⚠️ manual | Applies when a script reads/writes a persisted format (e.g. a ledger file): round-trip + old-fixture parse. Hand-written as `.bats` cases; no fixture framework. |
+| 5 Mutation | ❌ | No mutation tooling for bash. Skip with stated impact. |
+| 6 Formal | ❌ | Stainless is Scala-only. N/A for shell. |
+| 7 Model checking | ❌ | No TLA+/Apalache. |
+| 8 Adversarial review | ✅ | Manual, fresh-context. No longer the *only* substantive ring for shell now that 1 and 3 are available. |
+| 9 Telemetry | ❌ | N/A. |
+
+**CI GAP** — the tools are installed on this host (mostly under
+`/home/linuxbrew/.linuxbrew/bin`) but the templates in
+`openspec/schemas/verified-scala3/ci/` install none of them and run only
+`registry-check.sh`. Until those templates gain an install step plus
+`shellcheck` / `bats` / `shfmt` invocations, Rings 1 and 3 for shell are
+**developer-local only**, which is the same opt-in weakness the hooks exist to
+address. Adding the CI step is in scope for `add-correctness-substratum`.

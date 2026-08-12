@@ -291,21 +291,27 @@
 | `MemoryHook` | final class (pure recall/remember wrapper over `Option[AgentMemory[IO]]`) | No-op when memory absent; `preTurn` recalls + renders, `postTurn` remembers per `MemoryPolicy` | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (used internally by `MemoryAwareRunner`) |
 | `MemoryAwareRunner` | final class (decorator over `AgentRunner`) | Runs `preTurn` before and `postTurn` after each turn; emits `MemoryRecalled`/`MemoryWritten` events; skips `postTurn` on `Interrupted`/`Failed` | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (`CrossRunMemoryExample` wraps `AgentRunner` with it) |
 
-## Concepts This Change Will Introduce
+## Per-Change Provenance (application-edge and shipped concepts)
 
-<!-- NEW concepts (not yet in the codebase). Recorded here so the apply phase
-     does NOT re-create them and so later specs can reuse them. These become
-     "pre-existing" once implemented.
+<!-- RENAMED 2026-08-08 by add-correctness-substratum. This section was headed
+     "Concepts This Change Will Introduce" and its body said "the
+     `add-cross-run-memory-example` change (this change)" — but that change was
+     archived 2026-07-26. A change-scoped section had been stranded inside a
+     PROJECT-scoped living document, so "this change" silently pointed at
+     whichever change last edited the file. The subsections below are now
+     explicitly per-change provenance records, matching the add-eval-core
+     pattern already used further down.
 
-     The `add-cross-run-memory-example` change (this change) introduces only
-     application-edge types in `adk4s-examples`. Per the inventory policy
-     (see note under "Case Classes" above: "adk4s-examples case classes are
-     application-edge and omitted"), these are NOT added to the main tables.
-     They are recorded here for provenance so later specs know they exist and
-     where to find them. The previously-listed `MemoryPolicy` / `MemoryHook` /
-     `MemoryAwareRunner` / `MemoryRecalled` / `MemoryWritten` entries have
-     been moved to the main tables above as pre-existing (shipped by the
-     archived `2026-07-19-add-memory-orchestration-hook` change). -->
+     Policy (see the note under "Case Classes"): adk4s-examples types are
+     application-edge and are NOT added to the main tables. They are recorded
+     here so later specs know they exist and where to find them. -->
+
+### add-cross-run-memory-example change (archived 2026-07-26) — application-edge
+
+`MemoryPolicy` / `MemoryHook` / `MemoryAwareRunner` / `MemoryRecalled` /
+`MemoryWritten` were moved to the main tables above as pre-existing (shipped by
+the archived `2026-07-19-add-memory-orchestration-hook` change). The remaining
+application-edge types:
 
 | Type | Kind | Package | Introduced By |
 |------|------|---------|---------------|
@@ -350,39 +356,79 @@ The following 3 concepts were introduced by `spec:add-eval-core/llm-judges` and 
 
 ## Consistency Check
 
+**Last verified: 2026-08-08** (by `add-correctness-substratum`), using the
+SEMANTIC scanner — `scanner/scan.sh` (scala-cli 1.5.0 + Scalameta).
+
+- **Scanner status**: ✅ **WORKS multi-module.** Run result:
+  `7 opaque types, 63 sealed types, 294 case classes, 15 service traits,
+  45 smithy models, 123 generators`; 0 parse failures reported.
+- **Opaque types**: scanner set matches this inventory's table **exactly, 7/7**
+  — `ToolSchema`, `RunPath`, `NodeKey`, `FieldPath`, `StateCell.CellId`,
+  `MiddlewareName`, `Schema`.
+- **Opaque type constraints**: confirmed NO Iron/refined library in the stack;
+  all 7 are plain newtypes without constraints.
 - **Package paths**: all recorded package paths match real `package` clauses
   in the scanned sources (`org.adk4s.core.*`, `org.adk4s.orchestration.*`,
-  `org.adk4s.memory`, `org.adk4s.memory.testkit`, `org.adk4s.structured.*`).
-- **Opaque type constraints**: confirmed NO Iron/refined library in the stack;
-  the five opaque types are plain newtypes without constraints.
+  `org.adk4s.memory`, `org.adk4s.memory.testkit`, `org.adk4s.structured.*`,
+  `org.adk4s.harness`, `org.adk4s.eval`).
 - **Memory-api entries**: cross-checked against
   `adk4s-memory-api/src/main/scala/org/adk4s/memory/*.scala` — `AgentMemory`,
   `Episode`, `SourceType`, `EpisodeOutcome`, `MemoryHit`, `TemporalScope`,
   `InMemoryAgentMemory`, `MemoryRetriever` all present and shipped.
 - **Generators**: `adk4s-memory-api/src/test/scala/org/adk4s/memory/Generators.scala`
-  compiles and contains every generator listed above (verified by grep).
-- **Discrepancies**: none. The semantic scanner's 0-result run is a known
-  limitation (it expects a top-level `src/`); the manual scan is authoritative.
+  contains every generator listed above.
+- **Discrepancies in the TABLES**: none.
+
+<!-- CORRECTED 2026-08-08. Two prose claims here were stale and one of them was
+     actively misleading:
+
+     (a) "the five opaque types" — the table has held SEVEN since
+         add-harness-api-phase0 added MiddlewareName and StateCell.CellId. The
+         table was current; the sentence counting it was not.
+
+     (b) "The semantic scanner's 0-result run is a known limitation (it expects
+         a top-level src/); the manual scan is authoritative."
+         FALSE as of schema v6, which fixed the scanner to discover every src/
+         root — the changelog names this exact defect ("previously a silent
+         empty scan on multi-module builds"). Re-verified today: the scanner
+         runs clean and finds 294 case classes. The obsolete note had the
+         effect of steering every later verification to a manual scan while a
+         working semantic one sat unused. A recorded limitation must be
+         re-tested, not inherited. -->
+
+**Counting note**: scanner totals exceed this inventory's row count by design —
+the inventory omits `adk4s-examples` application-edge types (policy under
+"Case Classes") and test-only helpers. Only the omissions are expected to
+differ; a divergence in the main tables is a defect.
 
 ## Behavioral Concepts (registry pass)
 
-<!-- The project has a concept registry at openspec/concepts/ (25 concepts).
-     This pass runs AGAINST the registry (does not regenerate it). -->
+<!-- The project has a concept registry at openspec/concepts/ (31 concepts).
+     This pass runs AGAINST the registry (does not regenerate it).
+     REFRESHED 2026-08-08 by add-correctness-substratum — the previous entry
+     recorded a run from 2026-07-18 and carried two flags that had already
+     been resolved by the shipped code (see below). -->
 
-**registry-check.sh**: `OK (604 implementation-map tokens verified, 0 spec concept references checked, 2 weak binding(s) to tighten)` — run on 2026-07-18. The 2 WEAK rows are pre-existing in `react-agent.md` (`isDefined`, `foreach` not in the cited `ReactAgent.scala` but exist elsewhere); they are NOT caused by this change and are not blocking.
+**registry-check.sh** (run 2026-08-08): `OK (740 implementation-map tokens verified, 15 spec concept references checked, 2 weak binding(s) to tighten)`
 
-**Stale implementation-map rows**: none introduced by this change.
+*(Previous entry, 2026-07-18: `604 tokens, 0 spec refs`. The token count grew with `add-eval-core`, `add-optimizable-surface`, `migrate-json-codec` and the in-flight `add-harness-api-phase0`; the spec-reference count is nonzero now because `add-harness-api-phase0` has specs on disk.)*
 
-**Unregistered actions / syncs / state components flagged for human review**:
+The 2 WEAK rows are pre-existing in `react-agent.md` (`isDefined`, `foreach` cited against `ReactAgent.scala` but they are stdlib `Option` methods, not identifiers declared there). Not blocking; tighten by citing their own file or dropping them from the map.
 
-- **NEW candidate concept: `MemoryHook` / `MemoryAwareRunner`** — this change introduces a new behavioral unit (memory-aware agent execution) that does not yet have a registry file. Per the registry README's "Living document" rule, creating `openspec/concepts/memory-aware-runner.md` is PART OF implementing the hook spec (state: `policy`, `hook`, `underlying: AgentRunner`; actions: `run`, `runWithEvents`, `resume`; syncs: `RecallToContext` when `MemoryHook/preTurn` yields `Some(context)`, `WriteEpisode` when `MemoryHook/postTurn` runs on `RunResult.Completed`). The hook spec's "Concepts Used (behavioral)" table cites this as a concept to be created.
-- **EXTENDED concept: `AgentEventStream`** — the events spec adds two new `AgentEvent` variants (`MemoryRecalled`, `MemoryWritten`). Updating `openspec/concepts/agent-event-stream.md` (its "AgentEvent variants" list and Implementation map) is PART OF implementing the events spec.
-- **CITED existing concepts**: `AgentRunner` (decorated), `AgentEventStream` (extended), `ReactAgent` (the inner agent whose turn is wrapped). No new syncs beyond the two named above.
+**Stale implementation-map rows**: none.
 
-> The registry-check `0 spec concept references checked` count is correct:
-> this change has no `specs/` directory yet (the specs artifact is created
-> next). Once specs exist, registry-check's pass 3 will verify every
-> `Concept`/`Concept/action` cited in the specs' "Concepts Used (behavioral)"
-> tables against the registry — including the new `MemoryAwareRunner` concept
-> file, which must be created before or during the events/hook spec
-> implementation.
+**Previously flagged, now RESOLVED** — both were left standing in this document after the code that resolved them shipped:
+
+- ~~NEW candidate concept `MemoryHook` / `MemoryAwareRunner` — "does not yet have a registry file"~~ → **RESOLVED**: `openspec/concepts/memory-aware-runner.md` exists (verified 2026-08-08).
+- ~~EXTENDED concept `AgentEventStream` — "updating agent-event-stream.md is PART OF implementing the events spec"~~ → **RESOLVED**: `openspec/concepts/agent-event-stream.md` carries the `MemoryRecalled` / `MemoryWritten` variants (4 references, verified 2026-08-08).
+
+<!-- Both flags were accurate when written and became false when the work
+     landed, but nothing re-read them — the same recorded-but-never-checked
+     shape the schema v11 changelog describes. A resolved flag must be cleared
+     by the change that resolves it; until then this section reports work as
+     outstanding that is in fact done. -->
+
+**Unregistered actions / syncs / state components flagged for human review**: none outstanding.
+
+> Registry concept count: **31** (`openspec/concepts/*.md`, excluding
+> `README.md`) as of 2026-08-08. The previous note in this section said 25.

@@ -65,7 +65,8 @@ One file per concept, `openspec/concepts/<kebab-name>.md` (see
 ## Machine check
 
 `openspec/schemas/verified-scala3/scanner/registry-check.sh` runs three
-passes and must be wired into CI (it is dependency-free — bash + git grep —
+passes and must be wired into CI (registry-check itself needs only bash and
+git grep — it predates the v12 prerequisite set and still needs nothing more —
 so it runs anywhere, including runners that cannot reach the build's
 artifact repositories):
 

@@ -135,6 +135,21 @@
 # or refuses the action outright:
 { "decision": "block", "reason": "spec-lint: 3 FAIL" }     # or: exit 2</code></pre>
 
+<div class="box caution">
+  <div class="box-title">Read that comment literally — exit 1 is not on the list</div>
+  <p style="margin-bottom:0">
+    Claude Code treats exit 1 as a non-blocking error: the action proceeds
+    and the harness moves on. Only exit <strong>2</strong>, or the
+    <code>decision:block</code> JSON on a normal exit-0 response, actually
+    refuses anything — and on exit 2 specifically, the reason is read from
+    <strong>stderr</strong>, not the stdout shown above. A hook that gets
+    this wrong does not fail loudly; it fails by quietly doing nothing,
+    which is the one failure mode this whole tutorial is about. This is not
+    a hypothetical warning — see the box further down this chapter for where
+    it happened for real.
+  </p>
+</div>
+
 <p>
   Claude Code, Codex CLI and Devin CLI arrived at that contract independently.
   A script written for one runs unmodified under the other two; only the config
@@ -271,6 +286,49 @@
   bypass your gate at 2am should not have to edit JSON to do it.
 </p>
 
+<h3>What actually shipped, and what nearly went wrong</h3>
+
+<p>
+  This is not a hypothetical ladder. <code>gate.sh</code> ran Tier B only
+  through five specs of the correctness-substratum work (chapter 12) before
+  Tier A was proposed — zero session-strand incidents in daily use is what
+  “on evidence” means in practice, not a fixed calendar interval. Tier A
+  itself split the same way the two-column box above predicts:
+  <code>post-edit</code> (findings only, still cannot block) shipped first;
+  the <strong>one</strong> genuinely blocking event in this whole schema —
+  <code>completion</code>, refusing a turn that claims a checkpoint while
+  the evidence ledger (chapter 12) shows unresolved requirements — shipped
+  last, and only after post-edit had itself run cleanly.
+</p>
+
+<div class="box danger">
+  <div class="box-title">The near miss, found by the fresh-context review before it shipped</div>
+  <p>
+    The first implementation of the completion gate was <strong>silently
+    inert</strong> on its most common path. It signalled a refusal with a
+    raw script exit code (1), and Claude Code's own hook contract treats
+    exit 1 as a non-blocking error — the turn proceeds, the refusal never
+    happens, and nothing says so. A second bug was worse in the other
+    direction: the bounded-refusal guarantee lived entirely in a state-file
+    marker, and when that state could not be created (no <code>.git</code>
+    yet is a real, ordinary condition), refusal had <strong>no bound at
+    all</strong> — every attempt blocked, forever. That is the exact
+    “blocking hook that misfires and cannot be escaped” failure this chapter
+    warned about above, found inside the first attempt to build the hook
+    the warning was about.
+  </p>
+  <p style="margin-bottom:0">
+    Both were caught by Ring 8's fresh-context review, before either line
+    reached a live session — reproduced with real commands against the real
+    script, the same discipline chapter 7 describes. The fix for the second
+    bug is the general lesson: <strong>a blocking decision may only be made
+    when the mechanism that bounds it is actually available</strong>; when
+    it is not, the event fails <em>open</em>, not closed. An enforcement
+    mechanism that cannot prove its own escape hatch works has no business
+    blocking anything.
+  </p>
+</div>
+
 <h2>Verifying a hook fires</h2>
 
 <p>
@@ -342,6 +400,25 @@
       <code>Stop</code> hook that misfires is genuinely difficult to escape.</li>
 </ul>
 
+<div class="box caution">
+  <div class="box-title">A narrower use of <code>Stop</code> is not this mistake</div>
+  <p style="margin-bottom:0">
+    Chapter 12's completion gate also uses <code>Stop</code>, and it is worth
+    being precise about why that is a different thing than the bullet above.
+    It never waits on a <em>human</em> decision — a typed-contract review, an
+    approval that has not arrived — it refuses only when the <em>agent's
+    own</em> turn asserts a claim (“spec complete”) its own evidence
+    contradicts. That is fighting the agent's tendency to proceed plausibly
+    (chapter 8), not the human's pace, and the bounded-refusal design above
+    exists specifically so it cannot degrade into the failure this bullet
+    warns about. Gating on a human decision with a blocking hook is still
+    the mistake; refusing an unsubstantiated claim, once and escapably, is
+    not the same mistake wearing a different label — but it is exactly the
+    kind of subsystem worth building last, after everything non-blocking has
+    proven itself, and worth reviewing hardest.
+  </p>
+</div>
+
 <h2>The risks, stated plainly</h2>
 
 <div class="box danger">
@@ -402,6 +479,17 @@
     ],
     "answer": 1,
     "why": "Shorter is not the goal. Two implementations of the same fact will eventually disagree, and the disagreement will be silent — the session-start context saying one thing while the lint report says another. The workflow already had one instance of that defect (a version field nobody read); rebuilding it deliberately would be a poor trade for three lines."
+  },
+  {
+    "q": "A blocking hook's refusal path returns `{\"decision\":\"block\",...}` on stdout and exits 1. Under Claude Code's actual hook contract, what happens?",
+    "options": [
+      "The action is blocked and the reason is shown to the model",
+      "Nothing is blocked — exit 1 is treated as a non-blocking error, so the turn proceeds and the refusal silently never happens",
+      "The harness crashes",
+      "The action is blocked but with no reason shown"
+    ],
+    "answer": 1,
+    "why": "Only exit 2, or decision:block JSON on a normal exit-0 response, actually refuses anything for Claude Code. Exit 1 is read as 'the check itself broke', not 'the check says no' — and this shipped for real in the completion gate's first version, caught only because a fresh-context reviewer checked the claim against Claude Code's own documented contract instead of assuming the script's own exit code was what the harness would honour."
   }
 ]
 </script>
@@ -442,7 +530,7 @@
 
 <div class="chapter-nav">
   <a href="10-practice.html"><span class="dir">← Chapter 10</span> In practice</a>
-  <a class="next" href="index.html"><span class="dir">Back to</span> Start here</a>
+  <a class="next" href="12-substratum.html"><span class="dir">Chapter 12 →</span> The correctness substratum</a>
 </div>
 
 </div>

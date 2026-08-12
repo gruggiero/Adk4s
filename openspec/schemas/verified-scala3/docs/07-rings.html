@@ -25,6 +25,7 @@
     <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
     <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
     <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
+    <li><a href="12-substratum.html"><span class="num">12</span> The correctness substratum</a></li>
   </ul>
   <div class="toc-title">On this page</div>
   <ul id="toc"></ul>
@@ -123,6 +124,27 @@ execution    0 → 1 → 2 → 3 → 4 → 8 → 5 → 6/7 → 9
     that no longer existed. Either you re-ran the slowest ring, or you filed a
     number you knew was stale. Moving Ring 8 earlier fixed both, and cost
     nothing: reading is cheap.
+  </p>
+</div>
+
+<div class="box insight">
+  <div class="box-title">Empirical support, from the schema reviewing itself</div>
+  <p style="margin-bottom:0">
+    The clearest evidence for the fresh-context mandate came from building the
+    correctness-substratum tooling (chapter 12) using this exact workflow. On
+    its first spec, the author's own Ring 8 pass reported <strong>1
+    FAIL</strong> and the spec complete. A fresh-context reviewer, given only
+    the spec, the approved contract, and the diff — not the conversation that
+    produced the code — returned <strong>11</strong> findings against the same
+    commit, several of them the precise <em>“a check reports a verdict on
+    evidence it never obtained”</em> failure this whole workflow exists to
+    catch. That result was enough to adopt a standing rule — fresh context
+    only, no author self-review, from then on — so the remaining five specs
+    have no author-pass number to compare against. What they do have is a
+    fresh-context pass that kept finding real, reproducible defects anyway
+    (3 to 9 per spec) in code that had already passed every ring, including
+    its own tests. The rule was not adopted on one data point and left
+    untested; it kept earning its cost on every spec that came after.
   </p>
 </div>
 

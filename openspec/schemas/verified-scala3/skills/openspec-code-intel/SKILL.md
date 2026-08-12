@@ -110,8 +110,9 @@ Exit 1 when orphan candidates exist.
    automatically; do the same for raw calls.
 3. **Fallback is part of the contract**: every script degrades to git grep
    (broader, noisier) and says so in its output. Restricted CI keeps using
-   registry-check/spec-lint/danger-scan — bash + git grep only; the Metals
-   endpoint is a workstation/agent capability, never a CI dependency.
+   registry-check/spec-lint/danger-scan — these need nothing beyond the v12
+   prerequisite set, and no JVM or network; the Metals endpoint is a
+   workstation/agent capability, never a CI dependency.
 4. **Known limits** (Metals 1.6.7): `glob-search` needs a `fileInFocus`
    (pass any project file); `inspect` on a sealed trait lists members, not
    variants (use the companion or the concept inventory); opaque-type

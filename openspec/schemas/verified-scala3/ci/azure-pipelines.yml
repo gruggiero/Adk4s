@@ -1,5 +1,10 @@
-# Concept-registry drift check (verified-scala3 workflow).
-# Dependency-free: bash + git grep only — no JDK, no sbt, no internal Nexus.
+# Gate checks for the verified-scala3 workflow.
+#
+# Installs the DECLARED PREREQUISITE SET (schema v12 — see ../hooks/README.md):
+# bash, git, jq at runtime; shellcheck, bats, shfmt for Rings 1 and 3. No JDK,
+# no sbt, no internal artifact repository — the checks still run on a
+# restricted runner, which is the point of declaring the set rather than
+# assuming a build environment.
 trigger:
   branches:
     include:
@@ -15,5 +20,58 @@ pool:
 
 steps:
   - checkout: self
+    fetchDepth: 0 # shfmt scoping needs history to diff against the base
+
+  - bash: |
+      set -euo pipefail
+      sudo apt-get update
+      sudo apt-get install -y shellcheck jq
+      sudo npm install -g bats@1.14.0
+      # openspec: the Ring 3 reachability tests render artifact instructions
+      # through the CLI, so the suite cannot run without it.
+      sudo npm install -g @openspec/cli
+      curl -fsSL -o /tmp/shfmt \
+        https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
+      sudo install -m 0755 /tmp/shfmt /usr/local/bin/shfmt
+    displayName: Install prerequisites
+
+  - bash: |
+      set -euo pipefail
+      for t in bash git jq shellcheck bats shfmt openspec; do
+        command -v "$t" >/dev/null || { echo "missing prerequisite: $t"; exit 1; }
+        printf '%-12s %s\n' "$t" "$(command -v "$t")"
+      done
+    displayName: Verify prerequisites are present
+
+  - bash: |
+      git ls-files 'openspec/schemas/verified-scala3/**/*.sh' \
+                   'openspec/schemas/verified-scala3/**/*.bash' \
+        | xargs -r shellcheck -f gcc
+    displayName: Ring 1 - shellcheck
+
+  - bash: |
+      set -euo pipefail
+      # -i 2 -ci matches the project's observed convention (2-space indent,
+      # indented case arms); bare shfmt defaults to tabs.
+      # --diff-filter=A — ADDED files only. shfmt -d checks a WHOLE file, so
+      # gating on CHANGED files would fail any edit to a legacy script on its
+      # pre-existing formatting, and a gate that punishes unrelated edits gets
+      # disabled. The tree converges at the one-time reformat.
+      base="${SYSTEM_PULLREQUEST_TARGETBRANCH:-}"
+      if [ -n "$base" ]; then
+        git fetch --no-tags origin "$base" --depth=50 || true
+        added="$(git diff --name-only --diff-filter=A "origin/$base" -- '*.sh' '*.bash' || true)"
+        [ -z "$added" ] || printf '%s\n' "$added" | xargs -r shfmt -i 2 -ci -d
+      else
+        echo "no pull-request base to diff against; skipping (scoped check)"
+      fi
+    displayName: Ring 1 - shfmt (added files only)
+
+  - bash: bats openspec/schemas/verified-scala3/tests/
+    displayName: Ring 3 - bats
+
   - bash: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
     displayName: registry-check (concept registry drift)
+
+  - bash: ./openspec/schemas/verified-scala3/scanner/spec-lint.sh .
+    displayName: spec-lint (active changes)

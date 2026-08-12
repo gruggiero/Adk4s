@@ -25,6 +25,7 @@
     <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
     <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
     <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
+    <li><a href="12-substratum.html"><span class="num">12</span> The correctness substratum</a></li>
   </ul>
   <div class="toc-title">On this page</div>
   <ul id="toc"></ul>
@@ -34,7 +35,7 @@
 <main>
 <div class="prose">
 
-<div class="eyebrow">A tutorial in eleven chapters</div>
+<div class="eyebrow">A tutorial in twelve chapters</div>
 <h1>Building software that is correct on purpose</h1>
 <p class="lede">
   You are an experienced Scala engineer. You know types, property tests, and
@@ -45,7 +46,7 @@
 </p>
 
 <div class="meta">
-  Schema version 11 · Reading time ≈ 4 hours end to end · Interactive:
+  Schema version 12 · Reading time ≈ 4.5 hours end to end · Interactive:
   every chapter has drills, and chapters 3 and 5 embed a working port of the
   real <code>spec-lint.sh</code> you can paste specs into.
 </div>
@@ -99,12 +100,13 @@
     </ul>
   </div>
   <div class="box win">
-    <div class="box-title">After chapter 11 you can</div>
+    <div class="box-title">After chapter 12 you can</div>
     <ul style="margin-bottom:0">
       <li>run a change end to end through the ring pipeline</li>
       <li>adopt the workflow in a project that has never used it</li>
       <li>tell which rings are earning their cost in your codebase</li>
       <li>enforce the checks so they run whether or not anyone remembers</li>
+      <li>tell the difference between a claim that is bound, resolved, and one that is actually discharged</li>
     </ul>
   </div>
 </div>
@@ -120,9 +122,9 @@
 <table>
   <thead><tr><th>Route</th><th>Chapters</th><th>Good for</th></tr></thead>
   <tbody>
-    <tr><td><strong>Full</strong></td><td>1 → 11, in order</td>
+    <tr><td><strong>Full</strong></td><td>1 → 12, in order</td>
       <td>Mastery. Every concept, every viewpoint, every drill.</td></tr>
-    <tr><td><strong>Fast track</strong></td><td>1, 2, 5, 8, 10, 11</td>
+    <tr><td><strong>Fast track</strong></td><td>1, 2, 5, 8, 10, 11, 12</td>
       <td>You need to run a change this week and will backfill the theory.</td></tr>
     <tr><td><strong>Reference</strong></td><td>any, via the sidebar</td>
       <td>You know the workflow and want the precise rule for one artifact.</td></tr>
@@ -230,6 +232,16 @@
        agent hooks and how far they transfer between Claude Code, pi and Devin,
        and why you ship context injection before blocking gates.</p>
     <span class="ctime">≈ 25 min · enforcement</span>
+  </a>
+
+  <a class="card" href="12-substratum.html">
+    <span class="cnum">CHAPTER 12</span>
+    <h3>The correctness substratum</h3>
+    <p>The third clause: bound and resolved say a mechanism exists; discharged
+       says it was actually observed to run green. The evidence ledger, chain
+       state, the generated checkpoint, and the one hook in this schema
+       allowed to block — and the real bugs found building each of them.</p>
+    <span class="ctime">≈ 30 min · schema v12</span>
   </a>
 
 </div>

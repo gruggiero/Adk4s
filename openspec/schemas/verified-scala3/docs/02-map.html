@@ -25,6 +25,7 @@
     <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
     <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
     <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
+    <li><a href="12-substratum.html"><span class="num">12</span> The correctness substratum</a></li>
   </ul>
   <div class="toc-title">On this page</div>
   <ul id="toc"></ul>
@@ -116,6 +117,8 @@
       <td>A mandatory stop where a human approves before work continues. Three per spec.</td></tr>
     <tr><td><span class="chip">baseline</span></td>
       <td>The commit SHA a spec starts from. Every diff the workflow computes is against it.</td></tr>
+    <tr><td><span class="chip">discharged</span></td>
+      <td>The third clause of correctness (chapter 12), after bound and resolved: an obligation's artifact was <em>observed to run green</em>, in this session, with a recorded command — not merely that it exists.</td></tr>
   </tbody>
 </table>
 </div>
@@ -196,7 +199,7 @@
   { "short": "12 deltas", "label": "Step 12 · Concept delta + dependency delta + inventory",
     "body": "<p>Re-scan the type inventory and diff against the step-0 snapshot: the difference <em>is</em> the concept delta and must match what the spec committed to introduce — anything extra is scope creep and must be removed or approved. Audit removals for orphaned helpers. Diff the build files: a new library dependency is an unreviewed behaviour source. Then append new concepts with provenance.</p>" },
   { "short": "13 checkpoint ⏸", "label": "Step 13 · Checkpoint — HUMAN GATE",
-    "body": "<p>Mark progress, regenerate tasks.md, <strong>commit this spec</strong> (its durable identity and the next spec's baseline), then present a fixed summary: rings with results, oracle polarity, cross-module regression, adversarial verdicts, proof obligations, concept and dependency deltas, design decisions.</p><p style='margin-bottom:0'><strong>Then stop and wait.</strong> Approval of the previous spec never carries forward.</p>" }
+    "body": "<p>Mark progress, regenerate tasks.md, <strong>commit this spec</strong> (its durable identity and the next spec's baseline), then present a fixed summary: rings with results, oracle polarity, cross-module regression, adversarial verdicts, proof obligations, concept and dependency deltas, design decisions.</p><p style='margin-bottom:0'><strong>Then stop and wait.</strong> Approval of the previous spec never carries forward. Where <code>checkpoint.sh</code> exists (schema v12+, chapter 12), the rings summary is <em>generated</em> from an evidence ledger, not composed from memory.</p>" }
 ]
 </script>
 

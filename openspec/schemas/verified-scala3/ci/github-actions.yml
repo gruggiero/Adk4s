@@ -1,6 +1,10 @@
-# Concept-registry drift check (verified-scala3 workflow).
-# Copy to .github/workflows/registry-check.yml.
-name: registry-check
+# Gate checks for the verified-scala3 workflow.
+# Copy to .github/workflows/verified-scala3.yml.
+#
+# Installs the DECLARED PREREQUISITE SET (schema v12 — see ../hooks/README.md).
+# Without an install step the shell rings are developer-local only, which is
+# the same opt-in weakness the hooks exist to remove.
+name: verified-scala3
 
 on:
   push:
@@ -11,9 +15,66 @@ on:
   pull_request:
 
 jobs:
-  registry-check:
+  gate-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run concept-registry drift check
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck jq
+          # bats and shfmt are not in apt on all runners; pin explicitly.
+          sudo npm install -g bats@1.14.0
+          # openspec: the Ring 3 reachability tests render artifact instructions
+          # through the CLI, so the suite cannot run without it.
+          sudo npm install -g @openspec/cli
+          curl -fsSL -o /tmp/shfmt \
+            https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
+          sudo install -m 0755 /tmp/shfmt /usr/local/bin/shfmt
+
+      - name: Verify prerequisites are present
+        # A missing tool must fail here, not silently skip the ring below.
+        run: |
+          for t in bash git jq shellcheck bats shfmt openspec; do
+            command -v "$t" >/dev/null || { echo "missing prerequisite: $t"; exit 1; }
+            printf '%-12s %s\n' "$t" "$(command -v "$t")"
+          done
+
+      - name: Ring 1 — shellcheck
+        run: |
+          git ls-files 'openspec/schemas/verified-scala3/**/*.sh' \
+                       'openspec/schemas/verified-scala3/**/*.bash' \
+            | xargs -r shellcheck -f gcc
+
+      - name: Ring 1 — shfmt (ADDED files only)
+        # -i 2 -ci matches the project's OBSERVED convention: 2-space indent
+        # with indented case arms. Bare `shfmt` defaults to tabs and reports
+        # 1987 diff lines tree-wide; -i 2 -ci reports 515. Detected from the
+        # existing scripts, not chosen.
+        #
+        # --diff-filter=A — ADDED files, not changed ones. shfmt -d checks a
+        # WHOLE file, so gating on changed files makes any edit to a legacy
+        # script fail on that script's pre-existing formatting: the very
+        # commit that added this gate touched four scanners for one-line
+        # annotations and would have failed on ~276 lines of untouched
+        # whitespace. A gate that punishes unrelated edits gets disabled.
+        # New files stay clean; the legacy tree converges at the one-time
+        # reformat, after which this becomes tree-wide.
+        run: |
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ]; then
+            added="$(git diff --name-only --diff-filter=A "$base" -- '*.sh' '*.bash' || true)"
+            [ -z "$added" ] || printf '%s\n' "$added" | xargs -r shfmt -i 2 -ci -d
+          else
+            echo "no baseline to diff against; skipping (scoped check)"
+          fi
+
+      - name: Ring 3 — bats
+        run: bats openspec/schemas/verified-scala3/tests/
+
+      - name: Concept-registry drift check
         run: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
+
+      - name: Spec lint (active changes)
+        run: ./openspec/schemas/verified-scala3/scanner/spec-lint.sh .

@@ -92,6 +92,13 @@ if [ "$CMD" = "resolve" ]; then
 fi
 
 INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"metals-call.sh","version":"0.1"}}}'
+# shellcheck disable=SC2034  # init_resp IS unused, deliberately: this call is
+# made for its SIDE EFFECT — `post` writes the response headers to the temp
+# file that the next line reads the session id out of. The assignment is what
+# keeps the response BODY off stdout; dropping it would leak the JSON into the
+# script's own output. Rewriting as `post "$INIT" >/dev/null` would be tidier
+# and is a candidate cleanup, but it is a behaviour change in a script this
+# spec does not otherwise touch, so it is left for a change that can test it.
 init_resp="$(post "$INIT")"
 SESSION="$(sed -n 's/^[Mm]cp-[Ss]ession-[Ii]d: *//p' /tmp/metals-call-headers.$$ | tr -d '\r' | head -1)"
 rm -f /tmp/metals-call-headers.$$
