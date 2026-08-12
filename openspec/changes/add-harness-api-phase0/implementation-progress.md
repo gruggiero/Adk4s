@@ -2,7 +2,7 @@
 
 <!-- SINGLE SOURCE OF TRUTH for the apply phase (verified-scala3 schema).
      tasks.md is REGENERATED from this file at each checkpoint — never
-     hand-maintain in parallel (dual trackers drift).
+     hand-maintained in parallel (dual trackers drift).
 
      One spec at a time. After completing ALL steps for a spec (Steps 0–13),
      STOP and wait for explicit human approval before starting the next spec. -->
@@ -13,10 +13,23 @@
 **Specs**: 6 (harness-state, agent-middleware, middleware-stack, checkpoint-store-fpoly, harness-agent, middleware-laws)
 **Human gate tier**: separate — two gates per spec (typed contract, then test oracle)
 
+<!-- TRACKER DRIFT NOTE (2026-08-12):
+     Spec 1 (harness-state) went through the full verified-scala3 workflow on
+     this branch (commit 6d74b85). Specs 2–6 were bulk-implemented on main
+     (commit 2c6f8a8 "Added first version of deep agents") and merged into
+     this branch via 4726bb4 "Aligned with main". The implementations compile
+     and all tests pass (475 tests across adk4s-harness-api, adk4s-harness-testkit,
+     and adk4s-orchestration), but the per-spec verified workflow rings
+     (R0–R8) were NOT formally run or tracked for specs 2–6. Some concept
+     deltas are also missing (see per-spec notes below). This tracker was
+     updated on 2026-08-12 to reflect reality — the "implemented (from main)"
+     state — but the verified workflow compliance gaps remain open. -->
+
 ## Spec 1/6: harness-state
 
 - **BASELINE SHA**: `1bf0b91b452eb3b1dc50659d23e382de9851b78f` (recorded 2026-08-07; working tree clean)
-- **State**: in progress — Step 13 (checkpoint + commit) — all rings passed, awaiting commit
+- **COMMIT SHA**: `6d74b85` ("Implement harness-state spec: typed heterogeneous map with visibility")
+- **State**: COMPLETE — all steps done, committed, all rings passed
 
 ### Step 0 — baseline + concept check
 - [x] working tree clean
@@ -68,21 +81,136 @@
 - [x] append introduced concepts to `openspec/concept-inventory.md` (MiddlewareName, StateCell.CellId opaque types; CellVisibility enum; StateDecodeError in AdkError variants; PromptSection, SystemPrompt, StateCell, StateDecodeError, HarnessState case classes)
 
 ### Step 13 — checkpoint + commit
-- [ ] regenerate `tasks.md` checkboxes from this file
-- [ ] commit the spec
-- [ ] **STOP for human validation**
+- [x] regenerate `tasks.md` checkboxes from this file
+- [x] commit the spec — `6d74b85`
+- [x] **STOP for human validation** — PASSED
 
 ## Spec 2/6: agent-middleware
-- **State**: not started
+
+- **BASELINE SHA**: N/A — implementation came from main merge `4726bb4` (bulk commit `2c6f8a8` on main)
+- **COMMIT SHA**: `4726bb4` (merge "Aligned with main" — brought in `2c6f8a8` from main)
+- **State**: IMPLEMENTED (from main) — code compiles, 57 tests GREEN; verified workflow rings NOT formally run
+
+### What exists (from main)
+- [x] Implementation: `AgentMiddleware.scala`, `ModelRequest.scala`, `ModelResponse.scala`, `ModelStep.scala`, `ToolCallCtx.scala`, `ToolCallOut.scala`, `ToolStep.scala` in `org.adk4s.harness`
+- [x] Typed contract: `AgentMiddlewareTypeContract.scala` (28 tests) in `adk4s-harness-api/src/test/scala/org/adk4s/harness/typecontract/`
+- [x] Test oracle: `AgentMiddlewareSpec.scala` (22 tests), `ToolStepSpec.scala` (4 tests)
+- [x] Ring 6 mirror: `MiddlewareKernel.scala` in `verified/` + `MiddlewareKernelBridgeSpec.scala` (3 tests)
+- [x] Concept file: `openspec/concepts/agent-middleware.md` (created in merge)
+
+### Verified workflow gaps (NOT run)
+- [ ] Step 0 — baseline SHA recorded, concept-inventory Proof Obligations verified
+- [ ] Step 1 — human gate (typed contract approval)
+- [ ] Step 2 — human gate (test oracle approval), ORACLE POLARITY run
+- [ ] Ring 0 — formal compile check (compiles, but not formally tracked)
+- [ ] Ring 1 — Scalafix + WartRemover formal check
+- [ ] Ring 2 — package boundary audit
+- [ ] Ring 3 — formal Hedgehog property run (tests pass, but not tracked as ring)
+- [ ] Ring 5 — Stryker4s mutation testing
+- [ ] Ring 8 — adversarial spec-compliance review (fresh context)
+- [ ] Step 12 — concept-inventory update verification
+- [ ] Step 13 — checkpoint + commit (committed via merge, not per-spec)
 
 ## Spec 3/6: middleware-stack
-- **State**: not started
+
+- **BASELINE SHA**: N/A — implementation came from main merge `4726bb4` (bulk commit `2c6f8a8` on main)
+- **COMMIT SHA**: `4726bb4` (merge "Aligned with main" — brought in `2c6f8a8` from main)
+- **State**: IMPLEMENTED (from main) — code compiles, 52 tests GREEN; verified workflow rings NOT formally run
+
+### What exists (from main)
+- [x] Implementation: `MiddlewareStack.scala`, `StackError.scala` in `org.adk4s.harness`
+- [x] Typed contract: `MiddlewareStackTypeContract.scala` (13 tests) in `adk4s-harness-api/src/test/scala/org/adk4s/harness/typecontract/`
+- [x] Test oracle: `MiddlewareStackSpec.scala` (24 tests), `MiddlewareStackLawsSpec.scala` (9 tests)
+- [x] Ring 6 mirror: `StackKernel.scala` in `verified/` + `StackKernelBridgeSpec.scala` (6 tests)
+- [x] Concept file: `openspec/concepts/middleware-stack.md` (created in merge)
+
+### Verified workflow gaps (NOT run)
+- [ ] Step 0 — baseline SHA recorded, concept-inventory Proof Obligations verified
+- [ ] Step 1 — human gate (typed contract approval)
+- [ ] Step 2 — human gate (test oracle approval), ORACLE POLARITY run
+- [ ] Ring 0 — formal compile check (compiles, but not formally tracked)
+- [ ] Ring 1 — Scalafix + WartRemover formal check
+- [ ] Ring 2 — package boundary audit
+- [ ] Ring 3 — formal Hedgehog property run (tests pass, but not tracked as ring)
+- [ ] Ring 5 — Stryker4s mutation testing
+- [ ] Ring 6 — formal `sbt -J-Xmx6g ring6` run (mirror exists, but not formally tracked)
+- [ ] Ring 8 — adversarial spec-compliance review (fresh context)
+- [ ] Step 12 — concept-inventory update verification
+- [ ] Step 13 — checkpoint + commit (committed via merge, not per-spec)
 
 ## Spec 4/6: checkpoint-store-fpoly
-- **State**: not started
+
+- **BASELINE SHA**: N/A — implementation came from main merge `4726bb4` (bulk commit `2c6f8a8` on main)
+- **COMMIT SHA**: `4726bb4` (merge "Aligned with main" — brought in `2c6f8a8` from main)
+- **State**: IMPLEMENTED (from main) — code compiles, 28 tests GREEN; verified workflow rings NOT formally run; concept delta INCOMPLETE
+
+### What exists (from main)
+- [x] Implementation: `CheckpointStateV2.scala` (+ `CheckpointMessage`, `CheckpointToolCall`) in `org.adk4s.orchestration.agent`; `CheckpointStore` generalized to `CheckpointStore[F[_]]` with `inMemory[F[_]: Sync]`
+- [x] Test oracle: `CheckpointStateV2Spec.scala` (16 tests), `CheckpointStoreSpec.scala` (12 tests)
+- [x] Concept file: `openspec/concepts/checkpoint-store.md` (updated in merge for F-polymorphism + V2)
+
+### Verified workflow gaps (NOT run)
+- [ ] Step 0 — baseline SHA recorded, concept-inventory Proof Obligations verified
+- [ ] Step 1 — human gate (typed contract approval)
+- [ ] Step 2 — human gate (test oracle approval), ORACLE POLARITY run
+- [ ] Ring 0 — formal compile check (compiles, but not formally tracked)
+- [ ] Ring 1 — Scalafix + WartRemover formal check
+- [ ] Ring 2 — package boundary audit
+- [ ] Ring 3 — formal Hedgehog property run (tests pass, but not tracked as ring)
+- [ ] Ring 4 — v1→v2 checkpoint read compat formal test
+- [ ] Ring 5 — Stryker4s mutation testing
+- [ ] Ring 8 — adversarial spec-compliance review (fresh context)
+- [ ] Step 12 — concept delta INCOMPLETE: `agent-runner.md` NOT updated for `resume` harness-state restore
+- [ ] Step 13 — checkpoint + commit (committed via merge, not per-spec)
 
 ## Spec 5/6: harness-agent
-- **State**: not started
+
+- **BASELINE SHA**: N/A — implementation came from main merge `4726bb4` (bulk commit `2c6f8a8` on main)
+- **COMMIT SHA**: `4726bb4` (merge "Aligned with main" — brought in `2c6f8a8` from main)
+- **State**: IMPLEMENTED (from main) — code compiles, 35 tests GREEN; verified workflow rings NOT formally run; concept delta INCOMPLETE
+
+### What exists (from main)
+- [x] Implementation: `HarnessAgent.scala` in `org.adk4s.orchestration.agent`; `ReactAgent.create` re-expressed as empty-stack harness sugar
+- [x] Typed contract: `HarnessAgentTypeContract.scala` (15 tests) in `adk4s-orchestration/src/test/scala/org/adk4s/orchestration/agent/typecontract/`
+- [x] Test oracle: `HarnessAgentSpec.scala` (20 tests)
+- [x] Build wiring: `adk4s-orchestration .dependsOn(adk4s-harness-api)` in `build.sbt`
+
+### Verified workflow gaps (NOT run)
+- [ ] Step 0 — baseline SHA recorded, concept-inventory Proof Obligations verified
+- [ ] Step 1 — human gate (typed contract approval)
+- [ ] Step 2 — human gate (test oracle approval), ORACLE POLARITY run (L0 gatekeeper)
+- [ ] Ring 0 — formal compile check + `sbt adk4s-examples/compile` (55+ examples source compat)
+- [ ] Ring 1 — Scalafix + WartRemover formal check
+- [ ] Ring 2 — package boundary audit
+- [ ] Ring 3 — formal Hedgehog property run including L0 empty-stack-equivalence gatekeeper + CONCURRENCY (TestControl) (tests pass, but not tracked as ring)
+- [ ] Ring 4 — `ReactAgent.create` source compatibility formal check
+- [ ] Ring 5 — Stryker4s mutation testing
+- [ ] Ring 8 — adversarial spec-compliance review (fresh context)
+- [ ] Step 12 — concept delta INCOMPLETE: `react-agent.md` NOT updated for HarnessAgent refactor; no `harness-agent.md` concept file created
+- [ ] Step 13 — checkpoint + commit (committed via merge, not per-spec)
 
 ## Spec 6/6: middleware-laws
-- **State**: not started
+
+- **BASELINE SHA**: N/A — implementation came from main merge `4726bb4` (bulk commit `2c6f8a8` on main)
+- **COMMIT SHA**: `4726bb4` (merge "Aligned with main" — brought in `2c6f8a8` from main)
+- **State**: IMPLEMENTED (from main) — code compiles, 32 tests GREEN; verified workflow rings NOT formally run; concept delta MISSING
+
+### What exists (from main)
+- [x] Implementation: `adk4s-harness-testkit` module with `AgentMiddlewareLaws.scala`, `SemilatticeLaws.scala`, `DeterministicChatModel.scala`, `Generators.scala`, `SimpleHarnessLoop.scala`, `package.scala` in `org.adk4s.harness.testkit`
+- [x] Test oracle: `AgentMiddlewareLawsSpec.scala` (12 tests), `SemilatticeLawsSpec.scala` (4 tests), `DeterministicChatModelSpec.scala` (6 tests), `AdversarialScenariosSpec.scala` (10 tests)
+- [x] Ring 6 mirror: `SemilatticeKernel.scala` in `verified/` + `SemilatticeModelBridgeSpec.scala` (7 tests) in `adk4s-harness-api`
+- [x] Build wiring: `adk4s-harness-testkit` module in `build.sbt` (`.dependsOn(adk4s-harness-api)`, main-scope cats-effect/munit/hedgehog-munit)
+
+### Verified workflow gaps (NOT run)
+- [ ] Step 0 — baseline SHA recorded, concept-inventory Proof Obligations verified
+- [ ] Step 1 — human gate (typed contract approval)
+- [ ] Step 2 — human gate (test oracle approval), ORACLE POLARITY run
+- [ ] Ring 0 — formal compile check (compiles, but not formally tracked)
+- [ ] Ring 1 — Scalafix + WartRemover formal check (no `Arbitrary` in generators)
+- [ ] Ring 2 — package boundary audit (testkit no heavy deps)
+- [ ] Ring 3 — formal Hedgehog property run including L0 gatekeeper + CONCURRENCY (TestControl) (tests pass, but not tracked as ring)
+- [ ] Ring 5 — Stryker4s mutation testing
+- [ ] Ring 6 — formal `sbt -J-Xmx6g ring6` run (mirror exists, but not formally tracked)
+- [ ] Ring 8 — adversarial spec-compliance review (fresh context)
+- [ ] Step 12 — concept delta MISSING: no `middleware-laws.md` concept file; `agent-middleware.md` not updated with laws section
+- [ ] Step 13 — checkpoint + commit (committed via merge, not per-spec)
