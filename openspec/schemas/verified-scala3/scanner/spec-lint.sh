@@ -4,8 +4,16 @@
 # Enforces the greppable subset of the schema's lint checks so that "lint
 # clean" is objective and CI-enforceable (same philosophy as
 # registry-check.sh). The judgment checks (observability, testability,
-# type-feasibility, altitude) remain in the spec-lint artifact instruction —
-# this script does not replace them.
+# type-feasibility, altitude COMPLIANCE) remain in the spec-lint artifact
+# instruction — this script does not replace them.
+#
+# It DOES, however, decide every judgment check's APPLICABILITY. A conditional
+# rule has two halves: "does this rule apply here?" (a repository fact) and
+# "does this spec obey it?" (judgment). Only the second is a judgment call.
+# The CONTEXT block below is printed unconditionally and states the first half
+# as machine-attested fact, including the negative case — because "N/A"
+# inferred from an assumption is how a real review once skipped the altitude
+# rule entirely, having never looked for openspec/concepts/.
 #
 # FAIL (exit 1) checks:
 #   F1  every "### Requirement:" block contains SHALL or MUST before its
@@ -25,31 +33,157 @@
 #       tracked file. OFF by default: specs are written BEFORE their tests
 #       exist, so the artifact column is a commitment at planning time and a
 #       fact only after implementation. Run with --artifacts at apply Step 12.
+#   F10 when a behavioural registry EXISTS (openspec/concepts/), a spec with
+#       requirements has a "## Concepts Used (behavioral)" section — the
+#       structural half of the ALTITUDE rule. Applicability is a fact, so
+#       this half needs no judgment; whether the cited concepts are the RIGHT
+#       ones, and whether clause prose stays behavioural, still does.
 #
 # WARN (reported, exit unaffected):
 #   W6  a spec declaring Ring 6 Formal Contracts with no obligation naming a
 #       BRIDGE/mirror artifact — a proof about a model nobody runs says
 #       nothing about the shipped system (see templates/verified-mirror.md)
+#   W7  altitude candidates: a code identifier inside a Given/When/Then
+#       clause. Four deterministic shapes only — build command, source file,
+#       fully-qualified name, and a token that the project's own ledgers
+#       classify as code (present in openspec/concept-inventory.md, absent
+#       from the behavioural registry). Reported, never failed: a domain term
+#       may share a type name, and that call is the reviewer's.
 #   W1  vague words (valid/fast/reasonable/correct/appropriate) inside
 #       requirement blocks — confirm a concrete definition sits next to them
 #   W2  Proof Obligations data rows fewer than requirement count
 #   W3  requirements matched by F2 — listed so the human can confirm the
 #       scenario input is genuinely forbidden, not just present
 #
-# Usage: spec-lint.sh [--artifacts] [change-dir | repo-root]
-#   change-dir: lint that change's specs/**/spec.md
-#   repo-root:  lint every active change (openspec/changes/*, archive excluded)
-#   --artifacts: also run F9 (post-implementation; see above)
+# Usage: spec-lint.sh [--artifacts] [--context-only] [change-dir | repo-root]
+#   change-dir:     lint that change's specs/**/spec.md
+#   repo-root:      lint every active change (openspec/changes/*, archive excluded)
+#   --artifacts:    also run F9 (post-implementation; see above)
+#   --context-only: print the CONTEXT block and exit 0, linting nothing. This is
+#                   the single source of the applicability facts — hooks/gate.sh
+#                   consumes it rather than recomputing them, so a session-start
+#                   injection and a lint run can never disagree.
 set -euo pipefail
 
 ARTIFACTS=0
+CONTEXT_ONLY=0
 TARGET="."
 for arg in "$@"; do
   case "$arg" in
-    --artifacts) ARTIFACTS=1 ;;
-    *)           TARGET="$arg" ;;
+    --artifacts)    ARTIFACTS=1 ;;
+    --context-only) CONTEXT_ONLY=1 ;;
+    *)              TARGET="$arg" ;;
   esac
 done
+
+# ── CONTEXT: applicability of the conditional judgment checks ─────────────
+# Printed ALWAYS, and stating the negative case as loudly as the positive.
+# The reviewer copies this block into spec-lint.md verbatim; a check may be
+# recorded N/A only when a line here says so.
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+registry_dir="$repo_root/openspec/concepts"
+inventory_md="$repo_root/openspec/concept-inventory.md"
+profile_md="$repo_root/openspec/capability-profile.md"
+
+has_registry=0
+echo "spec-lint: CONTEXT — repository facts. These decide each conditional check's"
+echo "           APPLICABILITY. Compliance remains yours; applicability does not."
+
+# ── instruction drift ────────────────────────────────────────────────────
+# The skills carry "generatedBy: verified-scala3-schema/<N>". That field sat
+# frozen at 7.0.0 while the schema reached 11, and nothing read it — so an
+# agent could follow instructions predating the very checks it was meant to
+# apply, silently. Recorded-but-never-checked is the failure mode this
+# workflow exists to remove; the field is now read.
+schema_yaml="$(dirname "$0")/../schema.yaml"
+schema_ver="$(awk -F': *' '/^version:/ {print $2; exit}' "$schema_yaml" 2>/dev/null || true)"
+[ -n "$schema_ver" ] && echo "  schema                openspec/schemas/verified-scala3  v$schema_ver"
+skill_found=0
+for root in "$repo_root/.agents/skills" "$repo_root/.claude/skills" "$repo_root/.pi/skills" \
+            "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.zcode/skills"; do
+  sk="$root/openspec-spec-lint/SKILL.md"
+  [ -f "$sk" ] || continue
+  skill_found=1
+  sv="$(awk -F'verified-scala3-schema/' '/generatedBy:/ {split($2, a, "."); print a[1]; exit}' "$sk" 2>/dev/null || true)"
+  if [ -z "$sv" ]; then
+    echo "  !! skill $root/openspec-spec-lint declares no schema version — pre-v7 install"
+  elif [ -n "$schema_ver" ] && [ "$sv" != "$schema_ver" ]; then
+    echo "  !! INSTRUCTION DRIFT: skill at $root is schema v$sv, this schema is v$schema_ver."
+    echo "     Checks added after v$sv are NOT in the instructions you are following."
+    echo "     Re-install (verified-scala3/sync-skills.sh) before trusting this report."
+  fi
+done
+[ "$skill_found" -eq 0 ] && echo "  (no openspec-spec-lint skill installed in the searched roots)"
+if [ -d "$registry_dir" ]; then
+  has_registry=1
+  n_concepts="$(find "$registry_dir" -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')"
+  echo "  behavioural registry  openspec/concepts/             PRESENT ($n_concepts concepts)"
+  echo "    -> check 17 ALTITUDE **APPLIES**. \"N/A\" is not a valid verdict for it."
+  echo "       F10 checks the structural half; W7 lists code-identifier candidates;"
+  echo "       reading the clause prose for behavioural altitude is still your job."
+else
+  echo "  behavioural registry  openspec/concepts/             ABSENT"
+  echo "    -> check 17 ALTITUDE is N/A (attested by this script, not assumed)."
+fi
+if [ -f "$inventory_md" ]; then
+  # First data cell of every inventory table row. Backticks are optional:
+  # adk4s writes `Foo`, graphStore writes Foo, and a parser that assumed one
+  # of them read the other as an empty inventory without saying so.
+  inv_types="$(awk -F'|' '/^\|/ {
+      cell = $2
+      gsub(/`/, "", cell)
+      gsub(/^[ \t]+|[ \t]+$/, "", cell)
+      sub(/\[.*/, "", cell)                       # Foo[A] -> Foo
+      if (cell ~ /^[A-Z][A-Za-z0-9_]*$/ && cell != "Type") print cell
+    }' "$inventory_md" | sort -u)"
+  n_inv="$(printf '%s' "$inv_types" | grep -c . || true)"
+  echo "  type inventory        openspec/concept-inventory.md  PRESENT ($n_inv typed rows)"
+  echo "    -> check 6 (reused concepts exist) **APPLIES**."
+  if [ "$n_inv" -eq 0 ]; then
+    echo "    !! parsed 0 type rows — the file exists but this script read nothing"
+    echo "       from it. Fix the table shape before trusting W7 silence."
+  fi
+else
+  inv_types=""
+  echo "  type inventory        openspec/concept-inventory.md  ABSENT"
+  echo "    -> check 6 is N/A; run the concept scanner before trusting reuse claims."
+fi
+if [ -f "$profile_md" ]; then
+  det_kit="$(grep -o -i 'TestControl\|TestKit\|VirtualTime\|TestScheduler' "$profile_md" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')"
+  echo "  capability profile    openspec/capability-profile.md PRESENT"
+  if [ -n "$det_kit" ]; then
+    echo "    -> checks 3 (testable with detected stack) and 18 (CONCURRENCY) **APPLY**"
+    echo "       deterministic test kit detected: $det_kit"
+  else
+    echo "    -> check 3 **APPLIES**. Check 18: no deterministic test kit detected —"
+    echo "       a concurrency requirement here is a capability gap, not an N/A."
+  fi
+else
+  echo "  capability profile    openspec/capability-profile.md ABSENT"
+  echo "    -> run detect-capabilities first; checks 3 and 18 cannot be judged."
+fi
+
+# Tokens the project's own ledgers classify as CODE: present in the type
+# inventory, absent from the behavioural registry. A name in BOTH is domain
+# vocabulary that happens to have a type, and is legitimate in a clause.
+code_ids=""
+if [ "$has_registry" -eq 1 ] && [ -n "$inv_types" ]; then
+  code_ids="$(
+    comm -23 \
+      <(printf '%s\n' "$inv_types") \
+      <(grep -h '^# Concept: ' "$registry_dir"/*.md 2>/dev/null \
+          | sed 's/^# Concept: *//; s/[ \t]*$//' | sort -u) \
+    | tr '\n' ' ' | sed 's/[ \t]*$//'
+  )"
+fi
+
+# --context-only stops here: the facts above are the whole product. Callers
+# that need them WITHOUT a lint run (hooks/gate.sh at session start) take this
+# path, so there is exactly one implementation of the applicability facts.
+if [ "$CONTEXT_ONLY" -eq 1 ]; then
+  exit 0
+fi
+echo
 
 specs=""
 if [ -d "$TARGET/specs" ]; then
@@ -74,7 +208,39 @@ files=0
 while IFS= read -r spec; do
   [ -z "$spec" ] && continue
   files=$((files + 1))
-  findings="$(awk '
+  findings="$(awk -v has_registry="$has_registry" -v code_ids="$code_ids" '
+    BEGIN { BQ = sprintf("%c", 96) }             # 96 = backtick
+    # ── W7: altitude candidates inside a Given/When/Then clause ──────────
+    # Only shapes a machine can be sure about. Each distinct token is
+    # reported once, at its first occurrence.
+    function alt_scan(line, lineno,   k, parts, i, t, base) {
+      if (line !~ /\*\*(Given|When|Then|And)\*\*/) return
+      k = split(line, parts, BQ)
+      for (i = 2; i <= k; i += 2) {              # odd pieces sit inside backticks
+        t = parts[i]
+        if (t == "" || (t in alt_seen)) continue
+        if (t ~ /^sbt / || t ~ /[A-Za-z0-9]\/(compile|test|Test)/) {
+          alt_seen[t] = 1
+          printf "WARN W7 line %d: build command %c%s%c inside a clause — belongs in ## Implementation Anchors (ALTITUDE)\n", lineno, 39, t, 39
+        } else if (t ~ /\.(scala|sbt|smithy|java)$/) {
+          alt_seen[t] = 1
+          printf "WARN W7 line %d: source file %c%s%c inside a clause — belongs in ## Implementation Anchors (ALTITUDE)\n", lineno, 39, t, 39
+        } else if (t ~ /^[a-z][a-z0-9]*(\.[a-z][A-Za-z0-9_]*)+\.[A-Z]/) {
+          alt_seen[t] = 1
+          printf "WARN W7 line %d: fully-qualified name %c%s%c inside a clause — belongs in ## Implementation Anchors (ALTITUDE)\n", lineno, 39, t, 39
+        } else if (code_ids != "") {
+          base = t; gsub(/\[.*/, "", base)     # Foo[A] -> Foo
+          # a ledger lookup is only meaningful for an identifier-shaped
+          # token; without this guard, expression snippets like [m1, m2]
+          # reduce to the empty string and match everything
+          if (base ~ /^[A-Za-z_][A-Za-z0-9_.]*$/ &&
+              index(" " code_ids " ", " " base " ") > 0) {
+            alt_seen[t] = 1
+            printf "WARN W7 line %d: %c%s%c is in the type inventory but is not a registry concept — confirm it is domain vocabulary here, not a code identifier (ALTITUDE)\n", lineno, 39, t, 39
+          }
+        }
+      }
+    }
     function flush_req() {
       if (req_name == "") return
       if (!req_has_norm)
@@ -141,9 +307,11 @@ while IFS= read -r spec; do
       in_po = ($0 ~ /^## Proof Obligations/)
       if (in_po) has_po = 1
       in_fc = ($0 ~ /^## Formal Contracts/)
+      if ($0 ~ /^## Concepts Used/ && tolower($0) ~ /behaviou?ral/) has_concepts = 1
       next
     }
     {
+      if (has_registry) alt_scan($0, NR)
       if (req_name != "") {
         if (!req_seen_given && $0 ~ /\*\*Given\*\*/) req_seen_given = 1
         if (!req_seen_given && $0 ~ /(^|[^A-Za-z])(SHALL|MUST)([^A-Za-z]|$)/) req_has_norm = 1
@@ -284,6 +452,11 @@ while IFS= read -r spec; do
       flush_req(); flush_prop(); flush_temp()
       if (n_reqs > 0 && !has_po)
         printf "FAIL F4: spec has %d requirement(s) but no ## Proof Obligations section\n", n_reqs
+      # F10: the structural half of the ALTITUDE rule. Applicability came
+      # from the filesystem, so nothing here rests on an assumption about
+      # whether a behavioural registry exists.
+      if (has_registry && n_reqs > 0 && !has_concepts)
+        printf "FAIL F10: a behavioural registry exists (openspec/concepts/) but this spec has no \"## Concepts Used (behavioral)\" section — cite the concepts the requirements touch, or state that they introduce new ones\n"
       if (has_po && po_rows < n_reqs)
         printf "WARN W2: Proof Obligations has %d data row(s) for %d requirement(s)\n", po_rows, n_reqs
       if (has_po)

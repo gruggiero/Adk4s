@@ -88,8 +88,7 @@ object TypeCoercer:
     context: ParsingContext
   ): Either[ParsingError, BamlValueWithFlags[String]] =
     val (json: String, flags: Vector[CoercionFlag]) = coerceToJson(value)
-    if json.isEmpty then
-      Left(ParsingError("Empty value", context.pathString, "non-empty JSON", Some("empty string")))
+    if json.isEmpty then Left(ParsingError("Empty value", context.pathString, "non-empty JSON", Some("empty string")))
     else
       val score: CoercionScore = CoercionScore.fromFlags(flags)
       Right(BamlValueWithFlags(json, flags, score))

@@ -39,7 +39,7 @@ object RealLlmExample extends IOApp.Simple {
   def run: IO[Unit] =
     for
       config <- IO.blocking(validateAndLoadConfig()).flatMap {
-        case Right(c) => IO.pure(c)
+        case Right(c)  => IO.pure(c)
         case Left(err) => IO.raiseError(new RuntimeException(err))
       }
 
@@ -220,10 +220,10 @@ object RealLlmExample extends IOApp.Simple {
 
       fileValidation.flatMap { (_: Unit) =>
         for
-          smithyPathStr <- smithyPathOpt.toRight("Missing --smithy-path argument")
-          resumePathStr <- resumePathOpt.toRight("Missing --resume-input argument")
+          smithyPathStr  <- smithyPathOpt.toRight("Missing --smithy-path argument")
+          resumePathStr  <- resumePathOpt.toRight("Missing --resume-input argument")
           providerConfig <- Llm4sConfig.defaultProvider().left.map(err => s"Failed to load provider config: $err")
-          llmModel <- llmModelOpt.toRight("Missing --model argument")
+          llmModel       <- llmModelOpt.toRight("Missing --model argument")
         yield
           val smithyPath = {
             val fromProjectRoot = resolveFromProjectRoot(smithyPathStr)
@@ -344,10 +344,14 @@ object RealLlmExample extends IOApp.Simple {
                    IO.println("\nCheck your API key configuration")
                  } else if (msg.contains("429")) {
                    val retryDelay = underlying.code.flatMap(_.split("retryAfter=").lastOption)
-                   IO.whenA(retryDelay.isDefined)(IO.println(s"\nRate limited. Retry after: ${retryDelay.getOrElse("unknown")} seconds"))
+                   IO.whenA(retryDelay.isDefined)(
+                     IO.println(s"\nRate limited. Retry after: ${retryDelay.getOrElse("unknown")} seconds")
+                   )
                  } else if (msg.contains("timeout") || msg.contains("connection")) {
                    IO.whenA(underlying.context.get("endpoint").isDefined)(
-                     IO.println(s"\nNetwork error connecting to: ${underlying.context.getOrElse("endpoint", "unknown")}")
+                     IO.println(
+                       s"\nNetwork error connecting to: ${underlying.context.getOrElse("endpoint", "unknown")}"
+                     )
                    )
                  } else {
                    IO.println("")

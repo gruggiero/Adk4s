@@ -6,7 +6,7 @@ import fs2.Stream
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.error.GenericError
-import workflows4s.wio.{ErrorMeta, WCEffect, WCEffectLift, WCEvent, WCState, WIO, WorkflowContext}
+import workflows4s.wio.{ ErrorMeta, WCEffect, WCEffectLift, WCEvent, WCState, WIO, WorkflowContext }
 import org.adk4s.core.types.NodeKey
 
 import java.time.Instant
@@ -25,10 +25,13 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
     node: WIONode[Ctx, I, Err, O]
   ): Either[WIOGraphError, WIOGraph[Ctx, In, Err, Out]] =
     val nodeKey = NodeKey.unsafeApply(key)
-    if nodes.exists(entry => entry.ref.key == nodeKey) then
-      Left(WIOGraphError.NodeAlreadyExists(key))
+    if nodes.exists(entry => entry.ref.key == nodeKey) then Left(WIOGraphError.NodeAlreadyExists(key))
     else
-      val entry: WIOGraph.NodeEntry[Ctx, Err, I, O] = WIOGraph.NodeEntry[Ctx, Err, I, O](WIONodeRef[Ctx, I, O](nodeKey), node, List.empty[WIONodeModifier[Ctx, I, Err, O]])
+      val entry: WIOGraph.NodeEntry[Ctx, Err, I, O] = WIOGraph.NodeEntry[Ctx, Err, I, O](
+        WIONodeRef[Ctx, I, O](nodeKey),
+        node,
+        List.empty[WIONodeModifier[Ctx, I, Err, O]]
+      )
       Right(copy(nodes = nodes :+ entry))
 
   def addRunnableNode[I, Evt <: WCEvent[Ctx], RawOut, O <: Out](
@@ -52,14 +55,12 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
   def setEntry[A <: Out](entry: WIONodeRef[Ctx, In, A]): Either[WIOGraphError, WIOGraph[Ctx, In, Err, Out]] =
     if !nodes.exists(existing => existing.ref.key == entry.key) then
       Left(WIOGraphError.EntryNodeNotFound(entry.key.value))
-    else
-      Right(copy(entryNode = Some(entry)))
+    else Right(copy(entryNode = Some(entry)))
 
   def addEndNode[O2 <: Out](endNode: WIONodeRef[Ctx, O2, Out]): Either[WIOGraphError, WIOGraph[Ctx, In, Err, Out]] =
     if !nodes.exists(existing => existing.ref.key == endNode.key) then
       Left(WIOGraphError.EndNodeNotFound(endNode.key.value))
-    else
-      Right(copy(endNodes = endNodes + endNode.key))
+    else Right(copy(endNodes = endNodes + endNode.key))
 
   def withCheckpoint[I, O <: Out, Evt <: WCEvent[Ctx]](
     nodeRef: WIONodeRef[Ctx, I, O],
@@ -97,8 +98,7 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
     }
     if !nodes.exists(entry => entry.ref.key == nodeRef.key) then
       Left(WIOGraphError.NodeNotFoundInGraph(nodeRef.key.value))
-    else
-      Right(copy(nodes = updatedNodes))
+    else Right(copy(nodes = updatedNodes))
 
   def addEdge[A, B <: Out, C <: Out](
     from: WIONodeRef[Ctx, A, B],
@@ -108,38 +108,42 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
       Left(WIOGraphError.SourceNodeNotFound(from.key.value))
     else if !nodes.exists(existing => existing.ref.key == to.key) then
       Left(WIOGraphError.TargetNodeNotFound(to.key.value))
-    else
-      Right(copy(edges = edges :+ WIOGraph.Edge(from, to)))
+    else Right(copy(edges = edges :+ WIOGraph.Edge(from, to)))
 
   def toWIO(using errorMeta: ErrorMeta[Err]): Either[NonEmptyChain[WIOGraphError], WIO[In, Err, Out, Ctx]] =
     for
-      _ <- validateNoCycles
-      _ <- validateEntrySet
-      _ <- validateEndsReachable
+      _     <- validateNoCycles
+      _     <- validateEntrySet
+      _     <- validateEndsReachable
       entry <- entryNode.toRight(NonEmptyChain.one(WIOGraphError.MissingEntry))
-      wio <- compileFromEntry(entry)
+      wio   <- compileFromEntry(entry)
     yield wio
 
-  /** Compile this graph into a Runnable that supports invoke, stream, collect, and transform modes.
-    * Each node is converted to a Runnable and chained sequentially.
-    * WIORunnableNode uses its stored Runnable directly; other node types use invoke-based wrapping.
-    */
+  /**
+   * Compile this graph into a Runnable that supports invoke, stream, collect, and transform modes.
+   * Each node is converted to a Runnable and chained sequentially.
+   * WIORunnableNode uses its stored Runnable directly; other node types use invoke-based wrapping.
+   */
   def toRunnable: Either[NonEmptyChain[WIOGraphError], Runnable[In, Out]] =
     for
-      _ <- validateNoCycles
-      _ <- validateEntrySet
-      _ <- validateEndsReachable
-      entry <- entryNode.toRight(NonEmptyChain.one(WIOGraphError.MissingEntry))
+      _        <- validateNoCycles
+      _        <- validateEntrySet
+      _        <- validateEndsReachable
+      entry    <- entryNode.toRight(NonEmptyChain.one(WIOGraphError.MissingEntry))
       runnable <- compileRunnableFromEntry(entry)
     yield runnable
 
-  private def compileRunnableFromEntry[A <: Out](ref: WIONodeRef[Ctx, In, A]): Either[NonEmptyChain[WIOGraphError], Runnable[In, Out]] =
+  private def compileRunnableFromEntry[A <: Out](
+    ref: WIONodeRef[Ctx, In, A]
+  ): Either[NonEmptyChain[WIOGraphError], Runnable[In, Out]] =
     compileRunnableFromNode(ref)
 
-  private def compileRunnableFromNode[A, B <: Out](ref: WIONodeRef[Ctx, A, B]): Either[NonEmptyChain[WIOGraphError], Runnable[A, Out]] =
+  private def compileRunnableFromNode[A, B <: Out](
+    ref: WIONodeRef[Ctx, A, B]
+  ): Either[NonEmptyChain[WIOGraphError], Runnable[A, Out]] =
     for
       entry <- entryFor(ref)
-      node = entry.node
+      node          = entry.node
       outgoingEdges = edges.collect { case edge @ WIOGraph.Edge(`ref`, _) => edge }
       result <- node match
         case forkNode: WIOForkNode[Ctx, A, Err, B] =>
@@ -150,31 +154,34 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
               case Nil =>
                 Right(nodeRunnable.asInstanceOf[Runnable[A, Out]])
               case edge :: Nil =>
-                compileRunnableFromNode(edge.to).map { (next: Runnable[B, Out]) =>
-                  chainRunnables(nodeRunnable, next)
-                }
+                compileRunnableFromNode(edge.to).map((next: Runnable[B, Out]) => chainRunnables(nodeRunnable, next))
               case _ =>
                 Left(NonEmptyChain.one(WIOGraphError.MultipleOutgoingEdges(ref.key.value)))
           }
     yield result
 
-  private def nodeToRunnable[A, B <: Out](node: WIONode[Ctx, A, Err, B]): Either[NonEmptyChain[WIOGraphError], Runnable[A, B]] =
+  private def nodeToRunnable[A, B <: Out](
+    node: WIONode[Ctx, A, Err, B]
+  ): Either[NonEmptyChain[WIOGraphError], Runnable[A, B]] =
     node match
       case runnableNode: WIORunnableNode[Ctx, A, Err, _, _, B] =>
         Right(runnableNode.toRunnable)
       case pureNode: WIOPureNode[Ctx, A, Err, B] =>
-        Right(Runnable.fromInvoke[A, B]((input: A) =>
-          pureNode.transform(input) match
-            case Right(output) => IO.pure(output)
-            case Left(err) => IO.raiseError(GenericError(s"Pure node error: $err"))
-        ))
+        Right(
+          Runnable.fromInvoke[A, B]((input: A) =>
+            pureNode.transform(input) match
+              case Right(output) => IO.pure(output)
+              case Left(err)     => IO.raiseError(GenericError(s"Pure node error: $err"))
+          )
+        )
       case runIONode: WIORunIONode[Ctx, A, Err, _, B] =>
         Right(runIONode.toRunnable)
       case subGraphNode: WIOSubGraphNode[Ctx, A, Err, B] =>
         subGraphNode.subGraph.toRunnable match
           case Right(runnable) => Right(runnable.asInstanceOf[Runnable[A, B]])
           case Left(errors) =>
-            val message: String = errors.toNonEmptyList.toList.mkString("Sub-graph Runnable compilation failed: ", ", ", "")
+            val message: String =
+              errors.toNonEmptyList.toList.mkString("Sub-graph Runnable compilation failed: ", ", ", "")
             Left(NonEmptyChain.one(WIOGraphError.SubGraphCompilationFailed(message)))
       case _ =>
         Left(NonEmptyChain.one(WIOGraphError.UnsupportedNodeType(node.getClass.getSimpleName)))
@@ -192,7 +199,7 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
     outgoingEdges: List[WIOGraph.Edge[Ctx, A, B, ? <: Out]]
   ): Either[NonEmptyChain[WIOGraphError], Runnable[A, Out]] =
     val branches: List[WIOForkNode.Branch[Ctx, A, Err, B]] = forkNode.branches
-    val edgeCount: Int = outgoingEdges.length
+    val edgeCount: Int                                     = outgoingEdges.length
     if edgeCount > branches.length then
       Left(NonEmptyChain.one(WIOGraphError.ForkEdgeBranchMismatch(edgeCount, branches.length)))
     else
@@ -203,13 +210,15 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
 
       Right(Runnable.fromInvoke[A, Out] { (input: A) =>
         val matchedBranch: Option[(WIOForkNode.Branch[Ctx, A, Err, B], Option[WIOGraph.Edge[Ctx, A, B, ? <: Out]])] =
-          branchesWithEdges.collectFirst {
-            case (branch, edge) if branch.predicate(input).isDefined => (branch, Some(edge))
-          }.orElse(
-            branchesWithoutEdges.collectFirst {
-              case branch if branch.predicate(input).isDefined => (branch, None)
+          branchesWithEdges
+            .collectFirst {
+              case (branch, edge) if branch.predicate(input).isDefined => (branch, Some(edge))
             }
-          )
+            .orElse(
+              branchesWithoutEdges.collectFirst {
+                case branch if branch.predicate(input).isDefined => (branch, None)
+              }
+            )
 
         matchedBranch match
           case None =>
@@ -220,7 +229,7 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
               edgeOpt match
                 case Some(edge) =>
                   compileRunnableFromNode(edge.to) match
-                    case Right(next) => next.invoke(branchResult)
+                    case Right(next)  => next.invoke(branchResult)
                     case Left(errors) => IO.raiseError(GenericError(errors.toNonEmptyList.toList.mkString(", ")))
                 case None =>
                   IO.pure(branchResult.asInstanceOf[Out])
@@ -236,27 +245,28 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
     import workflows4s.wio.ActiveWorkflow
     import workflows4s.wio.internal.WakeupResult
     val workflowId: WorkflowInstanceId = WorkflowInstanceId("fork-branch", "fork-branch")
-    val initialWio: WIO.Initial[Ctx] = wio.provideInput(input).asInstanceOf[WIO.Initial[Ctx]]
+    val initialWio: WIO.Initial[Ctx]   = wio.provideInput(input).asInstanceOf[WIO.Initial[Ctx]]
     val start: ActiveWorkflow[Ctx] =
       ActiveWorkflow[Ctx](workflowId, initialWio, input.asInstanceOf[WCState[Ctx]])
 
     def proceedOnce(
       workflow: ActiveWorkflow[Ctx]
     ): IO[(ActiveWorkflow[Ctx], Boolean)] =
-      val liftEffect: WCEffectLift[Ctx, IO] = [A] => (fa: WCEffect[Ctx][A]) => fa.asInstanceOf[IO[A]]
+      val liftEffect: WCEffectLift[Ctx, IO]      = [A] => (fa: WCEffect[Ctx][A]) => fa.asInstanceOf[IO[A]]
       val wakeup: WakeupResult[IO, WCEvent[Ctx]] = workflow.proceed(java.time.Instant.EPOCH, liftEffect)
       wakeup match
         case WakeupResult.Noop() => IO.pure((workflow, false))
         case WakeupResult.Processed(io) =>
-          io.asInstanceOf[IO[Ior[java.time.Instant, WCEvent[Ctx]]]].map { (result: Ior[java.time.Instant, WCEvent[Ctx]]) =>
-            val eventOpt: Option[WCEvent[Ctx]] = result match
-              case Ior.Right(event) => Some(event)
-              case Ior.Both(_, event) => Some(event)
-              case Ior.Left(_) => None
-            eventOpt match
-              case Some(event) =>
-                (workflow.handleEvent(event).getOrElse(workflow), true)
-              case None => (workflow, false)
+          io.asInstanceOf[IO[Ior[java.time.Instant, WCEvent[Ctx]]]].map {
+            (result: Ior[java.time.Instant, WCEvent[Ctx]]) =>
+              val eventOpt: Option[WCEvent[Ctx]] = result match
+                case Ior.Right(event)   => Some(event)
+                case Ior.Both(_, event) => Some(event)
+                case Ior.Left(_)        => None
+              eventOpt match
+                case Some(event) =>
+                  (workflow.handleEvent(event).getOrElse(workflow), true)
+                case None => (workflow, false)
           }
 
     def loop(workflow: ActiveWorkflow[Ctx]): IO[ActiveWorkflow[Ctx]] =
@@ -269,62 +279,67 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
   private def validateNoCycles: Either[NonEmptyChain[WIOGraphError], Unit] =
     val allNodes: Set[NodeKey] = edges.flatMap(edge => List(edge.from.key, edge.to.key)).toSet
 
-    def dfs(nodeKey: NodeKey, visited: Set[NodeKey], stack: List[NodeKey]): Either[NonEmptyChain[WIOGraphError], Set[NodeKey]] =
-      if stack.contains(nodeKey) then
-        Left(NonEmptyChain.one(WIOGraphError.CycleDetected((nodeKey :: stack).reverse)))
-      else if visited.contains(nodeKey) then
-        Right(visited)
+    def dfs(
+      nodeKey: NodeKey,
+      visited: Set[NodeKey],
+      stack: List[NodeKey]
+    ): Either[NonEmptyChain[WIOGraphError], Set[NodeKey]] =
+      if stack.contains(nodeKey) then Left(NonEmptyChain.one(WIOGraphError.CycleDetected((nodeKey :: stack).reverse)))
+      else if visited.contains(nodeKey) then Right(visited)
       else
         val newStack: List[NodeKey] = nodeKey :: stack
         val outgoingEdges: List[WIOGraph.Edge[Ctx, ?, ? <: Out, ? <: Out]] =
           edges.filter(edge => edge.from.key == nodeKey)
         outgoingEdges.foldLeft[Either[NonEmptyChain[WIOGraphError], Set[NodeKey]]](Right(visited + nodeKey)) {
           case (Right(current), edge) => dfs(edge.to.key, current, newStack)
-          case (error, _) => error
+          case (error, _)             => error
         }
 
-    allNodes.foldLeft[Either[NonEmptyChain[WIOGraphError], Set[NodeKey]]](Right(Set.empty)) {
-      case (Right(visited), nodeKey) => dfs(nodeKey, visited, List.empty)
-      case (error, _) => error
-    }.map(_ => ())
+    allNodes
+      .foldLeft[Either[NonEmptyChain[WIOGraphError], Set[NodeKey]]](Right(Set.empty)) {
+        case (Right(visited), nodeKey) => dfs(nodeKey, visited, List.empty)
+        case (error, _)                => error
+      }
+      .map(_ => ())
 
   private def validateEntrySet: Either[NonEmptyChain[WIOGraphError], Unit] =
     entryNode match
-      case None => Left(NonEmptyChain.one(WIOGraphError.MissingEntry))
+      case None    => Left(NonEmptyChain.one(WIOGraphError.MissingEntry))
       case Some(_) => Right(())
 
   private def validateEndsReachable: Either[NonEmptyChain[WIOGraphError], Unit] =
     entryNode match
       case None => Right(())
       case Some(entry) =>
-        val reachable = findAllReachable(entry.key)
+        val reachable   = findAllReachable(entry.key)
         val unreachable = endNodes.filterNot(reachable.contains)
-        if unreachable.nonEmpty then
-          Left(NonEmptyChain.one(WIOGraphError.UnreachableEnd(unreachable)))
-        else
-          Right(())
+        if unreachable.nonEmpty then Left(NonEmptyChain.one(WIOGraphError.UnreachableEnd(unreachable)))
+        else Right(())
 
   private def findAllReachable(startNode: NodeKey): Set[NodeKey] =
     def loop(frontier: List[NodeKey], visited: Set[NodeKey]): Set[NodeKey] =
       frontier match
         case Nil => visited
         case current :: rest =>
-          if visited.contains(current) then
-            loop(rest, visited)
+          if visited.contains(current) then loop(rest, visited)
           else
             val outgoing = edges.filter(_.from.key == current).map(_.to.key)
             loop(outgoing ::: rest, visited + current)
 
     loop(List(startNode), Set.empty)
 
-  private def compileFromEntry[A <: Out](ref: WIONodeRef[Ctx, In, A])(using errorMeta: ErrorMeta[Err]): Either[NonEmptyChain[WIOGraphError], WIO[In, Err, Out, Ctx]] =
+  private def compileFromEntry[A <: Out](ref: WIONodeRef[Ctx, In, A])(using
+    errorMeta: ErrorMeta[Err]
+  ): Either[NonEmptyChain[WIOGraphError], WIO[In, Err, Out, Ctx]] =
     compileFromNode(ref)
 
-  private def compileFromNode[A, B <: Out](ref: WIONodeRef[Ctx, A, B])(using errorMeta: ErrorMeta[Err]): Either[NonEmptyChain[WIOGraphError], WIO[A, Err, Out, Ctx]] =
+  private def compileFromNode[A, B <: Out](
+    ref: WIONodeRef[Ctx, A, B]
+  )(using errorMeta: ErrorMeta[Err]): Either[NonEmptyChain[WIOGraphError], WIO[A, Err, Out, Ctx]] =
     for
       entry <- entryFor(ref)
-      node = entry.node
-      modifiers = entry.modifiers
+      node          = entry.node
+      modifiers     = entry.modifiers
       outgoingEdges = edges.collect { case edge @ WIOGraph.Edge(`ref`, _) => edge }
       result <- node match
         case forkNode: WIOForkNode[Ctx, A, Err, B] =>
@@ -378,7 +393,9 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
         branches.drop(edgeCount)
 
       def compileWithEdges: Either[NonEmptyChain[WIOGraphError], List[WIOForkNode.Branch[Ctx, A, Err, Out]]] =
-        branchesWithEdges.foldLeft[Either[NonEmptyChain[WIOGraphError], List[WIOForkNode.Branch[Ctx, A, Err, Out]]]](Right(List.empty)) {
+        branchesWithEdges.foldLeft[Either[NonEmptyChain[WIOGraphError], List[WIOForkNode.Branch[Ctx, A, Err, Out]]]](
+          Right(List.empty)
+        ) {
           case (Right(acc), (branch, edge)) =>
             val baseBranch: WIO[A, Err, B, Ctx] = applyModifiers(branch.workflow, modifiers)
             compileFromNode(edge.to).map { (next: WIO[B, Err, Out, Ctx]) =>
@@ -399,7 +416,9 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
         val allBranches: List[WIOForkNode.Branch[Ctx, A, Err, Out]] = compiledWithEdges ++ compiledWithoutEdges
         WIOForkNode[Ctx, A, Err, Out](allBranches, forkNode.name).toWIO
 
-  private def entryFor[A, B <: Out](ref: WIONodeRef[Ctx, A, B]): Either[NonEmptyChain[WIOGraphError], WIOGraph.NodeEntry[Ctx, Err, A, B]] =
+  private def entryFor[A, B <: Out](
+    ref: WIONodeRef[Ctx, A, B]
+  ): Either[NonEmptyChain[WIOGraphError], WIOGraph.NodeEntry[Ctx, Err, A, B]] =
     nodes.collectFirst { case entry @ WIOGraph.NodeEntry(`ref`, _, _) => entry } match
       case Some(entry) => Right(entry)
       case None =>

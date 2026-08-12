@@ -1,0 +1,17 @@
+{
+  "//": "verified-scala3 Tier B adapter — Claude Code. Merge this 'hooks' key into .claude/settings.json (project) or ~/.claude/settings.json (global). install-hooks.sh does the merge for you. $CLAUDE_PROJECT_DIR keeps the path project-relative, so the same fragment works in every repo that vendors the schema.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/openspec/schemas/verified-scala3/hooks/gate.sh\" --event session-start --format hook-json",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

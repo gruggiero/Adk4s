@@ -24,6 +24,7 @@
     <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
     <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
     <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+    <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
   </ul>
   <div class="toc-title">On this page</div>
   <ul id="toc"></ul>
@@ -33,7 +34,7 @@
 <main>
 <div class="prose">
 
-<div class="eyebrow">A tutorial in ten chapters</div>
+<div class="eyebrow">A tutorial in eleven chapters</div>
 <h1>Building software that is correct on purpose</h1>
 <p class="lede">
   You are an experienced Scala engineer. You know types, property tests, and
@@ -44,7 +45,7 @@
 </p>
 
 <div class="meta">
-  Schema version 8 · Reading time ≈ 3–4 hours end to end · Interactive:
+  Schema version 11 · Reading time ≈ 4 hours end to end · Interactive:
   every chapter has drills, and chapters 3 and 5 embed a working port of the
   real <code>spec-lint.sh</code> you can paste specs into.
 </div>
@@ -94,15 +95,16 @@
     <ul style="margin-bottom:0">
       <li>write a spec whose every claim has a named, ranked defence</li>
       <li>read a proof-obligation table and see what it does <em>not</em> guarantee</li>
-      <li>run the mechanical lints and interpret F1–F7</li>
+      <li>run the mechanical lints and interpret F1–F10</li>
     </ul>
   </div>
   <div class="box win">
-    <div class="box-title">After chapter 10 you can</div>
+    <div class="box-title">After chapter 11 you can</div>
     <ul style="margin-bottom:0">
       <li>run a change end to end through the ring pipeline</li>
       <li>adopt the workflow in a project that has never used it</li>
       <li>tell which rings are earning their cost in your codebase</li>
+      <li>enforce the checks so they run whether or not anyone remembers</li>
     </ul>
   </div>
 </div>
@@ -118,9 +120,9 @@
 <table>
   <thead><tr><th>Route</th><th>Chapters</th><th>Good for</th></tr></thead>
   <tbody>
-    <tr><td><strong>Full</strong></td><td>1 → 10, in order</td>
+    <tr><td><strong>Full</strong></td><td>1 → 11, in order</td>
       <td>Mastery. Every concept, every viewpoint, every drill.</td></tr>
-    <tr><td><strong>Fast track</strong></td><td>1, 2, 5, 8, 10</td>
+    <tr><td><strong>Fast track</strong></td><td>1, 2, 5, 8, 10, 11</td>
       <td>You need to run a change this week and will backfill the theory.</td></tr>
     <tr><td><strong>Reference</strong></td><td>any, via the sidebar</td>
       <td>You know the workflow and want the precise rule for one artifact.</td></tr>
@@ -219,6 +221,15 @@
        an anti-pattern catalogue, an adoption path for a project starting from
        nothing, and the honest limits.</p>
     <span class="ctime">≈ 40 min · synthesis</span>
+  </a>
+
+  <a class="card" href="11-enforcement.html">
+    <span class="cnum">CHAPTER 11</span>
+    <h3>Making it stick</h3>
+    <p>Every check so far is opt-in. The enforcement ladder from prose to CI,
+       agent hooks and how far they transfer between Claude Code, pi and Devin,
+       and why you ship context injection before blocking gates.</p>
+    <span class="ctime">≈ 25 min · enforcement</span>
   </a>
 
 </div>

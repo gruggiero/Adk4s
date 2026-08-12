@@ -5,26 +5,28 @@ import cats.effect.IO
 import fs2.Stream
 import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.types.NodeKey
-import workflows4s.wio.{WCState, WorkflowContext}
+import workflows4s.wio.{ WCState, WorkflowContext }
 
-/** Provides stream-based execution for WIOGraph.
-  *
-  * Compiles a WIOGraph into a Runnable that supports all four execution modes:
-  * invoke, stream, collect, and transform. This is an alternative to the
-  * WIO-based compilation (toWIO) that bypasses the event-sourced workflow model
-  * and directly chains node execution.
-  *
-  * Use this when you need streaming support (e.g., for Eino-style graph examples
-  * that use StreamableLambda, TransformableLambda, or async nodes).
-  */
+/**
+ * Provides stream-based execution for WIOGraph.
+ *
+ * Compiles a WIOGraph into a Runnable that supports all four execution modes:
+ * invoke, stream, collect, and transform. This is an alternative to the
+ * WIO-based compilation (toWIO) that bypasses the event-sourced workflow model
+ * and directly chains node execution.
+ *
+ * Use this when you need streaming support (e.g., for Eino-style graph examples
+ * that use StreamableLambda, TransformableLambda, or async nodes).
+ */
 object WIOGraphStreamExecutor:
 
   /** Result of a node execution, carrying the node key and its output. */
   final case class NodeResult[O](nodeKey: NodeKey, output: O)
 
-  /** Compile a WIOGraph into a Runnable.
-    * Returns Left with validation errors if the graph is invalid.
-    */
+  /**
+   * Compile a WIOGraph into a Runnable.
+   * Returns Left with validation errors if the graph is invalid.
+   */
   def compile[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]](
     graph: WIOGraph[Ctx, In, Err, Out]
   ): Either[NonEmptyChain[WIOGraphError], Runnable[In, Out]] =

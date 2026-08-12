@@ -48,6 +48,9 @@
 | `FieldPath` | `Vector[String]` | (none — plain opaque type) | `org.adk4s.core.types` | pre-existing |
 | `ToolSchema[A]` | `ToolSchema.SchemaData[A]` | (none — plain opaque type) | `org.adk4s.core.tools` | pre-existing |
 | `Schema[A]` | `Schema.SchemaData[A]` | (none — plain opaque type) | `org.adk4s.structured.core` | pre-existing |
+| `MiddlewareName` | `String` | (none — plain opaque type) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `StateCell.CellId` | `String` | (none — plain opaque type) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `CheckpointStore.CheckpointId` | `String` | (transparent alias — not opaque) | `org.adk4s.orchestration.interrupt` | spec:add-harness-api-phase0/checkpoint-store-fpoly |
 
 ## Type Aliases
 
@@ -58,6 +61,9 @@
 | Type | Underlying | Package | Introduced By |
 |------|-----------|---------|---------------|
 | `JsonValue` | `smithy4s.Document` | `org.adk4s.core.json` | spec:migrate-json-codec/json-value-model |
+| `ModelStep[F[_]]` | `Kleisli[F, ModelRequest[F], ModelResponse]` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
+| `ToolStep[F[_]]` | `Kleisli[F, ToolCallCtx, ToolCallOut]` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
+| `IOHarnessAgent` | `HarnessAgent[IO]` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/harness-agent |
 
 ## Sealed Traits and Enums
 
@@ -66,17 +72,20 @@
 
 | Type | Kind | Variants | Package | Introduced By |
 |------|------|----------|---------|---------------|
-| `AdkError` | sealed trait | `LlmCallError`, `StructuredOutputError`, `TypeMismatchError`, `MissingFieldError`, `NodeNotFoundError`, `EdgeValidationError`, `MaxStepsExceededError`, `GraphCompiledError`, `GraphEntryMissingError`, `GraphEndNodesMissingError`, `ToolNotFoundError`, `ToolExecutionError`, `StateTypeMismatchError`, `NodeAlreadyExistsError`, `SourceNodeNotFoundError`, `NodeDoesNotExistError`, `FanInError`, `BranchTargetError`, `AgentInterruptedException`, `CheckpointNotFoundError`, `GenericError`, `NodeKeyError` | `org.adk4s.core.error` | pre-existing |
+| `AdkError` | sealed trait | `LlmCallError`, `StructuredOutputError`, `TypeMismatchError`, `MissingFieldError`, `NodeNotFoundError`, `EdgeValidationError`, `MaxStepsExceededError`, `GraphCompiledError`, `GraphEntryMissingError`, `GraphEndNodesMissingError`, `ToolNotFoundError`, `ToolExecutionError`, `StateTypeMismatchError`, `NodeAlreadyExistsError`, `SourceNodeNotFoundError`, `NodeDoesNotExistError`, `FanInError`, `BranchTargetError`, `AgentInterruptedException`, `CheckpointNotFoundError`, `GenericError`, `NodeKeyError`, `StateDecodeError` | `org.adk4s.core.error` | pre-existing (`StateDecodeError` shipped by `spec:add-harness-api-phase0/harness-state`) |
 | `ToolSchemaError` | sealed trait | `MissingRequiredField`, `TypeMismatch`, `InvalidEnumValue`, `DecodingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `StructuredToolCallError` | sealed trait | `UnknownTool`, `InvalidArguments`, `ExecutionFailed`, `ResultParsingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `InterruptSignal` | sealed trait (derives ReadWriter) | `Simple`, `Stateful`, `Composite` | `org.adk4s.core.interrupt` | pre-existing |
-| `AgentEvent` | sealed trait | `MessageOutput`, `ToolCallRequested`, `ToolCallCompleted`, `IterationCompleted`, `Interrupted`, `ErrorOccurred`, `TokenDelta` | `org.adk4s.core.interrupt` | pre-existing — **EXTENDED by this change** (events spec adds `MemoryRecalled`, `MemoryWritten`) |
+| `AgentEvent` | sealed trait | `MessageOutput`, `ToolCallRequested`, `ToolCallCompleted`, `IterationCompleted`, `Interrupted`, `ErrorOccurred`, `TokenDelta`, `MemoryRecalled`, `MemoryWritten` | `org.adk4s.core.interrupt` | pre-existing (`MemoryRecalled`/`MemoryWritten` shipped by archived `2026-07-19-add-memory-orchestration-hook`) |
 | `AddressSegment` | sealed trait (derives ReadWriter) | `Agent`, `Tool` | `org.adk4s.core.interrupt` | pre-existing |
 | `RunResult` | sealed trait | `Completed`, `Interrupted`, `Failed` | `org.adk4s.orchestration.agent` | pre-existing — **REUSED by this change** (`MemoryAwareRunner` pattern-matches on it) |
 | `WIONode` | sealed trait | (multiple node variants — see `WIONode.scala`) | `org.adk4s.orchestration.wiograph` | pre-existing |
 | `WIONodeModifier` | sealed trait | `CheckpointModifier`, `RetryModifier`, `InterruptionModifier` | `org.adk4s.orchestration.wiograph` | pre-existing |
 | `WIOGraphError` | sealed trait | (see `WIOGraphError.scala`) | `org.adk4s.orchestration.wiograph` | pre-existing |
 | `ChainBranch` | sealed trait | (see `ChainBranch.scala`) | `org.adk4s.orchestration.chain` | pre-existing |
+| `CellVisibility` | enum | `Private`, `Inherited`, `Shared` | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `StackError` | sealed enum | `DuplicateCellId`, `DuplicateToolName` | `org.adk4s.harness` | spec:add-harness-api-phase0/middleware-stack |
+| `HarnessResult` | sealed trait | `Completed`, `Interrupted`, `Failed` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/harness-agent |
 | `ChainStep` | sealed trait | (see `Chain.scala`) | `org.adk4s.orchestration.chain` | pre-existing |
 | `GraphNode` | sealed trait | (see `GraphNode.scala`) | `org.adk4s.orchestration.graph` | pre-existing |
 | `Branch` | sealed trait | (see `Branch.scala`) | `org.adk4s.orchestration.branch` | pre-existing |
@@ -100,6 +109,7 @@
 | `SectionType` | enum | `System`, `User`, `Assistant`, `Raw` | `org.adk4s.structured.template` | scan:PromptSyntax.scala (found by fixed multi-module scanner, v6 migration) |
 | `OptimizeError` | enum | `UnknownPath`, `FrozenPath` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `Prog` (model) | sealed trait | `Pred`, `Plain`, `Sub`, `Coll` | `org.adk4s.verified.PredictorKernel` | spec:add-optimizable-surface/optimizable-surface (Ring 6 PureScala model) |
+| `StackKernel.Visibility` (model) | sealed abstract class | `PrivateV`, `InheritedV`, `SharedV(merge)` | `org.adk4s.verified.StackKernel` | spec:add-harness-api-phase0/middleware-stack (Ring 6 PureScala model) |
 | `EvalOutcome[+O]` | enum | `Succeeded(value: O)`, `Failed(error: Throwable)` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `EvalError` | sealed trait (extends Throwable) | `TooManyErrors[I, O](count, max, partial)` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 
@@ -145,7 +155,26 @@
 | `Completed` | `output: String, messages: List[Message]` | `org.adk4s.orchestration.agent` | pre-existing (RunResult variant) — **REUSED by this change** (`MemoryAwareRunner` extracts `output` for `postTurn`) |
 | `Interrupted` | `checkpointId: String, signal: InterruptSignal` | `org.adk4s.orchestration.agent` | pre-existing (RunResult variant) — **REUSED by this change** (`MemoryAwareRunner` skips `postTurn` on this variant) |
 | `Failed` | `error: AdkError` | `org.adk4s.orchestration.agent` | pre-existing (RunResult variant) — **REUSED by this change** (`MemoryAwareRunner` skips `postTurn` on this variant) |
-| `CheckpointState` | `messages: List[SerializableCheckpointMessage], interruptSignalJson: String, agentName: String` | `org.adk4s.orchestration.agent` | pre-existing (private[agent]) |
+| `CheckpointState` | `messages: List[SerializableCheckpointMessage], interruptSignalJson: String, agentName: String` | `org.adk4s.orchestration.agent` | pre-existing (private[agent]) — **REUSED by spec:add-harness-api-phase0/checkpoint-store-fpoly** (v1 read-compat: `CheckpointStateV2.readWriter` decodes v1 payloads) |
+| `CheckpointStateV2` | `version: Int, messages: List[CheckpointMessage], harnessState: Document, interruptSignalJson: String, agentName: String` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/checkpoint-store-fpoly |
+| `CheckpointMessage` | `role: String, content: String, toolCalls: List[CheckpointToolCall], toolCallId: Option[String]` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/checkpoint-store-fpoly |
+| `CheckpointToolCall` | `id: String, name: String, arguments: String` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/checkpoint-store-fpoly |
+| `CheckpointMessageConverter` | (object with `toCheckpoint`/`fromCheckpoint`) | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/checkpoint-store-fpoly |
+| `HarnessAgent[F[_]]` | final class with `generate: F[HarnessResult]`, `stream: Stream[F, StreamedChunk]`; `F[_]: Async` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/harness-agent |
+| `HarnessAgent.Config[F[_]]` | `name: String, description: String, model: ChatModel[F], stack: MiddlewareStack[F], baseTools: List[InvokableTool[F]], basePrompt: Option[String], maxSteps: Int, emitter: Option[AgentEvent => F[Unit]]` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/harness-agent |
+| `HarnessResult.Completed` | `finalAssistant: AssistantMessage, messages: List[Message], state: HarnessState` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/harness-agent |
+| `HarnessResult.Interrupted` | `signal: InterruptSignal, messages: List[Message], state: HarnessState` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/harness-agent |
+| `HarnessResult.Failed` | `error: AdkError, messages: List[Message], state: HarnessState` | `org.adk4s.orchestration.agent` | spec:add-harness-api-phase0/harness-agent |
+| `DeterministicChatModel` | `ChatModel[IO]` double with seed-based script, `RecordedRequest` trace capture, no UUID/wall-clock | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `SimpleHarnessLoop` | minimal deterministic ReAct loop (harness-api + core only), `run`/`runBaseline`, returns `Observation` | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `Observation` | `finalAssistant: Option[AssistantMessage], finalState: HarnessState, requestTraces: List[RecordedRequest], outcome: Outcome` with `≍` observational equivalence | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `Observation.Outcome` | enum: `Completed`, `Interrupted`, `StepBudgetExhausted` | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `RecordedRequest` | `renderedSystemPrompt: Option[String], messages: List[Message], toolNames: List[String]` | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `TypedCell[A]` | sealed trait: `IntCell`, `StringCell`, `BoolCell`, `ListIntCell` — typed cell wrapper for law comparison without `Any` | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `SharedTypedCell[A]` | sealed trait extends `TypedCell[A]`: `MaxCell`, `MinCell`, `UnionCell` — shared cell with semilattice merge | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `AgentMiddlewareLaws` | class with L0–L10 Hedgehog `Property` values + case classes `L0Case`–`L10Case` | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `SemilatticeLaws` | class with L11 Hedgehog `Property` values + case classes `CommutativityCase[A]`, `AssociativityCase[A]`, `IdempotenceCase[A]`, `MergeBackCase` | `org.adk4s.harness.testkit` | spec:add-harness-api-phase0/middleware-laws |
+| `SemilatticeKernel` | object: `commutative`, `associative`, `idempotent`, `isSemilattice` with `ensuring` clauses; `intMax`/`intMin` concrete merges with lemmas | `org.adk4s.verified` | spec:add-harness-api-phase0/middleware-laws (Ring 6) |
 | `FieldMapping` | `from: FieldPath, to: FieldPath, fromNode: Option[NodeKey]` | `org.adk4s.orchestration.workflow` | pre-existing |
 | `GraphConfig` | `maxRunSteps: Int, graphName: Option[String], maxParallelism: Int` | `org.adk4s.orchestration.graph` | pre-existing |
 | `Prompt` | `conversation: Conversation` | `org.adk4s.structured.core` | pre-existing |
@@ -167,6 +196,16 @@
 | `EvaluationResult[I, O]` | `score: Double, rows: Vector[EvalRow[I, O]]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `SemanticF1Judge` | `precision: Double, recall: Double, reasoning: String` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
 | `CompleteAndGroundedJudge` | `completeness: Double, groundedness: Double, reasoning: String` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
+| `PromptSection` | `name: String, body: String` | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `SystemPrompt` | `base: Option[String], sections: List[PromptSection]` | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `StateCell[A]` | `id: StateCell.CellId, visibility: CellVisibility, initial: A, merge: (A, A) => A, rw: ReadWriter[A]` (private constructor; factory `StateCell.apply[A](owner, name, initial, visibility?, merge?)` with `ReadWriter` context bound) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `StateDecodeError` | `cellId: String, cause: Throwable` (extends `AdkError`, calls `initCause`) | `org.adk4s.core.error` | spec:add-harness-api-phase0/harness-state |
+| `HarnessState` | (private constructor; `cells: Map[CellId, (StateCell[?], Any)]`; public methods: `get[A]`, `set[A]`, `update[A]`, `snapshot`; companion: `empty`, `initial`, `project`, `mergeBack`, `restore`) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
+| `ModelRequest[F[_]]` | `systemPrompt: Option[SystemPrompt], messages: List[Message], tools: List[InvokableTool[F]], options: CompletionOptions, state: HarnessState` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
+| `ModelResponse` | `completion: Completion, state: HarnessState` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
+| `ToolCallCtx` | `input: ToolInput, state: HarnessState` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
+| `ToolCallOut` | `output: ToolOutput, state: HarnessState` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
+| `MiddlewareStack[F[_]]` | (private constructor; `middlewares: List[AgentMiddleware[F]]`; public methods: `allCells`, `allTools`, `allSections(state)`, `beforeAgent`, `afterAgent`, `wrapModelCall`, `wrapToolCall`, `++`; companion: `empty[F]`, `validated[F]`) | `org.adk4s.harness` | spec:add-harness-api-phase0/middleware-stack |
 
 ## Service Traits
 
@@ -175,6 +214,7 @@
 | Trait | Type Param | Methods | Package | Introduced By |
 |-------|-----------|---------|---------|---------------|
 | `ChatModel[F[_]]` | `F` | `generate`, `generate` (overloaded), `stream`, `stream` (overloaded), `streamContent`, `withConfig` | `org.adk4s.core.component` | pre-existing |
+| `AgentMiddleware[F[_]]` | `F` (context bound `Applicative[F]`) | `name`, `stateCells`, `tools`, `promptSections(state)`, `beforeAgent`, `afterAgent`, `wrapModelCall`, `wrapToolCall`; companion: `id[F]` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
 | `Tool[F[_]]` | `F` | `info`, `asToolFunction` | `org.adk4s.core.component` | pre-existing |
 | `InvokableTool[F[_]]` | `F` | `run` | `org.adk4s.core.component` | pre-existing |
 | `StreamableTool[F[_]]` | `F` | `runStream` | `org.adk4s.core.component` | pre-existing |
@@ -188,7 +228,7 @@
 | `StateRef[F[_], S]` | `F` | `get`, `set`, `update`, `modify`, `getAndUpdate`, `updateAndGet` | `org.adk4s.orchestration.state` | pre-existing |
 | `StructuredLLM[F[_]]` | `F` | `complete`, `completeRaw`, `completeTemplate`, `function`, `extractor`, `streamWithResult`, `streamWithResultRaw`, `completeValidated`, `streamPartial` | `org.adk4s.structured.core` | pre-existing |
 | `AgentMemory[F[_]]` | `F` (no constraint on trait; `Monad[F]` on `rememberAll` default) | `remember(episode: Episode): F[EpisodeOutcome]`, `recall(query: String, k: Int, scope: Option[TemporalScope]): F[List[MemoryHit]]`, `rememberAll(episodes: List[Episode]): F[List[EpisodeOutcome]]` | `org.adk4s.memory` | pre-existing (shipped by archived `2026-07-05-add-memory-api`) — **REUSED by this change** (`MemoryHook` calls `recall`/`remember`) |
-| `CheckpointStore` | (no type param — concrete trait) | `set(checkpointId: String, data: Array[Byte]): F[Unit]`, `get(checkpointId: String): F[Option[Array[Byte]]]`, `delete(checkpointId: String): F[Unit]` | `org.adk4s.orchestration.interrupt` | pre-existing — **REUSED by this change** (`MemoryAwareRunner` delegates resume to the underlying `AgentRunner` which owns the store) |
+| `CheckpointStore[F[_]]` | `F` (Sync constraint on `inMemory` factory) | `set(checkpointId: CheckpointId, data: Array[Byte]): F[Unit]`, `get(checkpointId: CheckpointId): F[Option[Array[Byte]]]`, `delete(checkpointId: CheckpointId): F[Unit]`, `keys: F[List[CheckpointId]]`, `inMemory[F[_]: Sync]: F[CheckpointStore[F]]` | `org.adk4s.orchestration.interrupt` | pre-existing — **GENERALIZED by spec:add-harness-api-phase0/checkpoint-store-fpoly** (was concrete `CheckpointStore`, now `CheckpointStore[F[_]]` with `CheckpointId` transparent alias) |
 | `Optimizable[P]` | `P` (no F constraint) | `predictors(p: P): Vector[(PredictorPath, PredictorState)]`, `update(p, path, f): P`, `updateEither(p, path, f): Either[OptimizeError, P]`, `updateAll(p, f): P` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `HasPredictorState[Self]` | `Self` (no F constraint) | `state(self: Self): PredictorState`, `withState(self: Self, s: PredictorState): Self` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `Metric[F[_], I, O]` | `F` (Applicative bound) | `apply(gold: Example[I, O], pred: O, trace: Option[Trace]): F[Score]`, `map(f: Score => Score): Metric[F, I, O]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
@@ -246,7 +286,7 @@
 | Resource | Type | Purpose | Package | Introduced By |
 |----------|------|---------|---------|---------------|
 | `AgentEventEmitter` | `fs2.concurrent.Queue`-backed emitter | Hierarchical event scoping via `scoped(RunStep)` | `org.adk4s.core.interrupt` | pre-existing — **REUSED by this change** (events spec emits `MemoryRecalled`/`MemoryWritten` through it) |
-| `CheckpointStore` | trait (`InMemoryCheckpointStore` for dev) | Persist interrupt/resume checkpoint state | `org.adk4s.orchestration.interrupt` | pre-existing — **REUSED** (decorator forwards; underlying `AgentRunner` owns it) |
+| `CheckpointStore[F[_]]` | trait (`InMemoryCheckpointStore` for dev) | Persist interrupt/resume checkpoint state (F-polymorphic) | `org.adk4s.orchestration.interrupt` | pre-existing — **GENERALIZED by spec:add-harness-api-phase0/checkpoint-store-fpoly** (was concrete, now `F[_]`-polymorphic with `CheckpointId` alias) |
 | `InMemoryAgentMemory[IO]` | `Ref[IO, Vector[Episode]]`-backed | Test double for `AgentMemory[IO]` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (hook tests use it as the memory) |
 | `MemoryHook` | final class (pure recall/remember wrapper over `Option[AgentMemory[IO]]`) | No-op when memory absent; `preTurn` recalls + renders, `postTurn` remembers per `MemoryPolicy` | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (used internally by `MemoryAwareRunner`) |
 | `MemoryAwareRunner` | final class (decorator over `AgentRunner`) | Runs `preTurn` before and `postTurn` after each turn; emits `MemoryRecalled`/`MemoryWritten` events; skips `postTurn` on `Interrupted`/`Failed` | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (`CrossRunMemoryExample` wraps `AgentRunner` with it) |

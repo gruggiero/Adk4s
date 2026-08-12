@@ -54,7 +54,8 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Persistence | none | — | No Doobie/Skunk/DynamoDB. `CheckpointStore` is an in-process trait (`InMemoryCheckpointStore`). |
 | Messaging | none | — | No Kafka |
 | Streaming | fs2 (core + io) | 3.13.0 | Used in adk4s-core, adk4s-orchestration, adk4s-examples. `AgentEventEmitter` is `fs2.concurrent.Queue`-backed. |
-| JSON | upickle / ujson | (transitive via llm4s) | Used directly in adk4s-core for tool JSON and in `AgentRunner` for `CheckpointState` serialization. NOT circe. |
+| JSON (internal currency) | smithy4s `Document` (aliased as `JsonValue`) | 0.18.55 | `JsonValue` (= `smithy4s.Document`) is ADK4S's internal JSON currency, introduced by the archived `migrate-json-codec` change (2026-08-06). `JsonValue` is defined in `adk4s-core/src/main/scala/org/adk4s/core/json/JsonValue.scala`; `JsonValueCodec` bridges to/from `ujson.Value` at the llm4s boundary. `InterruptSignal.Stateful.state` is `JsonValue`; `Retriever.Document.metadata` is `Map[String, JsonValue]`. |
+| JSON (llm4s boundary) | upickle / ujson | 4.4.3 (explicitly declared; MUST match llm4s 0.3.4 transitive) | `ujson.Value` is confined to the llm4s boundary (`org.adk4s.core.json`, `org.adk4s.core.tools`) by Scalafix `NoUjsonIn*` rules. NOT circe. |
 | IDL / codegen | smithy4s (core + json) | 0.18.55 | Compile dep in structured-llm; sbt-codegen plugin on structured-llm-test-models. NOT touched by this change. |
 | Refined types | none | — | No Iron/refined. `MemoryPolicy` fields are plain typed values. |
 | Telemetry | none | — | No otel4s/Daut. Ring 9 skip. |
@@ -74,7 +75,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Deterministic concurrency test kit | cats-effect `TestControl` (`cats.effect.unsafe.TestControl`) | Available transitively via cats-effect 3.7.0 (no extra dep needed). Any change touching concurrency/timeouts/cancellation/interruption MUST use `TestControl` to drive `IO` deterministically — never wall-clock sleeps. munit-cats-effect provides `munit.CatsEffectSuite` for IO assertions. |
 | Actor test kits | N/A | No actor framework detected |
 | Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list (currently `**/memory/MemoryRetriever.scala`) — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. |
-| Formal verification | Stainless (bundled jar + local Maven repo) | **Frontend Scala version**: 3.7.2 (the `verified` leaf module is pinned to it; the rest of the build stays on 3.8.4 — a version mismatch is NOT "Ring 6 unavailable", it is why the mirror is a separately-pinned leaf). **Mirror module**: `verified/` exists (StainlessPlugin, `stainlessEnabled := false` by default, not aggregated); alias `sbt -J-Xmx6g ring6`. **Currently EMPTY** — package doc only, no model, and no production module takes it as a `% Test` dependency, so no bridge test is possible yet. Adding `<module> dependsOn(verified % Test)` is the precondition for the verified-mirror pattern (schema v10, templates/verified-mirror.md). |
+| Formal verification | Stainless (bundled jar + local Maven repo) | **Frontend Scala version**: 3.7.2 (the `verified` leaf module is pinned to it; the rest of the build stays on 3.8.4 — a version mismatch is NOT "Ring 6 unavailable", it is why the mirror is a separately-pinned leaf). **Mirror module**: `verified/` exists (StainlessPlugin, `stainlessEnabled := false` by default, not aggregated); alias `sbt -J-Xmx6g ring6`. **Contents**: `PredictorKernel` (predictor-enumeration mirror, landed by archived `2026-08-01-add-optimizable-surface`). `adk4s-optimize dependsOn(verified % Test)` is wired; `PredictorModelBridgeSpec` bridge test runs in `adk4s-optimize/test`. Stainless 0.9.9.3 with smt-z3 fallback (Z3 4.13.4). Candidate kernels for future changes: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation. |
 | Model checking | none | No TLA+/Apalache. Ring 7 skip. |
 | Memory test double | `InMemoryAgentMemory` (adk4s-memory-api, main scope) | Used as the `AgentMemory[IO]` implementation in hook tests — no LLM, no network. |
 
@@ -82,8 +83,8 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 
 | Tool | Active Rules | Inactive/Excluded | Evidence |
 |------|-------------|--------------------|----------|
-| Scalafix | `DisableSyntax` (noVars, noThrows, noNulls, noReturns, noWhileLoops, noAsInstanceOf, noIsInstanceOf, noFinalize + custom regex: NoConfigFactory, NoSysEnv, NoSystemGetenv, NoKeywordTry/Catch/Finally), `RemoveUnused` (imports, privates, locals, patternvars), `OrganizeImports` (Merge, grouped) | Scoped guards for adk4s-core and structured-llm main sources (NoAdk4sConfig, NoPureConfigDefault, NoEnvReads) — aspirational (PureConfig not yet a dependency). `scalafixOnCompile := false` (run on demand). | .scalafix.conf |
-| WartRemover | `Warts.unsafe` minus excluded set (see right) | Temporarily excluded (3 only): `TripleQuestionMark` (intentional — stubs), `Any` (s"..." string interpolation false positive — StringContext.s takes `Any*`), `DefaultArguments` (valid API design feature for config case classes). All other unsafe warts are ACTIVE: `IterableOps`, `AsInstanceOf`, `Throw`, `Var`, `OptionPartial`, `StringPlusAny`, etc. `verified` module: `wartremoverErrors := Seq.empty` (exempt). `adk4s-examples`: same 3-exclusion relaxed set. | build.sbt |
+| Scalafix | `DisableSyntax` (noVars, noThrows, noNulls, noReturns, noWhileLoops, noAsInstanceOf, noIsInstanceOf, noFinalize + custom regex: NoConfigFactory, NoSysEnv, NoSystemGetenv, NoKeywordTry/Catch/Finally, **NoUjsonIn{Core,StructuredLLM,Optimize,Eval,Orchestration}**), `RemoveUnused` (imports, privates, locals, patternvars), `OrganizeImports` (Merge, grouped) | Scoped guards for adk4s-core and structured-llm main sources (NoAdk4sConfig, NoPureConfigDefault, NoEnvReads) — aspirational (PureConfig not yet a dependency). `scalafixOnCompile := false` (run on demand). The `NoUjsonIn*` rules (landed by `migrate-json-codec`) confine `ujson.Value` to the llm4s boundary (`org.adk4s.core.json`, `org.adk4s.core.tools`); all other ADK4S-owned main sources must use `JsonValue`. | .scalafix.conf |
+| WartRemover | `Warts.unsafe` minus excluded set (see right) | Temporarily excluded (3 only): `TripleQuestionMark` (intentional — stubs), `Any` (s"..." string interpolation false positive — StringContext.s takes `Any*`), `DefaultArguments` (valid API design feature for config case classes; 47 sites across 15 files). All other unsafe warts are ACTIVE: `IterableOps`, `AsInstanceOf`, `Throw`, `Var`, `OptionPartial`, `StringPlusAny`, etc. `verified` module: `wartremoverErrors := Seq.empty` + `libraryDependencies ~= (_.filterNot(_.organization == "org.wartremover"))` (exempt — 3.6.1 not published for Scala 3.7.2). `adk4s-examples`: same 3-exclusion relaxed set. **Version**: sbt-wartremover 3.6.1 (in `project/plugins.sbt`); `project/Versions.scala` still has 3.5.8 (stale — the `sbtWartremover` val in `Dependencies.scala` is unused). **Known issue**: `-Xss4m` in `.jvmopts` works around a `Null`-wart `StackOverflowError` on deep ASTs (see `docs/known-issues/wartremover-null-stackoverflow.md`). | build.sbt, project/plugins.sbt |
 | scalafmt | Config present: scala3 dialect, maxColumn=120, align.preset=more | — | .scalafmt.conf |
 
 ## Code Intelligence
@@ -132,8 +133,9 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 |---------------|-----------------|------------|
 | `org.adk4s.structured.core` (pure SAP kernel) | fs2, cats-effect, llm4s LLM client, typesafe-config | stdlib, smithy4s, ujson |
 | `org.adk4s.structured.sap` (parser) | fs2, cats-effect, llm4s | stdlib, smithy4s, ujson, regex |
-| `org.adk4s.core.component` (effectful components) | workflows4s, logback | cats-effect, fs2, llm4s, ujson, structured-llm |
-| `org.adk4s.core.tools` (tool execution) | workflows4s | cats-effect, fs2, llm4s, ujson |
+| `org.adk4s.core.component` (effectful components) | workflows4s, logback | cats-effect, fs2, llm4s, JsonValue (via `org.adk4s.core.json`), structured-llm |
+| `org.adk4s.core.tools` (tool execution) | workflows4s | cats-effect, fs2, llm4s, ujson (llm4s boundary — `NoUjsonInCore` allowlisted) |
+| `org.adk4s.core.json` (JsonValue codec bridge) | workflows4s, llm4s LLM client | cats-effect, smithy4s, ujson (boundary adapter — `NoUjsonInCore` allowlisted) |
 | `org.adk4s.core.interrupt` (events) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, fs2, adk4s-core.error |
 | `org.adk4s.memory` (memory capability) | workflows4s, llm4s LLM client, fs2-io, adk4s-orchestration | cats-effect, fs2-core, adk4s-core (Retriever/Document) |
 | `org.adk4s.memory.testkit` (laws) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, munit (main), adk4s-memory-api |
@@ -150,7 +152,7 @@ The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend
 
 | Ring | Available? | If unavailable: impact / setup task |
 |------|-----------|--------------------------------------|
-| 0 Compile | ✅ | `sbt compile` — all 8 modules. Exhaustiveness escalation active — any new sealed-ADT variant forces all matches to handle it. |
+| 0 Compile | ✅ | `sbt compile` — all 10 modules (8 aggregated + `verified` + `adk4s-eval`). Exhaustiveness escalation active — any new sealed-ADT variant forces all matches to handle it. |
 | 1 Lint | ✅ | Scalafix (DisableSyntax + RemoveUnused + OrganizeImports) + WartRemover (relaxed set) + scalafmt |
 | 2 Architecture | ⚠️ Advisory only | No custom scalafix arch rules installed. The layer rules above are manual (enforced by code review + import audit). |
 | 3 Property tests | ✅ | Hedgehog 0.13.1 via hedgehog-munit. Properties extend `HedgehogSuite`. Concurrency scenarios use `TestControl`. |

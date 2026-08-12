@@ -1,25 +1,14 @@
 package org.adk4s.orchestration.agent
 
 import cats.effect.IO
-import cats.syntax.all.*
+import cats.syntax.flatMap.toFlatMapOps
 import fs2.Stream
 import org.adk4s.core.component.ChatModel
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.error.AgentInterruptedException
-import org.adk4s.core.interrupt.{AgentEvent, AgentEventEmitter, RunPath, RunStep}
-import org.adk4s.core.tools.ToolsNode
-import org.adk4s.core.tools.ToolsNodeConfig
-import org.llm4s.llmconnect.model.AssistantMessage
-import org.llm4s.llmconnect.model.Completion
-import org.llm4s.llmconnect.model.CompletionOptions
-import org.llm4s.llmconnect.model.Conversation
-import org.llm4s.llmconnect.model.Message
-import org.llm4s.llmconnect.model.StreamedChunk
-import org.llm4s.llmconnect.model.SystemMessage
-import org.llm4s.llmconnect.model.ToolCall
-import org.llm4s.llmconnect.model.ToolMessage
-import org.llm4s.llmconnect.model.UserMessage
-import org.llm4s.toolapi.ToolFunction
+import org.adk4s.core.interrupt.{ AgentEvent, AgentEventEmitter }
+import org.adk4s.harness.MiddlewareStack
+import org.llm4s.llmconnect.model.{ AssistantMessage, Message, StreamedChunk }
 
 /**
  * A ReAct (Reasoning + Acting) agent that loops between LLM generation and tool execution.
@@ -28,10 +17,26 @@ import org.llm4s.toolapi.ToolFunction
  *   1. Sends messages to the ChatModel
  *   2. If the response contains tool calls, executes them and feeds results back
  *   3. Repeats until no tool calls remain or maxSteps is reached
+ *
+ * spec: harness-agent — Requirement: ReactAgent.create is source-compatible sugar
  */
 trait ReactAgent extends org.adk4s.core.component.Agent:
   def generate(messages: List[Message], maxSteps: Int): IO[AssistantMessage]
   def stream(messages: List[Message], maxSteps: Int): Stream[IO, StreamedChunk]
+
+  /**
+   * The backing `HarnessAgent`, when this `ReactAgent` is harness-backed
+   * (i.e. constructed via `ReactAgent.create`/`ReactAgent.fromHarness`).
+   *
+   * `AgentRunner` uses this view (when present) to run at the harness level:
+   * on interrupt it snapshots the LIVE `HarnessState` into the checkpoint,
+   * and on resume it restores that state before re-entering the loop.
+   * Agents not backed by a harness keep the legacy behavior (empty harness
+   * state snapshot).
+   *
+   * spec: harness-agent — Requirement: Interrupt snapshots state without afterAgent
+   */
+  def harnessView: Option[HarnessAgent[IO]] = None
 
 object ReactAgent:
 
@@ -52,7 +57,7 @@ object ReactAgent:
     maxSteps: Int = 10
   ): ReactAgent =
     val config: Config = Config("react-agent", "ReAct agent", model, tools, systemPrompt, maxSteps)
-    new ReactAgentImpl(config)
+    fromHarnessConfig(config)
 
   def create(
     name: String,
@@ -63,7 +68,7 @@ object ReactAgent:
     maxSteps: Int
   ): ReactAgent =
     val config: Config = Config(name, description, model, tools, systemPrompt, maxSteps)
-    new ReactAgentImpl(config)
+    fromHarnessConfig(config)
 
   def create(
     name: String,
@@ -75,7 +80,7 @@ object ReactAgent:
     emitter: AgentEventEmitter
   ): ReactAgent =
     val config: Config = Config(name, description, model, tools, systemPrompt, maxSteps, Some(emitter))
-    new ReactAgentImpl(config)
+    fromHarnessConfig(config)
 
   def createWithToolProvider(
     model: ChatModel[IO],
@@ -85,151 +90,69 @@ object ReactAgent:
   ): ReactAgent =
     new DynamicReactAgentImpl(model, toolProvider, systemPrompt, maxSteps)
 
-  private def buildToolsNode(tools: List[InvokableTool[IO]], emitter: Option[AgentEventEmitter]): ToolsNode =
-    emitter match
-      case Some(e) =>
-        val config: ToolsNodeConfig = ToolsNodeConfig.fromAdkTools(tools).copy(eventEmitter = Some(e))
-        ToolsNode(config)
-      case None =>
-        ToolsNode.fromAdkTools(tools)
+  /**
+   * Wraps an existing `HarnessAgent[IO]` (which may carry a non-empty
+   * `MiddlewareStack`) as a `ReactAgent`. This is the path for callers who
+   * want middleware behavior AND `AgentRunner` interrupt/resume support:
+   * the returned agent exposes the harness via `harnessView`, so
+   * `AgentRunner` snapshots and restores the live `HarnessState`.
+   *
+   * spec: harness-agent — Scenario: A caller passing a non-empty stack MUST use HarnessAgent directly
+   */
+  def fromHarness(harness: HarnessAgent[IO]): ReactAgent =
+    new ReactAgentAdapter(harness)
 
-  private def buildToolFunctions(tools: List[InvokableTool[IO]]): Seq[ToolFunction[?, ?]] =
-    tools.map { (tool: InvokableTool[IO]) =>
-      tool.asToolFunction.getOrElse(tool.info.toToolFunction)
-    }
+  /**
+   * Constructs a `HarnessAgent[IO]` with `MiddlewareStack.empty` and wraps it
+   * in a `ReactAgent` that adapts `HarnessResult` back to `AssistantMessage`.
+   *
+   * spec: harness-agent — Requirement: ReactAgent.create is source-compatible sugar
+   */
+  private def fromHarnessConfig(config: Config): ReactAgent =
+    val harnessConfig: HarnessAgent.Config[IO] = HarnessAgent.Config(
+      name = config.name,
+      description = config.description,
+      model = config.model,
+      stack = MiddlewareStack.empty[IO],
+      baseTools = config.tools,
+      basePrompt = config.systemPrompt,
+      maxSteps = config.maxSteps,
+      emitter = config.emitter.map(e => (event: AgentEvent) => e.emit(event))
+    )
+    val harness: HarnessAgent[IO] = new HarnessAgent[IO](harnessConfig)
+    new ReactAgentAdapter(harness)
 
-  private def buildConversation(
-    systemPrompt: Option[String],
-    messages: List[Message]
-  ): Conversation =
-    val systemMessages: List[Message] = systemPrompt match
-      case Some(prompt) =>
-        val alreadyHasSystem: Boolean = messages.exists {
-          case _: SystemMessage => true
-          case _                => false
-        }
-        if alreadyHasSystem then List.empty
-        else List(SystemMessage(prompt))
-      case None => List.empty
-    Conversation(systemMessages ++ messages)
+  /**
+   * Wraps a `HarnessAgent[IO]` as a `ReactAgent`, adapting `HarnessResult` to
+   * `IO[AssistantMessage]` (raising exceptions on non-Completed outcomes,
+   * matching the pre-refactor behavior).
+   */
+  final private class ReactAgentAdapter(harness: HarnessAgent[IO]) extends ReactAgent:
+    val name: String        = harness.name
+    val description: String = harness.description
 
-  private def buildCompletionOptions(tools: List[InvokableTool[IO]]): CompletionOptions =
-    val toolFunctions: Seq[ToolFunction[?, ?]] = buildToolFunctions(tools)
-    CompletionOptions(tools = toolFunctions)
-
-  private final class ReactAgentImpl(config: Config) extends ReactAgent:
-    val name: String = config.name
-    val description: String = config.description
-    private val toolsNode: ToolsNode = buildToolsNode(config.tools, config.emitter)
-    private val completionOptions: CompletionOptions = buildCompletionOptions(config.tools)
+    override def harnessView: Option[HarnessAgent[IO]] = Some(harness)
 
     def generate(messages: List[Message], maxSteps: Int): IO[AssistantMessage] =
-      val effectiveMaxSteps: Int = math.min(maxSteps, config.maxSteps)
-      val conversation: Conversation = buildConversation(config.systemPrompt, messages)
-      generateLoop(conversation, effectiveMaxSteps)
+      harness.generate(messages, maxSteps).flatMap {
+        case HarnessResult.Completed(assistant, _, _) =>
+          IO.pure(assistant)
+        case HarnessResult.Interrupted(signal, _, _) =>
+          IO.raiseError(AgentInterruptedException(signal))
+        case HarnessResult.Failed(error, _, _) =>
+          IO.raiseError(error)
+      }
 
     def stream(messages: List[Message], maxSteps: Int): Stream[IO, StreamedChunk] =
-      val effectiveMaxSteps: Int = math.min(maxSteps, config.maxSteps)
-      val conversation: Conversation = buildConversation(config.systemPrompt, messages)
-      // Execute tool loops via generate, then stream the final response
-      Stream.eval(resolveToolLoops(conversation, effectiveMaxSteps)).flatMap { (finalConversation: Conversation) =>
-        config.model.stream(finalConversation, completionOptions)
-      }
+      harness.stream(messages, maxSteps)
 
-    private val totalMaxSteps: Int = config.maxSteps
-
-    private def emitEvent(event: AgentEvent): IO[Unit] =
-      config.emitter.fold(IO.unit)(_.emit(event))
-
-    private def generateLoop(conversation: Conversation, remainingSteps: Int): IO[AssistantMessage] =
-      if remainingSteps <= 0 then
-        IO.raiseError(new RuntimeException("ReactAgent: max steps exceeded"))
-      else
-        config.model.generate(conversation, completionOptions).flatMap { (completion: Completion) =>
-          val assistantMsg: AssistantMessage = completion.message
-          val currentIteration: Int = totalMaxSteps - remainingSteps + 1
-          if assistantMsg.toolCalls.isEmpty then
-            emitEvent(AgentEvent.MessageOutput(
-              runPath = RunPath.empty,
-              message = assistantMsg.content,
-              role = "assistant"
-            )) *>
-            emitEvent(AgentEvent.IterationCompleted(
-              runPath = RunPath.empty,
-              iteration = currentIteration,
-              remainingSteps = remainingSteps - 1
-            )) *>
-            IO.pure(assistantMsg)
-          else
-            val toolCalls: List[ToolCall] = assistantMsg.toolCalls.toList
-            // Emit ToolCallRequested for each tool call
-            val emitRequested: IO[Unit] = toolCalls.traverse_ { (tc: ToolCall) =>
-              emitEvent(AgentEvent.ToolCallRequested(
-                runPath = RunPath.empty,
-                toolName = tc.name,
-                arguments = tc.arguments.toString,
-                callId = tc.id
-              ))
-            }
-            emitRequested *>
-            executeToolCalls(toolCalls).flatMap { (toolMessages: List[ToolMessage]) =>
-              // Emit ToolCallCompleted for each tool result
-              val emitCompleted: IO[Unit] = toolCalls.zip(toolMessages).traverse_ { case (tc: ToolCall, tm: ToolMessage) =>
-                emitEvent(AgentEvent.ToolCallCompleted(
-                  runPath = RunPath.empty,
-                  toolName = tc.name,
-                  result = tm.content,
-                  callId = tc.id,
-                  isError = false
-                ))
-              }
-              emitCompleted *>
-              emitEvent(AgentEvent.IterationCompleted(
-                runPath = RunPath.empty,
-                iteration = currentIteration,
-                remainingSteps = remainingSteps - 1
-              )) *> {
-                val updatedConversation: Conversation = Conversation(
-                  conversation.messages ++ Seq(assistantMsg) ++ toolMessages
-                )
-                generateLoop(updatedConversation, remainingSteps - 1)
-              }
-            }
-        }
-
-    private def resolveToolLoops(conversation: Conversation, remainingSteps: Int): IO[Conversation] =
-      if remainingSteps <= 0 then
-        IO.pure(conversation)
-      else
-        config.model.generate(conversation, completionOptions).flatMap { (completion: Completion) =>
-          val assistantMsg: AssistantMessage = completion.message
-          if assistantMsg.toolCalls.isEmpty then
-            IO.pure(conversation)
-          else
-            executeToolCalls(assistantMsg.toolCalls.toList).flatMap { (toolMessages: List[ToolMessage]) =>
-              val updatedConversation: Conversation = Conversation(
-                conversation.messages ++ Seq(assistantMsg) ++ toolMessages
-              )
-              resolveToolLoops(updatedConversation, remainingSteps - 1)
-            }
-        }
-
-    private def executeToolCalls(toolCalls: List[ToolCall]): IO[List[ToolMessage]] =
-      toolsNode.executeFromToolCalls(toolCalls).flatMap { result =>
-        result.interruptSignal match
-          case Some(signal) =>
-            IO.raiseError(AgentInterruptedException(signal))
-          case None =>
-            IO.pure(result.toLlm4sMessages())
-      }
-
-  private final class DynamicReactAgentImpl(
+  final private class DynamicReactAgentImpl(
     model: ChatModel[IO],
     toolProvider: IO[List[InvokableTool[IO]]],
     systemPrompt: Option[String],
     defaultMaxSteps: Int
   ) extends ReactAgent:
-    val name: String = "dynamic-react-agent"
+    val name: String        = "dynamic-react-agent"
     val description: String = "Dynamic ReAct agent with tool provider"
 
     def generate(messages: List[Message], maxSteps: Int): IO[AssistantMessage] =

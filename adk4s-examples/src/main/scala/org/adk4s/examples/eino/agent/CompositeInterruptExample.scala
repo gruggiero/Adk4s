@@ -68,7 +68,7 @@ object CompositeInterruptExample extends IOApp.Simple:
               .stateful(
                 s"Payment approval needed: $$$amount to $recipient (exceeds threshold)",
                 Document.obj(
-                  "amount" -> Document.fromDouble(amount),
+                  "amount"    -> Document.fromDouble(amount),
                   "recipient" -> Document.fromString(recipient),
                   "threshold" -> Document.fromDouble(1000.0)
                 )
@@ -112,9 +112,9 @@ object CompositeInterruptExample extends IOApp.Simple:
               .stateful(
                 s"Email verification needed: sending to sensitive recipient $to",
                 Document.obj(
-                  "to" -> Document.fromString(to),
+                  "to"      -> Document.fromString(to),
                   "subject" -> Document.fromString(subject),
-                  "reason" -> Document.fromString("sensitive_recipient")
+                  "reason"  -> Document.fromString("sensitive_recipient")
                 )
               )
               .withAddress(List(AddressSegment.Tool("send_email")))

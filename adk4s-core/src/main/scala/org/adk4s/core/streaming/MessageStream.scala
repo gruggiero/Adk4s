@@ -36,4 +36,4 @@ object MessageStream:
       // Tool results keep their role label rather than being silently mislabelled as
       // user messages. `concatenate(role)` has no toolCallId, so it is left empty;
       // callers that need a real id must construct the ToolMessage directly.
-      case MessageRole.Tool      => ToolMessage(content, toolCallId = "")
+      case MessageRole.Tool => ToolMessage(content, toolCallId = "")

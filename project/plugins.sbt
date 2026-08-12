@@ -6,7 +6,7 @@ addSbtPlugin("com.eed3si9n"   % "sbt-assembly"   % "2.3.1")
 addSbtPlugin("com.disneystreaming.smithy4s" % "smithy4s-sbt-codegen" % "0.18.55")
 
 // Ring 1 — WartRemover static analysis
-addSbtPlugin("org.wartremover" % "sbt-wartremover" % "3.5.8")
+addSbtPlugin("org.wartremover" % "sbt-wartremover" % "3.6.1")
 
 // Ring 5 — Mutation testing
 addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "0.21.0")

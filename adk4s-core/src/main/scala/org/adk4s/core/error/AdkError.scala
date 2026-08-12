@@ -78,6 +78,20 @@ case class GenericError(message: String) extends AdkError
 case class NodeKeyError(invalidKey: String) extends AdkError:
   def message: String = s"Invalid node key: '$invalidKey'"
 
+/**
+ * Hard failure when a `HarnessState` cell fails to decode during `restore`.
+ *
+ * Carries the cell id (as a stable string — `StateCell.CellId` is an opaque
+ * type in `adk4s-harness-api`, which depends on `adk4s-core`, so the error
+ * stores the underlying `String`) and the codec failure cause. A non-`DObject`
+ * `json` payload uses `cellId = "<root>"` to indicate a structural error.
+ *
+ * spec: harness-state — Requirement: StateDecodeError is a hard AdkError variant
+ */
+case class StateDecodeError(cellId: String, cause: Throwable) extends AdkError:
+  initCause(cause)
+  def message: String = s"Failed to decode cell '$cellId': ${Option(cause).map(_.getMessage).getOrElse("unknown")}"
+
 object AdkError:
   given Show[AdkError] = Show.show(_.message)
 

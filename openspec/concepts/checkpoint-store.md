@@ -6,41 +6,49 @@
 concept CheckpointStore
 purpose
     A key-value store for persisting agent run checkpoint data across
-    interrupt/resume cycles.
+    interrupt/resume cycles. Effect-polymorphic over F[_]: Sync.
 state
-    store: InMemoryCheckpointStore -> Ref[IO, Map[String, Array[Byte]]]
+    store: InMemoryCheckpointStore[F] -> Ref[F, Map[String, Array[Byte]]]
 actions
-    get [ checkpointId: String ]
-        => [ data: Option[Array[Byte]] ]
-    set [ checkpointId: String ; data: Array[Byte] ]
-        => [ Unit ]
-    delete [ checkpointId: String ]
-        => [ Unit ]
+    get [ checkpointId: CheckpointId ]
+        => [ data: F[Option[Array[Byte]]] ]
+    set [ checkpointId: CheckpointId ; data: Array[Byte] ]
+        => [ F[Unit] ]
+    delete [ checkpointId: CheckpointId ]
+        => [ F[Unit] ]
     keys
-        => [ ids: List[String] ]
+        => [ ids: F[List[CheckpointId]] ]
 operational principle
-    On interrupt, AgentRunner serializes the run state to bytes and calls
-    set under a UUID checkpointId. On resume, it calls get with the same
-    id; if present, it deserializes and re-runs; on success it calls
-    delete. The InMemory implementation loses data on process exit.
+    On interrupt, AgentRunner serializes the run state (CheckpointStateV2)
+    to bytes and calls set under a UUID checkpointId. On resume, it calls
+    get with the same id; if present, it deserializes CheckpointStateV2 and
+    re-runs; on success it calls delete. The InMemory implementation loses
+    data on process exit.
 ```
 
 ## Implementation map
 
 | Element | Code |
 |---|---|
-| trait `CheckpointStore` | `trait CheckpointStore` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
-| action `get` | `CheckpointStore.get(checkpointId): IO[Option[Array[Byte]]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
-| action `set` | `CheckpointStore.set(checkpointId, data): IO[Unit]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
-| action `delete` | `CheckpointStore.delete(checkpointId): IO[Unit]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
-| action `keys` | `CheckpointStore.keys: IO[List[String]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
-| impl `InMemoryCheckpointStore` | `object InMemoryCheckpointStore` backed by `Ref[IO, Map[String, Array[Byte]]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
-| factory `create` | `InMemoryCheckpointStore.create: IO[CheckpointStore]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
-| node `InterruptibleNode` | `class InterruptibleNode` uses CheckpointStore for interrupt state (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/InterruptibleNode.scala`) |
-| runtime host | `org.adk4s.orchestration.interrupt` |
+| trait `CheckpointStore[F[_]]` | `trait CheckpointStore[F[_]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
+| type alias `CheckpointId` | `CheckpointStore.CheckpointId = String` (transparent, in companion) |
+| action `get` | `CheckpointStore.get(checkpointId): F[Option[Array[Byte]]]` |
+| action `set` | `CheckpointStore.set(checkpointId, data): F[Unit]` |
+| action `delete` | `CheckpointStore.delete(checkpointId): F[Unit]` |
+| action `keys` | `CheckpointStore.keys: F[List[CheckpointId]]` |
+| factory `inMemory` | `CheckpointStore.inMemory[F[_]: Sync]: F[CheckpointStore[F]]` |
+| impl `InMemoryCheckpointStore` | `object InMemoryCheckpointStore` backed by `Ref[F, Map[String, Array[Byte]]]` (backward-compatible `create: IO[CheckpointStore[IO]]`) |
+| state `CheckpointStateV2` | `case class CheckpointStateV2(version, messages, harnessState, interruptSignalJson, agentName)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/CheckpointStateV2.scala`) |
+| message `CheckpointMessage` | `case class CheckpointMessage(role, content, toolCalls, toolCallId)` — full-fidelity message with tool calls |
+| tool call `CheckpointToolCall` | `case class CheckpointToolCall(id, name, arguments)` — serialized tool call |
+| converter `CheckpointMessageConverter` | `CheckpointMessageConverter.toCheckpoint/fromCheckpoint` — bridges llm4s `Message` ↔ `CheckpointMessage` |
+| v1-compat `ReadWriter` | Custom `ReadWriter[CheckpointStateV2]` that decodes v1 `CheckpointState` payloads (harnessState defaults to empty, toolCalls/toolCallId default to Nil/None) |
+| node `InterruptibleNode` | `class InterruptibleNode` uses `CheckpointStore[IO]` for interrupt state |
+| runtime host | `org.adk4s.orchestration.interrupt`, `org.adk4s.orchestration.agent` |
 
 ## Deviations from the pattern
 
-- The only shipped implementation is `InMemoryCheckpointStore`, which loses all data on process exit — there is no persistent implementation in the repo (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`).
-- All operations assume success; `Ref` operations cannot fail, but a real persistent implementation would need error handling that the trait does not prescribe (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`).
-- No size limit or eviction policy — the in-memory map grows unbounded across runs (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`).
+- The only shipped implementation is `InMemoryCheckpointStore`, which loses all data on process exit — there is no persistent implementation in the repo.
+- All operations assume success; `Ref` operations cannot fail, but a real persistent implementation would need error handling that the trait does not prescribe.
+- No size limit or eviction policy — the in-memory map grows unbounded across runs.
+- V1 `CheckpointState` payloads lose tool-call fidelity when decoded as `CheckpointStateV2` (toolCalls and toolCallId default to empty) — this is a known limitation, not a failure.

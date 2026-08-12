@@ -48,7 +48,10 @@ object Dataset:
 
   /** Parse a single line, distinguishing JSON syntax errors from schema mismatches. */
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  private def parseLine[I, O](line: String, idx: Int)(using readerI: Reader[I], readerO: Reader[O]): Either[Throwable, Option[Example[I, O]]] =
+  private def parseLine[I, O](line: String, idx: Int)(using
+    readerI: Reader[I],
+    readerO: Reader[O]
+  ): Either[Throwable, Option[Example[I, O]]] =
     // Step 1: parse JSON syntax
     val parsed: Either[Throwable, ujson.Value] =
       try Right(ujson.read(line))
@@ -59,7 +62,8 @@ object Dataset:
       try
         val parsedObj: ujson.Obj = jsonValue match
           case obj: ujson.Obj => obj
-          case other          => throw new SchemaMismatchException(idx + 1, s"expected JSON object, got: ${other.getClass.getSimpleName}")
+          case other =>
+            throw new SchemaMismatchException(idx + 1, s"expected JSON object, got: ${other.getClass.getSimpleName}")
 
         val input: I = parsedObj.value.get("input") match
           case Some(v) => v.transform(readerI)
@@ -79,7 +83,10 @@ object Dataset:
           case Some(ujson.Null)     => Map.empty[String, String]
           case None                 => Map.empty[String, String]
           case Some(other) =>
-            throw new SchemaMismatchException(idx + 1, s"meta field must be a JSON object, got: ${other.getClass.getSimpleName}")
+            throw new SchemaMismatchException(
+              idx + 1,
+              s"meta field must be a JSON object, got: ${other.getClass.getSimpleName}"
+            )
 
         Right(Some(Example(input, gold, id, meta)))
       catch case e: SchemaMismatchException => Left(e)

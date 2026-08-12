@@ -98,11 +98,12 @@ final case class DynamicValue(document: Document):
   def field(name: String): Option[DynamicValue] = asObject.flatMap(_.get(name))
 
 object DynamicValue:
-  /** Parse a JSON string into a DynamicValue using smithy4s.json.Json.
-    *
-    * Uses `smithy4s.json.Json.readDocument` which parses directly into a
-    * `smithy4s.Document` via the jsoniter-scala backend, preserving Long
-    * precision (BigDecimal-backed numbers, no Double truncation).
-    */
+  /**
+   * Parse a JSON string into a DynamicValue using smithy4s.json.Json.
+   *
+   * Uses `smithy4s.json.Json.readDocument` which parses directly into a
+   * `smithy4s.Document` via the jsoniter-scala backend, preserving Long
+   * precision (BigDecimal-backed numbers, no Double truncation).
+   */
   def parse(json: String): Either[String, DynamicValue] =
     Json.readDocument(json).left.map(_.getMessage).map(DynamicValue.apply)

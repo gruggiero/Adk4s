@@ -20,12 +20,38 @@
         W4 = ordinal requirement references (prefer exact titles).
         W5 = impossibility claim enforced only by tests (ladder tier 1-2
              expected, or "tier-justified: <why not>" in Enforcement).
+        F10 = behavioural registry exists but a spec has no "Concepts Used
+             (behavioral)" section (ALTITUDE, structural half).
+        W7 = code-identifier candidates inside a Given/When/Then clause
+             (ALTITUDE — candidates for your judgment, not verdicts).
      F9 (artifact existence) is NOT run here — it is post-implementation;
      apply Step 12 runs `spec-lint.sh --artifacts`.
      Paste both outputs here. Script FAILs are lint FAILs. -->
 
 **openspec validate --strict**: <!-- PASS / output -->
 **spec-lint.sh**: <!-- paste summary line + findings -->
+
+### Applicability (paste the script's CONTEXT block VERBATIM)
+
+<!-- MANDATORY. Conditional checks (3, 6, 17, 18) have two halves: does the
+     rule APPLY here, and does the spec OBEY it. The first is a repository
+     fact the script reads off the filesystem; the second is yours. Never
+     infer the first — a review once recorded ALTITUDE as N/A on a repo with
+     30 concept files, having never looked for openspec/concepts/.
+
+     A check the block reports as APPLIES may NOT be recorded N/A below.
+     A check recorded N/A must quote the CONTEXT line that says so. -->
+
+```
+<!-- paste the CONTEXT block here -->
+```
+
+| Conditional check | CONTEXT says | Verdict allowed |
+|---|---|---|
+| 3 · testable with detected stack | <!-- PRESENT/ABSENT --> | <!-- APPLIES / N/A --> |
+| 6 · reused concepts resolved | <!-- PRESENT/ABSENT --> | |
+| 17 · ALTITUDE | <!-- PRESENT/ABSENT --> | |
+| 18 · CONCURRENCY | <!-- kit detected? --> | |
 
 ## Checks
 
@@ -49,7 +75,7 @@ Each spec is checked against:
 14. Every asserted error variant is type-feasible vs the producing API's return type
 15. ADVERSARIAL — every "only"/"never"/"must not" requirement has a scenario whose input the requirement forbids (mechanical half: F2/W3)
 16. MUST-CONFIRM — externally-sourced classification tables / code mappings / value domains are marked MUST-CONFIRM with a pointer to the real source; invented plausible values FAIL
-17. ALTITUDE (if openspec/concepts/ exists) — no code identifiers in Given/When/Then; concepts cited in "Concepts Used (behavioral)" link to registry files
+17. ALTITUDE — no code identifiers in Given/When/Then; concepts cited in "Concepts Used (behavioral)" link to registry files. Applicability comes from the CONTEXT block above, never from assumption (mechanical: **F10** section presence, **W7** identifier candidates). W7 silence is not a pass — it matches shapes, not prose
 18. CONCURRENCY — concurrent-behavior requirements name deterministic observables testable with the detected deterministic test kit; wall-clock timing assertions FAIL
 
 ## Results
@@ -76,7 +102,7 @@ Each spec is checked against:
 | 14 | Error variants type-feasible | | |
 | 15 | Adversarial scenarios for negatives | | |
 | 16 | MUST-CONFIRM marks present | | |
-| 17 | Altitude respected | | |
+| 17 | Altitude respected (F10 + W7 candidates judged) | | |
 | 18 | Concurrency deterministic | | |
 
 **Verdict: PASS / FAIL**

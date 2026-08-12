@@ -61,6 +61,18 @@ object Dependencies {
   val hedgehogMunit: ModuleID =
     "qa.hedgehog" %% "hedgehog-munit" % Versions.Hedgehog % Test
 
+  /** hedgehog-munit in MAIN scope — used by adk4s-harness-testkit, which
+    * publishes `AgentMiddlewareLaws` / `SemilatticeLaws` as Hedgehog
+    * `Property`-returning, downstream-consumable main-scoped APIs. */
+  val hedgehogMunitMain: ModuleID =
+    "qa.hedgehog" %% "hedgehog-munit" % Versions.Hedgehog
+
+  /** cats-effect-testkit in MAIN scope — provides `TestControl` for
+    * deterministic concurrency testing in the testkit's main-scope laws
+    * (L0 interrupt, L11 mergeBack order-independence). */
+  val catsEffectTestkitMain: ModuleID =
+    "org.typelevel" %% "cats-effect-testkit" % Versions.CatsEffect
+
   // --- Testing ---
 
   val munit: ModuleID =

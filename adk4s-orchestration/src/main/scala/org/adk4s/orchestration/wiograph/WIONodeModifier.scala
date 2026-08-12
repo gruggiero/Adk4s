@@ -2,7 +2,7 @@ package org.adk4s.orchestration.wiograph
 
 import cats.Applicative
 import cats.effect.IO
-import workflows4s.wio.{ErrorMeta, WCEffect, WCEvent, WCState, WIO, WIOContext, WorkflowContext}
+import workflows4s.wio.{ ErrorMeta, WCEffect, WCEvent, WCState, WIO, WIOContext, WorkflowContext }
 import workflows4s.wio.internal.EventHandler
 
 import java.time.Instant
@@ -14,20 +14,25 @@ sealed trait WIONodeModifier[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]]:
 final case class CheckpointModifier[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx], Evt <: WCEvent[Ctx]](
   genEvent: (I, O) => Evt,
   handleEvent: (I, Evt) => O
-)(using evtCt: ClassTag[Evt]) extends WIONodeModifier[Ctx, I, Err, O]:
+)(using evtCt: ClassTag[Evt])
+    extends WIONodeModifier[Ctx, I, Err, O]:
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def apply(base: WIO[I, Err, O, Ctx])(using ErrorMeta[Err]): WIO[I, Err, O, Ctx] =
-    val genEventIO: (I, O) => IO[Evt] = (in: I, out: O) => IO.pure(genEvent(in, out))
+    val genEventIO: (I, O) => IO[Evt]            = (in: I, out: O) => IO.pure(genEvent(in, out))
     val detectEvent: WCEvent[Ctx] => Option[Evt] = (evt: WCEvent[Ctx]) => evtCt.unapply(evt)
-    val convertEvent: Evt => WCEvent[Ctx] = (evt: Evt) => evt
-    val handleDetected: (I, Evt) => O = (in: I, evt: Evt) => handleEvent(in, evt)
+    val convertEvent: Evt => WCEvent[Ctx]        = (evt: Evt) => evt
+    val handleDetected: (I, Evt) => O            = (in: I, evt: Evt) => handleEvent(in, evt)
     val eventHandler: EventHandler[I, O, WCEvent[Ctx], Evt] =
       EventHandler[WCEvent[Ctx], I, O, Evt](
         detect0 = detectEvent,
         convert0 = convertEvent,
         handle0 = handleDetected
       )
-    WIO.Checkpoint[Ctx, I, Err, O, Evt](base, _ => (in: I, out: O) => genEventIO(in, out).asInstanceOf[WCEffect[Ctx][Evt]], eventHandler)
+    WIO.Checkpoint[Ctx, I, Err, O, Evt](
+      base,
+      _ => (in: I, out: O) => genEventIO(in, out).asInstanceOf[WCEffect[Ctx][Evt]],
+      eventHandler
+    )
 
 final case class RetryModifier[Ctx <: WorkflowContext, I, Err, O <: WCState[Ctx]](
   onError: (Throwable, WCState[Ctx], Instant) => IO[Option[Instant]]

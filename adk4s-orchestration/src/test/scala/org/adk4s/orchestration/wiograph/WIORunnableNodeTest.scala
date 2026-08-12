@@ -8,12 +8,12 @@ import munit.FunSuite
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
 import workflows4s.runtime.WorkflowInstanceId
-import workflows4s.wio.{ActiveWorkflow, ErrorMeta, WCEffect, WCEffectLift, WCEvent, WCState, WIO}
+import workflows4s.wio.{ ActiveWorkflow, ErrorMeta, WCEffect, WCEffectLift, WCEvent, WCState, WIO }
 import workflows4s.wio.internal.WakeupResult
 
 import scala.reflect.ClassTag
 
-import TestContext.{Ctx, TestEvent, TestState, TestStateBase, RunnableResult, StringResult, StringState}
+import TestContext.{ Ctx, TestEvent, TestState, TestStateBase, RunnableResult, StringResult, StringState }
 
 class WIORunnableNodeTest extends FunSuite:
 
@@ -25,7 +25,8 @@ class WIORunnableNodeTest extends FunSuite:
     input: In,
     initialState: TestStateBase
   ): TestStateBase =
-    val liftEffect: WCEffectLift[TestContext.Ctx, IO] = [A] => (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
+    val liftEffect: WCEffectLift[TestContext.Ctx, IO] = [A] =>
+      (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
     val workflow: ActiveWorkflow[TestContext.Ctx] =
       ActiveWorkflow[TestContext.Ctx](workflowInstanceId, wio.provideInput(input), initialState)
     val wakeup: WakeupResult[IO, WCEvent[TestContext.Ctx]] =
@@ -35,15 +36,15 @@ class WIORunnableNodeTest extends FunSuite:
         case WakeupResult.Noop() => None
         case WakeupResult.Processed(io) =>
           io.asInstanceOf[IO[WakeupResult.ProcessingResult[WCEvent[TestContext.Ctx]]]].unsafeRunSync() match
-            case WakeupResult.ProcessingResult.Proceeded(event) => Some(event)
+            case WakeupResult.ProcessingResult.Proceeded(event)       => Some(event)
             case WakeupResult.ProcessingResult.Failed(_, Some(event)) => Some(event)
-            case WakeupResult.ProcessingResult.Failed(_, None) => None
+            case WakeupResult.ProcessingResult.Failed(_, None)        => None
     val finalWorkflow: ActiveWorkflow[TestContext.Ctx] =
       eventOpt match
         case Some(event) =>
           workflow.handleEvent(event) match
             case Some(updated) => updated
-            case None => fail("Expected workflow to handle event")
+            case None          => fail("Expected workflow to handle event")
         case None => workflow
     finalWorkflow.liveState
 
@@ -60,7 +61,7 @@ class WIORunnableNodeTest extends FunSuite:
       )
 
     val wio: WIO[Int, Nothing, TestState, TestContext.Ctx] = node.toWIO
-    val result: TestStateBase = executeWio[Int, TestState](wio, 7, TestState(0))
+    val result: TestStateBase                              = executeWio[Int, TestState](wio, 7, TestState(0))
 
     assertEquals(result, TestState(21))
   }
@@ -80,9 +81,7 @@ class WIORunnableNodeTest extends FunSuite:
   }
 
   test("WIORunnableNode: toRunnable stream mode") {
-    val runnable: Runnable[Int, Int] = Runnable.fromStream[Int, Int]((i: Int) =>
-      Stream.emits(List(i, i + 1, i + 2))
-    )
+    val runnable: Runnable[Int, Int] = Runnable.fromStream[Int, Int]((i: Int) => Stream.emits(List(i, i + 1, i + 2)))
 
     val node: WIORunnableNode[TestContext.Ctx, Int, Nothing, RunnableResult, Int, TestState] =
       WIONode.fromRunnableSimple[TestContext.Ctx, Int, RunnableResult, Int, TestState](
@@ -210,9 +209,8 @@ class WIORunnableNodeTest extends FunSuite:
     val graph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
       WIOGraph[TestContext.Ctx, Int, TestState]
 
-    val streamRunnable: Runnable[Int, Int] = Runnable.fromStream[Int, Int]((i: Int) =>
-      Stream.emits(List(i, i * 2, i * 3))
-    )
+    val streamRunnable: Runnable[Int, Int] =
+      Runnable.fromStream[Int, Int]((i: Int) => Stream.emits(List(i, i * 2, i * 3)))
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
       WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
@@ -302,9 +300,7 @@ class WIORunnableNodeTest extends FunSuite:
     val graph: WIOGraph[TestContext.Ctx, Int, Nothing, TestState] =
       WIOGraph[TestContext.Ctx, Int, TestState]
 
-    val streamRunnable: Runnable[Int, Int] = Runnable.fromStream[Int, Int]((i: Int) =>
-      Stream.emits(List(i, i + 1))
-    )
+    val streamRunnable: Runnable[Int, Int] = Runnable.fromStream[Int, Int]((i: Int) => Stream.emits(List(i, i + 1)))
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
       WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))

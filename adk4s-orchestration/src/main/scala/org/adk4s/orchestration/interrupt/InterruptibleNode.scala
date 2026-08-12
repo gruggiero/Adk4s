@@ -19,7 +19,7 @@ final class InterruptibleNode[I, O] private (
   shouldInterrupt: I => Boolean,
   innerAction: I => IO[O],
   onInterrupt: I => IO[InterruptInfo],
-  store: CheckpointStore
+  store: CheckpointStore[IO]
 ):
 
   def invoke(input: I): IO[InterruptResult[O]] =
@@ -57,7 +57,7 @@ object InterruptibleNode:
     shouldInterrupt: I => Boolean,
     innerAction: I => IO[O],
     onInterrupt: I => IO[InterruptInfo],
-    store: CheckpointStore
+    store: CheckpointStore[IO]
   ): InterruptibleNode[I, O] =
     new InterruptibleNode[I, O](shouldInterrupt, innerAction, onInterrupt, store)
 

@@ -71,6 +71,7 @@ usage() {
     echo "  multiagenthost     Host/router with specialist agents"
     echo "  planexecute        Plan-and-execute pattern"
     echo "  reactagent         ReAct agent with tool calling loop + streaming"
+    echo "  deepagent          Deep agent: middleware stack (todos, audit, budget) + HarnessState"
     echo "  dynamicoption      Dynamic tool registry with runtime add/remove"
     echo ""
     echo "Memory Examples:"
@@ -146,7 +147,7 @@ FORCE_MOCK=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        all|chain|simple|workflow|lambda|chatmodel|chattemplate|docloader|retriever|toolschema|simplegraph|toolcallagent|twomodelchat|stategraph|toolcallonce|asyncnode|reactinterrupt|simpleworkflow|branchworkflow|staticvalues|fieldmapping|dataonly|streamfieldmap|reactmemory|multiagenthost|planexecute|reactagent|dynamicoption|batch|chat|categoryclassification|roledetection|queryclassification|chainroute|planextraction|stepsextraction|listparsing|schemaextraction|specialistdelegation|multiagenthostex|typedintermediates|chaincomposition|transformchain|graphintegration|asyncnodestructured|saperrorrecovery|reactagentstructured|dynamictoolregistry|wiographtool|agenttool|nestedagent|compositeinterrupt|agenttooladvanced|hierarchicalevents|statefulresume|interruptresume|eventstream|crossrunmemory|memoryretriever|evalharness)
+        all|chain|simple|workflow|lambda|chatmodel|chattemplate|docloader|retriever|toolschema|simplegraph|toolcallagent|twomodelchat|stategraph|toolcallonce|asyncnode|reactinterrupt|simpleworkflow|branchworkflow|staticvalues|fieldmapping|dataonly|streamfieldmap|reactmemory|multiagenthost|planexecute|reactagent|deepagent|dynamicoption|batch|chat|categoryclassification|roledetection|queryclassification|chainroute|planextraction|stepsextraction|listparsing|schemaextraction|specialistdelegation|multiagenthostex|typedintermediates|chaincomposition|transformchain|graphintegration|asyncnodestructured|saperrorrecovery|reactagentstructured|dynamictoolregistry|wiographtool|agenttool|nestedagent|compositeinterrupt|agenttooladvanced|hierarchicalevents|statefulresume|interruptresume|eventstream|crossrunmemory|memoryretriever|evalharness)
             EXAMPLE="$1"
             shift
             ;;
@@ -303,6 +304,9 @@ resolve_main_class() {
         ;;
     reactagent)
         echo "org.adk4s.examples.eino.agent.ReactAgentExample"
+        ;;
+    deepagent)
+        echo "org.adk4s.examples.eino.agent.DeepAgentExample"
         ;;
     dynamicoption)
         echo "org.adk4s.examples.eino.agent.DynamicOptionExample"

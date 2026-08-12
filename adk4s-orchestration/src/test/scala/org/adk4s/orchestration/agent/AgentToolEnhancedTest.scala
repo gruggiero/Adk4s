@@ -2,26 +2,25 @@ package org.adk4s.orchestration.agent
 
 import cats.effect.IO
 import munit.CatsEffectSuite
-import org.adk4s.core.component.{Agent, AgentTool, AgentToolConfig}
-import org.llm4s.llmconnect.model.{AssistantMessage, Message, UserMessage}
+import org.adk4s.core.component.{ Agent, AgentTool, AgentToolConfig }
+import org.llm4s.llmconnect.model.{ AssistantMessage, Message, UserMessage }
 
 class AgentToolEnhancedTest extends CatsEffectSuite:
 
   private def mockAgent(response: String): Agent =
     new Agent:
-      val name: String = "test-agent"
+      val name: String        = "test-agent"
       val description: String = "A test agent"
       def generate(messages: List[Message], maxSteps: Int): IO[AssistantMessage] =
         IO.pure(AssistantMessage(contentOpt = Some(response), toolCalls = Seq.empty))
 
   test("fromReactAgent alias works") {
     for
-      tool <- AgentTool.fromReactAgent(mockAgent("Hello"))
+      tool   <- AgentTool.fromReactAgent(mockAgent("Hello"))
       result <- tool.run(ujson.Obj("request" -> "Hi"))
-    yield
-      result match
-        case ujson.Str(s) => assertEquals(s, "Hello")
-        case other        => fail(s"Expected ujson.Str, got $other")
+    yield result match
+      case ujson.Str(s) => assertEquals(s, "Hello")
+      case other        => fail(s"Expected ujson.Str, got $other")
   }
 
   test("fromFunction creates working agent tool") {
@@ -31,7 +30,7 @@ class AgentToolEnhancedTest extends CatsEffectSuite:
     }
 
     for
-      tool <- AgentTool.fromFunction("processor", "Processes messages", fn)
+      tool   <- AgentTool.fromFunction("processor", "Processes messages", fn)
       result <- tool.run(ujson.Obj("request" -> "test input"))
     yield
       assertEquals(tool.info.name, "processor")
@@ -54,8 +53,7 @@ class AgentToolEnhancedTest extends CatsEffectSuite:
     )
     val config: AgentToolConfig = AgentToolConfig.withInputSchema(customSchema)
 
-    for
-      tool <- AgentTool.fromAgent(mockAgent("result"), config)
+    for tool <- AgentTool.fromAgent(mockAgent("result"), config)
     yield
       val schema: ujson.Value = tool.info.parameters
       assertEquals(schema("type").str, "object")
@@ -64,8 +62,7 @@ class AgentToolEnhancedTest extends CatsEffectSuite:
   }
 
   test("default input schema has request field") {
-    for
-      tool <- AgentTool.fromAgent(mockAgent("test"))
+    for tool <- AgentTool.fromAgent(mockAgent("test"))
     yield
       val schema: ujson.Value = tool.info.parameters
       assertEquals(schema("type").str, "object")

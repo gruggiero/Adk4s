@@ -35,8 +35,8 @@ class ReactAgentTest extends CatsEffectSuite:
     )
 
   private def makeToolCallCompletion(toolName: String, args: String): Completion =
-    val callId: String = UUID.randomUUID().toString
-    val tc: ToolCall = ToolCall(id = callId, name = toolName, arguments = ujson.read(args))
+    val callId: String        = UUID.randomUUID().toString
+    val tc: ToolCall          = ToolCall(id = callId, name = toolName, arguments = ujson.read(args))
     val msg: AssistantMessage = AssistantMessage(contentOpt = None, toolCalls = Seq(tc))
     Completion(
       id = UUID.randomUUID().toString,
@@ -95,8 +95,8 @@ class ReactAgentTest extends CatsEffectSuite:
   // --- Tests ---
 
   test("generate returns direct response when no tool calls") {
-    val model: ChatModel[IO] = mockChatModel(List(makeCompletion("Hello!")))
-    val agent: ReactAgent = ReactAgent.create(model, List.empty)
+    val model: ChatModel[IO]         = mockChatModel(List(makeCompletion("Hello!")))
+    val agent: ReactAgent            = ReactAgent.create(model, List.empty)
     val result: IO[AssistantMessage] = agent.generate(List(UserMessage("Hi")), 5)
     result.map { (msg: AssistantMessage) =>
       assertEquals(msg.content, "Hello!")
@@ -109,12 +109,10 @@ class ReactAgentTest extends CatsEffectSuite:
       makeToolCallCompletion("echo", """{"text": "hello"}"""),
       makeCompletion("The echo result was received.")
     )
-    val model: ChatModel[IO] = mockChatModel(responses)
-    val agent: ReactAgent = ReactAgent.create(model, List(echoTool))
+    val model: ChatModel[IO]         = mockChatModel(responses)
+    val agent: ReactAgent            = ReactAgent.create(model, List(echoTool))
     val result: IO[AssistantMessage] = agent.generate(List(UserMessage("echo hello")), 5)
-    result.map { (msg: AssistantMessage) =>
-      assertEquals(msg.content, "The echo result was received.")
-    }
+    result.map((msg: AssistantMessage) => assertEquals(msg.content, "The echo result was received."))
   }
 
   test("generate handles multiple tool call rounds") {
@@ -123,12 +121,10 @@ class ReactAgentTest extends CatsEffectSuite:
       makeToolCallCompletion("echo", """{"text": "second"}"""),
       makeCompletion("Done after two tool rounds.")
     )
-    val model: ChatModel[IO] = mockChatModel(responses)
-    val agent: ReactAgent = ReactAgent.create(model, List(echoTool))
+    val model: ChatModel[IO]         = mockChatModel(responses)
+    val agent: ReactAgent            = ReactAgent.create(model, List(echoTool))
     val result: IO[AssistantMessage] = agent.generate(List(UserMessage("do two rounds")), 5)
-    result.map { (msg: AssistantMessage) =>
-      assertEquals(msg.content, "Done after two tool rounds.")
-    }
+    result.map((msg: AssistantMessage) => assertEquals(msg.content, "Done after two tool rounds."))
   }
 
   test("generate raises error when max steps exceeded") {
@@ -137,11 +133,11 @@ class ReactAgentTest extends CatsEffectSuite:
       makeToolCallCompletion("echo", """{"text": "loop"}"""),
       makeToolCallCompletion("echo", """{"text": "loop"}""")
     )
-    val model: ChatModel[IO] = mockChatModel(responses)
-    val agent: ReactAgent = ReactAgent.create(model, List(echoTool), maxSteps = 2)
+    val model: ChatModel[IO]         = mockChatModel(responses)
+    val agent: ReactAgent            = ReactAgent.create(model, List(echoTool), maxSteps = 2)
     val result: IO[AssistantMessage] = agent.generate(List(UserMessage("loop")), 2)
-    interceptIO[RuntimeException](result).map { (e: RuntimeException) =>
-      assert(e.getMessage.contains("max steps exceeded"))
+    interceptIO[org.adk4s.core.error.MaxStepsExceededError](result).map { (e: org.adk4s.core.error.MaxStepsExceededError) =>
+      assert(e.getMessage.contains("maximum steps"))
     }
   }
 
@@ -155,7 +151,7 @@ class ReactAgentTest extends CatsEffectSuite:
           IO.delay(capturedConversations.add(conversation)) *> inner.generate(conversation)
         def stream(conversation: Conversation): Stream[IO, StreamedChunk] = inner.stream(conversation)
         def streamContent(conversation: Conversation): Stream[IO, String] = inner.streamContent(conversation)
-        def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+        def withConfig(config: ChatModelConfig): ChatModel[IO]            = this
 
     val agent: ReactAgent = ReactAgent.create(model, List.empty, systemPrompt = Some("You are helpful."))
     agent.generate(List(UserMessage("Hi")), 5).map { (_: AssistantMessage) =>
@@ -173,10 +169,12 @@ class ReactAgentTest extends CatsEffectSuite:
   test("stream returns chunks for direct response") {
     // resolveToolLoops calls generate once (no tool calls → returns conversation),
     // then model.stream calls generate again for the actual streaming
-    val model: ChatModel[IO] = mockChatModel(List(
-      makeCompletion("Hello world"),
-      makeCompletion("Hello world")
-    ))
+    val model: ChatModel[IO] = mockChatModel(
+      List(
+        makeCompletion("Hello world"),
+        makeCompletion("Hello world")
+      )
+    )
     val agent: ReactAgent = ReactAgent.create(model, List.empty)
     val result: IO[List[StreamedChunk]] =
       agent.stream(List(UserMessage("Hi")), 5).compile.toList
@@ -195,7 +193,7 @@ class ReactAgentTest extends CatsEffectSuite:
       makeCompletion("Final streamed answer.")
     )
     val model: ChatModel[IO] = mockChatModel(responses)
-    val agent: ReactAgent = ReactAgent.create(model, List(echoTool))
+    val agent: ReactAgent    = ReactAgent.create(model, List(echoTool))
     val result: IO[List[StreamedChunk]] =
       agent.stream(List(UserMessage("echo")), 5).compile.toList
     result.map { (chunks: List[StreamedChunk]) =>
@@ -211,10 +209,12 @@ class ReactAgentTest extends CatsEffectSuite:
       callCount.incrementAndGet()
       List(echoTool)
     }
-    val model: ChatModel[IO] = mockChatModel(List(
-      makeCompletion("first"),
-      makeCompletion("second")
-    ))
+    val model: ChatModel[IO] = mockChatModel(
+      List(
+        makeCompletion("first"),
+        makeCompletion("second")
+      )
+    )
     val agent: ReactAgent = ReactAgent.createWithToolProvider(model, provider)
     for
       _ <- agent.generate(List(UserMessage("a")), 5)

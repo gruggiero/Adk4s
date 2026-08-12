@@ -264,7 +264,9 @@ object StructuredLLM:
       case RetryTrigger.ValidationFailure => Some(ParseRetryTrigger.ValidationFailed)
       case RetryTrigger.All               => Some(ParseRetryTrigger.All)
     val underlying: StructuredLLM[F] = new StructuredLLMImpl[F](
-      client, defaultOptions, logRawResponse = false,
+      client,
+      defaultOptions,
+      logRawResponse = false,
       parseRetryTrigger = parseTrigger,
       maxParseAttempts = maxAttempts,
       parseRetryDelay = delay
@@ -336,16 +338,14 @@ private class StructuredLLMImpl[F[_]: Async](
         val singleAttempt: F[A] =
           for
             conversation <- Async[F].pure(toConversation(prompt))
-            completion    <- callLLM(conversation, prompt)
-            response      <- extractContent(completion, prompt)
-            _             <- logRawResponseIfEnabled(response)
-            result        <- parseResponse[A](response)
+            completion   <- callLLM(conversation, prompt)
+            response     <- extractContent(completion, prompt)
+            _            <- logRawResponseIfEnabled(response)
+            result       <- parseResponse[A](response)
           yield result
         singleAttempt.handleErrorWith { (error: Throwable) =>
-          if trigger.shouldRetry(error) && remaining > 1 then
-            Async[F].sleep(parseRetryDelay) *> attempt(remaining - 1)
-          else
-            Async[F].raiseError(error)
+          if trigger.shouldRetry(error) && remaining > 1 then Async[F].sleep(parseRetryDelay) *> attempt(remaining - 1)
+          else Async[F].raiseError(error)
         }
     attempt(maxAttempts)
 

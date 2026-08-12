@@ -24,6 +24,7 @@
     <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
     <li><a class="current" href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
     <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+    <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
   </ul>
   <div class="toc-title">On this page</div>
   <ul id="toc"></ul>
@@ -97,7 +98,7 @@ registry-check: OK (611 implementation-map tokens verified,
 
 <p>
   You have used its logic twice already (chapters 3 and 5 embed a port of it).
-  Seven FAIL checks and four warnings:
+  Ten FAIL checks and seven warnings:
 </p>
 
 <div class="table-wrap">
@@ -113,7 +114,10 @@ registry-check: OK (611 implementation-map tokens verified,
     <tr><td><span class="chip">F7</span></td><td>a requirement no obligation names — unenforced</td></tr>
     <tr><td><span class="chip">F8</span></td><td>a typed source (<code>Property:</code>/<code>Scenario:</code>) naming a heading that does not exist</td></tr>
     <tr><td><span class="chip">F9</span></td><td>a code-shaped artifact that resolves to no tracked file — <em>opt-in</em> <code>--artifacts</code>, run post-implementation at Step 12</td></tr>
+    <tr><td><span class="chip">F10</span></td><td>a behavioural registry exists but a spec has no <code>## Concepts Used (behavioral)</code> section — the structural half of the altitude rule</td></tr>
     <tr><td><span class="chip">W1–W5</span></td><td>vague words · row-count shortfall · unconfirmed adversarial scenario · ordinal references · impossibility claim enforced only by tests</td></tr>
+    <tr><td><span class="chip">W6</span></td><td>Ring 6 declared with no obligation naming a bridge — a proof about a model nobody runs</td></tr>
+    <tr><td><span class="chip">W7</span></td><td>a code identifier inside a Given/When/Then clause — build command, source file, fully-qualified name, or a token the project's own ledgers class as code</td></tr>
   </tbody>
 </table>
 </div>
@@ -127,10 +131,138 @@ registry-check: OK (611 implementation-map tokens verified,
 </p>
 
 <p>
-  The judgement checks — observability, testability, altitude, type-feasibility
-  — stay in the artifact instruction for a human or agent to apply. The script
-  does not pretend to do them, which is why its clean run is meaningful.
+  The judgement checks — observability, testability, altitude
+  <em>compliance</em>, type-feasibility — stay in the artifact instruction for
+  a human or agent to apply. The script does not pretend to do them, which is
+  why its clean run is meaningful.
 </p>
+
+<h3>The CONTEXT block — why applicability is never judgement</h3>
+
+<p>
+  Several checks are conditional: check 17 applies only if the project has a
+  behavioural registry, checks 3 and 18 only if a capability profile exists.
+  It is tempting to file the whole check under “judgement” and move on. That
+  is precisely the mistake, and it has a real instance.
+</p>
+
+<div class="box danger">
+  <div class="box-title">The failure · N/A by assumption</div>
+  <p>
+    A review marked the altitude rule <strong>N/A</strong> on a repository
+    holding <strong>30 concept files</strong>. The reviewer's own account of
+    it was correct on every point: the script does not check altitude, the
+    rule is a judgement check, the instruction says a human applies it. The
+    reasoning was sound. It rested on a fact that was never looked up —
+    “<code>openspec/concepts/</code> probably doesn't exist here”.
+  </p>
+  <p style="margin-bottom:0">
+    Notice the shape. Nothing failed <em>loudly</em>. The report said N/A,
+    which reads like a considered verdict, and a silent skip is
+    indistinguishable from a genuine non-applicability.
+  </p>
+</div>
+
+<p>
+  So split the conditional check in two, and notice that the halves are
+  different <em>kinds of question</em>:
+</p>
+
+<div class="two-col">
+  <div class="box">
+    <div class="box-title">Does this rule apply here?</div>
+    <p style="margin-bottom:0">
+      A <strong>fact</strong>. A directory exists or it does not. There is a
+      correct answer, it is one <code>test -d</code> away, and a reviewer who
+      answers it from memory is guessing at something free to check.
+    </p>
+  </div>
+  <div class="box">
+    <div class="box-title">Does this spec obey it?</div>
+    <p style="margin-bottom:0">
+      A <strong>judgement</strong>. Is <code>Episode</code> in this sentence a
+      domain word or a class name? That genuinely needs a reader, and no
+      amount of bash will settle it.
+    </p>
+  </div>
+</div>
+
+<p>
+  Only the second belongs to the reviewer. So <code>spec-lint.sh</code> now
+  prints a CONTEXT block <strong>unconditionally</strong> — before any spec
+  output, on every run — stating each conditional check's applicability:
+</p>
+
+<pre data-lang="bash"><code>spec-lint: CONTEXT — repository facts. These decide each conditional check's
+           APPLICABILITY. Compliance remains yours; applicability does not.
+  schema                openspec/schemas/verified-scala3  v11
+  behavioural registry  openspec/concepts/             PRESENT (30 concepts)
+    -&gt; check 17 ALTITUDE **APPLIES**. "N/A" is not a valid verdict for it.
+  type inventory        openspec/concept-inventory.md  PRESENT (125 typed rows)
+    -&gt; check 6 (reused concepts exist) **APPLIES**.
+  capability profile    openspec/capability-profile.md PRESENT
+    -&gt; checks 3 and 18 **APPLY**
+       deterministic test kit detected: TestControl</code></pre>
+
+<div class="box insight">
+  <div class="box-title">The negative case is printed just as loudly</div>
+  <p style="margin-bottom:0">
+    On a repository with no registry the block says
+    <em>“check 17 ALTITUDE is N/A (attested by this script, not assumed)”</em>.
+    That sentence is the whole idea. N/A stops being something a reviewer
+    <em>concludes</em> and becomes something a machine <em>reports</em> —
+    and the report template requires the block pasted verbatim, so a verdict
+    of N/A against a check the script says APPLIES is now a visible
+    contradiction rather than an invisible gap.
+  </p>
+</div>
+
+<p>
+  Generalise it, because this is not really about one rule:
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule · do not answer from memory what a script answers from the filesystem</div>
+  <p style="margin-bottom:0">
+    Every conditional rule's <strong>precondition</strong> is machine-supplied;
+    only its <strong>compliance</strong> is judged. A reviewer asked to decide
+    both will eventually decide the first one wrong, and — worse — will decide
+    it wrong <em>quietly</em>, because a skipped check produces no output at
+    all. Wherever a workflow says “if the project has X”, ask who determines
+    X, and make it a program.
+  </p>
+</div>
+
+<h3>Instruction drift — the field nobody read</h3>
+
+<p>
+  The same investigation turned up a second cause, and it is the more
+  embarrassing one. Every skill carries a version stamp:
+</p>
+
+<pre data-lang="yaml"><code>metadata:
+  generatedBy: verified-scala3-schema/7.0.0</code></pre>
+
+<p>
+  That field sat frozen at <code>7.0.0</code> while the schema reached 11, and
+  the copy actually installed in the agent's skill directory was older still —
+  it stopped at check 12 and <strong>did not contain the altitude rule at
+  all</strong>. An agent can follow its instructions perfectly and still miss
+  a check that was added three versions after the instructions it holds.
+</p>
+
+<div class="box insight">
+  <div class="box-title">Recorded, but never checked</div>
+  <p style="margin-bottom:0">
+    This is the exact defect class the whole workflow exists to eliminate —
+    the same shape as an obligation whose artifact was never written, or a
+    laws suite that passes everything. A version field that nothing compares
+    is decoration. <code>spec-lint.sh</code> now reads it, searching the
+    common install roots, and prints <strong>INSTRUCTION DRIFT</strong> when
+    the installed skill's schema version differs from the schema on disk. The
+    remedy is boring; the point is that the discrepancy is no longer silent.
+  </p>
+</div>
 
 <h3>danger-scan.sh — Ring 1's portable echo</h3>
 
@@ -322,6 +454,18 @@ $ scanner/openspec-graph.py obligations
   is to shrink the first two so ruthlessly that human attention is spent
   entirely on the third.
 </p>
+
+<div class="box insight">
+  <div class="box-title">A column this table does not have</div>
+  <p style="margin-bottom:0">
+    Every tool above is <em>opt-in</em>. The CONTEXT block cures N/A-by-assumption
+    only if <code>spec-lint.sh</code> runs at all; the drift check reports a
+    stale skill only to whoever invoked it. Mechanising a check answers
+    <em>what happens when it runs</em> and leaves <em>whether it runs</em>
+    untouched — which is a separate mechanism, and
+    <a href="11-enforcement.html">chapter 11</a>.
+  </p>
+</div>
 
 <h2>Setup, briefly</h2>
 

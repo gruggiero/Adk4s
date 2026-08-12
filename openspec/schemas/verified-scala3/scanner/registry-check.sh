@@ -264,17 +264,41 @@ for spec in "$ROOT"/openspec/changes/*/specs/*/spec.md; do
   sbase="${spec#"$ROOT"/openspec/changes/}"
 
   # first table cell of each row in the behavioral concepts table
+  # The section can hold more than one table (a "Synchronizations exercised"
+  # subsection is common), so header rows must be dropped generically: a
+  # header is exactly the row followed by the |---|---| separator. Buffer one
+  # row and discard it when a separator arrives.
   cells="$(awk -F'|' '
     /^## Concepts Used \(behavioral\)/ {m=1; next}
     /^## /                             {m=0}
-    m && /^\|/                         {print $2}
+    m && /^\|/ {
+      if ($0 ~ /^\|[ \t:-]*-/) { prev = ""; next }   # separator: prev was a header
+      if (prev != "") print prev
+      prev = $2
+      next
+    }
+    m { if (prev != "") { print prev; prev = "" } }
+    END { if (prev != "") print prev }
   ' "$spec")"
   # refs come backticked (`Concept` / `Concept/action`) or as markdown
   # links ([Concept](path/to/concept.md)) — both count
   eligible="$(printf '%s\n' "$cells" | grep -viE '\((new|created by)' || true)"
+  # ...or bare, which is just as common in practice. A parser that accepted
+  # only the first two forms read a whole change as zero references and
+  # reported OK — the silent-empty-scan failure, again.
   refs="$( { printf '%s\n' "$eligible" | grep -o '`[^`]*`' | tr -d '\`';
-             printf '%s\n' "$eligible" | grep -oE '\[[A-Za-z][A-Za-z0-9/]*\]' | tr -d '[]'; } \
+             printf '%s\n' "$eligible" | grep -oE '\[[A-Za-z][A-Za-z0-9/]*\]' | tr -d '[]';
+             printf '%s\n' "$eligible" | sed 's/^[ \t]*//; s/[ \t]*$//' \
+               | grep -E '^[A-Z][A-Za-z0-9]*(/[A-Za-z][A-Za-z0-9]*)?$' \
+               | grep -vx 'Concept'; } \
            | sort -u || true)"
+  # a table with data rows that yields no reference is a parse failure, not a
+  # clean bill of health
+  rows="$(printf '%s\n' "$eligible" | grep -cE '[A-Za-z]' || true)"
+  if [ "$rows" -gt 1 ] && [ -z "$refs" ]; then
+    echo "SPEC   $sbase: has a Concepts Used (behavioral) table with $rows row(s) but NO reference parsed — check the table shape"
+    fail=1
+  fi
 
   while IFS= read -r ref; do
     [ -z "$ref" ] && continue

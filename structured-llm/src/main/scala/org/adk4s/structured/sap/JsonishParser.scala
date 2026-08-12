@@ -53,19 +53,19 @@ object JsonishParser:
     val trimmed: String = raw.trim
     if isValidJson(trimmed) then trimmed
     else
-      val extracted: String = extractMarkdownFence(trimmed).getOrElse(trimmed)
-      val noComments: String = stripComments(extracted)
-      val normalized: String = UnicodeQuoteNormalizer.normalize(noComments)
-      val fixedQuotes: String = fixQuotesWithScanner(normalized)
+      val extracted: String        = extractMarkdownFence(trimmed).getOrElse(trimmed)
+      val noComments: String       = stripComments(extracted)
+      val normalized: String       = UnicodeQuoteNormalizer.normalize(noComments)
+      val fixedQuotes: String      = fixQuotesWithScanner(normalized)
       val noTrailingCommas: String = removeTrailingCommas(fixedQuotes)
-      val balanced: String = balanceBraces(noTrailingCommas)
+      val balanced: String         = balanceBraces(noTrailingCommas)
       balanced
 
   // ── Markdown fence extraction ──────────────────────────────────────────
 
   private def extractMarkdownFence(s: String): Option[String] =
     val fencePattern: String = "```"
-    val startIdx: Int = s.indexOf(fencePattern)
+    val startIdx: Int        = s.indexOf(fencePattern)
     if startIdx < 0 then None
     else
       val afterStart: Int = startIdx + 3
@@ -77,8 +77,7 @@ object JsonishParser:
         if endIdx < 0 then
           // Unclosed fence — take everything after the first line
           Some(s.substring(lineEnd + 1).trim)
-        else
-          Some(s.substring(lineEnd + 1, endIdx).trim)
+        else Some(s.substring(lineEnd + 1, endIdx).trim)
 
   // ── Comment stripping ──────────────────────────────────────────────────
 
@@ -92,19 +91,18 @@ object JsonishParser:
         if inString then
           if c == '"' && s.charAt(i - 1) != '\\' then loop(i + 1, false, acc.append(c))
           else loop(i + 1, true, acc.append(c))
-        else
-          if c == '"' then loop(i + 1, true, acc.append(c))
-          else if c == '/' && i + 1 < s.length && s.charAt(i + 1) == '/' then
-            // Line comment — skip to end of line
-            val lineEnd: Int = s.indexOf('\n', i)
-            if lineEnd < 0 then acc.toString
-            else loop(lineEnd + 1, false, acc)
-          else if c == '/' && i + 1 < s.length && s.charAt(i + 1) == '*' then
-            // Block comment — skip to */
-            val closeIdx: Int = s.indexOf("*/", i + 2)
-            if closeIdx < 0 then acc.toString
-            else loop(closeIdx + 2, false, acc)
-          else loop(i + 1, false, acc.append(c))
+        else if c == '"' then loop(i + 1, true, acc.append(c))
+        else if c == '/' && i + 1 < s.length && s.charAt(i + 1) == '/' then
+          // Line comment — skip to end of line
+          val lineEnd: Int = s.indexOf('\n', i)
+          if lineEnd < 0 then acc.toString
+          else loop(lineEnd + 1, false, acc)
+        else if c == '/' && i + 1 < s.length && s.charAt(i + 1) == '*' then
+          // Block comment — skip to */
+          val closeIdx: Int = s.indexOf("*/", i + 2)
+          if closeIdx < 0 then acc.toString
+          else loop(closeIdx + 2, false, acc)
+        else loop(i + 1, false, acc.append(c))
 
     loop(0, false, new StringBuilder(s.length))
 
@@ -174,12 +172,9 @@ object JsonishParser:
       if i >= s.length then acc.toString
       else
         val c: Char = s.charAt(i)
-        if c == '"' && (i == 0 || s.charAt(i - 1) != '\\') then
-          loop(i + 1, !inDoubleQuote, acc.append(c))
-        else if c == '\'' && !inDoubleQuote then
-          loop(i + 1, inDoubleQuote, acc.append('"'))
-        else
-          loop(i + 1, inDoubleQuote, acc.append(c))
+        if c == '"' && (i == 0 || s.charAt(i - 1) != '\\') then loop(i + 1, !inDoubleQuote, acc.append(c))
+        else if c == '\'' && !inDoubleQuote then loop(i + 1, inDoubleQuote, acc.append('"'))
+        else loop(i + 1, inDoubleQuote, acc.append(c))
 
     loop(0, false, new StringBuilder(s.length))
 
@@ -191,11 +186,11 @@ object JsonishParser:
   // ── Brace balancing ────────────────────────────────────────────────────
 
   private def balanceBraces(s: String): String =
-    val openBraces: Int = s.count(_ == '{')
-    val closeBraces: Int = s.count(_ == '}')
-    val openBrackets: Int = s.count(_ == '[')
-    val closeBrackets: Int = s.count(_ == ']')
-    val missingBraces: Int = openBraces - closeBraces
+    val openBraces: Int      = s.count(_ == '{')
+    val closeBraces: Int     = s.count(_ == '}')
+    val openBrackets: Int    = s.count(_ == '[')
+    val closeBrackets: Int   = s.count(_ == ']')
+    val missingBraces: Int   = openBraces - closeBraces
     val missingBrackets: Int = openBrackets - closeBrackets
     if missingBraces > 0 then s + "}" * missingBraces
     else if missingBrackets > 0 then s + "]" * missingBrackets
@@ -220,8 +215,7 @@ object JsonishParser:
     try
       ujson.read(s)
       true
-    catch
-      case _: Exception => false
+    catch case _: Exception => false
 
   // ── JsonishValue parsing ───────────────────────────────────────────────
 

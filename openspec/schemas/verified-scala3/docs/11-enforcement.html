@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>11 · Making it stick — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+    <li><a class="current" href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 11 · Enforcement</div>
+<h1>Making it stick</h1>
+<p class="lede">
+  Every check in the previous ten chapters is opt-in. An agent that does not
+  run the script never sees the fact that would have corrected it. This chapter
+  is about the difference between a rule that is <em>written down</em> and a
+  rule that is <em>enforced</em> — and about the one mechanism that closes the
+  gap without making the workflow unportable.
+</p>
+
+<h2>The failure that survives everything so far</h2>
+
+<p>
+  Chapter 9 told the story of a review that recorded the altitude rule as
+  <strong>N/A</strong> on a repository holding thirty concept files. The fix
+  was a CONTEXT block: <code>spec-lint.sh</code> now prints the applicability
+  facts unconditionally, so N/A becomes something a machine reports rather than
+  something a reviewer concludes.
+</p>
+
+<p>
+  Read that fix carefully and you will find a hole in it.
+</p>
+
+<div class="box danger">
+  <div class="box-title">The residual gap</div>
+  <p style="margin-bottom:0">
+    The CONTEXT block only helps <strong>if the script runs</strong>. An agent
+    that skips <code>spec-lint.sh</code> — because it is confident, because the
+    change looks small, because its instructions were three versions stale —
+    never sees the block at all. Every mechanism in chapters 3 through 10 has
+    this shape. The scripts fix <em>what happens when they run</em>. Nothing so
+    far fixes <em>whether they run</em>.
+  </p>
+</div>
+
+<p>
+  That is not a bug in any particular check. It is a property of the whole
+  system: verified-scala3, as described up to here, is a <strong>documentary</strong>
+  workflow. It tells an agent what to do and trusts the report that comes back.
+</p>
+
+<h2>The enforcement ladder</h2>
+
+<p>
+  There is a ladder here, and it is worth naming because it mirrors the
+  mechanism ladder for proof obligations from chapter 5. Each rung removes a
+  different opportunity for the rule to be quietly skipped:
+</p>
+
+<div data-pipeline="enforce"></div>
+<script type="application/json" id="enforce">
+[
+ { "short":"1 prose", "label":"Rung 1 · A rule in the schema",
+   "body":"<p>The rule exists in <code>schema.yaml</code> and in the skill instruction. An agent that reads it and chooses to apply it will apply it correctly.</p><p><strong>Fails when:</strong> the agent does not read it (stale skill), reads it and misjudges applicability, or applies it and misreports the result.</p><p style='margin-bottom:0'><strong>Cost:</strong> nothing. <strong>Coverage:</strong> everything — including all the judgement that can never move further up this ladder.</p>" },
+
+ { "short":"2 template", "label":"Rung 2 · A slot in the template",
+   "body":"<p>The artifact template has a section that must be filled — a Proof Obligations table, a CONTEXT block to paste. An empty slot is visible in review in a way that an unwritten paragraph is not.</p><p><strong>Fails when:</strong> the slot is filled with plausible text nobody checks. A table with enough rows still passes a glance.</p><p style='margin-bottom:0'><strong>This is why F7 exists:</strong> the row count was rung 2; requirement→obligation reachability is rung 3.</p>" },
+
+ { "short":"3 script", "label":"Rung 3 · A script the agent runs",
+   "body":"<p><code>spec-lint.sh</code>, <code>registry-check.sh</code>, <code>danger-scan.sh</code>. Now the verdict is objective and reproducible: F10 either fires or it does not, and no amount of confident prose changes that.</p><p><strong>Fails when:</strong> nobody runs it. This is the entire residual gap — and note that a stale skill produces exactly this failure, because the instruction to run the new check was never delivered.</p><p style='margin-bottom:0'><strong>Cost:</strong> milliseconds. <strong>Coverage:</strong> the greppable subset only.</p>" },
+
+ { "short":"4 hook", "label":"Rung 4 · A hook the harness runs",
+   "body":"<p>The agent no longer decides. The harness invokes the script at a lifecycle event — session start, a file write, a commit — regardless of what the agent intended.</p><p><strong>Fails when:</strong> the hook is not installed on this machine, or a blocking hook misfires and strands the agent with no way forward.</p><p style='margin-bottom:0'><strong>The trade:</strong> you buy certainty about <em>whether</em> and you pay in configuration that lives outside the repository.</p>" },
+
+ { "short":"5 CI", "label":"Rung 5 · A gate in CI",
+   "body":"<p>The check runs on the server, on every push, for every contributor, with no local configuration at all. Nothing merges without it.</p><p><strong>Fails when:</strong> feedback arrives minutes after the mistake instead of seconds, so the agent has already built on top of it.</p><p style='margin-bottom:0'><strong>Not a replacement for rung 4:</strong> CI catches it eventually; the hook catches it while the agent is still holding the context that produced it. Use both — this is exactly why the gate checks are bash + <code>git grep</code> only.</p>" }
+]
+</script>
+
+<div class="box insight">
+  <div class="box-title">The same move, one level up</div>
+  <p style="margin-bottom:0">
+    F10 took a question the reviewer was answering by judgement — <em>does this
+    spec cite its concepts?</em> — and made it a fact. A hook takes a question
+    the agent was answering by choice — <em>should I run the linter?</em> — and
+    removes the choice. Both are the same operation: find the step that depends
+    on someone remembering, and delete the remembering.
+  </p>
+</div>
+
+<h2>What a hook actually is</h2>
+
+<p>
+  A hook is a command the agent harness runs at a named lifecycle event,
+  passing it a JSON description of what is happening, and reading back a
+  decision. The remarkable thing — and this is what makes the whole approach
+  viable for a workflow that must run under several different agents — is how
+  strongly the contract has converged:
+</p>
+
+<pre data-lang="bash"><code># the harness invokes:  gate.sh &lt; event.json
+{ "hook_event_name": "SessionStart",
+  "session_id": "…", "cwd": "/home/you/project" }
+
+# the script answers, on stdout:
+{ "hookSpecificOutput": { "additionalContext": "…facts for the model…" } }
+
+# or refuses the action outright:
+{ "decision": "block", "reason": "spec-lint: 3 FAIL" }     # or: exit 2</code></pre>
+
+<p>
+  Claude Code, Codex CLI and Devin CLI arrived at that contract independently.
+  A script written for one runs unmodified under the other two; only the config
+  file that points at it differs.
+</p>
+
+<h2>Are hooks portable across agents?</h2>
+
+<p>
+  Partly — and the part that is <em>not</em> portable turns out not to matter.
+  Here is the landscape, checked against primary sources rather than
+  recollection:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Agent</th><th>Config</th><th>Style</th><th>Can block?</th></tr></thead>
+  <tbody>
+    <tr><td>Claude Code</td><td><code>settings.json</code> (also HTTP)</td><td>shell, JSON stdin/stdout</td><td>yes — exit 2 / <code>permissionDecision</code></td></tr>
+    <tr><td>Devin CLI</td><td><code>.devin/hooks.v1.json</code></td><td>shell, JSON stdin/stdout</td><td>yes — exit 2 / <code>decision:block</code></td></tr>
+    <tr><td>Codex CLI</td><td><code>~/.codex/hooks.json</code></td><td>shell, JSON stdin/stdout</td><td>yes</td></tr>
+    <tr><td>Cursor</td><td><code>~/.cursor/hooks.json</code></td><td>shell</td><td>yes</td></tr>
+    <tr><td>pi</td><td><code>.pi/extensions/*.ts</code></td><td><strong>TypeScript, in-process</strong></td><td>yes — <code>return { block: true }</code></td></tr>
+    <tr><td>OpenCode</td><td>TS plugin module</td><td><strong>TypeScript, in-process</strong></td><td>yes</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Two families, then: a <strong>shell family</strong> that shares one contract,
+  and an <strong>in-process TypeScript family</strong> that is richer and
+  typed. And the five events this workflow needs —
+  <code>SessionStart</code>, <code>UserPromptSubmit</code>,
+  <code>PreToolUse</code>, <code>PostToolUse</code>, <code>Stop</code> — exist
+  in <em>every</em> one of them, under different names.
+</p>
+
+<div class="box rule">
+  <div class="box-title">Rule · the transferable unit is the script, not the config</div>
+  <p style="margin-bottom:0">
+    Put <strong>all</strong> logic in a shell script with a plain CLI. Keep
+    every per-agent adapter trivial enough to read in one screen: it decides
+    <em>when</em> to ask and <em>where</em> to put the answer, nothing else.
+    The TypeScript family can spawn the same script, so one implementation
+    serves six harnesses. Any logic that leaks into an adapter is logic you now
+    maintain six times — and five of those copies will drift.
+  </p>
+</div>
+
+<div class="box insight">
+  <div class="box-title">Empirical support, from an unrelated tool</div>
+  <p style="margin-bottom:0">
+    The session-observability tool <em>orca</em> ships thirteen agent adapters —
+    claude, devin, codex, cursor, copilot, gemini, grok, kimi, droid and more.
+    They are <strong>byte-identical except for one URL path</strong>. Someone
+    else, solving a different problem, converged on the same architecture: one
+    payload contract, thirteen trivial bindings.
+  </p>
+</div>
+
+<h2>The prototype: gate.sh</h2>
+
+<p>
+  The workflow's hook entry point is
+  <code>openspec/schemas/verified-scala3/hooks/gate.sh</code>. Two design
+  decisions in it are worth stealing whatever you are building.
+</p>
+
+<h3>One implementation of the facts</h3>
+
+<p>
+  <code>gate.sh</code> does not compute the applicability facts. It shells out
+  to <code>spec-lint.sh --context-only</code>, which was added for exactly this
+  purpose:
+</p>
+
+<pre data-lang="bash"><code>context="$(bash "$SCANNER/spec-lint.sh" --context-only "$REPO")"</code></pre>
+
+<p>
+  Recomputing them inside the hook would have been three lines shorter and
+  would have created a second implementation that could disagree with the one
+  the lint reports. That is the drift defect from chapter 9 — the version field
+  nobody read — rebuilt deliberately, by hand. The same reasoning governs
+  workflow position, which is derived from the artifact DAG in
+  <code>schema.yaml</code> rather than from a list copied into the script.
+</p>
+
+<h3>Silence where it does not apply</h3>
+
+<pre data-lang="bash"><code>[ -d "$REPO/openspec" ] || exit 0</code></pre>
+
+<p>
+  A hook installed globally runs in every repository you open. If it emits
+  anything at all in projects that do not use this workflow, it is noise; noise
+  gets disabled; and <strong>a disabled hook enforces nothing</strong>. The
+  cheapest way to keep an enforcement mechanism alive is to make it invisible
+  wherever it is irrelevant.
+</p>
+
+<h2>Start non-blocking</h2>
+
+<p>
+  The tempting first hook is the powerful one: block the commit until
+  <code>spec-lint</code> passes. Resist it for one release.
+</p>
+
+<div class="two-col">
+  <div class="box">
+    <div class="box-title">Tier B · inject context (start here)</div>
+    <p style="margin-bottom:0">
+      At session start, read the applicability facts and the workflow position
+      off disk and hand them to the model. It cannot misjudge whether the
+      registry exists, because the answer arrives before it can guess.
+      <strong>Never blocks; always exits 0.</strong> Worst case if it breaks:
+      the agent gets no extra context, exactly as before.
+    </p>
+  </div>
+  <div class="box">
+    <div class="box-title">Tier A · gate the action (earn it)</div>
+    <p style="margin-bottom:0">
+      Lint on every <code>spec.md</code> write; registry-check before commit.
+      Strictly better <em>when it works</em>. Worst case if it breaks: a
+      failing check the agent cannot satisfy and cannot bypass, and a workflow
+      that now prevents work rather than guiding it.
+    </p>
+  </div>
+</div>
+
+<p>
+  The asymmetry in those failure modes is the whole argument. Ship Tier B,
+  live with it, and promote to Tier A on evidence rather than on enthusiasm.
+  Whatever you ship, give it an escape hatch —
+  <code>VERIFIED_SCALA3_HOOKS=off</code> — because the person who needs to
+  bypass your gate at 2am should not have to edit JSON to do it.
+</p>
+
+<h2>Verifying a hook fires</h2>
+
+<p>
+  This deserves its own section because the obvious test is not sufficient. A
+  hook has three independent ways to fail, and running the script by hand rules
+  out only the first.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Level</th><th>Test</th><th>Rules out</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>run <code>gate.sh</code> yourself</td><td>a broken script</td></tr>
+    <tr><td>2</td><td>set <code>VERIFIED_SCALA3_HOOKS_TRACE</code>, start a session, read the log</td><td>config the harness never picked up</td></tr>
+    <tr><td>3</td><td>ask the model something only the injected block knows</td><td>the harness ran it and dropped the output</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box rule">
+  <div class="box-title">Rule · log the silent runs too</div>
+  <p style="margin-bottom:0">
+    <code>gate.sh</code> writes a trace line on <em>every</em> invocation,
+    including the ones that deliberately emit nothing. Without that,
+    “fired and correctly stayed silent” and “never fired at all” produce
+    identical evidence — an empty log — and you would spend an afternoon
+    debugging a hook that was working perfectly.
+  </p>
+</div>
+
+<pre data-lang="bash"><code>2026-08-07T19:07:31Z  event=session-start  repo=/…/adk4s   emit: 1396 chars
+2026-08-07T19:07:31Z  event=session-start  repo=/…/plain   skip: no openspec/ here
+2026-08-07T19:07:31Z  event=session-start  repo=/…/adk4s   skip: VERIFIED_SCALA3_HOOKS=off</code></pre>
+
+<p>
+  Level 3 is the one that actually matters, and it has a pleasing symmetry with
+  why the hook exists at all. The hook is there to stop an agent answering a
+  repository question from memory. So the test is whether it can now answer one
+  <em>without looking</em>:
+</p>
+
+<div class="box">
+  <p style="margin-bottom:0">
+    “How many concept files does the CONTEXT block report, and does the
+    altitude rule apply?” — asked before the agent runs any tool. A correct
+    answer with no tool call means the injection landed. If it has to go and
+    look, the context was dropped somewhere between the harness and the model.
+  </p>
+</div>
+
+<h2>Where hooks are the wrong tool</h2>
+
+<p>
+  The failure mode of learning about hooks is hooking everything. Three places
+  where they are actively a bad idea:
+</p>
+
+<ul>
+  <li><strong>The expensive rings.</strong> Rings 3, 5 and 6 take minutes. A
+      hook that runs the test suite on every edit destroys the loop it was
+      meant to protect. These belong to the apply loop and to CI, unchanged.</li>
+  <li><strong>Judgement.</strong> Altitude <em>compliance</em>, observability,
+      testability. A hook can force the question to be asked; it can never
+      answer it. Same boundary as chapter 9 — do not let a hook's green exit
+      code imply a judgement was made.</li>
+  <li><strong>The human gates.</strong> A <code>Stop</code> hook <em>can</em>
+      refuse to end a turn until the typed-contract review is recorded. But
+      that fights the human rather than the agent, and a blocking
+      <code>Stop</code> hook that misfires is genuinely difficult to escape.</li>
+</ul>
+
+<h2>The risks, stated plainly</h2>
+
+<div class="box danger">
+  <div class="box-title">A hook is not a skill</div>
+  <p style="margin-bottom:0">
+    A skill is inert text an agent may choose to read. A hook is a shell
+    command the harness <strong>executes</strong>, on every session, with your
+    full permissions. When a workflow is vendored into many repositories, a
+    hook config that ships with it runs on every collaborator's machine that
+    installs it. That is why <code>install-hooks.sh</code> is a separate
+    command from <code>install-skills.sh</code>, defaults to a dry run, and
+    prints exactly what it would write. Installing enforcement should be a
+    decision, not a side effect.
+  </p>
+</div>
+
+<p>
+  Two smaller ones worth designing against. <strong>Deadlock:</strong> a
+  blocking gate that fails for an unrelated reason leaves the agent with no
+  legal move — hence fast, high-precision checks only, F-level never W-level,
+  and always an escape variable. <strong>Duplicate enforcement:</strong> once
+  a check runs from both the skill and the hook, the report should record which
+  produced the output, or you have reinvented drift in a new location.
+</p>
+
+<div class="quiz" data-quiz="q11"></div>
+<script type="application/json" id="q11">
+[
+  {
+    "q": "You add a hook that runs spec-lint on every spec.md write and blocks on FAIL. A teammate reports the agent is stuck: the lint fails on a pre-existing spec they did not touch, and it cannot proceed. What is the design error?",
+    "options": [
+      "spec-lint is too strict and should be downgraded to warnings",
+      "The gate is scoped to the whole repository rather than to the change being edited, and it shipped without an escape hatch — a blocking check must be both narrowly scoped and bypassable",
+      "The hook should have been installed globally instead of per-project",
+      "Blocking hooks should never be used"
+    ],
+    "answer": 1,
+    "why": "Two separable mistakes. Scope: linting every spec on a write to one of them makes unrelated debt block unrelated work. Escape: any blocking gate needs a documented bypass, because the alternative is a workflow that prevents work. Note what is NOT the fix — weakening the check. The check was right; its blast radius and its lack of an exit were wrong."
+  },
+  {
+    "q": "Your trace log is completely empty after starting a session in a repository that definitely uses the workflow. What does that tell you?",
+    "options": [
+      "The hook fired but had nothing to report",
+      "The harness never invoked the hook — because gate.sh traces every invocation including the silent ones, an empty log rules out 'fired and stayed quiet' and points at the config",
+      "The repository is missing openspec/",
+      "The model ignored the injected context"
+    ],
+    "answer": 1,
+    "why": "This is exactly why the trace records skips as well as emissions. Had it only logged successful injections, an empty log would have been ambiguous between 'never called' and 'called, correctly silent' — and you would have no way to tell which. A missing openspec/ would have produced a 'skip:' line, not silence."
+  },
+  {
+    "q": "Why does gate.sh call `spec-lint.sh --context-only` instead of computing the applicability facts itself, given that would be shorter?",
+    "options": [
+      "Performance — the script is already loaded in cache",
+      "To keep one implementation of the facts: a second copy could disagree with the one the lint reports, which is the same recorded-but-never-checked drift the workflow exists to eliminate",
+      "Because bash cannot check whether a directory exists",
+      "To make the hook portable across agents"
+    ],
+    "answer": 1,
+    "why": "Shorter is not the goal. Two implementations of the same fact will eventually disagree, and the disagreement will be silent — the session-start context saying one thing while the lint report says another. The workflow already had one instance of that defect (a version field nobody read); rebuilding it deliberately would be a poor trade for three lines."
+  }
+]
+</script>
+
+<h2>The through-line</h2>
+
+<p>
+  Every chapter of this tutorial has made the same move in a different place.
+  Chapter 1 refused to accept a green suite as evidence. Chapter 5 refused to
+  accept an obligation without a named mechanism. Chapter 9 refused to accept
+  N/A without a machine-attested fact. This chapter refuses to accept
+  <em>“the instruction says to run it”</em> as evidence that it ran.
+</p>
+
+<p>
+  The pattern generalises past this workflow, and it is worth carrying:
+  wherever a process depends on someone remembering to do something, that
+  dependency is the defect. Not the person, not the agent — the dependency.
+  Find it and delete it, one rung at a time, and be honest in an artifact about
+  the rungs you did not climb.
+</p>
+
+<div class="checkpoint">
+  <h4>Check yourself</h4>
+  <p style="margin-bottom:.6rem">You should now be able to:</p>
+  <ul>
+    <li>Explain the difference between a documentary rule and an enforced one, and place any check on the five-rung ladder.</li>
+    <li>Say why the hook <em>script</em> transfers across agents while the hook <em>config</em> does not — and design so only the script matters.</li>
+    <li>Justify shipping context injection before blocking gates, in terms of the two failure modes.</li>
+    <li>Verify a hook at all three levels, and explain why an empty trace log would be ambiguous if silent runs were not logged.</li>
+    <li>Name three things that should <em>not</em> be hooks, and why.</li>
+  </ul>
+  <p style="margin-bottom:0">
+    If you can only take one idea: find the step that depends on someone
+    remembering, and delete the remembering.
+  </p>
+</div>
+
+<div class="chapter-nav">
+  <a href="10-practice.html"><span class="dir">← Chapter 10</span> In practice</a>
+  <a class="next" href="index.html"><span class="dir">Back to</span> Start here</a>
+</div>
+
+</div>
+</main>
+</div>
+<script src="assets/tutorial.js"></script>
+</body>
+</html>

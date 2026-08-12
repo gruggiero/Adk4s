@@ -7,7 +7,9 @@ concept ReactAgent
 purpose
     Run a ReAct (Reasoning + Acting) loop: call the LLM, execute any tool
     calls, feed results back, and repeat until the LLM produces a final
-    message with no tool calls or maxSteps is exhausted.
+    message with no tool calls or maxSteps is exhausted. As of the
+    harness-api refactor, ReactAgent is sugar over HarnessAgent[IO] with
+    MiddlewareStack.empty — the loop body lives in HarnessAgent.
 state
     name: ReactAgent -> String
     description: ReactAgent -> String
@@ -16,28 +18,38 @@ state
     systemPrompt: ReactAgent -> Option[String]
     maxSteps: ReactAgent -> Int
     emitter: ReactAgent -> Option[AgentEventEmitter]
-    toolsNode: ReactAgent -> ToolsNode
+    harness: ReactAgent -> HarnessAgent[IO]
 actions
     create [ model ; tools ; systemPrompt? ; maxSteps? ]
+        => [ agent: ReactAgent ]
+    create [ name ; description ; model ; tools ; systemPrompt ; maxSteps ]
+        => [ agent: ReactAgent ]
+    create [ name ; description ; model ; tools ; systemPrompt ; maxSteps ; emitter ]
         => [ agent: ReactAgent ]
     createWithToolProvider [ model ; toolProvider ; systemPrompt? ; maxSteps? ]
         => [ agent: ReactAgent ]
     generate [ messages: List[Message] ; maxSteps: Int ]
         => [ message: AssistantMessage ]
     generate [ messages ; maxSteps ]
-        => [ error: RuntimeException("ReactAgent: max steps exceeded") ]
+        => [ error: MaxStepsExceededError(steps, max) ]
     generate [ messages ; maxSteps ]
         => [ error: AgentInterruptedException(signal) ]
     stream [ messages ; maxSteps ]
         => [ chunks: Stream[IO, StreamedChunk] ]
 operational principle
-    Starting from the system prompt and user messages, the agent calls
-    model.generate; if the assistant message has no tool calls it emits
-    MessageOutput and returns. Otherwise it emits ToolCallRequested events,
-    executes the tool calls via ToolsNode, emits ToolCallCompleted events,
-    appends the tool messages to the conversation, and recurses with one
-    fewer remaining step. When remainingSteps reaches zero the loop raises
-    "ReactAgent: max steps exceeded".
+    ReactAgent.create constructs a HarnessAgent[IO] with
+    MiddlewareStack.empty and wraps it in a ReactAgentAdapter. The adapter
+    delegates generate/stream to the harness, adapting HarnessResult back
+    to IO[AssistantMessage] (raising MaxStepsExceededError on Failed,
+    AgentInterruptedException on Interrupted). The loop itself runs in
+    HarnessAgent: initialize state from HarnessState.initial(empty),
+    run stack.beforeAgent (identity for empty stack), iterate — build
+    ModelRequest with per-request tools and prompt, run
+    stack.wrapModelCall(baseModelStep), execute tool calls through
+    stack.wrapToolCall(baseToolStep), merge state, append messages,
+    recurse until no tool calls or maxSteps. On normal termination run
+    stack.afterAgent (identity for empty stack). On
+    AgentInterruptedException, snapshot state without afterAgent.
 ```
 
 ## Implementation map
@@ -45,59 +57,59 @@ operational principle
 | Element | Code |
 |---|---|
 | trait `ReactAgent` | `trait ReactAgent extends Agent` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
-| impl `ReactAgentImpl` | `private final class ReactAgentImpl(config: Config)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
+| adapter `ReactAgentAdapter` | `private final class ReactAgentAdapter(harness: HarnessAgent[IO])` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
 | impl `DynamicReactAgentImpl` | `private final class DynamicReactAgentImpl` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
 | state `Config` | `final case class Config(name, description, model, tools, systemPrompt, maxSteps, emitter)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
-| action `create` | `ReactAgent.create(...)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
+| action `create` | `ReactAgent.create(...)` → `fromHarnessConfig(config)` → `HarnessAgent[IO](harnessConfig)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
 | action `createWithToolProvider` | `ReactAgent.createWithToolProvider(...)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
-| action `generate` | `ReactAgentImpl.generate(messages, maxSteps): IO[AssistantMessage]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
-| action `stream` | `ReactAgentImpl.stream(messages, maxSteps): Stream[IO, StreamedChunk]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
-| action `executeToolCalls` | `ReactAgentImpl.executeToolCalls(toolCalls): IO[List[ToolMessage]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
-| error `maxSteps` | `RuntimeException("ReactAgent: max steps exceeded")` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
+| action `generate` | `ReactAgentAdapter.generate` → `harness.generate` → adapt `HarnessResult` to `IO[AssistantMessage]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
+| action `stream` | `ReactAgentAdapter.stream` → `harness.stream` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`) |
+| loop body | `HarnessAgent.loop` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/HarnessAgent.scala`) |
+| error `maxSteps` | `MaxStepsExceededError(steps, max)` (`adk4s-core/src/main/scala/org/adk4s/core/error/AdkError.scala`) |
 | error `interrupt` | `AgentInterruptedException(signal)` (`adk4s-core/src/main/scala/org/adk4s/core/error/AdkError.scala`) |
 | runtime host | `org.adk4s.orchestration.agent` |
 
 ## Synchronizations
 
 ```
-sync ToolCallsToToolsNode
+sync ToolCallsToHarnessAgent
 when {
-    ReactAgent/iterate: assistantMsg.toolCalls nonEmpty
+    HarnessAgent/iterate: assistantMsg.toolCalls nonEmpty
 }
 then {
-    ToolsNode/executeFromToolCalls: toolCalls -> ToolExecutionResult
+    HarnessAgent/executeToolCalls: toolCalls -> (List[ToolMessage], HarnessState, Option[InterruptSignal])
 }
 ```
 
-impl: `ReactAgent.executeToolCalls` calls `toolsNode.executeFromToolCalls(toolCalls)` and re-raises `AgentInterruptedException` when `result.interruptSignal.isDefined` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`).
-Deviation: the node is constructed once from `config.tools`; tools cannot be added per call without `createWithToolProvider`.
+impl: `HarnessAgent.executeToolCalls` runs each tool call through `stack.wrapToolCall(baseToolStep)`, merges states, and catches `AgentInterruptedException` to produce an interrupted outcome (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/HarnessAgent.scala`).
 
 ```
 sync ToolResultToConversation
 when {
-    ToolsNode/execute: returns ToolExecutionResult with no interruptSignal
+    HarnessAgent/executeToolCalls: returns no interruptSignal
 }
 then {
-    ReactAgent/iterate: appends assistantMsg + tool messages, recurses with remainingSteps - 1
+    HarnessAgent/loop: appends assistantMsg + tool messages, recurses with remainingSteps - 1
 }
 ```
 
-impl: `ReactAgentImpl.generateLoop` appends `assistantMsg +: result.toLlm4sMessages()` to the conversation and recurses (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`).
+impl: `HarnessAgent.loop` appends `assistantMsg +: toolMessages` to the conversation and recurses (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/HarnessAgent.scala`).
 
 ```
 sync EventScopeEmission
 when {
-    ReactAgent/iterate: produces an AgentEvent
+    HarnessAgent/iterate: produces an AgentEvent
 }
 then {
-    AgentEventEmitter/scoped: attaches the current RunPath
+    AgentEventEmitter/emit: attaches the event
 }
 ```
 
-impl: `emitEvent` calls `emitter.foreach(_.emit(event))` for `MessageOutput`, `ToolCallRequested`, `ToolCallCompleted`, `IterationCompleted` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`).
+impl: `HarnessAgent.emitEvent` calls `emitter.fold(IO.unit)(_(event))` for `MessageOutput`, `ToolCallRequested`, `ToolCallCompleted`, `IterationCompleted` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/HarnessAgent.scala`).
 
 ## Deviations from the pattern
 
-- `stream` executes the entire tool loop via `resolveToolLoops` (non-streaming) before streaming the final response — the tool-calling phase is not streamed (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`).
-- `maxSteps exceeded` raises a generic `RuntimeException` rather than the structured `MaxStepsExceededError` present in the `AdkError` hierarchy (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`).
+- `stream` executes the entire tool loop via `generate` before streaming the final response — the tool-calling phase is not streamed (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/HarnessAgent.scala`).
+- `maxSteps exceeded` now raises `MaxStepsExceededError` (structured `AdkError`) instead of the previous generic `RuntimeException` — a behavior improvement from the refactor (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/HarnessAgent.scala`).
 - `DynamicReactAgentImpl` recreates the inner `ReactAgent` on each `generate` call from the current tool list, losing per-invocation state (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`).
+- `ReactAgent.create` is sugar for the empty-stack path; callers needing middleware MUST construct `HarnessAgent` directly — `ReactAgent.create` does not accept a `MiddlewareStack` argument (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/ReactAgent.scala`).

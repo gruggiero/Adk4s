@@ -153,7 +153,7 @@ rules:
   concept-inventory:
     - Scan the ACTUAL project source tree, do not invent entries
     - Include exact package paths (used for import statements in implementation)
-    - Scan all 5 modules: structured-llm, structured-llm-test-models, adk4s-core, adk4s-orchestration, adk4s-examples
+    - "Scan all 5 modules: structured-llm, structured-llm-test-models, adk4s-core, adk4s-orchestration, adk4s-examples"
     - Also scan llm4s types that are part of the public API surface (imported across modules)
     - Run the consistency check (packages importable, types match source) and record the result
     - For empty/new projects, create the tables with headers but no data rows

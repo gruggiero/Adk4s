@@ -59,8 +59,8 @@ object MemoryRetriever:
   def toDocument(hit: MemoryHit): Document =
     val payloadMeta: Map[String, JsonValue] =
       hit.payload.view.filterKeys(k => !reservedKeys.contains(k)).mapValues(v => S4sDocument.DString(v)).toMap
-    val withScore: Map[String, JsonValue]   = payloadMeta.updated("score", S4sDocument.DNumber(BigDecimal(hit.score)))
-    val metadata: Map[String, JsonValue]    = hit.provenance match
+    val withScore: Map[String, JsonValue] = payloadMeta.updated("score", S4sDocument.DNumber(BigDecimal(hit.score)))
+    val metadata: Map[String, JsonValue] = hit.provenance match
       case Some(p) => withScore.updated("provenance", S4sDocument.DString(p))
       case None    => withScore
     Document(id = synthesizeId(hit), content = hit.text, metadata = metadata)

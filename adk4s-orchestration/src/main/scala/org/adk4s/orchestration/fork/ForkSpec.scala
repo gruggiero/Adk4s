@@ -1,18 +1,19 @@
 package org.adk4s.orchestration.fork
 
-import workflows4s.wio.{ErrorMeta, WCState, WIO, WorkflowContext}
+import workflows4s.wio.{ ErrorMeta, WCState, WIO, WorkflowContext }
 
-/** ForkSpec defines a branching point with multiple conditional paths.
-  *
-  * Type parameters:
-  * - I: Input type to the fork
-  * - O: Output type
-  */
+/**
+ * ForkSpec defines a branching point with multiple conditional paths.
+ *
+ * Type parameters:
+ * - I: Input type to the fork
+ * - O: Output type
+ */
 case class ForkSpec[I, O](
   cases: Vector[ForkSpec.Case[I, O, ?]],
   name: Option[String]
 ):
-  
+
   /** Add a case to this fork. */
   def addCase[CaseIn](
     predicate: I => Option[CaseIn],

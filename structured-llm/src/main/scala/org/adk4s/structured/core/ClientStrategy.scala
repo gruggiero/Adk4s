@@ -66,8 +66,8 @@ object ClientStrategy:
         operation(head).attempt.flatMap {
           case Right(value) => F.pure(value)
           case Left(error: StructuredLLMError) =>
-            val idx: Int             = errors.size
-            val name: String         = clientNames.lift(idx).getOrElse(s"client-$idx")
+            val idx: Int              = errors.size
+            val name: String          = clientNames.lift(idx).getOrElse(s"client-$idx")
             val record: AttemptRecord = AttemptRecord(name, error, "", System.currentTimeMillis())
             executeFallback(tail, operation, clientNames, errors :+ record)
           case Left(other) =>

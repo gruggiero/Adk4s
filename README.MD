@@ -1,8 +1,27 @@
 # ADK4S — Agent Development Kit for Scala 3
 
-ADK4S is a functional, type-safe agent toolkit for Scala 3. It builds on [LLM4S](https://github.com/llm4s/llm4s) (the Scala LLM client) and [workflows4s](https://github.com/business4s/workflows4s) (the workflow engine) to provide a complete stack for building LLM-powered agents, from structured outputs to multi-agent orchestration.
+ADK4S is a functional, type-safe agent toolkit for Scala 3. It builds on [LLM4S](https://github.com/llm4s/llm4s) (the Scala LLM client) and [workflows4s](https://github.com/business4s/workflows4s) (the workflow engine) to provide a complete stack for building durable LLM-powered agents, from structured outputs to multi-agent orchestration.
 
 **Core idea**: compose LLM calls, tools, and workflows as pure functions using Cats Effect and fs2 — with built-in observability, interrupt/resume, and type-safe structured outputs.
+
+## Key Features
+
+- **Durable agent memory** — agents remember across sessions, with temporal scoping and a contract suite for backend implementers.
+- **DAG workflows** — type-safe directed acyclic graphs with validated edges, compiled to an executable workflow. Nodes support checkpointing, retry, and interruption.
+- **DSPy-inspired Evaluation harness** — run a program over a labeled dataset in parallel, score with exact-match or LLM judges, export to JSON or CSV.
+- **Memory-orchestrated execution** — an opt-in decorator recalls facts before each turn and writes new ones after, skipping failed or interrupted runs.
+- **ReAct agents** — a built-in loop calls the LLM, runs tools, and iterates until a final answer, with a configurable step budget.
+- **Type-safe structured outputs** — declare the shape you want, inject it into the prompt, and parse the response into typed values. A lenient parser recovers from messy LLM JSON.
+- **Real-time observability** — a structured event stream surfaces every message, tool call, iteration, interrupt, and error, traced through nested agents.
+- **Provider-agnostic LLM access** — one interface for OpenAI, Anthropic, and any compatible endpoint, sync or streaming.
+- **Tool execution engine** — parallel or sequential runs with composable middleware (logging, timing, JSON repair, custom).
+- **Universal computation primitive** — LLM calls, tools, and workflows are the same kind of value, so they compose uniformly.
+- **Multi-agent hierarchies** — any agent can be wrapped as a tool, so parents delegate to specialist sub-agents recursively.
+- **Interrupt and resume** — tools pause mid-flight with their location and state; humans review and resume from the checkpoint.
+- **Functional & type-safe** — pure functions, immutable data, no escape hatches. The compiler is on your side.
+- **Streaming everywhere** — LLM tokens, tool output, and events all flow as functional streams.
+- **Multi-ring verification** — static analysis, mutation testing, and formal verification back the core abstractions.
+- **55+ runnable examples** — mock LLM by default (no API key needed), auto-switches to a real provider when a key is present.
 
 ```mermaid
 graph TD
@@ -33,6 +52,8 @@ graph TD
     eval --> structured
 ```
 
+> 💡 All code snippets below are collapsed by default. Click each one to expand it.
+
 ## What LLM4S Provides (Foundation)
 
 LLM4S is the LLM client layer that adk4s builds on:
@@ -50,6 +71,9 @@ LLM4S is the LLM client layer that adk4s builds on:
 
 Wraps llm4s' callback-based `LLMClient` with a functional API built on Cats Effect and fs2:
 
+<details>
+<summary>Show code — ChatModel trait</summary>
+
 ```scala
 import cats.effect.IO
 import org.adk4s.core.component.ChatModel
@@ -61,11 +85,16 @@ trait ChatModel[F[_]]:
   def withConfig(config: ChatModelConfig): ChatModel[F]
 ```
 
+</details>
+
 Supports configuration (temperature, maxTokens, topP, stopSequences) and converts llm4s' `Iterator`-based streaming into proper `fs2.Stream`.
 
 ### Three-Tier Tool System
 
 LLM4S has a single `ToolFunction[I, O]`. ADK4S provides three levels of abstraction that interoperate:
+
+<details>
+<summary>Show code — Three-tier tool traits</summary>
 
 ```scala
 // Level 1: Base trait (metadata only)
@@ -82,7 +111,12 @@ trait StreamableTool[F[_]] extends Tool[F]:
   def runStream(arguments: ujson.Value): fs2.Stream[F, String]
 ```
 
+</details>
+
 Factory methods for quick tool creation:
+
+<details>
+<summary>Show code — Tool factory example</summary>
 
 ```scala
 val weatherTool: InvokableTool[IO] = Tool.invokable[IO](
@@ -92,9 +126,14 @@ val weatherTool: InvokableTool[IO] = Tool.invokable[IO](
 )
 ```
 
+</details>
+
 ### ToolsNode — Tool Execution Engine
 
 Executes LLM tool calls with middleware pipelines, parallel/sequential strategies, and event emission:
+
+<details>
+<summary>Show code — ToolsNode configuration and execution</summary>
 
 ```scala
 val config: ToolsNodeConfig = ToolsNodeConfig.builder
@@ -109,11 +148,16 @@ val toolsNode: ToolsNode = ToolsNode(config)
 val result: IO[ToolExecutionResult] = toolsNode.executeFromToolCalls(calls)
 ```
 
+</details>
+
 Both llm4s `ToolFunction` and ADK `InvokableTool` can coexist in the same ToolsNode.
 
 ### Runnable — Universal Computation Abstraction
 
 A single interface supporting four execution modes:
+
+<details>
+<summary>Show code — Runnable interface</summary>
 
 ```scala
 trait Runnable[I, O]:
@@ -123,7 +167,12 @@ trait Runnable[I, O]:
   def transform(input: fs2.Stream[IO, I]): fs2.Stream[IO, O] // streamed in, streamed out
 ```
 
+</details>
+
 Runnables compose with `andThen`, `parallel`, `timeout`, `handleError`, and `contramap`:
+
+<details>
+<summary>Show code — Runnable composition</summary>
 
 ```scala
 val pipeline: Runnable[String, String] =
@@ -132,11 +181,16 @@ val pipeline: Runnable[String, String] =
     .handleError((_: Throwable) => IO.pure("-1"))
 ```
 
+</details>
+
 All ADK4S components convert to Runnables: `ChatModel` becomes `Runnable[Conversation, Completion]`, `InvokableTool` becomes `Runnable[ujson.Value, ujson.Value]`.
 
 ### Lambda — Runnable with Metadata
 
 Wraps a Runnable with a name and description for introspection:
+
+<details>
+<summary>Show code — Lambda examples</summary>
 
 ```scala
 val toUpper: Lambda[String, String] = Lambda.pure((input: String) => input.toUpperCase)
@@ -146,9 +200,14 @@ val tokenize: Lambda[String, String] = Lambda.stream((text: String) =>
 )
 ```
 
+</details>
+
 ### ReactAgent — ReAct Loop
 
 Implements the Reasoning + Acting agent loop: call the LLM, execute tool calls, feed results back, repeat until the LLM produces a final response:
+
+<details>
+<summary>Show code — ReactAgent creation and invocation</summary>
 
 ```scala
 val agent: ReactAgent = ReactAgent.create(
@@ -166,9 +225,14 @@ val result: IO[AssistantMessage] = agent.generate(
 )
 ```
 
+</details>
+
 ### AgentTool — Nested Agent Composition
 
 Wraps an Agent as an `InvokableTool`, enabling multi-level hierarchies where a parent agent delegates to specialist sub-agents via tool calls:
+
+<details>
+<summary>Show code — AgentTool composition</summary>
 
 ```scala
 val researchAgent: ReactAgent = ReactAgent.create("research", ...)
@@ -180,9 +244,14 @@ val orchestrator: ReactAgent = ReactAgent.create(
 )
 ```
 
+</details>
+
 ### AgentEvent — Real-Time Observability
 
 Structured event emission during agent execution. Events carry a `RunPath` showing the execution hierarchy:
+
+<details>
+<summary>Show code — AgentEvent sealed trait</summary>
 
 ```scala
 sealed trait AgentEvent:
@@ -200,11 +269,16 @@ AgentEvent.MemoryRecalled(runPath, query, hitCount)
 AgentEvent.MemoryWritten(runPath, episodes)
 ```
 
+</details>
+
 Events flow through nested agent boundaries via `AgentEventEmitter.scoped(step)`, enabling full visibility into hierarchical execution. The `MemoryRecalled` and `MemoryWritten` variants are emitted by `MemoryAwareRunner` (see below) to trace what memory was recalled and what was written per turn.
 
 ### Interrupt / Resume — Pauseable Agents
 
 Tools can interrupt execution mid-stream. The interrupt signal carries state, an address (where in the hierarchy it occurred), and a human-readable reason:
+
+<details>
+<summary>Show code — InterruptSignal variants</summary>
 
 ```scala
 sealed trait InterruptSignal:
@@ -217,7 +291,12 @@ InterruptSignal.Stateful(address, info, state: ujson.Value)
 InterruptSignal.Composite(address, info, state, children: List[InterruptSignal])
 ```
 
+</details>
+
 `AgentRunner` manages the interrupt/resume lifecycle with checkpoint persistence:
+
+<details>
+<summary>Show code — AgentRunner run and resume</summary>
 
 ```scala
 val runner: AgentRunner = AgentRunner.create(agent, checkpointStore, emitter)
@@ -232,9 +311,14 @@ val resumed: IO[RunResult] = runner.resume(checkpointId, List(
 ))
 ```
 
+</details>
+
 ### Structured LLM — Type-Safe LLM Outputs
 
 A BAML-inspired system that enforces structured outputs from LLMs. Injects Smithy IDL schemas into prompts and parses responses with a lenient Schema-Aligned Parser (SAP):
+
+<details>
+<summary>Show code — StructuredLLM usage</summary>
 
 ```scala
 // 1. Define schema (Smithy IDL injected into prompt, smithy4s schema for decoding)
@@ -252,6 +336,8 @@ val resume: IO[Resume] = structured.complete[Resume](
 )
 ```
 
+</details>
+
 SAP recovers from common LLM output issues: markdown code fences, trailing commas, single quotes, unquoted keys, comments, and truncated responses.
 
 ### AgentMemory — Durable, Recallable Memory
@@ -259,6 +345,9 @@ SAP recovers from common LLM output issues: markdown code fences, trailing comma
 ADK4S agents are stateless across runs by default (`ReactMemoryExample` only keeps the in-conversation message list). The `adk4s-memory-api` module adds a **lightweight capability interface** for durable, cross-session, semantically-searchable memory — the same architectural move ADK4S already made with `Tool` and `Retriever`: the abstraction lives here, implementations live elsewhere.
 
 The interface is effect-polymorphic and imposes no `Async`/`Sync` constraint on callers. A real temporal knowledge-graph backend (GraphStore with Neo4j, embeddings, etc.) and a zero-dependency in-process test double satisfy the same trait:
+
+<details>
+<summary>Show code — AgentMemory trait</summary>
 
 ```scala
 import cats.effect.IO
@@ -270,6 +359,8 @@ trait AgentMemory[F[_]]:
   def rememberAll(episodes: List[Episode])(using Monad[F]): F[List[EpisodeOutcome]]
 ```
 
+</details>
+
 **Value types** (all in `org.adk4s.memory`):
 
 - `Episode(content, sourceType, timestamp, groupId?, metadata?)` — a discrete unit of experience (conversation turn, tool result, ingested document). `timestamp` is *valid time* (when facts were true), not record time. `SourceType` enum: `Conversation`, `Document`, `StructuredData`, `ToolResult`, `ExternalApi`.
@@ -279,6 +370,9 @@ trait AgentMemory[F[_]]:
 
 **In-process test double** — `InMemoryAgentMemory[F]` (requires `Sync[F]`): substring/term-overlap scoring, no extraction, no embeddings, ignores `scope`. Useful for tests, demos, and local dev.
 
+<details>
+<summary>Show code — InMemoryAgentMemory creation</summary>
+
 ```scala
 import cats.effect.IO
 import org.adk4s.memory.*
@@ -286,7 +380,12 @@ import org.adk4s.memory.*
 val mem: IO[AgentMemory[IO]] = InMemoryAgentMemory.create[IO]
 ```
 
+</details>
+
 **Bridge to the existing `Retriever`** — `MemoryRetriever` adapts any `AgentMemory[F]` into the `Retriever[F]` interface that `ReactAgent` / `ToolsNode` already consume, so current agent wiring accepts memory with no new plumbing. It honors `RetrieverConfig.topK` and `minScore`, and packs `score` / `provenance` / `payload` into `Document.metadata` with a deterministic SHA-256 `id`:
+
+<details>
+<summary>Show code — MemoryRetriever bridge</summary>
 
 ```scala
 import org.adk4s.core.component.Retriever
@@ -295,12 +394,17 @@ import org.adk4s.memory.MemoryRetriever
 val retriever: Retriever[IO] = MemoryRetriever[IO](mem, k = 8, scope = None)
 ```
 
+</details>
+
 **Behavioral contract (testkit)** — `adk4s-memory-testkit` publishes `AgentMemoryLaws` in **main** scope so downstream backends depend on it as a regular library and run the same laws against their implementation (e.g. GraphStore with Testcontainers-backed Neo4j). The laws encode four invariants:
 
 1. **Recall-after-remember** (gated by `indexesContent`): a remembered term is found by `recall`.
 2. **Score ordering**: `recall` results are sorted by descending `score`.
 3. **k bound**: `recall(_, k)` returns at most `k` hits.
 4. **Temporal ignorability**: `recall` with `Some(scope)` never errors.
+
+<details>
+<summary>Show code — AgentMemoryLaws usage</summary>
 
 ```scala
 import org.adk4s.memory.testkit.AgentMemoryLaws
@@ -309,11 +413,16 @@ val laws: AgentMemoryLaws = AgentMemoryLaws(indexesContent = true)
 mem.flatMap(laws.all).assertEquals(true)   // InMemoryAgentMemory satisfies the contract
 ```
 
+</details>
+
 **Design boundaries**: no storage engine, embeddings, or graph logic live in this module; no mandatory change to `ReactAgent` behavior (the optional memory hook in orchestration is strictly opt-in and additive); no heavy transitive dependencies on the main classpath.
 
 ### MemoryAwareRunner — Memory-Orchestrated Agent Execution
 
 The `adk4s-orchestration` module provides a decorator that wires `AgentMemory` into the agent execution lifecycle. `MemoryAwareRunner` wraps an `AgentRunner` with a **pre-turn recall** (retrieves relevant facts and injects them into the prompt) and a **post-turn remember** (persists the user input and/or assistant output as episodes), skipping the write on `Interrupted` or `Failed` so partial or erroneous output never corrupts the memory store.
+
+<details>
+<summary>Show code — MemoryAwareRunner wiring</summary>
 
 ```scala
 import org.adk4s.orchestration.memory.*
@@ -336,6 +445,8 @@ mem.flatMap { memory =>
 }
 ```
 
+</details>
+
 **Opt-in and additive**: when `memory = None`, the decorator is the identity — the underlying runner's behavior, event stream, and `RunResult` are unchanged. Existing callers and examples run without modification.
 
 **`MemoryPolicy`** is an immutable config case class:
@@ -354,6 +465,9 @@ Both events share the runner's `RunPath` via `AgentEventEmitter.scoped`, so they
 
 Builds on workflows4s' WIO monad to define type-safe directed acyclic graphs that compile to executable workflows:
 
+<details>
+<summary>Show code — WIOGraph builder and compilation</summary>
+
 ```scala
 val graph: WIOGraph[MyCtx, Input, Nothing, Output] = WIOGraph.builder[MyCtx, Input, Nothing, Output]
   .addNode(validateNode)
@@ -370,11 +484,16 @@ val wio: WIO[Input, Nothing, Output, MyCtx] = graph.toWIO
 val runnable: Runnable[Input, Output] = graph.toRunnable
 ```
 
+</details>
+
 Node types: `WIOPureNode` (pure), `WIORunIONode` (effectful), `WIORunnableNode` (Runnable-based), `WIOForkNode` (conditional branching), `WIOForEachNode` (collection processing), `WIOSubGraphNode` (nested graphs). Nodes support modifiers: checkpoint, retry, and interruption.
 
 ### Evaluation — Parallel Eval Harness with LLM Judges
 
 The `adk4s-eval` module provides a DSPy-inspired evaluation harness: run a program over a labeled dataset in parallel, score each result with a `Metric`, and aggregate into a mean score with per-example rows. It depends only on `structured-llm` (for LLM judges) and Cats Effect/fs2 — no dependency on `adk4s-core`, `adk4s-orchestration`, or the llm4s client.
+
+<details>
+<summary>Show code — Evaluate harness usage</summary>
 
 ```scala
 import cats.effect.IO
@@ -400,6 +519,8 @@ result.map(_.toJson)   // JSON with formatVersion=1
 result.map(_.toCsv)    // CSV: id, score, feedback, outcome, meta
 ```
 
+</details>
+
 **Core types** (all in `org.adk4s.eval`):
 - `Example[I, O]` — one evaluation datum: input, gold output, optional id, metadata map
 - `Score(value: Double, feedback: Option[String])` — a metric score; feedback is inert (preserved in exports, never affects the aggregate)
@@ -415,6 +536,9 @@ result.map(_.toCsv)    // CSV: id, score, feedback, outcome, meta
 - `Judges.semanticF1[F](structured, threshold)` — calls a structured LLM judge for precision/recall, computes F1. Binarized (`Score(1.0)`/`Score(0.0)`) when `trace.isDefined`; raw F1 with reasoning feedback in eval mode. Out-of-range values clamped to [0, 1] via `Constraint.check`
 - `Judges.completeAndGrounded[F](structured, threshold)` — calls a structured LLM judge for completeness/groundedness, computes the average. Same binarize-on-trace and clamping behavior
 
+<details>
+<summary>Show code — LLM judge metric</summary>
+
 ```scala
 import org.adk4s.structured.core.StructuredLLM
 
@@ -425,6 +549,8 @@ val judgeMetric: Metric[IO, String, String] =
 val result: IO[EvaluationResult[String, String]] =
   Evaluate[IO, String, String](program, devset, judgeMetric)
 ```
+
+</details>
 
 **Dataset loading** — `Dataset.fromJsonl[F, I, O](path)` reads a JSONL file (one JSON object per line with `input`, `gold`, optional `id`/`meta` fields) into a `Vector[Example[I, O]]`. Malformed lines raise a `MalformedLineException` naming the line number.
 
@@ -469,6 +595,9 @@ The `adk4s-examples` module contains 55+ runnable examples organized by category
 
 All examples include built-in mock models that produce deterministic responses:
 
+<details>
+<summary>Show code — Running examples with mock LLM</summary>
+
 ```bash
 # Via run-example.sh (recommended)
 ./adk4s-examples/run-example.sh reactagent
@@ -480,9 +609,14 @@ sbt "adk4s-examples/runMain org.adk4s.examples.eino.agent.ReactAgentExample"
 sbt "adk4s-examples/runMain org.adk4s.examples.eino.agent.CompositeInterruptExample"
 ```
 
+</details>
+
 #### With Real LLM (OpenAI API)
 
 Set the `OPENAI_API_KEY` environment variable. Examples auto-detect it and switch from mock to real:
+
+<details>
+<summary>Show code — Running examples with real LLM</summary>
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -493,14 +627,21 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"  # optional
 ./adk4s-examples/run-example.sh reactagent
 ```
 
+</details>
+
 Any OpenAI-compatible API works (set `OPENAI_BASE_URL` to your provider's endpoint).
 
 #### Run All Examples
+
+<details>
+<summary>Show code — Running all examples</summary>
 
 ```bash
 ./adk4s-examples/run-example.sh all
 ./adk4s-examples/run-example.sh --help   # list all available examples
 ```
+
+</details>
 
 ### Example Categories
 
@@ -597,6 +738,9 @@ Type-safe structured outputs with Schema-Aligned Parser.
 
 ## Build Commands
 
+<details>
+<summary>Show code — sbt build commands</summary>
+
 ```bash
 sbt compile                    # compile all modules
 sbt test                       # run all tests
@@ -608,6 +752,8 @@ sbt "adk4s-orchestration/test" # test orchestration module only
 sbt scalafmt                   # format code
 sbt assembly                   # build fat JAR
 ```
+
+</details>
 
 ## License
 

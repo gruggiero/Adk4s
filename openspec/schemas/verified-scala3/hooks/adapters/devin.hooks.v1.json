@@ -1,0 +1,12 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "./openspec/schemas/verified-scala3/hooks/gate.sh --event session-start --format hook-json"
+        }
+      ]
+    }
+  ]
+}

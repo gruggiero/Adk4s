@@ -5,13 +5,24 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import munit.FunSuite
 import workflows4s.runtime.WorkflowInstanceId
-import workflows4s.wio.{ActiveWorkflow, ErrorMeta, SignalDef, SignalRouter, WCEffect, WCEffectLift, WCEvent, WCState, WIO, WIOContext}
-import workflows4s.wio.internal.{WakeupResult, WorkflowEmbedding}
+import workflows4s.wio.{
+  ActiveWorkflow,
+  ErrorMeta,
+  SignalDef,
+  SignalRouter,
+  WCEffect,
+  WCEffectLift,
+  WCEvent,
+  WCState,
+  WIO,
+  WIOContext
+}
+import workflows4s.wio.internal.{ WakeupResult, WorkflowEmbedding }
 
 import java.time.Instant
 import scala.reflect.ClassTag
 
-import TestContext.{Ctx, ForEachWrappedEvent, TestEvent, TestState, TestStateBase, ValueAdded}
+import TestContext.{ Ctx, ForEachWrappedEvent, TestEvent, TestState, TestStateBase, ValueAdded }
 
 class WIONodeModifierTest extends FunSuite:
 
@@ -25,7 +36,8 @@ class WIONodeModifierTest extends FunSuite:
     input: In,
     initialState: TestStateBase
   ): TestStateBase =
-    val liftEffect: WCEffectLift[TestContext.Ctx, IO] = [A] => (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
+    val liftEffect: WCEffectLift[TestContext.Ctx, IO] = [A] =>
+      (fa: WCEffect[TestContext.Ctx][A]) => fa.asInstanceOf[IO[A]]
     val workflow: ActiveWorkflow[TestContext.Ctx] =
       ActiveWorkflow[TestContext.Ctx](workflowInstanceId, wio.provideInput(input), initialState)
     val wakeup: WakeupResult[IO, WCEvent[TestContext.Ctx]] =
@@ -35,15 +47,15 @@ class WIONodeModifierTest extends FunSuite:
         case WakeupResult.Noop() => None
         case WakeupResult.Processed(io) =>
           io.asInstanceOf[IO[WakeupResult.ProcessingResult[WCEvent[TestContext.Ctx]]]].unsafeRunSync() match
-            case WakeupResult.ProcessingResult.Proceeded(event) => Some(event)
+            case WakeupResult.ProcessingResult.Proceeded(event)       => Some(event)
             case WakeupResult.ProcessingResult.Failed(_, Some(event)) => Some(event)
-            case WakeupResult.ProcessingResult.Failed(_, None) => None
+            case WakeupResult.ProcessingResult.Failed(_, None)        => None
     val finalWorkflow: ActiveWorkflow[TestContext.Ctx] =
       eventOpt match
         case Some(event) =>
           workflow.handleEvent(event) match
             case Some(updated) => updated
-            case None => fail("Expected workflow to handle event")
+            case None          => fail("Expected workflow to handle event")
         case None => workflow
     finalWorkflow.liveState
 
@@ -57,7 +69,7 @@ class WIONodeModifierTest extends FunSuite:
         handleEvent = (_: Int, evt: ValueAdded) => TestState(evt.delta)
       )
 
-    val baseWIO: WIO[Int, Nothing, TestState, TestContext.Ctx] = pureNode.toWIO
+    val baseWIO: WIO[Int, Nothing, TestState, TestContext.Ctx]     = pureNode.toWIO
     val modifiedWIO: WIO[Int, Nothing, TestState, TestContext.Ctx] = modifier.apply(baseWIO)
 
     modifiedWIO match
@@ -79,7 +91,7 @@ class WIONodeModifierTest extends FunSuite:
         onError = (_: Throwable, _: WCState[TestContext.Ctx], _: Instant) => IO.pure(None)
       )
 
-    val baseWIO: WIO[Int, Nothing, TestState, TestContext.Ctx] = runIONode.toWIO
+    val baseWIO: WIO[Int, Nothing, TestState, TestContext.Ctx]     = runIONode.toWIO
     val modifiedWIO: WIO[Int, Nothing, TestState, TestContext.Ctx] = modifier.apply(baseWIO)
 
     modifiedWIO match
@@ -104,9 +116,9 @@ class WIONodeModifierTest extends FunSuite:
         onError = (_: Throwable, _: WCState[TestContext.Ctx], _: Instant) => IO.pure(None)
       )
 
-    val baseWIO: WIO[Int, Nothing, TestState, TestContext.Ctx] = pureNode.toWIO
+    val baseWIO: WIO[Int, Nothing, TestState, TestContext.Ctx]         = pureNode.toWIO
     val afterCheckpoint: WIO[Int, Nothing, TestState, TestContext.Ctx] = checkpointMod.apply(baseWIO)
-    val afterRetry: WIO[Int, Nothing, TestState, TestContext.Ctx] = retryMod.apply(afterCheckpoint)
+    val afterRetry: WIO[Int, Nothing, TestState, TestContext.Ctx]      = retryMod.apply(afterCheckpoint)
 
     afterRetry match
       case _: WIO.Retry[TestContext.Ctx, Int, Nothing, TestState] =>
@@ -260,7 +272,7 @@ class WIONodeModifierTest extends FunSuite:
     val modifier: InterruptionModifier[TestContext.Ctx, Int, Nothing, TestState] =
       InterruptionModifier[TestContext.Ctx, Int, Nothing, TestState](interruption)
 
-    val baseWIO: WIO[Int, Nothing, TestState, TestContext.Ctx] = pureNode.toWIO
+    val baseWIO: WIO[Int, Nothing, TestState, TestContext.Ctx]     = pureNode.toWIO
     val modifiedWIO: WIO[Int, Nothing, TestState, TestContext.Ctx] = modifier.apply(baseWIO)
 
     modifiedWIO match
@@ -278,7 +290,7 @@ class WIONodeModifierTest extends FunSuite:
         override def unconvertEvent(e: TestEvent): Option[(String, TestEvent)] =
           e match
             case ForEachWrappedEvent(elem, inner) => Some((elem, inner))
-            case _ => None
+            case _                                => None
 
     val signalRouter: SignalRouter.Receiver[String, TestState] =
       new SignalRouter.Receiver[String, TestState]:
@@ -294,7 +306,8 @@ class WIONodeModifierTest extends FunSuite:
     val elemWorkflow: WIO[String, Nothing, TestState, TestContext.Ctx] =
       WIONode.pure[TestContext.Ctx, String, TestState]((s: String) => TestState(s.length)).toWIO
 
-    val forEachNode: WIOForEachNode[TestContext.Ctx, Int, Nothing, TestState, String, TestContext.Ctx, TestState, TestState] =
+    val forEachNode
+      : WIOForEachNode[TestContext.Ctx, Int, Nothing, TestState, String, TestContext.Ctx, TestState, TestState] =
       WIONode.forEach[TestContext.Ctx, Int, Nothing, TestState, String, TestContext.Ctx, TestState, TestState](
         getElements = (i: Int) => Set("a", "bb", "ccc"),
         elemWorkflow = elemWorkflow,

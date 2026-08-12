@@ -83,6 +83,57 @@ lazy val `adk4s-core` = (project in file("adk4s-core"))
     scalacOptions ++= scala3Options
   )
 
+// ── adk4s-harness-api — agent middleware + harness state (Phase 0) ──────────
+// AgentMiddleware[F[_]] (four-hook trait), HarnessState (typed heterogeneous
+// map), StateCell[A] (visibility + merge + ReadWriter codec), MiddlewareStack[F]
+// (monoid with validated construction), ModelRequest/ModelResponse, ToolStep,
+// PromptSection/SystemPrompt, StackError, StateDecodeError.
+// Depends on adk4s-core for InvokableTool, ToolInput/ToolOutput, JsonValue/
+// JsonValueCodec, AdkError. Depends on `verified` at Test scope for the Ring 6
+// bridge (TASTy is backward compatible: 3.8.4 reads 3.7.2).
+// MUST NOT depend on workflows4s, llm4s LLM client, adk4s-orchestration,
+// fs2-io, or logback (Ring 2 purity rule).
+lazy val `adk4s-harness-api` = (project in file("adk4s-harness-api"))
+  .dependsOn(
+    `adk4s-core`,
+    `verified` % Test
+  )
+  .settings(
+    name := "adk4s-harness-api",
+    libraryDependencies ++= Seq(catsEffect) ++ upickle ++ testDeps,
+    scalacOptions ++= scala3Options
+  )
+
+// ── adk4s-harness-testkit — downstream-consumable middleware laws ───────────
+// Publishes `AgentMiddlewareLaws` (L0–L10), `SemilatticeLaws` (L11),
+// `DeterministicChatModel` (test double), and Hedgehog `Generators` in MAIN
+// scope so a downstream middleware author can add
+// `libraryDependencies += "org.adk4s" %% "adk4s-harness-testkit" % version`
+// and import the laws directly — the `adk4s-memory-testkit` precedent.
+// munit + hedgehog-munit are in MAIN scope (not % Test) because the laws are
+// a downstream-consumable main API. Depends on `adk4s-harness-api` for
+// `AgentMiddleware`/`MiddlewareStack`/`HarnessState`/`StateCell`/`ModelStep`.
+// Depends on `verified` at Test scope for the Ring 6 bridge
+// (`SemilatticeModelBridgeSpec`; TASTy backward compatible: 3.8.4 reads 3.7.2).
+// MUST NOT depend on workflows4s, llm4s LLM client, adk4s-orchestration,
+// fs2-io, or logback (Ring 2 purity rule — same boundary as harness-api).
+lazy val `adk4s-harness-testkit` = (project in file("adk4s-harness-testkit"))
+  .dependsOn(
+    `adk4s-harness-api`,
+    `verified` % Test
+  )
+  .settings(
+    name := "adk4s-harness-testkit",
+    libraryDependencies ++= Seq(
+      catsEffect,
+      munitMain,
+      munitCatsEffect,
+      hedgehogMunitMain,
+      catsEffectTestkitMain
+    ) ++ testDeps :+ catsEffectTestkit,
+    scalacOptions ++= scala3Options
+  )
+
 // ── adk4s-memory-api — durable, recallable agent memory capability ─────────
 // Effect-polymorphic interface (AgentMemory[F]) + value types + in-process
 // test double (InMemoryAgentMemory) + Retriever bridge (MemoryRetriever).
@@ -167,14 +218,16 @@ lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
   .dependsOn(
     `adk4s-core`,
     `structured-llm`,
-    `adk4s-memory-api`
+    `adk4s-memory-api`,
+    `adk4s-harness-api`,
+    `adk4s-harness-testkit` % Test
   )
   .settings(
     name := "adk4s-orchestration",
     libraryDependencies ++= Seq(
       catsEffect,
       workflows4sCore
-    ) ++ fs2 ++ testDeps,
+    ) ++ fs2 ++ testDeps :+ catsEffectTestkit,
     scalacOptions ++= scala3Options
   )
 
@@ -225,6 +278,15 @@ lazy val `verified` = (project in file("verified"))
       "-Wconf:src=.*stainless-library.*:silent"
     ),
     wartremoverErrors := Seq.empty,
+    // The sbt-wartremover AutoPlugin unconditionally adds the wartremover
+    // compiler plugin to every project's libraryDependencies. WartRemover
+    // 3.6.1 is not published for Scala 3.7.2 (the verified module's Scala
+    // version for Stainless), which breaks dependency resolution. Since
+    // wartremoverErrors is empty above, the plugin does nothing here anyway —
+    // filter it out of libraryDependencies so the jar is never resolved.
+    // scalacOptions is already a full override (no -Xplugin: survives), so no
+    // further cleanup is needed on the scalacOptions side.
+    libraryDependencies ~= (_.filterNot(_.organization == "org.wartremover")),
     semanticdbEnabled := false,
     // Default OFF: verified/compile is a plain, fast compile of the model.
     // Ring 6 turns verification ON explicitly via the `ring6` alias below.

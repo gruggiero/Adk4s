@@ -137,7 +137,7 @@ object syntax:
     case MessageRole.Assistant => AssistantMessage(contentOpt = Some(content), toolCalls = Seq.empty)
     // Tool results keep their role label rather than being silently mislabelled as
     // a user message. No toolCallId is available here, so it is left empty.
-    case MessageRole.Tool      => ToolMessage(content, toolCallId = "")
+    case MessageRole.Tool => ToolMessage(content, toolCallId = "")
 
   /**
    * Parse messages from a formatted string.

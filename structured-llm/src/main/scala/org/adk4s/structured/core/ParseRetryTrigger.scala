@@ -18,14 +18,17 @@ enum ParseRetryTrigger:
    * Check if a given error should trigger a parse-failure retry.
    */
   def shouldRetry(error: Throwable): Boolean = this match
-    case ParseFailed       => error match
-      case _: StructuredLLMError.ParseFailed => true
-      case _                                 => false
-    case ValidationFailed  => error match
-      case _: StructuredLLMError.ValidationFailed => true
-      case _                                       => false
-    case All               => error match
-      case _: StructuredLLMError.ParseFailed       => true
-      case _: StructuredLLMError.ValidationFailed  => true
-      case _: StructuredLLMError.LLMCallFailed     => true
-      case _                                        => false
+    case ParseFailed =>
+      error match
+        case _: StructuredLLMError.ParseFailed => true
+        case _                                 => false
+    case ValidationFailed =>
+      error match
+        case _: StructuredLLMError.ValidationFailed => true
+        case _                                      => false
+    case All =>
+      error match
+        case _: StructuredLLMError.ParseFailed      => true
+        case _: StructuredLLMError.ValidationFailed => true
+        case _: StructuredLLMError.LLMCallFailed    => true
+        case _                                      => false
