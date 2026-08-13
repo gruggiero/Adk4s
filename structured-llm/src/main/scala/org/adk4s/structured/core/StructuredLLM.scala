@@ -5,6 +5,8 @@ import cats.effect.Temporal
 import cats.syntax.all.*
 import cats.syntax.either.*
 import fs2.Stream
+import io.github.iltotore.iron.refineEither
+import io.github.iltotore.iron.constraint.numeric.Positive
 import org.adk4s.structured.sap.SchemaAlignedParser
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
@@ -184,6 +186,7 @@ object StructuredLLM:
    * @param maxParseAttempts Maximum parse retry attempts (including the first)
    * @param parseRetryDelay Delay between parse retries
    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def fromClientWithMiddlewares[F[_]: Async](
     client: LLMClient,
     middlewares: List[LLMMiddleware],
@@ -192,15 +195,39 @@ object StructuredLLM:
     maxParseAttempts: Int = 1,
     parseRetryDelay: Duration = Duration.Zero
   ): StructuredLLM[F] =
-    val composedClient: LLMClient = middlewares.foldRight(client)((mw, c) => mw.wrap(c))
-    new StructuredLLMImpl[F](
-      composedClient,
-      defaultOptions,
-      logRawResponse = false,
-      parseRetryTrigger = parseRetryTrigger,
-      maxParseAttempts = maxParseAttempts,
-      parseRetryDelay = parseRetryDelay
+    fromClientWithMiddlewaresEither[F](
+      client, middlewares, defaultOptions, parseRetryTrigger, maxParseAttempts, parseRetryDelay
+    ).fold(
+      err => throw new IllegalArgumentException(s"maxParseAttempts: $err"),
+      identity
     )
+
+  /** Total factory returning a typed error for invalid maxParseAttempts.
+    *
+    * Refines `maxParseAttempts` via `refineEither[Positive]`, returning
+    * `Left(String)` for zero/negative input. No exception is thrown.
+    *
+    * spec: add-iron-refined-types/structured-llm — Requirement: StructuredLLM maxParseAttempts is refined to Positive
+    */
+  def fromClientWithMiddlewaresEither[F[_]: Async](
+    client: LLMClient,
+    middlewares: List[LLMMiddleware],
+    defaultOptions: CompletionOptions = CompletionOptions(),
+    parseRetryTrigger: Option[ParseRetryTrigger] = None,
+    maxParseAttempts: Int = 1,
+    parseRetryDelay: Duration = Duration.Zero
+  ): Either[String, StructuredLLM[F]] =
+    maxParseAttempts.refineEither[Positive].map { (_: Int) =>
+      val composedClient: LLMClient = middlewares.foldRight(client)((mw, c) => mw.wrap(c))
+      new StructuredLLMImpl[F](
+        composedClient,
+        defaultOptions,
+        logRawResponse = false,
+        parseRetryTrigger = parseRetryTrigger,
+        maxParseAttempts = maxParseAttempts,
+        parseRetryDelay = parseRetryDelay
+      )
+    }
 
   /**
    * Ergonomic alias for fromClient with a single middleware.
@@ -245,6 +272,7 @@ object StructuredLLM:
    *
    * spec: llm4s-middleware-adoption — Deprecated: use fromClient with middleware + ParseRetryTrigger
    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   @deprecated("Use fromClient with ReliableClient middleware + ParseRetryTrigger", "llm4s-middleware-adoption")
   def fromClientWithRetry[F[_]: Async](
     client: LLMClient,
@@ -253,25 +281,44 @@ object StructuredLLM:
     trigger: RetryTrigger,
     defaultOptions: CompletionOptions = CompletionOptions()
   ): StructuredLLM[F] =
-    // Parse-failure retry is enabled ONLY when the trigger requests it. A caller
-    // asking for RetryTrigger.LLMError must NOT also get parse-failure retry as a
-    // side effect — the LLM-error loop is handled by RetryStructuredLLM around
-    // `underlying`. (Previously LLMError was mis-mapped to ParseFailed, which
-    // silently enabled parse retry the caller did not request.)
-    val parseTrigger: Option[ParseRetryTrigger] = trigger match
-      case RetryTrigger.LLMError          => None
-      case RetryTrigger.ParseFailure      => Some(ParseRetryTrigger.ParseFailed)
-      case RetryTrigger.ValidationFailure => Some(ParseRetryTrigger.ValidationFailed)
-      case RetryTrigger.All               => Some(ParseRetryTrigger.All)
-    val underlying: StructuredLLM[F] = new StructuredLLMImpl[F](
-      client,
-      defaultOptions,
-      logRawResponse = false,
-      parseRetryTrigger = parseTrigger,
-      maxParseAttempts = maxAttempts,
-      parseRetryDelay = delay
+    fromClientWithRetryEither[F](client, maxAttempts, delay, trigger, defaultOptions).fold(
+      err => throw new IllegalArgumentException(s"maxAttempts: $err"),
+      identity
     )
-    new RetryStructuredLLM[F](underlying, maxAttempts, delay, trigger)
+
+  /** Total factory for retry-enabled StructuredLLM returning a typed error.
+    *
+    * spec: add-iron-refined-types/structured-llm — Requirement: StructuredLLM maxParseAttempts is refined to Positive
+    */
+  @deprecated("Use fromClient with ReliableClient middleware + ParseRetryTrigger", "llm4s-middleware-adoption")
+  def fromClientWithRetryEither[F[_]: Async](
+    client: LLMClient,
+    maxAttempts: Int,
+    delay: Duration,
+    trigger: RetryTrigger,
+    defaultOptions: CompletionOptions = CompletionOptions()
+  ): Either[String, StructuredLLM[F]] =
+    maxAttempts.refineEither[Positive].map { (_: Int) =>
+      // Parse-failure retry is enabled ONLY when the trigger requests it. A caller
+      // asking for RetryTrigger.LLMError must NOT also get parse-failure retry as a
+      // side effect — the LLM-error loop is handled by RetryStructuredLLM around
+      // `underlying`. (Previously LLMError was mis-mapped to ParseFailed, which
+      // silently enabled parse retry the caller did not request.)
+      val parseTrigger: Option[ParseRetryTrigger] = trigger match
+        case RetryTrigger.LLMError          => None
+        case RetryTrigger.ParseFailure      => Some(ParseRetryTrigger.ParseFailed)
+        case RetryTrigger.ValidationFailure => Some(ParseRetryTrigger.ValidationFailed)
+        case RetryTrigger.All               => Some(ParseRetryTrigger.All)
+      val underlying: StructuredLLM[F] = new StructuredLLMImpl[F](
+        client,
+        defaultOptions,
+        logRawResponse = false,
+        parseRetryTrigger = parseTrigger,
+        maxParseAttempts = maxAttempts,
+        parseRetryDelay = delay
+      )
+      new RetryStructuredLLM[F](underlying, maxAttempts, delay, trigger)
+    }
 
 /**
  * Implementation of StructuredLLM.

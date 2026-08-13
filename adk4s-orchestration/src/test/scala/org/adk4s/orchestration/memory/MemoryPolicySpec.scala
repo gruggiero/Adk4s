@@ -1,17 +1,17 @@
 package org.adk4s.orchestration.memory
 
+import hedgehog.Gen
+import hedgehog.Range
 import hedgehog.Syntax
 import hedgehog.munit.HedgehogSuite
+import org.adk4s.core.error.ConfigError
 import org.adk4s.memory.MemoryHit
 
 /**
  * Test oracle for spec:memory-orchestration-hook — `MemoryPolicy` scenarios
  * and the "render is pure and total" property.
  *
- * Tests written from the spec + approved typed contract ONLY, before
- * implementation. They compile against the stub main sources (`???` bodies)
- * and are EXPECTED TO FAIL at runtime until Step 3.
- *
+ * Tests written from the spec + approved typed contract ONLY.
  * Every test cites its source: `// spec: memory-orchestration-hook — Scenario: <heading>`
  */
 class MemoryPolicySpec extends HedgehogSuite with MunitAssertHelpers:
@@ -54,16 +54,40 @@ class MemoryPolicySpec extends HedgehogSuite with MunitAssertHelpers:
     assertEqualsM(rendered, "[x,y]", s"expected '[x,y]', got: '$rendered'")
   }
 
-  test("MemoryPolicy rejects negative recallK") {
-    // spec: memory-orchestration-hook — boundary: recallK must be >= 0
-    intercept[IllegalArgumentException]:
+  test("MemoryPolicy rejects negative recallK via applyEither") {
+    // spec: add-iron-refined-types/memory-orchestration-hook — Scenario: Negative recallK returns ConfigError
+    val result: Either[ConfigError, MemoryPolicy] = MemoryPolicy.applyEither(recallK = -1)
+    result match
+      case Left(err: ConfigError) =>
+        assertEqualsM(err.field, "recallK")
+        assertEqualsM(err.invalidValue, "-1")
+        assertEqualsM(err.constraint, "NonNegative")
+      case other =>
+        failM(s"Expected Left(ConfigError), got $other")
+  }
+
+  test("MemoryPolicy throwing apply still throws for negative recallK") {
+    // spec: add-iron-refined-types/memory-orchestration-hook — Scenario: Throwing overload preserved for source compatibility
+    intercept[ConfigError]:
       MemoryPolicy(recallK = -1)
+  }
+
+  test("MemoryPolicy accepts zero recallK via applyEither") {
+    // spec: add-iron-refined-types/memory-orchestration-hook — Scenario: Zero recallK constructs successfully
+    val result: Either[ConfigError, MemoryPolicy] = MemoryPolicy.applyEither(recallK = 0)
+    result match
+      case Right(policy) =>
+        val k: Int = policy.recallK
+        assertEqualsM(k, 0)
+      case Left(err) =>
+        failM(s"Expected Right, got Left($err)")
   }
 
   test("MemoryPolicy default has recallK = 5") {
     // spec: memory-orchestration-hook — boundary: default recallK = 5
     val p: MemoryPolicy = MemoryPolicy.default
-    assertEqualsM(p.recallK, 5, s"expected recallK=5, got ${p.recallK}")
+    val k: Int = p.recallK
+    assertEqualsM(k, 5, s"expected recallK=5, got ${p.recallK}")
   }
 
   test("MemoryPolicy default has both write flags true") {
@@ -88,4 +112,32 @@ class MemoryPolicySpec extends HedgehogSuite with MunitAssertHelpers:
         val emptyImpliesEmpty: Boolean = !hits.isEmpty || r1.isEmpty
         val nonNull: Boolean = r1 != null
         (deterministic && emptyImpliesEmpty && nonNull) ==== true
+  }
+
+  // ── Iron refined type properties ─────────────────────────────────────────
+
+  property("recallK applyEither round-trips for non-negative inputs") {
+    // spec: add-iron-refined-types/memory-orchestration-hook — Property: recallK refineEither round-trips
+    val gen: Gen[Int] = Gen.int(Range.linear(0, 100))
+    for n <- gen.forAll
+      yield
+        val result: Either[ConfigError, MemoryPolicy] = MemoryPolicy.applyEither(recallK = n)
+        result.map { (p: MemoryPolicy) => (p.recallK: Int) } ==== Right(n)
+  }
+
+  property("recallK applyEither rejects all negatives") {
+    // spec: add-iron-refined-types/memory-orchestration-hook — Property: recallK rejects all negatives
+    val gen: Gen[Int] = Gen.int(Range.linear(-100, -1))
+    for n <- gen.forAll
+      yield
+        val result: Either[ConfigError, MemoryPolicy] = MemoryPolicy.applyEither(recallK = n)
+        result.isLeft ==== true
+  }
+
+  property("MemoryPolicy.default recallK is 5") {
+    // spec: add-iron-refined-types/memory-orchestration-hook — Property: MemoryPolicy.default recallK is 5
+    for _ <- Gen.constant(()).forAll
+      yield
+        val k: Int = MemoryPolicy.default.recallK
+        k ==== 5
   }

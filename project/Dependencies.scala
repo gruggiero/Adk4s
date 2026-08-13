@@ -47,6 +47,19 @@ object Dependencies {
     "com.lihaoyi" %% "upickle" % Versions.Upickle
   )
 
+  /** Iron — refined types for Scala 3. Provides compile-time and runtime
+    * constraint checking via `A :| C` type intersection.
+    * iron-cats provides Cats typeclass instances (Eq, Show, Order) for
+    * refined types.
+    * iron-upickle provides ReadWriter instances for JSON serialization. */
+  val iron: Seq[ModuleID] = Seq(
+    "io.github.iltotore" %% "iron" % Versions.Iron,
+    "io.github.iltotore" %% "iron-cats" % Versions.Iron
+  )
+
+  val ironUpickle: ModuleID =
+    "io.github.iltotore" %% "iron-upickle" % Versions.Iron
+
   val logback: ModuleID =
     "ch.qos.logback" % "logback-classic" % Versions.Logback
 

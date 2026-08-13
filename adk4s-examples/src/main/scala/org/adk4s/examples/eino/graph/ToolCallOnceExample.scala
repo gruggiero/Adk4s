@@ -10,7 +10,7 @@ import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.tools.ToolInput
 import org.adk4s.core.tools.ToolOutput
 import org.adk4s.core.tools.ToolsNode
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOForkNode
 import org.adk4s.orchestration.wiograph.WIOGraph
@@ -138,13 +138,13 @@ object ToolCallOnceExample extends IOApp.Simple:
     chatModel: ChatModel[IO]
   ): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState]] =
     val templateRef: WIONodeRef[Ctx.Ctx, InputState, ConversationState] =
-      WIONodeRef[Ctx.Ctx, InputState, ConversationState](NodeKey.unsafeApply("template"))
+      WIONodeRef[Ctx.Ctx, InputState, ConversationState](NodeKey("template"))
     val chatRef: WIONodeRef[Ctx.Ctx, ConversationState, CompletionState] =
-      WIONodeRef[Ctx.Ctx, ConversationState, CompletionState](NodeKey.unsafeApply("chat"))
+      WIONodeRef[Ctx.Ctx, ConversationState, CompletionState](NodeKey("chat"))
     val branchRef: WIONodeRef[Ctx.Ctx, CompletionState, GraphState] =
-      WIONodeRef[Ctx.Ctx, CompletionState, GraphState](NodeKey.unsafeApply("branch"))
+      WIONodeRef[Ctx.Ctx, CompletionState, GraphState](NodeKey("branch"))
     val endRef: WIONodeRef[Ctx.Ctx, CompletionState, GraphState] =
-      WIONodeRef[Ctx.Ctx, CompletionState, GraphState](NodeKey.unsafeApply("branch"))
+      WIONodeRef[Ctx.Ctx, CompletionState, GraphState](NodeKey("branch"))
 
     // Template node: build conversation from query
     val templateNode: WIOPureNode[Ctx.Ctx, InputState, Nothing, ConversationState] =

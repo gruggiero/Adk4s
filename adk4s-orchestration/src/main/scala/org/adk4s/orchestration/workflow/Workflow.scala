@@ -4,14 +4,17 @@ import cats.effect.IO
 import org.adk4s.core.types.{NodeKey, FieldPath}
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
+import org.adk4s.core.error.NodeKeyError
 
 case class Workflow[I, O] private (
   private val nodes: Map[NodeKey, WorkflowNode[?, ?]],
   private val inputs: Map[NodeKey, List[(NodeKey, FieldMapping)]],
   private val endNode: Option[NodeKey]
 ):
-  def addLambdaNode[A, B](key: String, lambda: Lambda[A, B]): WorkflowNodeBuilder[I, O, A, B] =
-    WorkflowNodeBuilder(this, NodeKey.unsafeApply(key), WorkflowNode.Lambda[A, B](lambda))
+  def addLambdaNode[A, B](key: String, lambda: Lambda[A, B]): Either[NodeKeyError, WorkflowNodeBuilder[I, O, A, B]] =
+    NodeKey.from(key).map { (nodeKey: NodeKey) =>
+      WorkflowNodeBuilder(this, nodeKey, WorkflowNode.Lambda[A, B](lambda))
+    }
 
   def end: WorkflowEndBuilder[I, O] =
     WorkflowEndBuilder(this)
@@ -38,13 +41,17 @@ case class WorkflowNodeBuilder[I, O, A, B](
   key: NodeKey,
   node: WorkflowNode[A, B]
 ):
-  def addInput(from: String): WorkflowNodeBuilder[I, O, A, B] =
-    addInputWithNodeKey(NodeKey.unsafeApply(from), FieldMapping(FieldPath.Root, FieldPath.Root))
+  def addInput(from: String): Either[NodeKeyError, WorkflowNodeBuilder[I, O, A, B]] =
+    NodeKey.from(from).map { (fromKey: NodeKey) =>
+      addInputWithNodeKey(fromKey, FieldMapping(FieldPath.Root, FieldPath.Root))
+    }
 
-  def addInput(from: String, mapping: FieldMapping): WorkflowNodeBuilder[I, O, A, B] =
-    addInputWithNodeKey(NodeKey.unsafeApply(from), mapping)
+  def addInput(from: String, mapping: FieldMapping): Either[NodeKeyError, WorkflowNodeBuilder[I, O, A, B]] =
+    NodeKey.from(from).map { (fromKey: NodeKey) =>
+      addInputWithNodeKey(fromKey, mapping)
+    }
 
-  def addLambdaNode[C, D](key: String, lambda: Lambda[C, D]): WorkflowNodeBuilder[I, O, C, D] =
+  def addLambdaNode[C, D](key: String, lambda: Lambda[C, D]): Either[NodeKeyError, WorkflowNodeBuilder[I, O, C, D]] =
     workflow.addLambdaNode(key, lambda)
 
   private def addInputWithNodeKey(from: NodeKey, mapping: FieldMapping): WorkflowNodeBuilder[I, O, A, B] =
@@ -53,5 +60,7 @@ case class WorkflowNodeBuilder[I, O, A, B](
   def done: Workflow[I, O] = workflow
 
 case class WorkflowEndBuilder[I, O](workflow: Workflow[I, O]):
-  def at(key: String): Workflow[I, O] =
-    workflow.withEndNode(NodeKey.unsafeApply(key))
+  def at(key: String): Either[NodeKeyError, Workflow[I, O]] =
+    NodeKey.from(key).map { (nodeKey: NodeKey) =>
+      workflow.withEndNode(nodeKey)
+    }

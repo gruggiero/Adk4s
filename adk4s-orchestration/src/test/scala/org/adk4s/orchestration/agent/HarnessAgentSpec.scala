@@ -11,6 +11,8 @@ import cats.syntax.traverse.toTraverseOps
 import hedgehog.Gen
 import hedgehog.Range
 import hedgehog.Result
+import hedgehog.core.PropertyConfig
+import hedgehog.core.SuccessCount
 import hedgehog.munit.HedgehogSuite
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.error.{ AgentInterruptedException, MaxStepsExceededError }
@@ -271,7 +273,10 @@ class HarnessAgentSpec extends HedgehogSuite:
 
   // ── Per-request prompt folding ──────────────────────────────────────────
 
-  property("per-request-prompt-folding — state-aware sections in prompt") {
+  property(
+    "per-request-prompt-folding — state-aware sections in prompt",
+    withConfig = _.copy(testLimit = SuccessCount(500))
+  ) {
     // spec: harness-agent — Property: per-request-prompt-folding
     for pc <- genPromptCase.forAll
         .cover(50, "prompt-changed", (c: PromptCase) => c.beforeVal != c.toolVal)

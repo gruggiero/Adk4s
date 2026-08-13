@@ -9,13 +9,14 @@ import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.component.Tool
 import org.adk4s.core.error.{ AgentInterruptedException, CheckpointNotFoundError }
 import org.adk4s.core.interrupt.{ AgentEventEmitter, InterruptResult, InterruptSignal, AddressSegment }
-import org.adk4s.orchestration.interrupt.InMemoryCheckpointStore
+import org.adk4s.orchestration.interrupt.{CheckpointStore, InMemoryCheckpointStore}
 import org.llm4s.llmconnect.model.{ AssistantMessage, Completion, Conversation, Message, StreamedChunk, UserMessage }
 import fs2.Stream
 
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 class AgentRunnerTest extends CatsEffectSuite:
 
   private def makeCompletion(content: String): Completion =
@@ -95,7 +96,7 @@ class AgentRunnerTest extends CatsEffectSuite:
       checkpointId = result match
         case RunResult.Interrupted(id, _) => id
         case _                            => fail("Expected Interrupted")
-      checkpoint <- store.get(checkpointId)
+      checkpoint <- store.get(CheckpointStore.CheckpointId.refineEither(checkpointId).fold(err => throw err, identity))
     yield assert(checkpoint.isDefined)
   }
 

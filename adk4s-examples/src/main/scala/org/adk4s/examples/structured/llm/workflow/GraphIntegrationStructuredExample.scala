@@ -3,7 +3,7 @@ package org.adk4s.examples.structured.llm.workflow
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.core.runnable.Runnable
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError
@@ -123,11 +123,11 @@ object GraphIntegrationStructuredExample extends IOApp.Simple:
       )
 
     val node1Ref: WIONodeRef[Ctx.Ctx, QueryState, QueryState] =
-      WIONodeRef[Ctx.Ctx, QueryState, QueryState](NodeKey.unsafeApply("classify"))
+      WIONodeRef[Ctx.Ctx, QueryState, QueryState](NodeKey("classify"))
     val node2Ref: WIONodeRef[Ctx.Ctx, QueryState, QueryState] =
-      WIONodeRef[Ctx.Ctx, QueryState, QueryState](NodeKey.unsafeApply("detect_role"))
+      WIONodeRef[Ctx.Ctx, QueryState, QueryState](NodeKey("detect_role"))
     val endRef: WIONodeRef[Ctx.Ctx, QueryState, GraphState] =
-      WIONodeRef[Ctx.Ctx, QueryState, GraphState](NodeKey.unsafeApply("detect_role"))
+      WIONodeRef[Ctx.Ctx, QueryState, GraphState](NodeKey("detect_role"))
 
     val node1: WIORunnableNode[Ctx.Ctx, QueryState, Nothing, CategoryDetected, CategoryClassification, QueryState] =
       WIONode.fromRunnableSimple[Ctx.Ctx, QueryState, CategoryDetected, CategoryClassification, QueryState](

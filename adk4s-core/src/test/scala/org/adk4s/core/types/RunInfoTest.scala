@@ -6,7 +6,7 @@ import java.time.Instant
 class RunInfoTest extends CatsEffectSuite:
 
   test("create basic RunInfo") {
-    val key  = NodeKey.unsafeApply("model")
+    val key  = NodeKey("model")
     val info = RunInfo.forNode(key, "LLM")
     assertEquals(info.nodeKey, key)
     assertEquals(info.componentType, "LLM")
@@ -16,14 +16,14 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("create RunInfo with name") {
-    val key  = NodeKey.unsafeApply("model")
+    val key  = NodeKey("model")
     val info = RunInfo.forNode(key, "LLM", "Primary Model")
     assertEquals(info.nodeName, Some("Primary Model"))
   }
 
   test("create RunInfo with all fields") {
-    val key    = NodeKey.unsafeApply("inner")
-    val parent = NodeKey.unsafeApply("outer")
+    val key    = NodeKey("inner")
+    val parent = NodeKey("outer")
     val time   = Instant.now()
     val info = RunInfo(
       nodeKey = key,
@@ -40,8 +40,8 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("calculate full path from parent path") {
-    val inner = NodeKey.unsafeApply("inner")
-    val outer = NodeKey.unsafeApply("outer")
+    val inner = NodeKey("inner")
+    val outer = NodeKey("outer")
     val info = RunInfo(
       nodeKey = inner,
       componentType = "LLM",
@@ -51,9 +51,9 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("full path with multiple parents") {
-    val child   = NodeKey.unsafeApply("child")
-    val parent1 = NodeKey.unsafeApply("parent1")
-    val parent2 = NodeKey.unsafeApply("parent2")
+    val child   = NodeKey("child")
+    val parent1 = NodeKey("parent1")
+    val parent2 = NodeKey("parent2")
     val info = RunInfo(
       nodeKey = child,
       componentType = "Tool",
@@ -63,13 +63,13 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("full path is empty for top-level node") {
-    val key  = NodeKey.unsafeApply("root")
+    val key  = NodeKey("root")
     val info = RunInfo.forNode(key, "LLM")
     assertEquals(info.fullPath, List(key))
   }
 
   test("Show formats RunInfo with name") {
-    val key  = NodeKey.unsafeApply("model")
+    val key  = NodeKey("model")
     val info = RunInfo(key, "LLM", Some("GPT-4"))
     val show = cats.Show[RunInfo].show(info)
     assert(show.contains("model"))
@@ -78,7 +78,7 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("Show formats RunInfo without name") {
-    val key  = NodeKey.unsafeApply("tool")
+    val key  = NodeKey("tool")
     val info = RunInfo(key, "Function", None)
     val show = cats.Show[RunInfo].show(info)
     assert(show.contains("tool"))
@@ -87,8 +87,8 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("Show formats RunInfo with parent path") {
-    val inner = NodeKey.unsafeApply("inner")
-    val outer = NodeKey.unsafeApply("outer")
+    val inner = NodeKey("inner")
+    val outer = NodeKey("outer")
     val info = RunInfo(
       nodeKey = inner,
       componentType = "LLM",
@@ -103,8 +103,8 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("Show formats RunInfo with name and parent path") {
-    val inner = NodeKey.unsafeApply("inner")
-    val outer = NodeKey.unsafeApply("outer")
+    val inner = NodeKey("inner")
+    val outer = NodeKey("outer")
     val info = RunInfo(
       nodeKey = inner,
       componentType = "LLM",
@@ -120,14 +120,14 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("Show formats RunInfo without parent path") {
-    val key  = NodeKey.unsafeApply("root")
+    val key  = NodeKey("root")
     val info = RunInfo(key, "LLM", None)
     val show = cats.Show[RunInfo].show(info)
     assert(!show.contains("["))
   }
 
   test("RunInfo factory without name") {
-    val key  = NodeKey.unsafeApply("test")
+    val key  = NodeKey("test")
     val info = RunInfo.forNode(key, "TestType")
     assertEquals(info.nodeKey, key)
     assertEquals(info.componentType, "TestType")
@@ -135,7 +135,7 @@ class RunInfoTest extends CatsEffectSuite:
   }
 
   test("RunInfo factory with name") {
-    val key  = NodeKey.unsafeApply("test")
+    val key  = NodeKey("test")
     val info = RunInfo.forNode(key, "TestType", "Test Name")
     assertEquals(info.nodeKey, key)
     assertEquals(info.componentType, "TestType")

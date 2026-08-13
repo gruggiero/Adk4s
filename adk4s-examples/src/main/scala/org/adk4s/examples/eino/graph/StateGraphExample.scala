@@ -5,7 +5,7 @@ import cats.effect.IOApp
 import fs2.Stream
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError
@@ -120,13 +120,13 @@ object StateGraphExample extends IOApp.Simple:
       )
 
     val node1Ref: WIONodeRef[Ctx.Ctx, TextState, TextState] =
-      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey.unsafeApply("invokable"))
+      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey("invokable"))
     val node2Ref: WIONodeRef[Ctx.Ctx, TextState, TextState] =
-      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey.unsafeApply("streamable"))
+      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey("streamable"))
     val node3Ref: WIONodeRef[Ctx.Ctx, TextState, TextState] =
-      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey.unsafeApply("transformable"))
+      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey("transformable"))
     val endRef: WIONodeRef[Ctx.Ctx, TextState, GraphState] =
-      WIONodeRef[Ctx.Ctx, TextState, GraphState](NodeKey.unsafeApply("transformable"))
+      WIONodeRef[Ctx.Ctx, TextState, GraphState](NodeKey("transformable"))
 
     val node1: WIORunnableNode[Ctx.Ctx, TextState, Nothing, TextProcessed, String, TextState] =
       WIONode.fromRunnableSimple[Ctx.Ctx, TextState, TextProcessed, String, TextState](

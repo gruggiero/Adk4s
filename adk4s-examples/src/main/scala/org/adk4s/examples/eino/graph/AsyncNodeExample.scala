@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.effect.IOApp
 import fs2.Stream
 import org.adk4s.core.runnable.Runnable
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError
@@ -120,11 +120,11 @@ object AsyncNodeExample extends IOApp.Simple:
       )
 
     val node1Ref: WIONodeRef[Ctx.Ctx, TextState, TextState] =
-      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey.unsafeApply("async_invokable"))
+      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey("async_invokable"))
     val node2Ref: WIONodeRef[Ctx.Ctx, TextState, TextState] =
-      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey.unsafeApply("async_streamable"))
+      WIONodeRef[Ctx.Ctx, TextState, TextState](NodeKey("async_streamable"))
     val endRef: WIONodeRef[Ctx.Ctx, TextState, GraphState] =
-      WIONodeRef[Ctx.Ctx, TextState, GraphState](NodeKey.unsafeApply("async_streamable"))
+      WIONodeRef[Ctx.Ctx, TextState, GraphState](NodeKey("async_streamable"))
 
     val node1: WIORunnableNode[Ctx.Ctx, TextState, Nothing, TextProduced, String, TextState] =
       WIONode.fromRunnableSimple[Ctx.Ctx, TextState, TextProduced, String, TextState](

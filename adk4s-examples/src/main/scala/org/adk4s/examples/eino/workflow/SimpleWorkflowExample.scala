@@ -4,7 +4,7 @@ import cats.data.Ior
 import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.IOApp
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError
@@ -93,11 +93,11 @@ object SimpleWorkflowExample extends IOApp.Simple:
 
   private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, WfState]] =
     val doubleRef: WIONodeRef[Ctx.Ctx, InputState, DoubledState] =
-      WIONodeRef[Ctx.Ctx, InputState, DoubledState](NodeKey.unsafeApply("double"))
+      WIONodeRef[Ctx.Ctx, InputState, DoubledState](NodeKey("double"))
     val formatRef: WIONodeRef[Ctx.Ctx, DoubledState, OutputState] =
-      WIONodeRef[Ctx.Ctx, DoubledState, OutputState](NodeKey.unsafeApply("format"))
+      WIONodeRef[Ctx.Ctx, DoubledState, OutputState](NodeKey("format"))
     val endRef: WIONodeRef[Ctx.Ctx, DoubledState, WfState] =
-      WIONodeRef[Ctx.Ctx, DoubledState, WfState](NodeKey.unsafeApply("format"))
+      WIONodeRef[Ctx.Ctx, DoubledState, WfState](NodeKey("format"))
 
     val doubleNode: WIOPureNode[Ctx.Ctx, InputState, Nothing, DoubledState] =
       WIONode.pure[Ctx.Ctx, InputState, DoubledState]((input: InputState) =>

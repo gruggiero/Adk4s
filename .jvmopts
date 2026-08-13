@@ -1,0 +1,4 @@
+-Xmx4g
+-Xss4m
+-XX:+UseG1GC
+-XX:-DoEscapeAnalysis

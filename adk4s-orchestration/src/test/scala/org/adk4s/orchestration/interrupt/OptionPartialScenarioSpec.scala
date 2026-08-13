@@ -14,7 +14,7 @@ class OptionPartialScenarioSpec extends CatsEffectSuite:
   test("Missing checkpoint returns None (not throw) — behavior preserved") {
     for
       store <- InMemoryCheckpointStore.create
-      result <- store.get("missing")
+      result <- store.get(CheckpointStore.CheckpointId("missing"))
     yield assertEquals(result, None)
   }
 
@@ -23,8 +23,8 @@ class OptionPartialScenarioSpec extends CatsEffectSuite:
     val data: Array[Byte] = "hello".getBytes
     for
       store <- InMemoryCheckpointStore.create
-      _ <- store.set("key1", data)
-      result <- store.get("key1")
+      _ <- store.set(CheckpointStore.CheckpointId("key1"), data)
+      result <- store.get(CheckpointStore.CheckpointId("key1"))
     yield
       assert(result.isDefined)
       assertEquals(result.getOrElse(fail("expected checkpoint to be defined")), data)

@@ -63,7 +63,7 @@ operational principle
 | action `addEdge` | `Graph.addEdge[A, B, C](from, to): ValidatedNec[AdkError, Graph[In, Out]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/graph/Graph.scala`) |
 | action `setEntry` | `Graph.setEntry[A](entry)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/graph/Graph.scala`) |
 | action `addEndNode` | `Graph.addEndNode[A](endNode)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/graph/Graph.scala`) |
-| action `compile` | `Graph.compile(config): ValidatedNec[AdkError, IO[Runnable[In, Out]]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/graph/Graph.scala`) |
+| action `compile` | `Graph.compile(config): ValidatedNec[AdkError, IO[Runnable[In, Out]]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/graph/Graph.scala`) — GraphExecutor.execute raises `GraphCompilationError` on failed compile (not generic Exception) |
 | action `validateGraph` | `Graph.validateGraph: ValidatedNec[AdkError, Unit]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/graph/Graph.scala`) |
 | validation `GraphValidation` | `object GraphValidation` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/graph/GraphValidation.scala`) |
 | node `GraphNode` | `sealed trait GraphNode[I, O]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/graph/GraphNode.scala`) |

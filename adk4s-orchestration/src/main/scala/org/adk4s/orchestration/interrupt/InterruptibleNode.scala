@@ -26,26 +26,28 @@ final class InterruptibleNode[I, O] private (
     if shouldInterrupt(input) then
       for
         info <- onInterrupt(input)
-        _ <- store.set(info.checkpointId, info.serializedState)
+        refinedId <- IO.fromEither(CheckpointStore.CheckpointId.refineEither(info.checkpointId))
+        _ <- store.set(refinedId, info.serializedState)
       yield InterruptResult.Interrupted(info)
     else
       innerAction(input).map((output: O) => InterruptResult.Completed(output))
 
   def resume(checkpointId: String, approved: Boolean, input: I): IO[InterruptResult[O]] =
     for
-      checkpointOpt <- store.get(checkpointId)
+      refinedId <- IO.fromEither(CheckpointStore.CheckpointId.refineEither(checkpointId))
+      checkpointOpt <- store.get(refinedId)
       result <- checkpointOpt match
         case None =>
           IO.raiseError(new RuntimeException(s"Checkpoint not found: $checkpointId"))
         case Some(_) =>
           if approved then
             for
-              _ <- store.delete(checkpointId)
+              _ <- store.delete(refinedId)
               output <- innerAction(input)
             yield InterruptResult.Completed(output)
           else
             for
-              _ <- store.delete(checkpointId)
+              _ <- store.delete(refinedId)
             yield InterruptResult.Rejected(checkpointId)
     yield result
 

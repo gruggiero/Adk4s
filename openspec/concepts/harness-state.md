@@ -57,7 +57,7 @@ operational principle
 | action `project` | `HarnessState.project` — visibility-based parent→child copy (`HarnessState.scala`) |
 | action `mergeBack` | `HarnessState.mergeBack` — Shared cells fold `merge` over children (`HarnessState.scala`) |
 | error `StateDecodeError` | `StateDecodeError(cellId: String, cause: Throwable)` extends `AdkError` (`adk4s-core/src/main/scala/org/adk4s/core/error/AdkError.scala`) |
-| cell declaration | `StateCell[A]` with `CellId` opaque type, `ReadWriter` context bound, `visibility`, `merge` (`adk4s-harness-api/src/main/scala/org/adk4s/harness/StateCell.scala`) |
+| cell declaration | `StateCell[A]` with `CellId` refined opaque type (`String :| (NonEmpty & Match["[^/]+/[^/]+"])`), `ReadWriter` context bound, `visibility`, `merge` (`adk4s-harness-api/src/main/scala/org/adk4s/harness/StateCell.scala`) |
 | visibility | `CellVisibility` enum: `Private`, `Inherited`, `Shared` (`adk4s-harness-api/src/main/scala/org/adk4s/harness/CellVisibility.scala`) |
 | Ring 6 mirror | `HarnessStateKernel` — `Map[BigInt, BigInt]` model with get/set/update + lemma functions (`verified/src/main/scala/org/adk4s/verified/HarnessStateKernel.scala`) |
 | runtime host | `org.adk4s.harness` |

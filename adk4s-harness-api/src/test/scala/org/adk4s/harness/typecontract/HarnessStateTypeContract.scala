@@ -298,3 +298,18 @@ class HarnessStateTypeContract extends FunSuite:
         )
     """)
     assert(errors.nonEmpty, "new StateCell(...) must not compile — only StateCell.apply is allowed")
+
+  // ── Compile-negative: Iron constraint enforcement ──────────────────────
+  // spec: add-iron-refined-types/harness-state — Compile-Negative Obligations
+
+  test("MiddlewareName empty literal does not compile"):
+    val errors: String = compileErrors("""val m: org.adk4s.harness.MiddlewareName = org.adk4s.harness.MiddlewareName("")""")
+    assert(errors.nonEmpty, "MiddlewareName(\"\") must not compile — empty violates NonEmpty")
+
+  test("CellId empty literal does not compile"):
+    val errors: String = compileErrors("""val c: org.adk4s.harness.StateCell.CellId = org.adk4s.harness.StateCell.CellId("")""")
+    assert(errors.nonEmpty, "CellId(\"\") must not compile — empty violates NonEmpty")
+
+  test("CellId missing slash does not compile"):
+    val errors: String = compileErrors("""val c: org.adk4s.harness.StateCell.CellId = org.adk4s.harness.StateCell.CellId("no-slash")""")
+    assert(errors.nonEmpty, "CellId(\"no-slash\") must not compile — missing / violates Match")

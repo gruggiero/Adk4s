@@ -44,13 +44,16 @@
 | Type | Underlying | Constraint | Package | Introduced By |
 |------|-----------|------------|---------|---------------|
 | `RunPath` | `List[RunStep]` | (none — plain opaque type) | `org.adk4s.core.interrupt` | pre-existing |
-| `NodeKey` | `String` | (none — plain opaque type) | `org.adk4s.core.types` | pre-existing |
+| `NodeKey` | `String` | `NonEmpty & Not[Reserved]` (Iron RefinedType; compile-time for literals, `refineEither`/`from` at runtime) | `org.adk4s.core.types` | pre-existing; refined by `spec:add-iron-refined-types/core-types` |
+| `ReservedNodeKey` | enum (`Start`, `End`) | (none — distinct type from NodeKey) | `org.adk4s.core.types` | added by `spec:add-iron-refined-types/core-types` |
+| `Positive` | `Int` | `numeric.Positive` (Iron) | `org.adk4s.core.types` | added by `spec:add-iron-refined-types/core-types` |
+| `NonNegative` | `Int` | `numeric.Positive0` (Iron) | `org.adk4s.core.types` | added by `spec:add-iron-refined-types/core-types` |
 | `FieldPath` | `Vector[String]` | (none — plain opaque type) | `org.adk4s.core.types` | pre-existing |
 | `ToolSchema[A]` | `ToolSchema.SchemaData[A]` | (none — plain opaque type) | `org.adk4s.core.tools` | pre-existing |
 | `Schema[A]` | `Schema.SchemaData[A]` | (none — plain opaque type) | `org.adk4s.structured.core` | pre-existing |
-| `MiddlewareName` | `String` | (none — plain opaque type) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
-| `StateCell.CellId` | `String` | (none — plain opaque type) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state |
-| `CheckpointStore.CheckpointId` | `String` | (transparent alias — not opaque) | `org.adk4s.orchestration.interrupt` | spec:add-harness-api-phase0/checkpoint-store-fpoly |
+| `MiddlewareName` | `String` | `NonEmpty` (Iron RefinedType) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state; migrated by add-iron-refined-types/harness-state |
+| `StateCell.CellId` | `String` | `NonEmpty & Match["[^/]+/[^/]+"]` (Iron RefinedType) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state; migrated by add-iron-refined-types/harness-state |
+| `CheckpointStore.CheckpointId` | `String` | `NonEmpty` (Iron RefinedType) | `org.adk4s.orchestration.interrupt` | spec:add-harness-api-phase0/checkpoint-store-fpoly; migrated by add-iron-refined-types/checkpoint-store-fpoly |
 
 ## Type Aliases
 
@@ -72,7 +75,7 @@
 
 | Type | Kind | Variants | Package | Introduced By |
 |------|------|----------|---------|---------------|
-| `AdkError` | sealed trait | `LlmCallError`, `StructuredOutputError`, `TypeMismatchError`, `MissingFieldError`, `NodeNotFoundError`, `EdgeValidationError`, `MaxStepsExceededError`, `GraphCompiledError`, `GraphEntryMissingError`, `GraphEndNodesMissingError`, `ToolNotFoundError`, `ToolExecutionError`, `StateTypeMismatchError`, `NodeAlreadyExistsError`, `SourceNodeNotFoundError`, `NodeDoesNotExistError`, `FanInError`, `BranchTargetError`, `AgentInterruptedException`, `CheckpointNotFoundError`, `GenericError`, `NodeKeyError`, `StateDecodeError` | `org.adk4s.core.error` | pre-existing (`StateDecodeError` shipped by `spec:add-harness-api-phase0/harness-state`) |
+| `AdkError` | sealed trait | `LlmCallError`, `StructuredOutputError`, `TypeMismatchError`, `MissingFieldError`, `NodeNotFoundError`, `EdgeValidationError`, `MaxStepsExceededError`, `GraphCompiledError`, `GraphEntryMissingError`, `GraphEndNodesMissingError`, `ToolNotFoundError`, `ToolExecutionError`, `StateTypeMismatchError`, `NodeAlreadyExistsError`, `SourceNodeNotFoundError`, `NodeDoesNotExistError`, `FanInError`, `BranchTargetError`, `AgentInterruptedException`, `CheckpointNotFoundError`, `GenericError`, `NodeKeyError`, `StateDecodeError`, `ConfigError`, `GraphCompilationError` | `org.adk4s.core.error` | pre-existing (`StateDecodeError` shipped by `spec:add-harness-api-phase0/harness-state`); `ConfigError`, `GraphCompilationError` added by `spec:add-iron-refined-types/error-hierarchy-dedup` |
 | `ToolSchemaError` | sealed trait | `MissingRequiredField`, `TypeMismatch`, `InvalidEnumValue`, `DecodingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `StructuredToolCallError` | sealed trait | `UnknownTool`, `InvalidArguments`, `ExecutionFailed`, `ResultParsingFailed` | `org.adk4s.core.tools` | pre-existing |
 | `InterruptSignal` | sealed trait (derives ReadWriter) | `Simple`, `Stateful`, `Composite` | `org.adk4s.core.interrupt` | pre-existing |
@@ -182,7 +185,7 @@
 | `EpisodeOutcome` | `entitiesExtracted: Int, relationshipsCreated: Int, edgesInvalidated: Int, processingTimeMs: Long, errors: List[String], episodeId: Option[String]` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (`postTurn` returns `F[List[EpisodeOutcome]]`) |
 | `MemoryHit` | `text: String, score: Double, validFrom: Option[Instant], validTo: Option[Instant], provenance: Option[String], payload: Map[String, String]` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (`preTurn` renders `List[MemoryHit]` into a context string) |
 | `TemporalScope` | `asOf: Instant` | `org.adk4s.memory` | pre-existing (shipped) — **REUSED by this change** (`MemoryPolicy.scope: Option[TemporalScope]`) |
-| `MemoryPolicy` | `recallK: Int, scope: Option[TemporalScope], writeUserInput: Boolean, writeAssistantOutput: Boolean, render: List[MemoryHit] => String` (private constructor; smart constructor enforces `recallK >= 0`) | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (`MemoryPolicy.default`, `policy.render`) |
+| `MemoryPolicy` | `recallK: NonNegative (Int :| Positive0), scope: Option[TemporalScope], writeUserInput: Boolean, writeAssistantOutput: Boolean, render: List[MemoryHit] => String` (private constructor; `applyEither` returns `Either[ConfigError, MemoryPolicy]`; throwing `apply` delegates to `applyEither`) | `org.adk4s.orchestration.memory` | pre-existing (shipped by archived `2026-07-19-add-memory-orchestration-hook`) — **REUSED by this change** (`MemoryPolicy.default`, `policy.render`); migrated by add-iron-refined-types/memory-orchestration-hook |
 | `PredictorState` | `instructions: String, demos: Vector[Demo], frozen: Boolean` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `Demo` | `input: ujson.Value, output: ujson.Value` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `PredictorPath` | `segments: Vector[String]` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |

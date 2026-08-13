@@ -42,6 +42,7 @@ import hedgehog.munit.HedgehogSuite
  *
  * spec: middleware-stack — Proof Obligations table
  */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 class MiddlewareStackSpec extends HedgehogSuite:
 
   // ── Test fixtures ───────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ class MiddlewareStackSpec extends HedgehogSuite:
       val traceRef: scala.collection.mutable.ListBuffer[String] =
         scala.collection.mutable.ListBuffer.empty
       def tracingMW(tag: String): AgentMiddleware[IO] = new AgentMiddleware[IO]:
-        val name: MiddlewareName = MiddlewareName(tag)
+        val name: MiddlewareName = MiddlewareName.refineEither(tag).fold(err => throw err, identity)
         override def beforeAgent(state: HarnessState): IO[HarnessState] =
           IO.pure {
             traceRef += tag
@@ -86,7 +87,7 @@ class MiddlewareStackSpec extends HedgehogSuite:
       val traceRef: scala.collection.mutable.ListBuffer[String] =
         scala.collection.mutable.ListBuffer.empty
       def tracingMW(tag: String): AgentMiddleware[IO] = new AgentMiddleware[IO]:
-        val name: MiddlewareName = MiddlewareName(tag)
+        val name: MiddlewareName = MiddlewareName.refineEither(tag).fold(err => throw err, identity)
         override def afterAgent(state: HarnessState): IO[HarnessState] =
           IO.pure {
             traceRef += tag
@@ -108,7 +109,7 @@ class MiddlewareStackSpec extends HedgehogSuite:
   test("wrapModelCall nests m1 outermost"):
     withMunitAssertions { a =>
       def prependMW(tag: String): AgentMiddleware[IO] = new AgentMiddleware[IO]:
-        val name: MiddlewareName = MiddlewareName(tag)
+        val name: MiddlewareName = MiddlewareName.refineEither(tag).fold(err => throw err, identity)
         override def wrapModelCall(next: ModelStep[IO]): ModelStep[IO] =
           Kleisli { req =>
             val prevBase: Option[String]          = req.systemPrompt.flatMap(_.base)
@@ -469,9 +470,9 @@ class MiddlewareStackSpec extends HedgehogSuite:
       val middlewares: List[AgentMiddleware[IO]] =
         (0 until nMiddlewares).toList.map { i =>
           new AgentMiddleware[IO]:
-            val name: MiddlewareName = MiddlewareName(s"m$i")
+            val name: MiddlewareName = MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity)
             override def stateCells: List[StateCell[?]] =
-              List(StateCell[Int](MiddlewareName(s"m$i"), "cell", 0))
+              List(StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), "cell", 0))
         }
       val result: Either[NonEmptyList[StackError], MiddlewareStack[IO]] =
         MiddlewareStack.validated[IO](middlewares)
@@ -485,9 +486,9 @@ class MiddlewareStackSpec extends HedgehogSuite:
       given upickle.default.ReadWriter[Int] = upickle.default.readwriter[Int]
       // Each middleware has its own unique cell (no duplicates)
       val cells: List[StateCell[Int]] =
-        (0 until stackSize).toList.map(i => StateCell[Int](MiddlewareName(s"m$i"), "val", 0))
+        (0 until stackSize).toList.map(i => StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), "val", 0))
       def tracingMW(i: Int): AgentMiddleware[IO] = new AgentMiddleware[IO]:
-        val name: MiddlewareName                    = MiddlewareName(s"m$i")
+        val name: MiddlewareName                    = MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity)
         override def stateCells: List[StateCell[?]] = List(cells(i))
         override def beforeAgent(state: HarnessState): IO[HarnessState] =
           IO.pure(state.update(cells(i))(_ + 1))
@@ -519,9 +520,9 @@ class MiddlewareStackSpec extends HedgehogSuite:
       given upickle.default.ReadWriter[Int] = upickle.default.readwriter[Int]
       // Each middleware has its own unique cell
       def mkMiddleware(prefix: String, i: Int): (StateCell[Int], AgentMiddleware[IO]) =
-        val cell: StateCell[Int] = StateCell[Int](MiddlewareName(s"$prefix$i"), "val", 0)
+        val cell: StateCell[Int] = StateCell[Int](MiddlewareName.refineEither(s"$prefix$i").fold(err => throw err, identity), "val", 0)
         val mw: AgentMiddleware[IO] = new AgentMiddleware[IO]:
-          val name: MiddlewareName                    = MiddlewareName(s"$prefix$i")
+          val name: MiddlewareName                    = MiddlewareName.refineEither(s"$prefix$i").fold(err => throw err, identity)
           override def stateCells: List[StateCell[?]] = List(cell)
           override def beforeAgent(state: HarnessState): IO[HarnessState] =
             IO.pure(state.update(cell)(_ + 1))
@@ -553,7 +554,7 @@ class MiddlewareStackSpec extends HedgehogSuite:
       tag2 <- Gen.string(Gen.alpha, Range.linear(1, 5)).forAll
     yield
       def prependMW(tag: String): AgentMiddleware[IO] = new AgentMiddleware[IO]:
-        val name: MiddlewareName = MiddlewareName(tag)
+        val name: MiddlewareName = MiddlewareName.refineEither(tag).fold(err => throw err, identity)
         override def wrapModelCall(next: ModelStep[IO]): ModelStep[IO] =
           Kleisli { req =>
             val prevBase: Option[String]          = req.systemPrompt.flatMap(_.base)

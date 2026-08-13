@@ -52,8 +52,9 @@ object Generators:
   val genString: Gen[String] =
     Gen.string(Gen.alpha, Range.linear(0, 20))
 
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   val genOwner: Gen[MiddlewareName] =
-    Gen.string(Gen.alpha, Range.linear(1, 6)).map(MiddlewareName.apply)
+    Gen.string(Gen.alpha, Range.linear(1, 6)).map(s => MiddlewareName.refineEither(s).fold(err => throw err, identity))
 
   val genCellName: Gen[String] =
     Gen.string(Gen.alpha, Range.linear(1, 5))
@@ -256,13 +257,14 @@ object Generators:
    * the model call (outermost-first order observable). Optionally rewrites
    * the system prompt by prepending `prefix`.
    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   final class TraceMiddleware(
     val mwName: String,
     prefix: String,
     rewrites: Boolean,
     val traceRef: cats.effect.Ref[IO, List[String]]
   ) extends AgentMiddleware[IO]:
-    val name: MiddlewareName = MiddlewareName(mwName)
+    val name: MiddlewareName = MiddlewareName.refineEither(mwName).fold(err => throw err, identity)
 
     override def wrapModelCall(next: ModelStep[IO]): ModelStep[IO] =
       Kleisli { (req: org.adk4s.harness.ModelRequest[IO]) =>
@@ -293,9 +295,10 @@ object Generators:
    * leftmost in the final string). Used by L3 to make wrapping order
    * observable through the deterministic model's recorded system prompt.
    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   final class PromptRewriteMiddleware(val mwName: String, prefix: String, val rewrites: Boolean)
       extends AgentMiddleware[IO]:
-    val name: MiddlewareName = MiddlewareName(mwName)
+    val name: MiddlewareName = MiddlewareName.refineEither(mwName).fold(err => throw err, identity)
 
     override def wrapModelCall(next: ModelStep[IO]): ModelStep[IO] =
       Kleisli { (req: org.adk4s.harness.ModelRequest[IO]) =>
@@ -352,9 +355,10 @@ object Generators:
    * Constructive: a `StateCell[Int]` with a different owner than a generated
    * middleware, not in `m.stateCells`.
    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   val genExternalCell: Gen[StateCell[Int]] =
     for
-      owner <- genOwner.map(n => MiddlewareName(s"ext-${n.value}"))
+      owner <- genOwner.map(n => MiddlewareName.refineEither(s"ext-${n.value}").fold(err => throw err, identity))
       name  <- genCellName
     yield StateCell[Int](owner, name, 0)
 
@@ -365,10 +369,11 @@ object Generators:
    * (distinct owners), disjoint tool names, disjoint section names, pure
    * `beforeAgent`/`afterAgent`, and no `wrapModelCall` override.
    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   val genDisjointMiddlewarePair: Gen[(GenPureMiddleware, GenPureMiddleware)] =
     for
       owner1 <- genOwner
-      owner2 <- genOwner.map(n => MiddlewareName(s"other-${n.value}"))
+      owner2 <- genOwner.map(n => MiddlewareName.refineEither(s"other-${n.value}").fold(err => throw err, identity))
       n1     <- Gen.frequency1(70 -> Gen.int(Range.linear(1, 2)), 30 -> Gen.constant(0))
       n2     <- Gen.frequency1(70 -> Gen.int(Range.linear(1, 2)), 30 -> Gen.constant(0))
       cs1    <- Gen.list(genCellName, Range.singleton(n1))
@@ -532,11 +537,11 @@ object Generators:
    * in a given set. Returns typed cells so callers can compare values
    * without `Any`.
    */
-  def genNewTypedCells(existingOwners: Set[String]): Gen[List[TypedCell[?]]] =
+  def genNewTypedCells(existingOwners: Set[StateCell.CellId]): Gen[List[TypedCell[?]]] =
     for
       n      <- Gen.int(Range.linear(1, 3))
       result <- genTypedCellsAndState(n, Nil, HarnessState.empty)
-    yield result._1.filter(tc => !existingOwners.contains(tc.cell.id.value))
+    yield result._1.filter(tc => !existingOwners.contains(tc.cell.id))
 
   // ── L9: private cell with value + children ─────────────────────────────────
 

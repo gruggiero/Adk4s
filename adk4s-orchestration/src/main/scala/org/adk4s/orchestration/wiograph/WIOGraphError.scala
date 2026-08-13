@@ -16,3 +16,4 @@ object WIOGraphError:
   case class UnsupportedNodeType(nodeType: String)                    extends WIOGraphError
   case class SubGraphCompilationFailed(errors: String)                extends WIOGraphError
   case class ForkEdgeBranchMismatch(edgeCount: Int, branchCount: Int) extends WIOGraphError
+  case class InvalidNodeKey(key: String, message: String)             extends WIOGraphError

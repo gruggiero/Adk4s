@@ -16,6 +16,7 @@ import hedgehog.munit.HedgehogSuite
  * Tests written from the spec + approved typed contract ONLY.
  * Every test cites its source: `// spec: checkpoint-store-fpoly — Scenario: <heading>`
  */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 class CheckpointStoreSpec extends HedgehogSuite:
 
   // ── Generators (defined first to avoid initialization-order issues) ────────
@@ -60,7 +61,7 @@ class CheckpointStoreSpec extends HedgehogSuite:
     val result: Option[Array[Byte]] =
       (for
         store  <- CheckpointStore.inMemory[IO]
-        result <- store.get("missing")
+        result <- store.get(CheckpointStore.CheckpointId("missing"))
       yield result).unsafeRunSync()
     assertEquals(result, None)
   }
@@ -71,8 +72,8 @@ class CheckpointStoreSpec extends HedgehogSuite:
     val result: Option[Array[Byte]] =
       (for
         store  <- CheckpointStore.inMemory[IO]
-        _      <- store.set("key1", data)
-        result <- store.get("key1")
+        _      <- store.set(CheckpointStore.CheckpointId("key1"), data)
+        result <- store.get(CheckpointStore.CheckpointId("key1"))
       yield result).unsafeRunSync()
     assert(result.isDefined)
     val bytes: Array[Byte] = result match
@@ -86,9 +87,9 @@ class CheckpointStoreSpec extends HedgehogSuite:
     val result: Option[Array[Byte]] =
       (for
         store  <- CheckpointStore.inMemory[IO]
-        _      <- store.set("key1", "first".getBytes("UTF-8"))
-        _      <- store.set("key1", "second".getBytes("UTF-8"))
-        result <- store.get("key1")
+        _      <- store.set(CheckpointStore.CheckpointId("key1"), "first".getBytes("UTF-8"))
+        _      <- store.set(CheckpointStore.CheckpointId("key1"), "second".getBytes("UTF-8"))
+        result <- store.get(CheckpointStore.CheckpointId("key1"))
       yield result).unsafeRunSync()
     val bytes: Array[Byte] = result match
       case Some(b) => b
@@ -101,9 +102,9 @@ class CheckpointStoreSpec extends HedgehogSuite:
     val result: Option[Array[Byte]] =
       (for
         store  <- CheckpointStore.inMemory[IO]
-        _      <- store.set("key1", "data".getBytes("UTF-8"))
-        _      <- store.delete("key1")
-        result <- store.get("key1")
+        _      <- store.set(CheckpointStore.CheckpointId("key1"), "data".getBytes("UTF-8"))
+        _      <- store.delete(CheckpointStore.CheckpointId("key1"))
+        result <- store.get(CheckpointStore.CheckpointId("key1"))
       yield result).unsafeRunSync()
     assertEquals(result, None)
   }
@@ -113,33 +114,33 @@ class CheckpointStoreSpec extends HedgehogSuite:
     val result: Option[Array[Byte]] =
       (for
         store  <- CheckpointStore.inMemory[IO]
-        _      <- store.delete("missing")
-        result <- store.get("missing")
+        _      <- store.delete(CheckpointStore.CheckpointId("missing"))
+        result <- store.get(CheckpointStore.CheckpointId("missing"))
       yield result).unsafeRunSync()
     assertEquals(result, None)
   }
 
   test("inMemory keys returns all stored keys") {
     // spec: checkpoint-store-fpoly — Scenario: inMemory keys returns all stored keys
-    val result: List[String] =
+    val result: List[CheckpointStore.CheckpointId] =
       (for
         store  <- CheckpointStore.inMemory[IO]
-        _      <- store.set("a", "1".getBytes("UTF-8"))
-        _      <- store.set("b", "2".getBytes("UTF-8"))
-        _      <- store.set("c", "3".getBytes("UTF-8"))
+        _      <- store.set(CheckpointStore.CheckpointId("a"), "1".getBytes("UTF-8"))
+        _      <- store.set(CheckpointStore.CheckpointId("b"), "2".getBytes("UTF-8"))
+        _      <- store.set(CheckpointStore.CheckpointId("c"), "3".getBytes("UTF-8"))
         result <- store.keys
       yield result).unsafeRunSync()
-    assertEquals(result.sorted, List("a", "b", "c"))
+    assertEquals(result.map(x => x.value: String).sorted, List("a", "b", "c"))
   }
 
   test("inMemory keys returns empty list when store is empty") {
     // spec: checkpoint-store-fpoly — Scenario: inMemory keys returns empty list when store is empty
-    val result: List[String] =
+    val result: List[CheckpointStore.CheckpointId] =
       (for
         store  <- CheckpointStore.inMemory[IO]
         result <- store.keys
       yield result).unsafeRunSync()
-    assertEquals(result, List.empty[String])
+    assertEquals(result.map(x => x.value: String), List.empty[String])
   }
 
   // ── F-polymorphism compile tests ──────────────────────────────────────────
@@ -148,26 +149,24 @@ class CheckpointStoreSpec extends HedgehogSuite:
     // spec: checkpoint-store-fpoly — Scenario: F-polymorphism — a non-IO Sync compiles
     // Kleisli[IO, Unit, *] is a non-IO Sync — proves inMemory does not bind to IO
     type F[A] = Kleisli[IO, Unit, A]
-    val result: List[String] =
+    val result: List[CheckpointStore.CheckpointId] =
       (for
         store <- CheckpointStore.inMemory[F]
         keys  <- store.keys
       yield keys).run(()).unsafeRunSync()
-    assertEquals(result, List.empty[String])
+    assertEquals(result.map(x => x.value: String), List.empty[String])
   }
 
-  test("CheckpointId transparent alias preserves source compatibility") {
-    // spec: checkpoint-store-fpoly — Scenario: Transparent alias preserves source compatibility
-    val id1: CheckpointStore.CheckpointId = "ckpt-1"
-    val id2: String                       = "ckpt-1"
-    assertEquals(id1, id2)
+  test("CheckpointId is not a transparent alias — raw String assignment does not compile") {
+    // spec: checkpoint-store-fpoly — Compile-Negative: raw String cannot be assigned to CheckpointId
+    val errors: String = compileErrors("val id: CheckpointStore.CheckpointId = (\"ckpt-1\": String)")
+    assert(errors.nonEmpty)
   }
 
-  test("Alias is not opaque — equality with String holds") {
-    // spec: checkpoint-store-fpoly — Scenario: Alias is not opaque — equality with String holds
-    val id1: CheckpointStore.CheckpointId = "ckpt-1"
-    val id2: String                       = "ckpt-1"
-    assert(id1 == id2)
+  test("CheckpointId .value extracts the underlying String") {
+    // spec: checkpoint-store-fpoly — Scenario: .value extracts the underlying String
+    val id: CheckpointStore.CheckpointId = CheckpointStore.CheckpointId("ckpt-1")
+    assertEquals(id.value: String, "ckpt-1")
   }
 
   // ── Compile-negative obligations ──────────────────────────────────────────
@@ -192,19 +191,25 @@ class CheckpointStoreSpec extends HedgehogSuite:
       val ok: Boolean = ops.forall { (op: CheckpointOp) =>
         op match
           case CheckpointOp.Set(id, data) =>
-            store.set(id, data).unsafeRunSync()
+            val refinedId: CheckpointStore.CheckpointId =
+              CheckpointStore.CheckpointId.refineEither(id).fold(err => throw err, identity)
+            store.set(refinedId, data).unsafeRunSync()
             ref.update(_.updated(id, data)).unsafeRunSync()
             true
           case CheckpointOp.Get(id) =>
-            val storeVal: Option[Array[Byte]] = store.get(id).unsafeRunSync()
+            val refinedId: CheckpointStore.CheckpointId =
+              CheckpointStore.CheckpointId.refineEither(id).fold(err => throw err, identity)
+            val storeVal: Option[Array[Byte]] = store.get(refinedId).unsafeRunSync()
             val refVal: Option[Array[Byte]]   = ref.get.unsafeRunSync().get(id)
             storeVal == refVal
           case CheckpointOp.Delete(id) =>
-            store.delete(id).unsafeRunSync()
+            val refinedId: CheckpointStore.CheckpointId =
+              CheckpointStore.CheckpointId.refineEither(id).fold(err => throw err, identity)
+            store.delete(refinedId).unsafeRunSync()
             ref.update(_ - id).unsafeRunSync()
             true
           case CheckpointOp.Keys =>
-            val storeKeys: List[String] = store.keys.unsafeRunSync()
+            val storeKeys: List[String] = store.keys.unsafeRunSync().map(x => x.value: String)
             val refKeys: List[String]   = ref.get.unsafeRunSync().keys.toList
             storeKeys.sorted == refKeys.sorted
       }

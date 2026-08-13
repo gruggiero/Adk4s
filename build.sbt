@@ -6,6 +6,14 @@ ThisBuild / organization := "org.adk4s"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / scalacOptions += "-Wconf:src=target/.*:s"
 
+// iron-upickle 3.3.2 transitively depends on upickle 3.1.3, but the project
+// uses upickle 4.4.3. The iron-upickle ReadWriter bridge uses only stable
+// upickle APIs (upickle.default.ReadWriter) that are compatible across both
+// major versions. Tell sbt to treat the eviction as compatible.
+ThisBuild / libraryDependencySchemes ++= Seq(
+  "com.lihaoyi" %% "upickle" % "always"
+)
+
 // --- scalafix ---
 ThisBuild / scalafixDependencies += scalafixRules
 ThisBuild / scalafixOnCompile := false  // Disabled for now
@@ -58,7 +66,7 @@ lazy val `structured-llm` = (project in file("structured-llm"))
       fs2Core,
       typesafeConfig,
       workflows4sCore
-    ) ++ smithy4s ++ testDeps,
+    ) ++ smithy4s ++ iron ++ testDeps,
     scalacOptions ++= scala3Options
   )
 
@@ -79,7 +87,7 @@ lazy val `adk4s-core` = (project in file("adk4s-core"))
     libraryDependencies ++= Seq(
       llm4s,
       catsEffect
-    ) ++ fs2 ++ upickle ++ testDeps,
+    ) ++ fs2 ++ upickle ++ iron ++ testDeps,
     scalacOptions ++= scala3Options
   )
 
@@ -100,7 +108,7 @@ lazy val `adk4s-harness-api` = (project in file("adk4s-harness-api"))
   )
   .settings(
     name := "adk4s-harness-api",
-    libraryDependencies ++= Seq(catsEffect) ++ upickle ++ testDeps,
+    libraryDependencies ++= Seq(catsEffect) ++ upickle ++ iron ++ Seq(ironUpickle) ++ testDeps,
     scalacOptions ++= scala3Options
   )
 
@@ -226,7 +234,8 @@ lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
     name := "adk4s-orchestration",
     libraryDependencies ++= Seq(
       catsEffect,
-      workflows4sCore
+      workflows4sCore,
+      ironUpickle
     ) ++ fs2 ++ testDeps :+ catsEffectTestkit,
     scalacOptions ++= scala3Options
   )

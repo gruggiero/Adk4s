@@ -92,6 +92,29 @@ case class StateDecodeError(cellId: String, cause: Throwable) extends AdkError:
   initCause(cause)
   def message: String = s"Failed to decode cell '$cellId': ${Option(cause).map(_.getMessage).getOrElse("unknown")}"
 
+/**
+ * Typed error for invalid configuration/identifier refinement failures.
+ *
+ * Carries the failing field name, the invalid value as a string, and the
+ * constraint that was violated. Replaces `require`-thrown
+ * `IllegalArgumentException` at refinement boundaries.
+ *
+ * spec: add-iron-refined-types/error-hierarchy-dedup — Requirement: ConfigError variant for refinement-boundary failures
+ */
+case class ConfigError(field: String, invalidValue: String, constraint: String) extends AdkError:
+  def message: String = s"Invalid $field: '$invalidValue' violates $constraint"
+
+/**
+ * Typed error for graph-compilation failures.
+ *
+ * Carries the list of validation errors from `graph.compile`. Replaces the
+ * generic `Exception` raised by `GraphExecutor.execute`/`executeWithError`.
+ *
+ * spec: add-iron-refined-types/error-hierarchy-dedup — Requirement: GraphCompilationError variant for graph-compile failures
+ */
+case class GraphCompilationError(errors: List[AdkError]) extends AdkError:
+  def message: String = s"Graph compilation failed (${errors.length} error(s)): ${errors.map(_.message).mkString(", ")}"
+
 object AdkError:
   given Show[AdkError] = Show.show(_.message)
 

@@ -17,6 +17,7 @@ object Versions {
   val Workflows4s: String    = "0.6.2"
   val Smithy4s: String       = "0.18.55"
   val Upickle: String        = "4.4.3" // MUST match llm4s 0.3.4 transitive
+  val Iron: String           = "3.3.2"
   val Logback: String        = "1.5.34"
 
   // --- Testing ---

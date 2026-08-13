@@ -536,7 +536,7 @@ object AgentMiddlewareLaws:
     for
       (tcs, state) <- genStateWithMutations
       unknowns     <- genUnknownFields
-      existingOwners = tcs.map(_.cell.id.value).toSet
+      existingOwners = tcs.map(_.cell.id).toSet
       newTcs <- genNewTypedCells(existingOwners)
     yield L8Case(tcs, state, unknowns, newTcs)
 

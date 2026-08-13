@@ -40,7 +40,7 @@ class InterruptibleNodeTest extends CatsEffectSuite:
           assertEquals(info.checkpointId, "cp-5")
           assertEquals(info.description, "Interrupted on input 5")
         case other => fail(s"Expected Interrupted, got $other")
-      assertEquals(storedKeys, List("cp-5"))
+      assertEquals(storedKeys.map(x => x.value: String), List("cp-5"))
     }
   }
 
@@ -71,7 +71,7 @@ class InterruptibleNodeTest extends CatsEffectSuite:
       result match
         case InterruptResult.Completed(output) => assertEquals(output, 14)
         case other => fail(s"Expected Completed after resume, got $other")
-      assertEquals(storedKeys, List.empty[String]) // checkpoint cleaned up
+      assertEquals(storedKeys.map(x => x.value: String), List.empty[String]) // checkpoint cleaned up
     }
   }
 
@@ -86,7 +86,7 @@ class InterruptibleNodeTest extends CatsEffectSuite:
       result match
         case InterruptResult.Rejected(cpId) => assertEquals(cpId, "cp-7")
         case other => fail(s"Expected Rejected, got $other")
-      assertEquals(storedKeys, List.empty[String])
+      assertEquals(storedKeys.map(x => x.value: String), List.empty[String])
     }
   }
 

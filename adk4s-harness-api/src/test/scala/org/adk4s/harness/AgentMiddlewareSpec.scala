@@ -39,6 +39,7 @@ import hedgehog.munit.HedgehogSuite
  *
  * spec: agent-middleware — Proof Obligations table
  */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 class AgentMiddlewareSpec extends HedgehogSuite:
 
   // ── Test fixtures ───────────────────────────────────────────────────────
@@ -310,7 +311,7 @@ class AgentMiddlewareSpec extends HedgehogSuite:
     for mwName <- Gen.string(Gen.alpha, Range.linear(3, 20)).forAll
     yield
       val mw: AgentMiddleware[IO] = new AgentMiddleware[IO]:
-        val name: MiddlewareName = MiddlewareName(mwName)
+        val name: MiddlewareName = MiddlewareName.refineEither(mwName).fold(err => throw err, identity)
       val state: HarnessState         = HarnessState.empty
       val beforeResult: HarnessState  = mw.beforeAgent(state).unsafeRunSync()
       val afterResult: HarnessState   = mw.afterAgent(state).unsafeRunSync()
@@ -337,7 +338,7 @@ class AgentMiddlewareSpec extends HedgehogSuite:
       tag2 <- Gen.string(Gen.alpha, Range.linear(1, 5)).forAll
     yield
       def traceMiddleware(tag: String): AgentMiddleware[IO] = new AgentMiddleware[IO]:
-        val name: MiddlewareName = MiddlewareName(tag)
+        val name: MiddlewareName = MiddlewareName.refineEither(tag).fold(err => throw err, identity)
         override def wrapModelCall(next: ModelStep[IO]): ModelStep[IO] =
           Kleisli { req =>
             val prevBase: Option[String]          = req.systemPrompt.flatMap(_.base)
@@ -407,9 +408,9 @@ class AgentMiddlewareSpec extends HedgehogSuite:
       val middlewares: List[AgentMiddleware[IO]] =
         cellValues.zipWithIndex.map { (cellValue, i) =>
           val cell: StateCell[String] =
-            StateCell[String](MiddlewareName(s"m$i"), "data", "")
+            StateCell[String](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), "data", "")
           new AgentMiddleware[IO]:
-            val name: MiddlewareName                    = MiddlewareName(s"m$i")
+            val name: MiddlewareName                    = MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity)
             override def stateCells: List[StateCell[?]] = List(cell)
             override def promptSections(state: HarnessState): List[PromptSection] =
               List(PromptSection(s"section-$i", state.get(cell)))
@@ -417,7 +418,7 @@ class AgentMiddlewareSpec extends HedgehogSuite:
 
       // Build two states with different cell values.
       val cells: List[StateCell[String]] = middlewares.zipWithIndex.map { (mw, i) =>
-        StateCell[String](MiddlewareName(s"m$i"), "data", "")
+        StateCell[String](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), "data", "")
       }
       def buildState(values: List[String]): HarnessState =
         values.zip(cells).foldLeft(HarnessState.initial(cells)) { case (acc, (v, c)) =>

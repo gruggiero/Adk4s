@@ -14,7 +14,7 @@ state
     options: StructuredLLM -> CompletionOptions
     logRawResponse: StructuredLLM -> Boolean
     parseRetryTrigger: StructuredLLM -> Option[ParseRetryTrigger]
-    maxParseAttempts: StructuredLLM -> Int
+    maxParseAttempts: StructuredLLM -> Int (refined to Positive at factory boundary via `fromClientWithMiddlewaresEither`)
     parseRetryDelay: StructuredLLM -> Duration
 actions
     complete [ prompt: Prompt ]

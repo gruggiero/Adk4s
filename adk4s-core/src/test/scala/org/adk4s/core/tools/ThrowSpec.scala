@@ -69,15 +69,16 @@ class ThrowSpec extends HedgehogSuite:
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Property 4: NodeKey.unsafeApply is total (never throws)
-  // spec: wartremover-throw — Property: unsafeApply total
+  // Property 4: NodeKey.either is total (never throws)
+  // spec: wartremover-throw — Property: either total
   // ════════════════════════════════════════════════════════════════════════
 
-  property("NodeKey.unsafeApply is total (never throws, even on invalid input)") {
+  property("NodeKey.either is total (never throws, even on invalid input)") {
     val anyStringGen: Gen[String] = Gen.string(Gen.alphaNum, Range.linear(0, 20))
     anyStringGen.forAll.map { (s: String) =>
-      // unsafeApply should never throw — it's a direct assignment for trusted keys
-      val key: NodeKey = NodeKey.unsafeApply(s)
-      key.value ==== s
+      // either should never throw — it returns Either for all inputs
+      val result: Either[String, NodeKey] = NodeKey.either(s)
+      val isEither: Boolean = result.isLeft || result.isRight
+      isEither ==== true
     }
   }

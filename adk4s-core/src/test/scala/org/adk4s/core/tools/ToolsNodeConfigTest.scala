@@ -1,9 +1,14 @@
 package org.adk4s.core.tools
 
 import cats.effect.IO
+import hedgehog.Gen
+import hedgehog.Range
+import hedgehog.Syntax
+import hedgehog.munit.HedgehogSuite
 import munit.CatsEffectSuite
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.component.Tool
+import org.adk4s.core.error.ConfigError
 import ujson.{Str, Value}
 
 class ToolsNodeConfigTest extends CatsEffectSuite:
@@ -76,4 +81,75 @@ class ToolsNodeConfigTest extends CatsEffectSuite:
     assert(!config.executeSequentially)
     assertEquals(config.maxConcurrency, 5)
     assert(config.unknownToolHandler.isDefined)
+  }
+
+  // ── Iron refined type: parallelEither ────────────────────────────────────
+  // spec: add-iron-refined-types/tools-node — Test oracle
+
+  test("parallelEither accepts positive value") {
+    // spec: add-iron-refined-types/tools-node — Scenario: parallelEither accepts positive value
+    val result: Either[ConfigError, ToolsNodeConfigBuilder] =
+      ToolsNodeConfig.builder.parallelEither(8)
+    assert(result.isRight, s"Expected Right, got $result")
+    val config: ToolsNodeConfig = result.fold(
+      err => fail(s"Expected Right, got Left($err)"),
+      b => b.build
+    )
+    assertEquals(config.maxConcurrency, 8)
+    assert(!config.executeSequentially)
+  }
+
+  test("parallelEither rejects zero") {
+    // spec: add-iron-refined-types/tools-node — Scenario: parallelEither rejects zero
+    val result: Either[ConfigError, ToolsNodeConfigBuilder] =
+      ToolsNodeConfig.builder.parallelEither(0)
+    assert(result.isLeft, s"Expected Left, got $result")
+    result match
+      case Left(err: ConfigError) =>
+        assertEquals(err.field, "maxConcurrency")
+        assertEquals(err.invalidValue, "0")
+        assertEquals(err.constraint, "Positive")
+      case other =>
+        fail(s"Expected Left(ConfigError), got $other")
+  }
+
+  test("parallelEither rejects negative") {
+    // spec: add-iron-refined-types/tools-node — Scenario: Negative is rejected at runtime
+    val result: Either[ConfigError, ToolsNodeConfigBuilder] =
+      ToolsNodeConfig.builder.parallelEither(-1)
+    assert(result.isLeft, s"Expected Left, got $result")
+  }
+
+  test("parallel throwing overload still throws for zero") {
+    // spec: add-iron-refined-types/tools-node — Scenario: Throwing overload preserved
+    intercept[ConfigError]:
+      ToolsNodeConfig.builder.parallel(0)
+  }
+
+  test("default config has maxConcurrency = 10") {
+    // spec: add-iron-refined-types/tools-node — Scenario: Default value 10 remains valid
+    val config: ToolsNodeConfig = ToolsNodeConfig()
+    assertEquals(config.maxConcurrency, 10)
+  }
+
+class ToolsNodeConfigIronSpec extends HedgehogSuite:
+
+  property("maxConcurrency parallelEither round-trips for positive inputs") {
+    // spec: add-iron-refined-types/tools-node — Property: maxConcurrency refineEither round-trips
+    val gen: Gen[Int] = Gen.int(Range.linear(1, 100))
+    for n <- gen.forAll
+      yield
+        val result: Either[ConfigError, ToolsNodeConfigBuilder] =
+          ToolsNodeConfig.builder.parallelEither(n)
+        result.map { (b: ToolsNodeConfigBuilder) => b.build.maxConcurrency } ==== Right(n)
+  }
+
+  property("maxConcurrency parallelEither rejects zero and negatives") {
+    // spec: add-iron-refined-types/tools-node — Property: maxConcurrency rejects zero and negatives
+    val gen: Gen[Int] = Gen.int(Range.linear(-100, 0))
+    for n <- gen.forAll
+      yield
+        val result: Either[ConfigError, ToolsNodeConfigBuilder] =
+          ToolsNodeConfig.builder.parallelEither(n)
+        result.isLeft ==== true
   }

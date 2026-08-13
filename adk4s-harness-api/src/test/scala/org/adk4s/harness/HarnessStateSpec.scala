@@ -297,3 +297,21 @@ class HarnessStateSpec extends HedgehogSuite:
     Gen
       .int(Range.linear(-100, 100))
       .list(Range.linear(0, 20))
+
+  // ── Existing snapshot decoding (Ring 4 compatibility) ──────────────────
+  // spec: add-iron-refined-types/harness-state — Scenario: Existing HarnessState snapshots still decode
+
+  test("pre-migration snapshot with valid cell ids decodes successfully"):
+    // Simulate a pre-migration JSON snapshot: cell ids are plain strings
+    // like "m/c" used as keys in a DObject. The refined CellId codec must
+    // still decode these.
+    val cell: StateCell[Int] = StateCell[Int](MiddlewareName("m"), "c", 0)
+    val state: HarnessState  = HarnessState.initial(List(cell)).set(cell)(42)
+    val snapshot: JsonValue  = state.snapshot
+    val restored: Either[StateDecodeError, HarnessState] =
+      HarnessState.restore(List(cell), snapshot)
+    restored match
+      case Right(s) =>
+        assertEquals(s.get(cell), 42)
+      case Left(err) =>
+        fail(s"Expected Right, got Left($err)")

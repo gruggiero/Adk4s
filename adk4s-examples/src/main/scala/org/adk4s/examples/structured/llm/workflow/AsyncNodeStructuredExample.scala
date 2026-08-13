@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.effect.IOApp
 import fs2.Stream
 import org.adk4s.core.runnable.Runnable
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError
@@ -168,11 +168,11 @@ object AsyncNodeStructuredExample extends IOApp.Simple:
       )
 
     val node1Ref: WIONodeRef[Ctx.Ctx, WorkState, WorkState] =
-      WIONodeRef[Ctx.Ctx, WorkState, WorkState](NodeKey.unsafeApply("async_parser"))
+      WIONodeRef[Ctx.Ctx, WorkState, WorkState](NodeKey("async_parser"))
     val node2Ref: WIONodeRef[Ctx.Ctx, WorkState, WorkState] =
-      WIONodeRef[Ctx.Ctx, WorkState, WorkState](NodeKey.unsafeApply("async_processor"))
+      WIONodeRef[Ctx.Ctx, WorkState, WorkState](NodeKey("async_processor"))
     val endRef: WIONodeRef[Ctx.Ctx, WorkState, GraphState] =
-      WIONodeRef[Ctx.Ctx, WorkState, GraphState](NodeKey.unsafeApply("async_processor"))
+      WIONodeRef[Ctx.Ctx, WorkState, GraphState](NodeKey("async_processor"))
 
     val node1: WIORunnableNode[Ctx.Ctx, WorkState, Nothing, StepsParsed, StepList, WorkState] =
       WIONode.fromRunnableSimple[Ctx.Ctx, WorkState, StepsParsed, StepList, WorkState](

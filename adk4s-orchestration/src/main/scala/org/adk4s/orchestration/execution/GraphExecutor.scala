@@ -2,48 +2,28 @@ package org.adk4s.orchestration.execution
 
 import cats.effect.IO
 import cats.syntax.all.*
-import org.adk4s.core.error.GenericError
+import org.adk4s.core.error.{GenericError, GraphCompilationError}
 import org.adk4s.core.types.NodeKey
 import org.adk4s.orchestration.fork.ForkSpec
 import org.adk4s.orchestration.graph.{GCtx, Graph, GraphConfig, GraphNode}
 
-/** GraphExecutor provides graph-to-WIO compilation and execution.
+/** GraphExecutor provides graph compilation and execution.
   *
-  * The toWIO method compiles a graph into a Workflows4s WIO by:
-  * 1. Starting from the typed entry node
-  * 2. Walking through edges to build a WIO chain
-  * 3. Converting each node to WIO using node.executable.toWIO
-  * 4. Composing steps using WIO.AndThen
-  * 5. Handling forks using WIO.Fork via ForkSpec
-  *
-  * All WIO steps preserve full type information throughout compilation.
+  * spec: add-iron-refined-types/wio-graph — Requirement: GraphExecutor raises GraphCompilationError instead of generic Exception
   */
 object GraphExecutor:
-  /*
-  /** Convert a graph to a typed WIO representation.
-    *
-    * Each node becomes a WIO step, composed using AndThen.
-    * The resulting WIO can be run via a Workflows4s runtime.
-    */
-  def toWIO[Ctx <: WorkflowContext, In, Err, Out](
-    graph: Graph[Ctx, In, Err, Out]
-  )(using errorMeta: ErrorMeta[Err]): WIO[In, Err, Out, Ctx] =
-    graph.validateGraph match
-      case cats.data.Validated.Invalid(errors) =>
-        throw new IllegalArgumentException("Graph validation failed: " + errors.toList.map(_.message).mkString(", "))
-      case cats.data.Validated.Valid(_) =>
-        compileGraph(graph)
-  */
 
   /** Execute a graph with the given input using IO-based traversal.
     * This is an alternative to WIO-based execution for direct IO execution.
+    *
+    * spec: add-iron-refined-types/wio-graph — Scenario: Failed compile raises GraphCompilationError
     */
   def execute[In, Out](
     graph: Graph[In, Out],
     input: In
   ): IO[Out] =
     graph.compile(GraphConfig()).fold(
-      errors => IO.raiseError(new Exception("Graph validation failed: " + errors.toList.map(_.message).mkString(", "))),
+      errors => IO.raiseError(GraphCompilationError(errors.toList)),
       _ => executeGraph(graph, input)
     )
 
@@ -53,7 +33,7 @@ object GraphExecutor:
     input: In
   ): IO[Either[Err, Out]] =
     graph.compile(GraphConfig()).fold(
-      errors => IO.raiseError(new Exception("Graph validation failed: " + errors.toList.map(_.message).mkString(", "))),
+      errors => IO.raiseError(GraphCompilationError(errors.toList)),
       _ => executeGraphWithError(graph, input)
     )
 
@@ -66,100 +46,6 @@ object GraphExecutor:
       case Right(result) => IO.pure(result)
       case Left(err) => IO.raiseError(new Exception(s"Unexpected error: $err"))
     }
-
-  /*
-  /** Helper to create AndThen with proper type casting.
-    *
-    * Since graph nodes are stored in a Map with existential types,
-    * we need to use casts when composing WIOs. This helper encapsulates
-    * the unsafe cast in a controlled manner.
-    */
-  private def chainWIO[Ctx <: WorkflowContext, In, Err, Mid, Out](
-    first: WIO[In, Err, Mid, Ctx],
-    second: WIO[Mid, Err, Out, Ctx]
-  ): WIO[In, Err, Out, Ctx] =
-    WIO.AndThen[Ctx, In, Err, Mid, Out](first, second)
-
-  private def compileGraph[Ctx <: WorkflowContext, In, Err, Out](
-    graph: Graph[Ctx, In, Err, Out]
-  )(using errorMeta: ErrorMeta[Err]): WIO[In, Err, Out, Ctx] =
-    val nodes: Map[NodeKey, GraphNode[Ctx, ?, ?, ?]] = graph.nodesMap
-    val edges: Map[NodeKey, Set[NodeKey]] = graph.edgesMap
-    val forks: Map[NodeKey, ForkSpec[Ctx, ?, ?, ?]] = graph.forksMap
-    val endNodes: Set[NodeKey] = graph.endNodesSet
-
-    graph.entry match
-      case None =>
-        throw new IllegalStateException("Entry node not set")
-      case Some(entryNodeKey) =>
-        // Start compilation from entry node
-        // The types flow: In -> ... -> Out
-        compileFromNodeUnsafe[Ctx, Err](entryNodeKey, nodes, edges, forks, endNodes, Set.empty)
-          .asInstanceOf[WIO[In, Err, Out, Ctx]]
-
-  /** Compile a subgraph starting from a given node.
-    *
-    * Returns a WIO with existential input/output types since we can't
-    * statically know the types from the map lookup.
-    */
-  private def compileFromNodeUnsafe[Ctx <: WorkflowContext, Err](
-    nodeKey: NodeKey,
-    nodes: Map[NodeKey, GraphNode[Ctx, ?, ?, ?]],
-    edges: Map[NodeKey, Set[NodeKey]],
-    forks: Map[NodeKey, ForkSpec[Ctx, ?, ?, ?]],
-    endNodes: Set[NodeKey],
-    visited: Set[NodeKey]
-  )(using errorMeta: ErrorMeta[Err]): WIO[Any, Err, Any, Ctx] =
-    if visited.contains(nodeKey) then
-      throw new IllegalStateException(s"Cycle detected at node ${nodeKey.value}")
-
-    nodes.get(nodeKey) match
-      case None =>
-        throw new IllegalStateException(s"Node ${nodeKey.value} not found")
-      case Some(node) =>
-        // Get the node's WIO with type erasure
-        val nodeWIO: WIO[Any, Err, Any, Ctx] =
-          node.executable.toWIO.asInstanceOf[WIO[Any, Err, Any, Ctx]]
-
-        val outgoingEdges: Set[NodeKey] = edges.getOrElse(nodeKey, Set.empty)
-        val isEndNode: Boolean = endNodes.contains(nodeKey)
-        val maybeFork: Option[ForkSpec[Ctx, ?, ?, ?]] = forks.get(nodeKey)
-
-        (outgoingEdges.isEmpty, isEndNode, maybeFork) match
-          // Terminal node - return the node WIO
-          case (true, true, _) =>
-            nodeWIO
-
-          // End node with no outgoing edges
-          case (true, false, _) if endNodes.contains(nodeKey) =>
-            nodeWIO
-
-          // Node with fork - the fork handles routing
-          case (_, _, Some(forkSpec)) =>
-            val forkWIO: WIO[Any, Err, Any, Ctx] =
-              forkSpec.asInstanceOf[ForkSpec[Ctx, Any, Err, Any]]
-                .toWIO(using errorMeta)
-            WIO.AndThen[Ctx, Any, Err, Any, Any](nodeWIO, forkWIO)
-
-          // Linear path - single outgoing edge
-          case (false, _, None) if outgoingEdges.size == 1 =>
-            val nextNodeKey: NodeKey = outgoingEdges.headOption.getOrElse(throw new IllegalStateException("outgoingEdges unexpectedly empty despite size == 1"))
-            val nextWIO: WIO[Any, Err, Any, Ctx] =
-              compileFromNodeUnsafe[Ctx, Err](nextNodeKey, nodes, edges, forks, endNodes, visited + nodeKey)
-            WIO.AndThen[Ctx, Any, Err, Any, Any](nodeWIO, nextWIO)
-
-          // Multiple outgoing edges without fork
-          case (false, _, None) =>
-            throw new IllegalStateException(
-              s"Node ${nodeKey.value} has multiple outgoing edges but no fork defined"
-            )
-
-          // Dead end
-          case (true, false, _) =>
-            throw new IllegalStateException(
-              s"Node ${nodeKey.value} has no outgoing edges and is not marked as an end node"
-            )
-  */
 
   private def executeGraphWithError[In, Err, Out](
     graph: Graph[In, Out],
@@ -247,7 +133,7 @@ object GraphExecutor:
     callback: GraphCallback = NoOpCallback
   ): IO[Out] =
     graph.compile(config).fold(
-      errors => IO.raiseError(new Exception("Graph validation failed: " + errors.toList.map(_.message).mkString(", "))),
+      errors => IO.raiseError(GraphCompilationError(errors.toList)),
       _ => executeGraphParallel(graph, input, config, callback)
     )
 

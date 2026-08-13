@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.{ AtomicInteger, AtomicReference }
  *
  * spec: harness-agent — Generators
  */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object Generators:
 
   // ── Content generators ──────────────────────────────────────────────────
@@ -391,7 +392,7 @@ object Generators:
     val beforeCountRef: Ref[IO, Int],
     val afterCountRef: Ref[IO, Int]
   ) extends AgentMiddleware[IO]:
-    val name: MiddlewareName = MiddlewareName(mwName)
+    val name: MiddlewareName = MiddlewareName.refineEither(mwName).fold(err => throw err, identity)
 
     override def beforeAgent(state: HarnessState): IO[HarnessState] =
       beforeCountRef.update(_ + 1).as(state)
@@ -416,7 +417,7 @@ object Generators:
     val mwName: String,
     traceRef: Ref[IO, List[String]]
   ) extends AgentMiddleware[IO]:
-    val name: MiddlewareName = MiddlewareName(mwName)
+    val name: MiddlewareName = MiddlewareName.refineEither(mwName).fold(err => throw err, identity)
 
     private def record(hook: String): IO[Unit] =
       traceRef.update((acc: List[String]) => acc :+ s"$mwName.$hook")

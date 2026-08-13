@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Tests written from the spec + approved typed contract ONLY.
  * Every test cites its source: `// spec: checkpoint-store-fpoly — Scenario: <heading>`
  */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 class AgentRunnerResumeSpec extends HedgehogSuite:
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ class AgentRunnerResumeSpec extends HedgehogSuite:
     val result: RunResult =
       (for
         store   <- CheckpointStore.inMemory[IO]
-        _       <- store.set("v1-ckpt", v1Json.getBytes("UTF-8"))
+        _       <- store.set(CheckpointStore.CheckpointId("v1-ckpt"), v1Json.getBytes("UTF-8"))
         emitter <- AgentEventEmitter.create()
         runner = new AgentRunner(simpleAgent("ok"), store, emitter, List(cell))
         result <- runner.resume("v1-ckpt", List.empty)
@@ -110,7 +111,7 @@ class AgentRunnerResumeSpec extends HedgehogSuite:
     val result: RunResult =
       (for
         store   <- CheckpointStore.inMemory[IO]
-        _       <- store.set("corrupted-ckpt", corruptedJson.getBytes("UTF-8"))
+        _       <- store.set(CheckpointStore.CheckpointId("corrupted-ckpt"), corruptedJson.getBytes("UTF-8"))
         emitter <- AgentEventEmitter.create()
         runner = new AgentRunner(simpleAgent("ok"), store, emitter, List(cell))
         result <- runner.resume("corrupted-ckpt", List.empty)
@@ -129,11 +130,11 @@ class AgentRunnerResumeSpec extends HedgehogSuite:
     val (result, checkpointAfter): (RunResult, Option[Array[Byte]]) =
       (for
         store   <- CheckpointStore.inMemory[IO]
-        _       <- store.set("resume-ckpt", v2Json.getBytes("UTF-8"))
+        _       <- store.set(CheckpointStore.CheckpointId("resume-ckpt"), v2Json.getBytes("UTF-8"))
         emitter <- AgentEventEmitter.create()
         runner = AgentRunner.create(simpleAgent("done!"), store, emitter)
         result          <- runner.resume("resume-ckpt", List.empty)
-        checkpointAfter <- store.get("resume-ckpt")
+        checkpointAfter <- store.get(CheckpointStore.CheckpointId("resume-ckpt"))
       yield (result, checkpointAfter)).unsafeRunSync()
     result match
       case RunResult.Completed(output, _) =>
@@ -154,7 +155,7 @@ class AgentRunnerResumeSpec extends HedgehogSuite:
         id = r match
           case RunResult.Interrupted(i, _) => i
           case _                           => sys.error("Expected Interrupted")
-        d <- store.get(id)
+        d <- store.get(CheckpointStore.CheckpointId.refineEither(id).fold(err => throw err, identity))
       yield (r, d)).unsafeRunSync()
     assert(checkpointData.isDefined)
     val json: String = new String(checkpointData.getOrElse(sys.error("expected checkpoint")), "UTF-8")
@@ -169,7 +170,7 @@ class AgentRunnerResumeSpec extends HedgehogSuite:
     val result: RunResult =
       (for
         store   <- CheckpointStore.inMemory[IO]
-        _       <- store.set("load-ckpt", v2Json.getBytes("UTF-8"))
+        _       <- store.set(CheckpointStore.CheckpointId("load-ckpt"), v2Json.getBytes("UTF-8"))
         emitter <- AgentEventEmitter.create()
         runner = AgentRunner.create(simpleAgent("loaded!"), store, emitter)
         result <- runner.resume("load-ckpt", List.empty)
@@ -190,7 +191,7 @@ class AgentRunnerResumeSpec extends HedgehogSuite:
       initial <- Gen.int(Range.linear(-100, 100))
       value   <- Gen.int(Range.linear(-1000, 1000))
     yield
-      val cell: StateCell[Int] = StateCell[Int](MiddlewareName(owner), name, initial)
+      val cell: StateCell[Int] = StateCell[Int](MiddlewareName.refineEither(owner).fold(err => throw err, identity), name, initial)
       (cell, value)
 
   // ── Property (Ring 3) ─────────────────────────────────────────────────────

@@ -6,7 +6,8 @@ import org.adk4s.core.runnable.{Runnable, Lambda}
 import org.adk4s.core.component.ChatModel
 import org.adk4s.core.runnable.RunnableOps.{andThen, contramap}
 import org.adk4s.orchestration.graph.Graph
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved}
+import org.adk4s.core.types.given
 import org.llm4s.llmconnect.model.{Conversation, Completion}
 import scala.reflect.ClassTag
 
@@ -41,9 +42,9 @@ case class Chain[I, O] private (
       .addLambdaNode("chain", Lambda((input: I) => identityRunnable.invoke(input)))
       .toOption
       .fold(IO.raiseError(GenericError("Graph validation failed: addLambdaNode")): IO[Graph[I, O]]) { g1 =>
-        g1.graph.addEndNode(Graph.NodeRef[I, O](NodeKey.unsafeApply("chain"))).toOption
+        g1.graph.addEndNode(Graph.NodeRef[I, O](NodeKey("chain"))).toOption
           .fold(IO.raiseError(GenericError("Graph validation failed: addEndNode")): IO[Graph[I, O]]) { endResult =>
-            endResult.setEntry(Graph.NodeRef[I, I](NodeKey.unsafeApply("chain"))).toOption
+            endResult.setEntry(Graph.NodeRef[I, I](NodeKey("chain"))).toOption
               .fold(IO.raiseError(GenericError("Graph validation failed: setEntry")): IO[Graph[I, O]])(IO.pure)
           }
       }

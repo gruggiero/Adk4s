@@ -5,8 +5,12 @@ import org.llm4s.toolapi.ToolFunction
 import org.llm4s.toolapi.ToolRegistry
 import org.adk4s.core.component.AgentTool
 import org.adk4s.core.component.InvokableTool
+import org.adk4s.core.error.ConfigError
 import org.adk4s.core.interrupt.AgentEventEmitter
 import org.adk4s.core.tools.StructuredToolFunction.*
+import io.github.iltotore.iron.refineEither
+import io.github.iltotore.iron.constraint.numeric.Positive
+import scala.annotation.targetName
 import scala.language.reflectiveCalls
 import scala.language.implicitConversions
 
@@ -70,8 +74,31 @@ case class ToolsNodeConfigBuilder(
   def sequential: ToolsNodeConfigBuilder =
     copy(config = config.copy(executeSequentially = true))
 
+  /** Total parallel configuration returning a typed error.
+    *
+    * Refines `maxConcurrency` via `refineEither[Positive]`, returning
+    * `Left(ConfigError("maxConcurrency", …, "Positive"))` for zero/negative
+    * input. No exception is thrown.
+    *
+    * spec: add-iron-refined-types/tools-node — Requirement: ToolsNodeConfigBuilder.parallel returns typed error for invalid input
+    */
+  def parallelEither(maxConcurrency: Int): Either[ConfigError, ToolsNodeConfigBuilder] =
+    maxConcurrency.refineEither[Positive].map { (_: Int) =>
+      copy(config = config.copy(executeSequentially = false, maxConcurrency = maxConcurrency))
+    }.left.map { (_: String) =>
+      ConfigError("maxConcurrency", maxConcurrency.toString, "Positive")
+    }
+
+  /** Throwing parallel configuration — delegates to `parallelEither` and throws on `Left`.
+    *
+    * Preserves source compatibility for callers using the throwing API.
+    *
+    * spec: add-iron-refined-types/tools-node — Scenario: Throwing overload preserved for source compatibility
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  @targetName("parallelThrowing")
   def parallel(maxConcurrency: Int = 10): ToolsNodeConfigBuilder =
-    copy(config = config.copy(executeSequentially = false, maxConcurrency = maxConcurrency))
+    parallelEither(maxConcurrency).fold(err => throw err, identity)
 
   def withMiddleware(middleware: ToolMiddleware): ToolsNodeConfigBuilder =
     copy(config = config.copy(middlewares = config.middlewares :+ middleware))

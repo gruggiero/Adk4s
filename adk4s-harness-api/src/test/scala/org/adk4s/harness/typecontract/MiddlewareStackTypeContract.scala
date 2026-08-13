@@ -41,6 +41,7 @@ import munit.FunSuite
  *
  * spec: middleware-stack — Proof Obligations table
  */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 class MiddlewareStackTypeContract extends FunSuite:
 
   // ── Test fixtures ───────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ class MiddlewareStackTypeContract extends FunSuite:
     ModelRequest[IO](None, Nil, Nil, testOptions, state)
 
   private def tracingMiddleware(tag: String): AgentMiddleware[IO] = new AgentMiddleware[IO]:
-    val name: MiddlewareName = MiddlewareName(tag)
+    val name: MiddlewareName = MiddlewareName.refineEither(tag).fold(err => throw err, identity)
 
   // ── MiddlewareStack.empty ───────────────────────────────────────────────
 

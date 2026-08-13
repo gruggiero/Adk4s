@@ -54,7 +54,7 @@ synchronizations
 
 | Code identifier | Kind | File |
 |-----------------|------|------|
-| `MemoryPolicy` | final case class | `adk4s-orchestration/src/main/scala/org/adk4s/orchestration/memory/MemoryPolicy.scala` |
+| `MemoryPolicy` | final case class (`recallK: NonNegative` — Iron refined) | `adk4s-orchestration/src/main/scala/org/adk4s/orchestration/memory/MemoryPolicy.scala` |
 | `MemoryHook` | final class | `adk4s-orchestration/src/main/scala/org/adk4s/orchestration/memory/MemoryHook.scala` |
 | `MemoryAwareRunner` | final class (decorator) | `adk4s-orchestration/src/main/scala/org/adk4s/orchestration/memory/MemoryAwareRunner.scala` |
 

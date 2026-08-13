@@ -4,6 +4,8 @@ import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import munit.FunSuite
+import org.adk4s.core.types.{NodeKey, Reserved}
+import org.adk4s.core.types.given
 import workflows4s.runtime.WorkflowInstanceId
 import workflows4s.wio.{ActiveWorkflow, SignalDef, WCEffect, WCEffectLift, WCEvent, WCState, WIO}
 import workflows4s.wio.internal.{SignalResult, WakeupResult}
@@ -104,9 +106,9 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val node1: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
@@ -155,9 +157,9 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val missingRef: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("missing"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("missing"))
 
     val node: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
@@ -175,9 +177,9 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val node1: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
@@ -214,7 +216,7 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val nodeRef: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
 
     val node: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
@@ -244,11 +246,11 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
     val node3Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node3"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node3"))
 
     val node1: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
@@ -288,11 +290,11 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
     val node3Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node3"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node3"))
 
     val node1: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
@@ -330,11 +332,11 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
     val node3Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node3"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node3"))
 
     val trueBranch: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i + 100))
@@ -383,9 +385,9 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, TestState, TestState]
 
     val subNode1Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("sub_node1"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("sub_node1"))
     val subNode2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("sub_node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("sub_node2"))
 
     val subNode1: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
@@ -407,11 +409,11 @@ class WIOGraphTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val parentNode1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("parent_node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("parent_node1"))
     val parentSubRef: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("parent_sub"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("parent_sub"))
     val parentEndRef: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("parent_end"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("parent_end"))
 
     val parentNode1: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i * 2))

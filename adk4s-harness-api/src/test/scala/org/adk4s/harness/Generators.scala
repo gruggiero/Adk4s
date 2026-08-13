@@ -22,6 +22,7 @@ import upickle.default.*
  *  - `genSemilatticeCell` — generates `Shared` cells with known semilattice
  *    merges: set-union for `Set[String]`, `max` for `Int`.
  */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object Generators:
 
   val genInt: Gen[Int] =
@@ -69,7 +70,7 @@ object Generators:
 
   /** Generates a `MiddlewareName` from a short alpha string. */
   val genOwner: Gen[MiddlewareName] =
-    Gen.string(Gen.alpha, Range.linear(1, 5)).map(MiddlewareName.apply)
+    Gen.string(Gen.alpha, Range.linear(1, 5)).map(s => MiddlewareName.refineEither(s).fold(err => throw err, identity))
 
   /** Generates a cell name from a short alpha string. */
   val genCellName: Gen[String] =
@@ -83,7 +84,7 @@ object Generators:
     Gen
       .string(Gen.alpha, Range.linear(1, 3))
       .list(Range.linear(0, 8))
-      .map(_.zipWithIndex.map((prefix, i) => StateCell[Int](MiddlewareName(s"m$i"), s"c$prefix", 0)))
+      .map(_.zipWithIndex.map((prefix, i) => StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), s"c$prefix", 0)))
 
   /**
    * Generates a `HarnessState` from a list of Int cells with generated values.
@@ -96,7 +97,7 @@ object Generators:
       cells <- Gen
         .string(Gen.alpha, Range.linear(1, 3))
         .list(Range.linear(0, cellCount))
-        .map(_.zipWithIndex.map((prefix, i) => StateCell[Int](MiddlewareName(s"m$i"), s"c$prefix", 0)))
+        .map(_.zipWithIndex.map((prefix, i) => StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), s"c$prefix", 0)))
       values <- Gen.int(Range.linear(-1000, 1000)).list(Range.linear(0, cells.length))
     yield
       val state: HarnessState = cells.zip(values).foldLeft(HarnessState.empty) { (acc, pair) =>

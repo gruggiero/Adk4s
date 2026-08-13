@@ -4,7 +4,7 @@ import cats.data.Ior
 import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.IOApp
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOForkNode
 import org.adk4s.orchestration.wiograph.WIOGraph
@@ -86,9 +86,9 @@ object BranchWorkflowExample extends IOApp.Simple:
 
   private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, BranchState]] =
     val forkRef: WIONodeRef[Ctx.Ctx, InputState, OutputState] =
-      WIONodeRef[Ctx.Ctx, InputState, OutputState](NodeKey.unsafeApply("fork"))
+      WIONodeRef[Ctx.Ctx, InputState, OutputState](NodeKey("fork"))
     val endRef: WIONodeRef[Ctx.Ctx, InputState, BranchState] =
-      WIONodeRef[Ctx.Ctx, InputState, BranchState](NodeKey.unsafeApply("fork"))
+      WIONodeRef[Ctx.Ctx, InputState, BranchState](NodeKey("fork"))
 
     val highBranch: WIO[InputState, Nothing, OutputState, Ctx.Ctx] =
       WIONode

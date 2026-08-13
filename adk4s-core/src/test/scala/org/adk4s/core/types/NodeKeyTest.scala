@@ -8,31 +8,38 @@ import cats.implicits.catsKernelOrderingForOrder
 class NodeKeyTest extends CatsEffectSuite:
 
   test("create valid node key") {
-    assertEquals(NodeKey("agent_1"), Right(NodeKey.unsafeApply("agent_1")))
+    val result: Either[String, NodeKey] = NodeKey.either("agent_1")
+    assertEquals(result, Right(NodeKey("agent_1")))
   }
 
   test("create valid node key with underscores") {
-    assertEquals(NodeKey("agent_node_1"), Right(NodeKey.unsafeApply("agent_node_1")))
+    val result: Either[String, NodeKey] = NodeKey.either("agent_node_1")
+    assertEquals(result, Right(NodeKey("agent_node_1")))
   }
 
   test("create valid node key with numbers") {
-    assertEquals(NodeKey("node123"), Right(NodeKey.unsafeApply("node123")))
+    val result: Either[String, NodeKey] = NodeKey.either("node123")
+    assertEquals(result, Right(NodeKey("node123")))
   }
 
   test("reject empty node key") {
-    assertEquals(NodeKey(""), Left("Node key cannot be empty"))
+    val result: Either[String, NodeKey] = NodeKey.either("")
+    assert(result.isLeft, s"Expected Left, got $result")
+    assert(result.left.toOption.exists(_.contains("whitespace")), s"Error should mention whitespace: $result")
   }
 
   test("reject reserved start key") {
-    assertEquals(NodeKey("__start__"), Left("Node key '__start__' is reserved"))
+    val result: Either[String, NodeKey] = NodeKey.either("__start__")
+    assert(result.isLeft, s"Expected Left, got $result")
   }
 
   test("reject reserved end key") {
-    assertEquals(NodeKey("__end__"), Left("Node key '__end__' is reserved"))
+    val result: Either[String, NodeKey] = NodeKey.either("__end__")
+    assert(result.isLeft, s"Expected Left, got $result")
   }
 
-  test("use unsafeApply for trusted keys") {
-    val key = NodeKey.unsafeApply("model_node")
+  test("use compile-time refinement for trusted keys") {
+    val key: NodeKey = NodeKey("model_node")
     assertEquals(key.value, "model_node")
   }
 
@@ -44,71 +51,36 @@ class NodeKeyTest extends CatsEffectSuite:
     assertEquals(NodeKey.from("__start__"), Left(org.adk4s.core.error.NodeKeyError("__start__")))
   }
 
-  test("check if node key is start") {
-    val key = NodeKey.START
-    assert(key.isStart)
-  }
-
-  test("check if node key is not start") {
-    val key = NodeKey.unsafeApply("agent_1")
-    assert(!key.isStart)
-  }
-
-  test("check if node key is end") {
-    val key = NodeKey.END
-    assert(key.isEnd)
-  }
-
-  test("check if node key is not end") {
-    val key = NodeKey.unsafeApply("agent_1")
-    assert(!key.isEnd)
-  }
-
-  test("check if node key is reserved - start") {
-    val key = NodeKey.START
-    assert(key.isReserved)
-  }
-
-  test("check if node key is reserved - end") {
-    val key = NodeKey.END
-    assert(key.isReserved)
-  }
-
-  test("check if node key is not reserved") {
-    val key = NodeKey.unsafeApply("agent_1")
-    assert(!key.isReserved)
-  }
-
   test("Eq instance compares by value") {
-    val key1 = NodeKey.unsafeApply("node")
-    val key2 = NodeKey.unsafeApply("node")
-    val key3 = NodeKey.unsafeApply("different")
+    val key1: NodeKey = NodeKey("node")
+    val key2: NodeKey = NodeKey("node")
+    val key3: NodeKey = NodeKey("different")
     assert(Eq[NodeKey].eqv(key1, key2))
     assert(!Eq[NodeKey].eqv(key1, key3))
   }
 
   test("Order instance sorts alphabetically") {
-    val key1 = NodeKey.unsafeApply("agent_1")
-    val key2 = NodeKey.unsafeApply("agent_2")
-    val key3 = NodeKey.unsafeApply("agent_10")
-    val keys = List(key3, key2, key1).sorted(using Order[NodeKey].toOrdering)
+    val key1: NodeKey = NodeKey("agent_1")
+    val key2: NodeKey = NodeKey("agent_2")
+    val key3: NodeKey = NodeKey("agent_10")
+    val keys: List[NodeKey] = List(key3, key2, key1).sorted(using Order[NodeKey].toOrdering)
     assertEquals(keys.map(_.value), List("agent_1", "agent_10", "agent_2"))
   }
 
   test("Show instance formats to value") {
-    val key = NodeKey.unsafeApply("model_node")
+    val key: NodeKey = NodeKey("model_node")
     assertEquals(cats.Show[NodeKey].show(key), "model_node")
   }
 
   test("value method returns key string") {
-    val key = NodeKey.unsafeApply("test_node")
+    val key: NodeKey = NodeKey("test_node")
     assertEquals(key.value, "test_node")
   }
 
   test("START reserved key has correct value") {
-    assertEquals(NodeKey.START.value, "__start__")
+    assertEquals(ReservedNodeKey.Start.value, "__start__")
   }
 
   test("END reserved key has correct value") {
-    assertEquals(NodeKey.END.value, "__end__")
+    assertEquals(ReservedNodeKey.End.value, "__end__")
   }

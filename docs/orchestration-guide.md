@@ -22,7 +22,7 @@ case class AgentContext(
 )
 
 // Create a state reference
-val stateRef: IO[StateRef[IO, AgentContext]] = 
+val stateRef: IO[StateRef[IO, AgentContext]] =
   StateRef.of(AgentContext(Nil, None, 0))
 
 // Operations
@@ -66,29 +66,64 @@ val statefulLLM = StatefulNode.wrap(
 
 ### 2. Branching & Routing
 
-#### Branch ADT
-A sealed trait hierarchy for defining routing conditions:
+#### NodeKey and RouteTarget
+
+`NodeKey` is a refined opaque type backed by `String` with Iron constraints
+`NonEmpty & Not[Reserved]`. It rejects empty strings, whitespace-only strings,
+and reserved values (`__start__`, `__end__`) at both compile-time and runtime.
 
 ```scala
-import org.adk4s.orchestration.branch.{Branch, InvokeBranch, StreamBranch}
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, ReservedNodeKey, Reserved, given}
+
+// Compile-time refinement from inline literals — no runtime check needed
+val classifierNode: NodeKey = NodeKey("classifier")
+val billingNode: NodeKey = NodeKey("billing")
+
+// Runtime refinement from dynamic strings — returns Either
+val dynamicKey: Either[org.adk4s.core.error.NodeKeyError, NodeKey] =
+  NodeKey.from(llmGeneratedString)
+
+// Reserved keys are a distinct type, not NodeKey values
+val startKey: ReservedNodeKey = ReservedNodeKey.Start
+val endKey: ReservedNodeKey = ReservedNodeKey.End
+```
+
+`RouteTarget` is a sealed trait representing a routing destination. It can
+be either a regular `NodeKey` or a `ReservedNodeKey` (e.g. `End`). This
+replaces the old pattern of using `NodeKey.END` as a `NodeKey` value.
+
+```scala
+import org.adk4s.orchestration.branch.RouteTarget
+
+val toBilling: RouteTarget = RouteTarget.ToNode(NodeKey("billing"))
+val toEnd: RouteTarget = RouteTarget.ToReserved(ReservedNodeKey.End)
+```
+
+#### Branch ADT
+A sealed trait hierarchy for defining routing conditions. Branch conditions
+return `RouteTarget`, not `NodeKey`, so routing can target either a regular
+node or a reserved endpoint (e.g. `End`):
+
+```scala
+import org.adk4s.orchestration.branch.{Branch, InvokeBranch, StreamBranch, RouteTarget}
+import org.adk4s.core.types.{NodeKey, ReservedNodeKey, Reserved, given}
 import cats.effect.IO
 
-// Binary branch based on predicate
+// Binary branch based on predicate — takes NodeKey args, wraps in RouteTarget.ToNode
 val sentimentBranch = Branch.binary(
   predicate = (text: String) => IO.pure(text.contains("urgent")),
-  ifTrue = NodeKey.unsafeApply("priority_handler"),
-  ifFalse = NodeKey.unsafeApply("standard_handler")
+  ifTrue = NodeKey("priority_handler"),
+  ifFalse = NodeKey("standard_handler")
 )
 
-// Pure branch (no IO)
+// Pure branch (no IO) — condition returns RouteTarget, targets are Set[RouteTarget]
 val languageBranch = Branch.pure(
-  condition = (text: String) => 
-    if text.matches(".*[\\u4e00-\\u9fff].*") then NodeKey.unsafeApply("chinese_processor")
-    else NodeKey.unsafeApply("english_processor"),
-  targets = Set(
-    NodeKey.unsafeApply("chinese_processor"),
-    NodeKey.unsafeApply("english_processor")
+  condition = (text: String) =>
+    if text.matches(".*[\\u4e00-\\u9fff].*") then RouteTarget.ToNode(NodeKey("chinese_processor"))
+    else RouteTarget.ToNode(NodeKey("english_processor")),
+  targets = Set[RouteTarget](
+    RouteTarget.ToNode(NodeKey("chinese_processor")),
+    RouteTarget.ToNode(NodeKey("english_processor"))
   )
 )
 
@@ -96,43 +131,44 @@ val languageBranch = Branch.pure(
 val batchBranch = Branch.stream(
   condition = (items: fs2.Stream[IO, Request]) =>
     items.compile.count.map { count =>
-      if count > 100 then NodeKey.unsafeApply("batch_processor")
-      else NodeKey.unsafeApply("sequential_processor")
+      if count > 100 then RouteTarget.ToNode(NodeKey("batch_processor"))
+      else RouteTarget.ToNode(NodeKey("sequential_processor"))
     },
-  targets = Set(
-    NodeKey.unsafeApply("batch_processor"),
-    NodeKey.unsafeApply("sequential_processor")
+  targets = Set[RouteTarget](
+    RouteTarget.ToNode(NodeKey("batch_processor")),
+    RouteTarget.ToNode(NodeKey("sequential_processor"))
   )
 )
 
-// End-if branch (terminate workflow on condition)
+// End-if branch (terminate workflow on condition) — uses ReservedNodeKey.End internally
 val completionBranch = Branch.endIf(
   predicate = (response: Response) => IO.pure(response.isComplete),
-  otherwise = NodeKey.unsafeApply("continue_processing")
+  otherwise = NodeKey("continue_processing")
 )
 ```
 
 #### Router
-Manages multiple branches and determines routing decisions at runtime:
+Manages multiple branches and determines routing decisions at runtime.
+`route` and `routeStream` return `IO[RouteTarget]`:
 
 ```scala
 import org.adk4s.orchestration.branch.Router
 
 // Build a router with multiple branches
 val router = Router.empty[AgentInput]
-  .addBranch(NodeKey.unsafeApply("classifier"), intentBranch)
-  .addBranch(NodeKey.unsafeApply("sentiment_analyzer"), sentimentBranch)
-  .addBranch(NodeKey.unsafeApply("validator"), completionBranch)
+  .addBranch(NodeKey("classifier"), intentBranch)
+  .addBranch(NodeKey("sentiment_analyzer"), sentimentBranch)
+  .addBranch(NodeKey("validator"), completionBranch)
 
-// Route based on input
-val nextNode: IO[NodeKey] = router.route(
-  NodeKey.unsafeApply("classifier"),
+// Route based on input — returns IO[RouteTarget]
+val nextNode: IO[RouteTarget] = router.route(
+  NodeKey("classifier"),
   AgentInput("Help me with my urgent order")
 )
 
 // Route with streaming input
-val streamRoute: IO[NodeKey] = router.routeStream(
-  NodeKey.unsafeApply("batch_entry"),
+val streamRoute: IO[RouteTarget] = router.routeStream(
+  NodeKey("batch_entry"),
   requestStream
 )
 ```
@@ -182,9 +218,11 @@ val completionWorkflow = WIOBranch.endIf(
 // ADK4S: Dynamic routing based on LLM classification
 val dynamicRouter = Router.empty[LLMResponse]
   .addBranch(entryNode, Branch(
-    condition = (response: LLMResponse) => 
-      classifyIntent(response).map(intent => NodeKey.unsafeApply(intent)),
-    targets = allPossibleIntents
+    condition = (response: LLMResponse) =>
+      classifyIntent(response).map { intent =>
+        RouteTarget.ToNode(NodeKey.from(intent).fold(_ => fallbackNode, identity))
+      },
+    targets = Set[RouteTarget](RouteTarget.ToNode(fallbackNode))
   ))
 ```
 
@@ -199,10 +237,13 @@ val dynamicRouter = Router.empty[LLMResponse]
 val contentAwareBranch = Branch.stream(
   condition = (messages: Stream[IO, Message]) =>
     messages.fold(ContentStats.empty)(_ + _).compile.lastOrError.map { stats =>
-      if stats.containsSensitiveData then NodeKey.unsafeApply("secure_handler")
-      else NodeKey.unsafeApply("standard_handler")
+      if stats.containsSensitiveData then RouteTarget.ToNode(NodeKey("secure_handler"))
+      else RouteTarget.ToNode(NodeKey("standard_handler"))
     },
-  targets = Set(secureHandler, standardHandler)
+  targets = Set[RouteTarget](
+    RouteTarget.ToNode(NodeKey("secure_handler")),
+    RouteTarget.ToNode(NodeKey("standard_handler"))
+  )
 )
 ```
 
@@ -269,11 +310,11 @@ package org.adk4s.examples
 
 import cats.effect.IO
 import fs2.Stream
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, ReservedNodeKey, Reserved, given}
 import org.adk4s.core.runnable.Runnable
 import org.adk4s.orchestration.state.{StateRef, StatefulNode, StatefulNodeConfig}
 import org.adk4s.orchestration.state.{PreHandler, PostHandler}
-import org.adk4s.orchestration.branch.{Branch, Router, WIOBranch}
+import org.adk4s.orchestration.branch.{Branch, Router, WIOBranch, RouteTarget}
 import workflows4s.wio.{WIO, WorkflowContext}
 
 // Domain Models
@@ -312,7 +353,7 @@ case class AgentResponse(
 
 // Step 1: Define Specialized Handlers
 object Handlers {
-  val billingHandler: Runnable[CustomerRequest, AgentResponse] = 
+  val billingHandler: Runnable[CustomerRequest, AgentResponse] =
     Runnable.fromFunction { request =>
       IO.pure(AgentResponse(
         message = s"Processing billing inquiry for ${request.customerId}",
@@ -322,7 +363,7 @@ object Handlers {
       ))
     }
 
-  val technicalHandler: Runnable[CustomerRequest, AgentResponse] = 
+  val technicalHandler: Runnable[CustomerRequest, AgentResponse] =
     Runnable.fromFunction { request =>
       IO.pure(AgentResponse(
         message = s"Technical support for ${request.customerId}",
@@ -332,7 +373,7 @@ object Handlers {
       ))
     }
 
-  val escalationHandler: Runnable[CustomerRequest, AgentResponse] = 
+  val escalationHandler: Runnable[CustomerRequest, AgentResponse] =
     Runnable.fromFunction { request =>
       IO.pure(AgentResponse(
         message = s"Escalating to human agent for ${request.customerId}",
@@ -343,7 +384,7 @@ object Handlers {
     }
 
   // LLM-based classifier
-  val intentClassifier: Runnable[CustomerRequest, String] = 
+  val intentClassifier: Runnable[CustomerRequest, String] =
     Runnable.fromFunction { request =>
       // In real implementation, this would call an LLM
       IO.pure {
@@ -358,11 +399,11 @@ object Handlers {
 // Step 2: Define State Handlers
 object AgentStateHandlers {
   // Enrich request with conversation context
-  val enrichWithHistory: PreHandler[CustomerRequest, AgentState] = 
+  val enrichWithHistory: PreHandler[CustomerRequest, AgentState] =
     (request, stateRef) =>
       stateRef.get.map { state =>
         if state.conversationHistory.nonEmpty then
-          request.copy(message = 
+          request.copy(message =
             s"Previous context: ${state.conversationHistory.takeRight(3).mkString(" | ")}. " +
             s"Current: ${request.message}"
           )
@@ -370,19 +411,19 @@ object AgentStateHandlers {
       }
 
   // Track conversation and detect patterns
-  val updateConversation: PostHandler[AgentResponse, AgentState] = 
+  val updateConversation: PostHandler[AgentResponse, AgentState] =
     (response, stateRef) =>
       stateRef.update { state =>
         state.copy(
           conversationHistory = state.conversationHistory :+ response.message,
-          escalationLevel = 
-            if response.requiresEscalation then state.escalationLevel + 1 
+          escalationLevel =
+            if response.requiresEscalation then state.escalationLevel + 1
             else state.escalationLevel
         )
       }.as(response)
 
   // Auto-escalate after too many turns
-  val checkEscalation: PostHandler[AgentResponse, AgentState] = 
+  val checkEscalation: PostHandler[AgentResponse, AgentState] =
     (response, stateRef) =>
       stateRef.get.flatMap { state =>
         if state.conversationHistory.length > 10 && !response.resolved then
@@ -393,13 +434,13 @@ object AgentStateHandlers {
 
 // Step 3: Build the Orchestration
 object CustomerSupportOrchestration {
-  
-  // Node keys for routing
-  val classifierNode = NodeKey.unsafeApply("classifier")
-  val billingNode = NodeKey.unsafeApply("billing")
-  val technicalNode = NodeKey.unsafeApply("technical")
-  val escalationNode = NodeKey.unsafeApply("escalation")
-  val generalNode = NodeKey.unsafeApply("general")
+
+  // Node keys for routing — compile-time refinement from inline literals
+  val classifierNode: NodeKey = NodeKey("classifier")
+  val billingNode: NodeKey = NodeKey("billing")
+  val technicalNode: NodeKey = NodeKey("technical")
+  val escalationNode: NodeKey = NodeKey("escalation")
+  val generalNode: NodeKey = NodeKey("general")
 
   // Dynamic routing based on LLM classification
   def createIntentBranch(classifier: Runnable[CustomerRequest, String]): Branch[CustomerRequest] =
@@ -407,13 +448,18 @@ object CustomerSupportOrchestration {
       condition = (request: CustomerRequest) =>
         classifier.invoke(request).map { intent =>
           intent match {
-            case "billing" => billingNode
-            case "technical" => technicalNode
-            case "escalation" => escalationNode
-            case _ => generalNode
+            case "billing" => RouteTarget.ToNode(billingNode)
+            case "technical" => RouteTarget.ToNode(technicalNode)
+            case "escalation" => RouteTarget.ToNode(escalationNode)
+            case _ => RouteTarget.ToNode(generalNode)
           }
         },
-      targets = Set(billingNode, technicalNode, escalationNode, generalNode)
+      targets = Set[RouteTarget](
+        RouteTarget.ToNode(billingNode),
+        RouteTarget.ToNode(technicalNode),
+        RouteTarget.ToNode(escalationNode),
+        RouteTarget.ToNode(generalNode)
+      )
     )
 
   // Priority-based routing
@@ -429,16 +475,19 @@ object CustomerSupportOrchestration {
       requests.compile.toList.map { list =>
         val urgentCount = list.count(_.priority == Urgent)
         val totalCount = list.length
-        if urgentCount.toDouble / totalCount > 0.5 then escalationNode
-        else classifierNode
+        if urgentCount.toDouble / totalCount > 0.5 then RouteTarget.ToNode(escalationNode)
+        else RouteTarget.ToNode(classifierNode)
       },
-    targets = Set(escalationNode, classifierNode)
+    targets = Set[RouteTarget](
+      RouteTarget.ToNode(escalationNode),
+      RouteTarget.ToNode(classifierNode)
+    )
   )
 
   // Build the complete router
   def buildRouter(classifier: Runnable[CustomerRequest, String]): Router[CustomerRequest] =
     Router.empty[CustomerRequest]
-      .addBranch(NodeKey.unsafeApply("entry"), priorityBranch)
+      .addBranch(NodeKey("entry"), priorityBranch)
       .addBranch(classifierNode, createIntentBranch(classifier))
 
   // Create stateful handlers
@@ -466,23 +515,23 @@ object CustomerSupportOrchestration {
     stateRef: StateRef[IO, AgentState]
   ): IO[AgentResponse] = {
     val router = buildRouter(Handlers.intentClassifier)
-    
+
     for {
-      // First, check priority routing
-      entryRoute <- router.route(NodeKey.unsafeApply("entry"), request)
-      
+      // First, check priority routing — returns RouteTarget
+      entryRoute <- router.route(NodeKey("entry"), request)
+
       // Then get the specific handler route
-      handlerRoute <- 
-        if entryRoute == escalationNode then IO.pure(escalationNode)
+      handlerRoute <-
+        if entryRoute == RouteTarget.ToNode(escalationNode) then IO.pure(RouteTarget.ToNode(escalationNode))
         else router.route(classifierNode, request)
-      
+
       // Execute the appropriate stateful handler
       response <- handlerRoute match {
-        case node if node == billingNode =>
+        case RouteTarget.ToNode(node) if node == billingNode =>
           createStatefulHandler(Handlers.billingHandler, stateRef).invoke(request)
-        case node if node == technicalNode =>
+        case RouteTarget.ToNode(node) if node == technicalNode =>
           createStatefulHandler(Handlers.technicalHandler, stateRef).invoke(request)
-        case node if node == escalationNode =>
+        case RouteTarget.ToNode(node) if node == escalationNode =>
           createStatefulHandler(Handlers.escalationHandler, stateRef).invoke(request)
         case _ =>
           createStatefulHandler(Handlers.billingHandler, stateRef).invoke(request) // default
@@ -553,7 +602,7 @@ object WorkflowIntegration {
 
 | Feature | Workflows4s | ADK4S Orchestration |
 |---------|-------------|---------------------|
-| **Runtime routing** | Static branches only | Dynamic routing via `Branch` with `IO[NodeKey]` |
+| **Runtime routing** | Static branches only | Dynamic routing via `Branch` with `IO[RouteTarget]` |
 | **LLM-driven decisions** | Requires complex workarounds | Native support in branch conditions |
 | **Stream analysis** | Not supported | `StreamBranch` analyzes before routing |
 | **State handlers** | Event sourcing only | Composable pre/post handlers |

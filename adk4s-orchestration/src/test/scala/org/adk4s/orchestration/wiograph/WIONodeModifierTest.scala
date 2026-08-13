@@ -4,6 +4,8 @@ import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import munit.FunSuite
+import org.adk4s.core.types.{NodeKey, Reserved}
+import org.adk4s.core.types.given
 import workflows4s.runtime.WorkflowInstanceId
 import workflows4s.wio.{
   ActiveWorkflow,
@@ -132,9 +134,9 @@ class WIONodeModifierTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val node1: WIORunIONode[TestContext.Ctx, Int, Nothing, ValueAdded, TestState] =
       WIONode.runIO[TestContext.Ctx, Int, ValueAdded, TestState](
@@ -204,9 +206,9 @@ class WIONodeModifierTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val forkRef: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("fork"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("fork"))
     val afterHighRef: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("afterHigh"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("afterHigh"))
 
     val highBranch: WIO[Int, Nothing, TestState, TestContext.Ctx] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i + 1000)).toWIO

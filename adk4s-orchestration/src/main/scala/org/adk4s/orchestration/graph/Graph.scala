@@ -3,6 +3,7 @@ package org.adk4s.orchestration.graph
 import cats.effect.IO
 import cats.data.{ValidatedNec, NonEmptyChain}
 import cats.data.Validated.{Valid, Invalid}
+import cats.syntax.either._
 import org.adk4s.core.types.{NodeKey, PromptTemplate, Schema}
 import org.adk4s.core.runnable.{Runnable, Lambda}
 import org.adk4s.core.component.ChatModel
@@ -44,36 +45,40 @@ case class Graph[In, Out] private (
     key: String,
     lambda: Lambda[A, B]
   )(using classTag: ClassTag[B]): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, A, B]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[A, B] = GraphNode.LambdaNode[A, B](lambda)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[A, B] = GraphNode.LambdaNode[A, B](lambda)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a chat model node to the graph. */
   def addChatModelNode(
     key: String,
     model: ChatModel[IO]
   )(using classTag: ClassTag[Completion]): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, Conversation, Completion]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[Conversation, Completion] = GraphNode.ChatModelNode(model)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[Conversation, Completion] = GraphNode.ChatModelNode(model)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a tools node to the graph. */
   def addToolsNode(
     key: String,
     toolsNode: ToolsNode
   )(using classTag: ClassTag[List[ToolMessage]]): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, List[ToolCall], List[ToolMessage]]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[List[ToolCall], List[ToolMessage]] = GraphNode.ToolsNode(toolsNode)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[List[ToolCall], List[ToolMessage]] = GraphNode.ToolsNode(toolsNode)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a sub-graph node. */
   def addSubGraphNode[A, B](
     key: String,
     subGraph: Graph[A, B]
   )(using classTag: ClassTag[B]): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, A, B]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[A, B] = GraphNode.SubGraphNode[A, B](subGraph)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[A, B] = GraphNode.SubGraphNode[A, B](subGraph)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a structured model node. */
   def addStructuredModelNode[A, B](
@@ -81,9 +86,10 @@ case class Graph[In, Out] private (
     model: org.adk4s.structured.core.StructuredLLM[IO],
     template: PromptTemplate[A]
   )(using schema: Schema[B], classTag: ClassTag[B]): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, A, B]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[A, B] = GraphNode.StructuredModelNode[A, B](model, template)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[A, B] = GraphNode.StructuredModelNode[A, B](model, template)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a structured tool node. */
   def addStructuredToolNode[ToolIn, ToolOut](
@@ -95,28 +101,31 @@ case class Graph[In, Out] private (
     outputSchema: ToolSchema[ToolOut],
     classTag: ClassTag[ToolOut]
   ): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, ToolCall, ToolOut]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[ToolCall, ToolOut] =
-      GraphNode.StructuredToolNode[ToolIn, ToolOut](structuredToolCall, toolName)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[ToolCall, ToolOut] =
+        GraphNode.StructuredToolNode[ToolIn, ToolOut](structuredToolCall, toolName)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a merge node that combines two inputs. */
   def addMergeNode[A, B, C](
     key: String,
     combine: (A, B) => C
   )(using classTag: ClassTag[C]): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, (A, B), C]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[(A, B), C] = GraphNode.MergeNode[A, B, C](combine)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[(A, B), C] = GraphNode.MergeNode[A, B, C](combine)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a fork node with a ForkSpec. */
   def addForkNode[A, B](
     key: String,
     forkSpec: ForkSpec[A, B]
   ): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, A, B]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[A, B] = GraphNode.ForkNode[A, B](forkSpec)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[A, B] = GraphNode.ForkNode[A, B](forkSpec)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a TypedAgent node via the Runnable bridge. */
   def addTypedAgentNode[A, B](
@@ -124,20 +133,22 @@ case class Graph[In, Out] private (
     agent: TypedAgent[A, B]
   )(using ec: scala.concurrent.ExecutionContext, classTag: ClassTag[B]): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, A, B]] =
     import scala.language.implicitConversions
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val runnable = TypedAgentBridge.toRunnable(agent)(using ec)
-    val lambda: Lambda[A, B] = Lambda((input: A) => runnable.invoke(input))
-    val node: GraphNode[A, B] = GraphNode.LambdaNode[A, B](lambda)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val runnable = TypedAgentBridge.toRunnable(agent)(using ec)
+      val lambda: Lambda[A, B] = Lambda((input: A) => runnable.invoke(input))
+      val node: GraphNode[A, B] = GraphNode.LambdaNode[A, B](lambda)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a pure transformation node. */
   def addPureNode[A, B](
     key: String,
     transform: A => Either[Throwable, B]
   ): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, A, B]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[A, B] = GraphNode.PureNode[A, B](transform)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[A, B] = GraphNode.PureNode[A, B](transform)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add a RunIO node with explicit event handling. */
   def addRunIONode[A, Evt, B](
@@ -145,9 +156,10 @@ case class Graph[In, Out] private (
     runIO: A => IO[Evt],
     handleEvent: (A, Evt) => Either[Throwable, B]
   )(using eventClassTag: ClassTag[Evt]): ValidatedNec[AdkError, Graph.NodeAddition[In, Out, A, B]] =
-    val nodeKey: NodeKey = NodeKey.unsafeApply(key)
-    val node: GraphNode[A, B] = GraphNode.RunIONode[A, Evt, B](runIO, handleEvent)
-    addNodeWithRef(nodeKey, node)
+    NodeKey.from(key).toValidatedNec.andThen { (nodeKey: NodeKey) =>
+      val node: GraphNode[A, B] = GraphNode.RunIONode[A, Evt, B](runIO, handleEvent)
+      addNodeWithRef(nodeKey, node)
+    }
 
   /** Add an edge between two nodes. Type-safe: output of 'from' must match input of 'to'. */
   def addEdge[A, B, C](

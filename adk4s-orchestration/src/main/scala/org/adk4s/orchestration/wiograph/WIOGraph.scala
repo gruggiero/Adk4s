@@ -24,15 +24,20 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
     key: String,
     node: WIONode[Ctx, I, Err, O]
   ): Either[WIOGraphError, WIOGraph[Ctx, In, Err, Out]] =
-    val nodeKey = NodeKey.unsafeApply(key)
-    if nodes.exists(entry => entry.ref.key == nodeKey) then Left(WIOGraphError.NodeAlreadyExists(key))
-    else
+    for
+      nodeKey <- NodeKey.from(key).left.map(err => WIOGraphError.InvalidNodeKey(key, err.toString))
+      _      <- Either.cond(
+        !nodes.exists(entry => entry.ref.key == nodeKey),
+        (),
+        WIOGraphError.NodeAlreadyExists(key)
+      )
+    yield
       val entry: WIOGraph.NodeEntry[Ctx, Err, I, O] = WIOGraph.NodeEntry[Ctx, Err, I, O](
         WIONodeRef[Ctx, I, O](nodeKey),
         node,
         List.empty[WIONodeModifier[Ctx, I, Err, O]]
       )
-      Right(copy(nodes = nodes :+ entry))
+      copy(nodes = nodes :+ entry)
 
   def addRunnableNode[I, Evt <: WCEvent[Ctx], RawOut, O <: Out](
     key: String,

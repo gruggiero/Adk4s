@@ -5,7 +5,7 @@ import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.core.component.ChatModel
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.examples.eino.common.MockChatModel
 import org.adk4s.orchestration.wiograph.WIOGraph
@@ -92,11 +92,11 @@ object SimpleGraphExample extends IOApp.Simple:
     chatModel: ChatModel[IO]
   ): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, GraphState]] =
     val templateRef: WIONodeRef[Ctx.Ctx, InputState, ConversationState] =
-      WIONodeRef[Ctx.Ctx, InputState, ConversationState](NodeKey.unsafeApply("template"))
+      WIONodeRef[Ctx.Ctx, InputState, ConversationState](NodeKey("template"))
     val chatRef: WIONodeRef[Ctx.Ctx, ConversationState, OutputState] =
-      WIONodeRef[Ctx.Ctx, ConversationState, OutputState](NodeKey.unsafeApply("chat"))
+      WIONodeRef[Ctx.Ctx, ConversationState, OutputState](NodeKey("chat"))
     val endRef: WIONodeRef[Ctx.Ctx, ConversationState, GraphState] =
-      WIONodeRef[Ctx.Ctx, ConversationState, GraphState](NodeKey.unsafeApply("chat"))
+      WIONodeRef[Ctx.Ctx, ConversationState, GraphState](NodeKey("chat"))
 
     val templateNode: WIOPureNode[Ctx.Ctx, InputState, Nothing, ConversationState] =
       WIONode.pure[Ctx.Ctx, InputState, ConversationState]((input: InputState) =>

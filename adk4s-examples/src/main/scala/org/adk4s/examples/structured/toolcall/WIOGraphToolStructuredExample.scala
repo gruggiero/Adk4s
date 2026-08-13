@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.tools.{ StructuredToolCall, ToolSchema, TypedTool }
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError
@@ -189,13 +189,13 @@ object WIOGraphToolStructuredExample extends IOApp.Simple:
       )
 
     val node1Ref: WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState] =
-      WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState](NodeKey.unsafeApply("validate_input"))
+      WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState](NodeKey("validate_input"))
     val node2Ref: WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState] =
-      WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState](NodeKey.unsafeApply("execute_tool"))
+      WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState](NodeKey("execute_tool"))
     val node3Ref: WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState] =
-      WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState](NodeKey.unsafeApply("format_result"))
+      WIONodeRef[Ctx.Ctx, ToolWorkState, ToolWorkState](NodeKey("format_result"))
     val endRef: WIONodeRef[Ctx.Ctx, ToolWorkState, GraphState] =
-      WIONodeRef[Ctx.Ctx, ToolWorkState, GraphState](NodeKey.unsafeApply("format_result"))
+      WIONodeRef[Ctx.Ctx, ToolWorkState, GraphState](NodeKey("format_result"))
 
     val node1: WIORunnableNode[Ctx.Ctx, ToolWorkState, Nothing, InputValidated, ValidationResult, ToolWorkState] =
       WIONode.fromRunnableSimple[Ctx.Ctx, ToolWorkState, InputValidated, ValidationResult, ToolWorkState](

@@ -11,7 +11,7 @@ import org.adk4s.core.component.Tool
 import org.adk4s.core.tools.ToolInput
 import org.adk4s.core.tools.ToolOutput
 import org.adk4s.core.tools.ToolsNode
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.examples.eino.common.MockChatModel
 import org.adk4s.orchestration.wiograph.WIOGraph
@@ -113,13 +113,13 @@ object ToolCallAgentExample extends IOApp.Simple:
     chatModel: ChatModel[IO]
   ): Either[WIOGraphError, WIOGraph[Ctx.Ctx, QueryState, Nothing, AgentState]] =
     val templateRef: WIONodeRef[Ctx.Ctx, QueryState, ConversationState] =
-      WIONodeRef[Ctx.Ctx, QueryState, ConversationState](NodeKey.unsafeApply("template"))
+      WIONodeRef[Ctx.Ctx, QueryState, ConversationState](NodeKey("template"))
     val chatRef: WIONodeRef[Ctx.Ctx, ConversationState, CompletionState] =
-      WIONodeRef[Ctx.Ctx, ConversationState, CompletionState](NodeKey.unsafeApply("chat"))
+      WIONodeRef[Ctx.Ctx, ConversationState, CompletionState](NodeKey("chat"))
     val toolRef: WIONodeRef[Ctx.Ctx, CompletionState, ToolResultState] =
-      WIONodeRef[Ctx.Ctx, CompletionState, ToolResultState](NodeKey.unsafeApply("tool"))
+      WIONodeRef[Ctx.Ctx, CompletionState, ToolResultState](NodeKey("tool"))
     val endRef: WIONodeRef[Ctx.Ctx, CompletionState, AgentState] =
-      WIONodeRef[Ctx.Ctx, CompletionState, AgentState](NodeKey.unsafeApply("tool"))
+      WIONodeRef[Ctx.Ctx, CompletionState, AgentState](NodeKey("tool"))
 
     val templateNode: WIOPureNode[Ctx.Ctx, QueryState, Nothing, ConversationState] =
       WIONode.pure[Ctx.Ctx, QueryState, ConversationState]((input: QueryState) =>

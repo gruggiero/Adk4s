@@ -39,7 +39,7 @@ operational principle
 
 | Element | Code |
 |---|---|
-| state `config` | `ToolsNodeConfig` (`adk4s-core/src/main/scala/org/adk4s/core/tools/ToolsNodeConfig.scala`) |
+| state `config` | `ToolsNodeConfig` — `maxConcurrency` refined to `Positive` at construction boundary via `parallelEither` (`adk4s-core/src/main/scala/org/adk4s/core/tools/ToolsNodeConfig.scala`) |
 | state `llm4sTools` | `config.tools.collect { case Left(tw) => tw }` (`adk4s-core/src/main/scala/org/adk4s/core/tools/ToolsNode.scala`) |
 | state `adkTools` | `config.tools.collect { case Right(t) => t }` (`adk4s-core/src/main/scala/org/adk4s/core/tools/ToolsNode.scala`) |
 | state `middleware` | `ToolMiddleware.compose(config.middlewares)` (`adk4s-core/src/main/scala/org/adk4s/core/tools/ToolsNode.scala`) |

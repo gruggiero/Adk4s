@@ -143,7 +143,7 @@ final class AgentRunner(
     harnessStateJson: org.adk4s.core.json.JsonValue,
     scopedEmitter: AgentEventEmitter
   ): IO[RunResult] =
-    val checkpointId: String = UUID.randomUUID().toString
+    val checkpointIdStr: String = UUID.randomUUID().toString
     val checkpointMessages: List[CheckpointMessage] =
       messages.map(CheckpointMessageConverter.toCheckpoint)
     val state: CheckpointStateV2 = CheckpointStateV2(
@@ -155,9 +155,12 @@ final class AgentRunner(
     )
     val serialized: Array[Byte] =
       upickle.default.write(state)(using CheckpointStateV2.readWriter).getBytes("UTF-8")
-    checkpointStore.set(checkpointId, serialized) *>
-      scopedEmitter.emit(AgentEvent.Interrupted(RunPath.of(agent.name), signal)) *>
-      IO.pure(RunResult.Interrupted(checkpointId, signal))
+    IO.fromEither(CheckpointStore.CheckpointId.refineEither(checkpointIdStr)).flatMap {
+      (checkpointId: CheckpointStore.CheckpointId) =>
+        checkpointStore.set(checkpointId, serialized) *>
+          scopedEmitter.emit(AgentEvent.Interrupted(RunPath.of(agent.name), signal)) *>
+          IO.pure(RunResult.Interrupted(checkpointIdStr, signal))
+    }
 
   /**
    * Resume an agent from a checkpoint with the provided interrupt results.
@@ -171,51 +174,54 @@ final class AgentRunner(
    * spec: checkpoint-store-fpoly — Requirement: AgentRunner.resume restores harness state
    */
   def resume(checkpointId: String, results: List[InterruptResult], maxSteps: Int = 10): IO[RunResult] =
-    checkpointStore.get(checkpointId).flatMap {
-      case None =>
-        IO.pure(RunResult.Failed(CheckpointNotFoundError(checkpointId)))
-      case Some(data) =>
-        val json: String          = new String(data, "UTF-8")
-        val cp: CheckpointStateV2 = upickle.default.read[CheckpointStateV2](json)(using CheckpointStateV2.readWriter)
-        // Restore harness state from checkpoint
-        HarnessState.restore(cells, cp.harnessState) match
-          case Left(decodeError) =>
-            IO.pure(RunResult.Failed(decodeError))
-          case Right(restoredState) =>
-            // Reconstruct original messages with full fidelity.
-            // fromCheckpoint returns Left for unknown roles (corruption) —
-            // fail the resume rather than silently mapping to UserMessage.
-            val messagesResult: Either[String, List[Message]] =
-              cp.messages.foldLeft[Either[String, List[Message]]](Right(Nil)) {
-                case (Right(acc), cm) =>
-                  CheckpointMessageConverter.fromCheckpoint(cm).map(msg => acc :+ msg)
-                case (Left(err), _) =>
-                  Left(err)
-              }
-            messagesResult match
-              case Left(err) =>
-                IO.pure(RunResult.Failed(org.adk4s.core.error.GenericError(err)))
-              case Right(originalMessages) =>
-                // Append resume data as user messages with address context
-                val resumeMessages: List[Message] = results.map { (r: InterruptResult) =>
-                  val addressPath: String = r.address.map(_.name).mkString(" > ")
-                  val dataJson: String    = upickle.default.write(r.data)
-                  UserMessage(s"[Resume approval for $addressPath]: $dataJson"): Message
-                }
-                val allMessages: List[Message] = originalMessages ++ resumeMessages
-                // Harness-backed agents resume with the restored HarnessState;
-                // legacy agents re-enter with initial state (spec 4 behavior).
-                val resumed: IO[RunResult] = agent.harnessView match
-                  case Some(harness) => runHarness(harness, allMessages, Some(restoredState), maxSteps)
-                  case None          => runLegacy(allMessages, maxSteps)
-                resumed.flatMap { (result: RunResult) =>
-                  result match
-                    case _: RunResult.Completed =>
-                      // Clean up checkpoint on successful completion
-                      checkpointStore.delete(checkpointId).as(result)
-                    case _ =>
-                      IO.pure(result)
-                }
+    IO.fromEither(CheckpointStore.CheckpointId.refineEither(checkpointId)).flatMap {
+      (refinedId: CheckpointStore.CheckpointId) =>
+        checkpointStore.get(refinedId).flatMap {
+          case None =>
+            IO.pure(RunResult.Failed(CheckpointNotFoundError(checkpointId)))
+          case Some(data) =>
+            val json: String          = new String(data, "UTF-8")
+            val cp: CheckpointStateV2 = upickle.default.read[CheckpointStateV2](json)(using CheckpointStateV2.readWriter)
+            // Restore harness state from checkpoint
+            HarnessState.restore(cells, cp.harnessState) match
+              case Left(decodeError) =>
+                IO.pure(RunResult.Failed(decodeError))
+              case Right(restoredState) =>
+                // Reconstruct original messages with full fidelity.
+                // fromCheckpoint returns Left for unknown roles (corruption) —
+                // fail the resume rather than silently mapping to UserMessage.
+                val messagesResult: Either[String, List[Message]] =
+                  cp.messages.foldLeft[Either[String, List[Message]]](Right(Nil)) {
+                    case (Right(acc), cm) =>
+                      CheckpointMessageConverter.fromCheckpoint(cm).map(msg => acc :+ msg)
+                    case (Left(err), _) =>
+                      Left(err)
+                  }
+                messagesResult match
+                  case Left(err) =>
+                    IO.pure(RunResult.Failed(org.adk4s.core.error.GenericError(err)))
+                  case Right(originalMessages) =>
+                    // Append resume data as user messages with address context
+                    val resumeMessages: List[Message] = results.map { (r: InterruptResult) =>
+                      val addressPath: String = r.address.map(_.name).mkString(" > ")
+                      val dataJson: String    = upickle.default.write(r.data)
+                      UserMessage(s"[Resume approval for $addressPath]: $dataJson"): Message
+                    }
+                    val allMessages: List[Message] = originalMessages ++ resumeMessages
+                    // Harness-backed agents resume with the restored HarnessState;
+                    // legacy agents re-enter with initial state (spec 4 behavior).
+                    val resumed: IO[RunResult] = agent.harnessView match
+                      case Some(harness) => runHarness(harness, allMessages, Some(restoredState), maxSteps)
+                      case None          => runLegacy(allMessages, maxSteps)
+                    resumed.flatMap { (result: RunResult) =>
+                      result match
+                        case _: RunResult.Completed =>
+                          // Clean up checkpoint on successful completion
+                          checkpointStore.delete(refinedId).as(result)
+                        case _ =>
+                          IO.pure(result)
+                    }
+        }
     }
 
   /** Run the agent and return both the result and an event stream. */

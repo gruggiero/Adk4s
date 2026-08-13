@@ -4,7 +4,7 @@ import cats.data.Ior
 import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.IOApp
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, Reserved, given}
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError
@@ -82,11 +82,11 @@ object StaticValuesExample extends IOApp.Simple:
 
   private def buildGraph(): Either[WIOGraphError, WIOGraph[Ctx.Ctx, InputState, Nothing, SvState]] =
     val enrichRef: WIONodeRef[Ctx.Ctx, InputState, EnrichedState] =
-      WIONodeRef[Ctx.Ctx, InputState, EnrichedState](NodeKey.unsafeApply("enrich"))
+      WIONodeRef[Ctx.Ctx, InputState, EnrichedState](NodeKey("enrich"))
     val formatRef: WIONodeRef[Ctx.Ctx, EnrichedState, OutputState] =
-      WIONodeRef[Ctx.Ctx, EnrichedState, OutputState](NodeKey.unsafeApply("format"))
+      WIONodeRef[Ctx.Ctx, EnrichedState, OutputState](NodeKey("format"))
     val endRef: WIONodeRef[Ctx.Ctx, EnrichedState, SvState] =
-      WIONodeRef[Ctx.Ctx, EnrichedState, SvState](NodeKey.unsafeApply("format"))
+      WIONodeRef[Ctx.Ctx, EnrichedState, SvState](NodeKey("format"))
 
     // Node 1: Inject static values (greeting, timestamp) alongside dynamic input
     val enrichNode: WIOPureNode[Ctx.Ctx, InputState, Nothing, EnrichedState] =

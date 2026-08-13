@@ -5,7 +5,7 @@ import cats.effect.IO
 import org.adk4s.core.types.NodeKey
 
 case class Router[I](branches: Map[NodeKey, Branch[I]]):
-  def route(fromNode: NodeKey, input: I): IO[NodeKey] =
+  def route(fromNode: NodeKey, input: I): IO[RouteTarget] =
     branches.get(fromNode) match
       case Some(InvokeBranch(condition, _)) =>
         condition(input)
@@ -14,7 +14,7 @@ case class Router[I](branches: Map[NodeKey, Branch[I]]):
       case None =>
         IO.raiseError(new IllegalStateException(s"No branch defined for node ${fromNode.value}"))
 
-  def routeStream(fromNode: NodeKey, input: Stream[IO, I]): IO[NodeKey] =
+  def routeStream(fromNode: NodeKey, input: Stream[IO, I]): IO[RouteTarget] =
     branches.get(fromNode) match
       case Some(StreamBranch(condition, _)) =>
         condition(input)

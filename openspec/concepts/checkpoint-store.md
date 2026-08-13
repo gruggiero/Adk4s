@@ -31,7 +31,7 @@ operational principle
 | Element | Code |
 |---|---|
 | trait `CheckpointStore[F[_]]` | `trait CheckpointStore[F[_]]` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/interrupt/CheckpointStore.scala`) |
-| type alias `CheckpointId` | `CheckpointStore.CheckpointId = String` (transparent, in companion) |
+| type `CheckpointId` | `CheckpointStore.CheckpointId` — opaque refined type `String :| NonEmpty` (Iron `RefinedType`, in companion) |
 | action `get` | `CheckpointStore.get(checkpointId): F[Option[Array[Byte]]]` |
 | action `set` | `CheckpointStore.set(checkpointId, data): F[Unit]` |
 | action `delete` | `CheckpointStore.delete(checkpointId): F[Unit]` |

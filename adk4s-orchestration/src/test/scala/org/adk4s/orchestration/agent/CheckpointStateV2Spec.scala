@@ -17,6 +17,7 @@ import upickle.default.*
  * Tests written from the spec + approved typed contract ONLY.
  * Every test cites its source: `// spec: checkpoint-store-fpoly — Scenario: <heading>`
  */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 class CheckpointStateV2Spec extends HedgehogSuite:
 
   // ── Scenarios (munit) ─────────────────────────────────────────────────────
@@ -271,7 +272,7 @@ class CheckpointStateV2Spec extends HedgehogSuite:
       owner   <- Gen.string(Gen.alphaNum, Range.linear(1, 5))
       name    <- Gen.string(Gen.alphaNum, Range.linear(1, 5))
       initial <- Gen.int(Range.linear(-100, 100))
-    yield StateCell[Int](MiddlewareName(owner), name, initial)
+    yield StateCell[Int](MiddlewareName.refineEither(owner).fold(err => throw err, identity), name, initial)
 
   val genIntCellWithValue: Gen[(StateCell[Int], Int)] =
     for

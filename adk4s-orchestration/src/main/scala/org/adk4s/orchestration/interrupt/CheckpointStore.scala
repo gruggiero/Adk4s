@@ -4,6 +4,10 @@ import cats.effect.IO
 import cats.effect.Ref
 import cats.effect.Sync
 import cats.syntax.functor.toFunctorOps
+import io.github.iltotore.iron.RefinedType
+import io.github.iltotore.iron.upickle.given
+import org.adk4s.core.types.NonEmpty
+import org.adk4s.core.error.ConfigError
 
 /** A key-value store for persisting workflow checkpoint data.
   *
@@ -23,12 +27,24 @@ trait CheckpointStore[F[_]]:
   def keys: F[List[CheckpointStore.CheckpointId]]
 
 object CheckpointStore:
-  /** Transparent type alias for checkpoint identifiers — preserves source
-    * compatibility with existing `String` call sites.
+  /** Opaque refined type for checkpoint identifiers.
     *
-    * spec: checkpoint-store-fpoly — Requirement: CheckpointId type alias
+    * Backed by `String :| NonEmpty`. Constructed via `CheckpointId("literal")`
+    * (compile-time refinement for inline literals) or
+    * `CheckpointId.refineEither(s)` (runtime refinement). The underlying
+    * value is accessed via the `.value` extension inherited from `Refined`.
+    *
+    * spec: add-iron-refined-types/checkpoint-store-fpoly — Requirement: CheckpointId is an opaque refined type rejecting empty strings
     */
-  type CheckpointId = String
+  type CheckpointId = CheckpointId.T
+
+  object CheckpointId extends RefinedType[String, NonEmpty]:
+
+    /** Refinement returning a structured ConfigError on failure. */
+    def refineEither(s: String): Either[ConfigError, CheckpointId] =
+      either(s) match
+        case Right(cid) => Right(cid)
+        case Left(_)    => Left(ConfigError("CheckpointId", s, "NonEmpty"))
 
   /** Ref-backed in-memory checkpoint store factory.
     *

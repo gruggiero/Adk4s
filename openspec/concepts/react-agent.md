@@ -16,7 +16,7 @@ state
     model: ReactAgent -> ChatModel[IO]
     tools: ReactAgent -> List[InvokableTool[IO]]
     systemPrompt: ReactAgent -> Option[String]
-    maxSteps: ReactAgent -> Int
+    maxSteps: ReactAgent -> Int (refined to Positive at internal boundary via refineEither[Positive])
     emitter: ReactAgent -> Option[AgentEventEmitter]
     harness: ReactAgent -> HarnessAgent[IO]
 actions

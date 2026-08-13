@@ -12,8 +12,10 @@ import cats.effect.kernel.implicits.parallelForGenSpawn
 import cats.syntax.parallel.catsSyntaxParallelTraverse1
 import cats.syntax.traverse.toTraverseOps
 import fs2.Stream
+import io.github.iltotore.iron.refineEither
+import io.github.iltotore.iron.constraint.numeric.Positive
 import org.adk4s.core.component.{ ChatModel, InvokableTool }
-import org.adk4s.core.error.{ AdkError, AgentInterruptedException, MaxStepsExceededError }
+import org.adk4s.core.error.{ AdkError, AgentInterruptedException, ConfigError, MaxStepsExceededError }
 import org.adk4s.core.interrupt.{ AgentEvent, InterruptSignal, RunPath }
 import org.adk4s.core.tools.{ ToolInput, ToolOutput }
 import org.adk4s.harness.{
@@ -66,11 +68,23 @@ final class HarnessAgent[F[_]: Async](val config: HarnessAgent.Config[F]):
   val name: String        = config.name
   val description: String = config.description
 
+  /** Refine maxSteps to Positive, lifting the error into F via Async.raiseError.
+    *
+    * spec: add-iron-refined-types/react-agent — Requirement: maxSteps is refined to Positive at the internal boundary
+    */
+  private def refineMaxSteps(maxSteps: Int): F[Int] =
+    maxSteps.refineEither[Positive] match
+      case Right(_) => Async[F].pure(maxSteps)
+      case Left(msg: String) =>
+        Async[F].raiseError(ConfigError("maxSteps", maxSteps.toString, "Positive"))
+
   def generate(messages: List[Message], maxSteps: Int): F[HarnessResult] =
-    val effectiveMaxSteps: Int = math.min(maxSteps, config.maxSteps)
-    val state0: HarnessState   = HarnessState.initial(config.stack.allCells)
-    config.stack.beforeAgent(state0).flatMap { (state1: HarnessState) =>
-      loop(messages, state1, effectiveMaxSteps, config.maxSteps)
+    refineMaxSteps(maxSteps).flatMap { (_: Int) =>
+      val effectiveMaxSteps: Int = math.min(maxSteps, config.maxSteps)
+      val state0: HarnessState   = HarnessState.initial(config.stack.allCells)
+      config.stack.beforeAgent(state0).flatMap { (state1: HarnessState) =>
+        loop(messages, state1, effectiveMaxSteps, config.maxSteps)
+      }
     }
 
   /**
@@ -83,8 +97,10 @@ final class HarnessAgent[F[_]: Async](val config: HarnessAgent.Config[F]):
    * spec: harness-agent — Scenario: Resumed run runs afterAgent once
    */
   def resume(messages: List[Message], restoredState: HarnessState, maxSteps: Int): F[HarnessResult] =
-    val effectiveMaxSteps: Int = math.min(maxSteps, config.maxSteps)
-    loop(messages, restoredState, effectiveMaxSteps, config.maxSteps)
+    refineMaxSteps(maxSteps).flatMap { (_: Int) =>
+      val effectiveMaxSteps: Int = math.min(maxSteps, config.maxSteps)
+      loop(messages, restoredState, effectiveMaxSteps, config.maxSteps)
+    }
 
   def stream(messages: List[Message], maxSteps: Int): Stream[F, StreamedChunk] =
     val effectiveMaxSteps: Int = math.min(maxSteps, config.maxSteps)

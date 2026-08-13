@@ -3,7 +3,8 @@ package org.adk4s.orchestration.branch
 import cats.effect.IO
 import fs2.Stream
 import munit.CatsEffectSuite
-import org.adk4s.core.types.NodeKey
+import org.adk4s.core.types.{NodeKey, ReservedNodeKey, Reserved}
+import org.adk4s.core.types.given
 import workflows4s.wio.{WIO, WorkflowContext, WCState}
 
 object OrderProcessingContext extends WorkflowContext:
@@ -41,9 +42,9 @@ class BranchingIntegrationTest extends CatsEffectSuite:
 
   test("Router routes orders based on amount using binary branch") {
     // Create nodes for order processing
-    val orderReceived = NodeKey.unsafeApply("order_received")
-    val highValueProcessing = NodeKey.unsafeApply("high_value_processing")
-    val standardProcessing = NodeKey.unsafeApply("standard_processing")
+    val orderReceived = NodeKey("order_received")
+    val highValueProcessing = NodeKey("high_value_processing")
+    val standardProcessing = NodeKey("standard_processing")
     
     // Create a binary branch based on order amount (> $1000 is high value)
     val amountBranch = Branch.binary(
@@ -64,30 +65,30 @@ class BranchingIntegrationTest extends CatsEffectSuite:
       highValueRoute <- router.route(orderReceived, highValueOrder)
       standardRoute <- router.route(orderReceived, standardOrder)
     } yield {
-      assertEquals(highValueRoute, highValueProcessing)
-      assertEquals(standardRoute, standardProcessing)
+      assertEquals(highValueRoute, RouteTarget.ToNode(highValueProcessing))
+      assertEquals(standardRoute, RouteTarget.ToNode(standardProcessing))
     }
   }
 
   test("Router routes based on payment method using multi-way branch") {
     // Create nodes for different payment methods
-    val paymentNode = NodeKey.unsafeApply("payment_processing")
-    val creditCardNode = NodeKey.unsafeApply("credit_card_processing")
-    val paypalNode = NodeKey.unsafeApply("paypal_processing")
-    val bankTransferNode = NodeKey.unsafeApply("bank_transfer_processing")
-    val defaultNode = NodeKey.unsafeApply("default_processing")
+    val paymentNode = NodeKey("payment_processing")
+    val creditCardNode = NodeKey("credit_card_processing")
+    val paypalNode = NodeKey("paypal_processing")
+    val bankTransferNode = NodeKey("bank_transfer_processing")
+    val defaultNode = NodeKey("default_processing")
     
     // Create a multi-way branch based on payment method
-    def getPaymentType(order: OrderState): NodeKey = order.paymentMethod match {
-      case Some(_: CreditCard) => creditCardNode
-      case Some(_: PayPal) => paypalNode
-      case Some(_: BankTransfer) => bankTransferNode
-      case _ => defaultNode
+    def getPaymentType(order: OrderState): RouteTarget = order.paymentMethod match {
+      case Some(_: CreditCard) => RouteTarget.ToNode(creditCardNode)
+      case Some(_: PayPal) => RouteTarget.ToNode(paypalNode)
+      case Some(_: BankTransfer) => RouteTarget.ToNode(bankTransferNode)
+      case _ => RouteTarget.ToNode(defaultNode)
     }
     
     val paymentBranch = Branch.pure(
       condition = getPaymentType,
-      targets = Set(creditCardNode, paypalNode, bankTransferNode, defaultNode)
+      targets = Set(RouteTarget.ToNode(creditCardNode), RouteTarget.ToNode(paypalNode), RouteTarget.ToNode(bankTransferNode), RouteTarget.ToNode(defaultNode))
     )
     
     // Create router and add branch
@@ -106,16 +107,16 @@ class BranchingIntegrationTest extends CatsEffectSuite:
       paypalRoute <- router.route(paymentNode, paypalOrder)
       noPaymentRoute <- router.route(paymentNode, noPaymentOrder)
     } yield {
-      assertEquals(creditCardRoute, creditCardNode)
-      assertEquals(paypalRoute, paypalNode)
-      assertEquals(noPaymentRoute, defaultNode)
+      assertEquals(creditCardRoute, RouteTarget.ToNode(creditCardNode))
+      assertEquals(paypalRoute, RouteTarget.ToNode(paypalNode))
+      assertEquals(noPaymentRoute, RouteTarget.ToNode(defaultNode))
     }
   }
 
   test("Router uses endIf to terminate processing for rejected orders") {
     // Create nodes
-    val reviewNode = NodeKey.unsafeApply("order_review")
-    val continueNode = NodeKey.unsafeApply("continue_processing")
+    val reviewNode = NodeKey("order_review")
+    val continueNode = NodeKey("continue_processing")
     
     // Create a branch that ends processing for rejected orders
     val rejectionBranch = Branch.endIf(
@@ -135,21 +136,21 @@ class BranchingIntegrationTest extends CatsEffectSuite:
       rejectedRoute <- router.route(reviewNode, rejectedOrder)
       approvedRoute <- router.route(reviewNode, approvedOrder)
     } yield {
-      assertEquals(rejectedRoute, NodeKey.END)
-      assertEquals(approvedRoute, continueNode)
+      assertEquals(rejectedRoute, RouteTarget.ToReserved(ReservedNodeKey.End))
+      assertEquals(approvedRoute, RouteTarget.ToNode(continueNode))
     }
   }
 
   test("Stream branch processes batch orders") {
     // Create nodes
-    val batchNode = NodeKey.unsafeApply("batch_processing")
-    val processNode = NodeKey.unsafeApply("process_batch")
+    val batchNode = NodeKey("batch_processing")
+    val processNode = NodeKey("process_batch")
     
     // Create a stream branch that evaluates the entire batch
     val batchBranch = Branch.stream(
       condition = (orders: Stream[IO, OrderState]) => 
-        orders.compile.count.map(count => if (count > 10) then processNode else NodeKey.END),
-      targets = Set(processNode, NodeKey.END)
+        orders.compile.count.map(count => if (count > 10) then RouteTarget.ToNode(processNode) else RouteTarget.ToReserved(ReservedNodeKey.End)),
+      targets = Set(RouteTarget.ToNode(processNode), RouteTarget.ToReserved(ReservedNodeKey.End))
     )
     
     // Create router - note that the router type is OrderState, not Stream
@@ -168,8 +169,8 @@ class BranchingIntegrationTest extends CatsEffectSuite:
       largeBatchRoute <- router.routeStream(batchNode, largeBatch)
       smallBatchRoute <- router.routeStream(batchNode, smallBatch)
     } yield {
-      assertEquals(largeBatchRoute, processNode)
-      assertEquals(smallBatchRoute, NodeKey.END)
+      assertEquals(largeBatchRoute, RouteTarget.ToNode(processNode))
+      assertEquals(smallBatchRoute, RouteTarget.ToReserved(ReservedNodeKey.End))
     }
   }
 

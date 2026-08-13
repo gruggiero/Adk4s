@@ -7,6 +7,8 @@ import fs2.Stream
 import munit.FunSuite
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
+import org.adk4s.core.types.{NodeKey, Reserved}
+import org.adk4s.core.types.given
 import workflows4s.runtime.WorkflowInstanceId
 import workflows4s.wio.{ ActiveWorkflow, ErrorMeta, WCEffect, WCEffectLift, WCEvent, WCState, WIO }
 import workflows4s.wio.internal.WakeupResult
@@ -136,9 +138,9 @@ class WIORunnableNodeTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val node1: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
@@ -174,9 +176,9 @@ class WIORunnableNodeTest extends FunSuite:
     val runnableImpl: Runnable[Int, Int] = Runnable.fromInvoke[Int, Int]((i: Int) => IO.pure(i * 2))
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val runnableNode: WIORunnableNode[TestContext.Ctx, Int, Nothing, RunnableResult, Int, TestState] =
       WIONode.fromRunnableSimple[TestContext.Ctx, Int, RunnableResult, Int, TestState](
@@ -213,9 +215,9 @@ class WIORunnableNodeTest extends FunSuite:
       Runnable.fromStream[Int, Int]((i: Int) => Stream.emits(List(i, i * 2, i * 3)))
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val runnableNode: WIORunnableNode[TestContext.Ctx, Int, Nothing, RunnableResult, Int, TestState] =
       WIONode.fromRunnableSimple[TestContext.Ctx, Int, RunnableResult, Int, TestState](
@@ -271,9 +273,9 @@ class WIORunnableNodeTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val node1: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i * 5))
@@ -303,9 +305,9 @@ class WIORunnableNodeTest extends FunSuite:
     val streamRunnable: Runnable[Int, Int] = Runnable.fromStream[Int, Int]((i: Int) => Stream.emits(List(i, i + 1)))
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val runnableNode: WIORunnableNode[TestContext.Ctx, Int, Nothing, RunnableResult, Int, TestState] =
       WIONode.fromRunnableSimple[TestContext.Ctx, Int, RunnableResult, Int, TestState](
@@ -340,9 +342,9 @@ class WIORunnableNodeTest extends FunSuite:
     val runnableImpl: Runnable[Int, Int] = Runnable.fromInvoke[Int, Int]((i: Int) => IO.pure(i * 10))
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val runnableNode: WIORunnableNode[TestContext.Ctx, Int, Nothing, RunnableResult, Int, TestState] =
       WIONode.fromRunnableSimple[TestContext.Ctx, Int, RunnableResult, Int, TestState](
@@ -377,9 +379,9 @@ class WIORunnableNodeTest extends FunSuite:
     val runnableImpl: Runnable[Int, Int] = Runnable.fromInvoke[Int, Int]((i: Int) => IO.pure(i + 5))
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val identityNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
@@ -414,9 +416,9 @@ class WIORunnableNodeTest extends FunSuite:
     val lambda: Lambda[Int, Int] = Lambda.pure[Int, Int]((i: Int) => i * 3)
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
 
     val identityNode: WIOPureNode[TestContext.Ctx, TestState, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, TestState, TestState]((s: TestState) => s)
@@ -449,11 +451,11 @@ class WIORunnableNodeTest extends FunSuite:
       WIOGraph[TestContext.Ctx, Int, TestState]
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("node1"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("node1"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node2"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node2"))
     val node3Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("node3"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("node3"))
 
     val node1: WIOPureNode[TestContext.Ctx, Int, Nothing, TestState] =
       WIONode.pure[TestContext.Ctx, Int, TestState]((i: Int) => TestState(i))
@@ -490,9 +492,9 @@ class WIORunnableNodeTest extends FunSuite:
     val runnableImpl: Runnable[Int, Int] = Runnable.fromInvoke[Int, Int]((i: Int) => IO.pure(i * 2))
 
     val node1Ref: WIONodeRef[TestContext.Ctx, Int, TestState] =
-      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey.unsafeApply("runnable"))
+      WIONodeRef[TestContext.Ctx, Int, TestState](NodeKey("runnable"))
     val node2Ref: WIONodeRef[TestContext.Ctx, TestState, TestState] =
-      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey.unsafeApply("pure"))
+      WIONodeRef[TestContext.Ctx, TestState, TestState](NodeKey("pure"))
 
     val runnableNode: WIORunnableNode[TestContext.Ctx, Int, Nothing, RunnableResult, Int, TestState] =
       WIONode.fromRunnableSimple[TestContext.Ctx, Int, RunnableResult, Int, TestState](
