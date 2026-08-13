@@ -107,6 +107,7 @@
       <li>tell which rings are earning their cost in your codebase</li>
       <li>enforce the checks so they run whether or not anyone remembers</li>
       <li>tell the difference between a claim that is bound, resolved, and one that is actually discharged</li>
+      <li>capture evidence as a side effect of running a ring (<code>ledger.sh run</code>) and replay it later (<code>ledger.sh verify</code>)</li>
     </ul>
   </div>
 </div>
@@ -238,9 +239,10 @@
     <span class="cnum">CHAPTER 12</span>
     <h3>The correctness substratum</h3>
     <p>The third clause: bound and resolved say a mechanism exists; discharged
-       says it was actually observed to run green. The evidence ledger, chain
-       state, the generated checkpoint, and the one hook in this schema
-       allowed to block — and the real bugs found building each of them.</p>
+       says it was actually observed to run green. The evidence ledger (capture
+       and replay), chain state, the generated checkpoint, and the one hook in
+       this schema allowed to block — and the real bugs found building each of
+       them, twice.</p>
     <span class="ctime">≈ 30 min · schema v12</span>
   </a>
 

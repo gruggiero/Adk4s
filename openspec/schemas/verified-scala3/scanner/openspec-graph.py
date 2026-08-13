@@ -543,7 +543,56 @@ def main(argv: list[str]) -> int:
     g = build(root)
 
     if cmd == "export":
-        payload = {"nodes": list(g.nodes.values()), "edges": g.edges, "warnings": g.warnings}
+        # D5 FIX: support --change-dir and --change for per-change topology
+        # export. When provided, emit an `obligations` array with spec,
+        # obligation, artifact, and source fields for chain-state consumption.
+        change_dir = None
+        change_name = None
+        if "--change-dir" in argv:
+            idx = argv.index("--change-dir")
+            change_dir = argv[idx + 1] if idx + 1 < len(argv) else None
+        if "--change" in argv:
+            idx = argv.index("--change")
+            change_name = argv[idx + 1] if idx + 1 < len(argv) else None
+
+        if change_dir and change_name:
+            # Per-change export: emit obligations array for chain-state
+            obligations = []
+            for nid, node in g.nodes.items():
+                if node.get("kind") != "oblig":
+                    continue
+                spec_parts = node.get("spec", "").split("/")
+                if len(spec_parts) != 2 or spec_parts[0] != change_name:
+                    continue
+                # Find artifacts linked to this obligation
+                artifacts = []
+                sources = []
+                for e in g.edges:
+                    if e["from"] == nid and e["rel"] == "verified-by":
+                        art_node = g.nodes.get(e["to"], {})
+                        artifacts.append(art_node.get("id", "").replace("artifact:", ""))
+                    if e["rel"] == "enforced-by" and e["to"] == nid:
+                        req_node = g.nodes.get(e["from"], {})
+                        sources.append({
+                            "requirement": req_node.get("title", ""),
+                            "ordinal": req_node.get("ordinal", 0),
+                            "link": e.get("link", ""),
+                        })
+                obligations.append({
+                    "spec": spec_parts[1],
+                    "obligation": node.get("title", ""),
+                    "artifact": artifacts[0] if artifacts else "",
+                    "artifacts": artifacts,
+                    "enforcement": node.get("enforcement", ""),
+                    "sources": sources,
+                })
+            payload = {
+                "change": change_name,
+                "obligations": obligations,
+                "warnings": g.warnings,
+            }
+        else:
+            payload = {"nodes": list(g.nodes.values()), "edges": g.edges, "warnings": g.warnings}
         out = None
         if "--output" in argv:
             out = argv[argv.index("--output") + 1]

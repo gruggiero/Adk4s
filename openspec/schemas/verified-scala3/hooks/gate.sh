@@ -115,8 +115,7 @@ DANGER_SCAN="${DANGER_SCAN_OVERRIDE:-$SCANNER/danger-scan.sh}"
 if [ -z "$REPO" ]; then
   if [ ! -t 0 ]; then
     payload="$(cat 2>/dev/null || true)"
-    REPO="$(printf '%s' "$payload" |
-      sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    REPO="$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)"
   fi
 fi
 [ -z "$REPO" ] && REPO="${CLAUDE_PROJECT_DIR:-}"
@@ -172,19 +171,19 @@ fi
 # was silently never persisted in any worktree — found by hand-verifying
 # this very obligation from inside a worktree. `--absolute-git-dir` resolves
 # either shape (ordinary repo, worktree, or submodule) to the real git-dir.
+#
+# D8 FIX: STATE_DIR creation is deferred to AFTER the relevance guard below.
+# The previous version created .git/verified-scala3-gate/ in EVERY git repo
+# the hook fired in, including non-openspec ones. Now the directory is only
+# created in repos that pass the relevance guard (have an openspec/ dir).
 STATE_DIR=""
-if git_dir="$(cd "$REPO" 2>/dev/null && git rev-parse --absolute-git-dir 2>/dev/null)" && [ -n "$git_dir" ]; then
-  STATE_DIR="$git_dir/verified-scala3-gate"
-  mkdir -p "$STATE_DIR" 2>/dev/null || STATE_DIR=""
-fi
 
 # ── heartbeat: "did the gate run", without operator setup ────────────────
 # The OLD verification path (VERIFIED_SCALA3_HOOKS_TRACE, kept below for
 # backward compatibility) is INERT unless an operator exports it first, and a
 # three-level manual procedure exists BECAUSE nothing automated reads it.
-# This heartbeat is unconditional — written on EVERY invocation, including
-# ones that inject nothing, BEFORE the relevance guard below, so a silent
-# early exit still leaves a detectable record.
+# This heartbeat is written AFTER the relevance guard, so only openspec
+# repos get a .git/verified-scala3-gate/ directory.
 write_heartbeat() {
   [ -n "$STATE_DIR" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
@@ -193,13 +192,14 @@ write_heartbeat() {
 }
 
 # ── --check-installed: pure read of the heartbeat, no side effects ───────
-# Deliberately BEFORE write_heartbeat: checking installation must not itself
-# count as an installed invocation, or the check could never observe "never
-# ran".
+# Reads the heartbeat if it exists (from a prior run in an openspec repo)
+# but does NOT create the state directory. This check works in any repo
+# because it only reads — it never writes.
 if [ "$CHECK_INSTALLED" -eq 1 ]; then
   hb=""
-  if [ -n "$STATE_DIR" ] && [ -f "$STATE_DIR/heartbeat" ]; then
-    hb="$(cat "$STATE_DIR/heartbeat" 2>/dev/null || true)"
+  git_dir_check="$(cd "$REPO" 2>/dev/null && git rev-parse --absolute-git-dir 2>/dev/null || true)"
+  if [ -n "$git_dir_check" ] && [ -f "$git_dir_check/verified-scala3-gate/heartbeat" ]; then
+    hb="$(cat "$git_dir_check/verified-scala3-gate/heartbeat" 2>/dev/null || true)"
   fi
   if [ -n "$hb" ] && command -v jq >/dev/null 2>&1 && printf '%s' "$hb" | jq -e . >/dev/null 2>&1; then
     ts="$(printf '%s' "$hb" | jq -r '.ts // empty')"
@@ -211,8 +211,6 @@ if [ "$CHECK_INSTALLED" -eq 1 ]; then
   fi
   exit 0
 fi
-
-write_heartbeat
 
 # ── trace: proof that the HARNESS invoked this, not just that it works ───
 # Set VERIFIED_SCALA3_HOOKS_TRACE=/path/to/file to append one line per
@@ -242,6 +240,16 @@ if [ "${VERIFIED_SCALA3_HOOKS:-on}" = "off" ]; then
   trace "skip: VERIFIED_SCALA3_HOOKS=off"
   exit 0
 fi
+
+# ── state directory creation (AFTER relevance guard) ─────────────────────
+# Only openspec repos get a .git/verified-scala3-gate/ directory. This
+# prevents pollution of non-openspec git repos. (D8 fix.)
+if git_dir="$(cd "$REPO" 2>/dev/null && git rev-parse --absolute-git-dir 2>/dev/null)" && [ -n "$git_dir" ]; then
+  STATE_DIR="$git_dir/verified-scala3-gate"
+  mkdir -p "$STATE_DIR" 2>/dev/null || STATE_DIR=""
+fi
+
+write_heartbeat
 
 # ── event: post-edit (Tier A', informational only — NEVER blocks) ────────
 # spec: hook-tiers. Runs the relevant existing check immediately after a
@@ -438,7 +446,10 @@ if [ "$EVENT" = "completion" ]; then
       printf '%s' "$cs_out" | jq -e '(.total | type) == "number"' >/dev/null 2>&1; then
       n_unresolved="$(printf '%s' "$cs_out" | jq -r '.unresolved | length')"
       if [ "$n_unresolved" -gt 0 ]; then
-        names="$(printf '%s' "$cs_out" | jq -r '.unresolved[] | "    " + .requirement + " (" + (.reasons | join(",")) + ")"')"
+        names="$(printf '%s' "$cs_out" | jq -r '
+          if (.unresolved | length) > 10
+          then (.unresolved | .[0:10] | map("    " + .requirement + " (" + (.reasons | join(",")) + ")") | join("\n")) + "\n    +\((.unresolved | length) - 10) more"
+          else (.unresolved | map("    " + .requirement + " (" + (.reasons | join(",")) + ")") | join("\n")) end')"
         completion_unresolved="$completion_unresolved
   $name:
 $names"
@@ -606,7 +617,9 @@ if [ -n "$active_changes" ]; then
       rendered="$(printf '%s' "$cs_out" | jq -r '
         "    total \(.total)  bound \(.bound)  resolved \(.resolved)  discharged \(.discharged)  unresolved \(.unresolved | length)"
         + (if (.unresolved | length) > 0
-           then "\n" + (.unresolved | map("    " + .requirement + " (" + (.reasons | join(",")) + ")") | join("\n"))
+           then (if (.unresolved | length) > 10
+                  then "\n" + (.unresolved | .[0:10] | map("    " + .requirement + " (" + (.reasons | join(",")) + ")") | join("\n")) + "\n    +\((.unresolved | length) - 10) more"
+                  else "\n" + (.unresolved | map("    " + .requirement + " (" + (.reasons | join(",")) + ")") | join("\n")) end)
            else "" end)')"
       chain_state_section="$chain_state_section
   chain state           $name

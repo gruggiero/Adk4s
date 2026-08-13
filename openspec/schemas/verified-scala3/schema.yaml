@@ -147,6 +147,29 @@
 #   2 — ring pipeline + typed contract + test oracle.
 name: verified-scala3
 version: 12
+
+# ── invariant banner (defined once, referenced by all instruction blocks) ──
+# D8 fix: the invariant banner text was duplicated verbatim in 10 instruction
+# blocks below. It is now defined once here. The instruction blocks still
+# embed it verbatim (the openspec CLI does not yet support interpolation),
+# but this key is the canonical source — a drift check can compare each
+# instruction block's copy against this definition. CLI interpolation is a
+# follow-up change.
+invariant_banner: |
+  ═══ THE INVARIANT (schema v12) — read before this instruction ═══
+  Code is CORRECT iff every requirement is BOUND to an enforcement
+  mechanism, each mechanism is RESOLVED to an artifact that exists, and
+  each artifact is DISCHARGED — observed to run green in THIS session.
+  Obtained, not recalled.
+    NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+    A verdict you did not obtain in this session is not a verdict.
+    "N/A", "passes", "not applicable" and "already handled" are CLAIMS.
+  APPLICABILITY IS A FACT read from the repository, never inferred.
+  A RECORDED LIMITATION IS RE-ESTABLISHED BEFORE IT IS RELIED UPON: it
+  carries the date and the mechanism by which it was established, and a
+  later change re-tests it rather than inheriting it.
+  ═════════════════════════════════════════════════════════════════
+
 description: >
   CORRECTNESS — the definition this workflow enforces.
 

@@ -44,7 +44,8 @@
 #
 # Usage:
 #   checkpoint.sh report --ledger FILE --change C --spec S --baseline SHA \
-#                         --rings R0,R1,R8 --chain-state-json FILE [--format json|text]
+#                         --rings R0,R1,R8 --chain-state-json FILE [--format json|text] \
+#                         [--change-dir DIR]
 #   checkpoint.sh regenerate-tasks --progress FILE --tasks FILE [--write]
 set -uo pipefail
 
@@ -83,7 +84,7 @@ need_value() { # $1=flag $2=remaining count
 
 case "$SUB" in
   report)
-    LEDGER_FILE="" CHANGE="" SPEC="" BASELINE="" RINGS="" CS_JSON="" FORMAT="json"
+    LEDGER_FILE="" CHANGE="" SPEC="" BASELINE="" RINGS="" CS_JSON="" FORMAT="json" CHANGE_DIR=""
     while [ $# -gt 0 ]; do
       case "$1" in
         --ledger)
@@ -119,6 +120,11 @@ case "$SUB" in
         --format)
           need_value --format "$#"
           FORMAT="$2"
+          shift 2
+          ;;
+        --change-dir)
+          need_value --change-dir "$#"
+          CHANGE_DIR="$2"
           shift 2
           ;;
         *) die_finding "unrecognised argument: $1" ;;
@@ -174,7 +180,35 @@ case "$SUB" in
       >/dev/null 2>&1 ||
       die_undetermined "chain-state JSON at $CS_JSON does not parse, has no numeric total, or is itself undetermined"
 
-    ledger_out="$("$LEDGER" read --file "$LEDGER_FILE" --change "$CHANGE" --spec "$SPEC" --baseline "$BASELINE" 2>&1)"
+    # D2 FIX: pass --forgive-unchanged so the checkpoint shares the gate's
+    # forgiveness discipline — a row whose artifact hasn't changed since its
+    # baseline is forgiven even when HEAD has advanced.
+    #
+    # D2 FIX (fix-verified-scala3-substratum-review): use per-spec baseline
+    # from implementation-progress.md instead of the gate's --baseline (which
+    # is HEAD). After spec N commits, HEAD advances and every prior spec's
+    # ledger rows read stale — the checkpoint reports earlier specs unevidenced
+    # forever unless every ring is re-run after every commit. The per-spec
+    # baseline is the SHA recorded at spec-start in implementation-progress.md.
+    # If found, it replaces the gate's --baseline for the ledger read. If not
+    # found, fall back to --baseline (the gate's HEAD) and trace the fallback.
+    # This is the SAME discipline chain-state.sh already uses (D2 fix there).
+    EFFECTIVE_BASELINE="$BASELINE"
+    if [ -n "$CHANGE_DIR" ]; then
+      PROGRESS_FILE="$CHANGE_DIR/implementation-progress.md"
+      if [ -f "$PROGRESS_FILE" ]; then
+        PROGRESS_BASELINE="$(grep -oE '\*\*BASELINE SHA\*\*: `?[a-f0-9]{7,40}`?' "$PROGRESS_FILE" | head -1 | grep -oE '[a-f0-9]{7,40}')"
+        if [ -n "$PROGRESS_BASELINE" ]; then
+          EFFECTIVE_BASELINE="$PROGRESS_BASELINE"
+          printf 'checkpoint: using per-spec baseline %s from implementation-progress.md (gate baseline: %s)\n' \
+            "$EFFECTIVE_BASELINE" "$BASELINE" >&2
+        else
+          printf 'checkpoint: no per-spec baseline in implementation-progress.md, falling back to gate baseline %s\n' \
+            "$BASELINE" >&2
+        fi
+      fi
+    fi
+    ledger_out="$("$LEDGER" read --file "$LEDGER_FILE" --change "$CHANGE" --spec "$SPEC" --baseline "$EFFECTIVE_BASELINE" --forgive-unchanged 2>&1)"
     ledger_exit=$?
     if [ "$ledger_exit" -ne 0 ]; then
       die_undetermined "ledger read exited $ledger_exit; cannot determine ring outcomes ($ledger_out)"
@@ -205,7 +239,7 @@ case "$SUB" in
       fi
     done
 
-    report="$(jq -sc --arg change "$CHANGE" --arg spec "$SPEC" --arg baseline "$BASELINE" \
+    report="$(jq -sc --arg change "$CHANGE" --arg spec "$SPEC" --arg baseline "$EFFECTIVE_BASELINE" \
       --argjson cs "$cs_content" \
       '{change:$change, spec:$spec, baseline:$baseline, rings:., chain_state:$cs}' "$RING_ROWS")"
     [ -n "$report" ] || die_undetermined "internal error — report assembly failed"

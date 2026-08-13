@@ -67,11 +67,14 @@ set -euo pipefail
 
 ARTIFACTS=0
 CONTEXT_ONLY=0
+FORMAT_JSON=0
 TARGET="."
 for arg in "$@"; do
   case "$arg" in
     --artifacts)    ARTIFACTS=1 ;;
     --context-only) CONTEXT_ONLY=1 ;;
+    --format)       ;;  # consume value in next iteration
+    json)           FORMAT_JSON=1 ;;  # --format json
     *)              TARGET="$arg" ;;
   esac
 done
@@ -86,6 +89,10 @@ inventory_md="$repo_root/openspec/concept-inventory.md"
 profile_md="$repo_root/openspec/capability-profile.md"
 
 has_registry=0
+# D5 FIX: in JSON mode, suppress the human-readable CONTEXT block
+if [ "$FORMAT_JSON" -eq 1 ]; then
+  exec 3>&1 1>/dev/null
+fi
 echo "spec-lint: CONTEXT — repository facts. These decide each conditional check's"
 echo "           APPLICABILITY. Compliance remains yours; applicability does not."
 
@@ -110,7 +117,7 @@ for root in "$repo_root/.agents/skills" "$repo_root/.claude/skills" "$repo_root/
   elif [ -n "$schema_ver" ] && [ "$sv" != "$schema_ver" ]; then
     echo "  !! INSTRUCTION DRIFT: skill at $root is schema v$sv, this schema is v$schema_ver."
     echo "     Checks added after v$sv are NOT in the instructions you are following."
-    echo "     Re-install (verified-scala3/sync-skills.sh) before trusting this report."
+    echo "     Re-install (scanner/install-skills.sh) before trusting this report."
   fi
 done
 [ "$skill_found" -eq 0 ] && echo "  (no openspec-spec-lint skill installed in the searched roots)"
@@ -185,6 +192,13 @@ if [ "$CONTEXT_ONLY" -eq 1 ]; then
 fi
 echo
 
+# D5 FIX: restore stdout for the lint loop (saved to fd 3 during CONTEXT).
+# The CONTEXT block was redirected to /dev/null in JSON mode; the lint loop
+# must use real stdout so command substitutions (awk, grep) capture output.
+if [ "$FORMAT_JSON" -eq 1 ]; then
+  exec 1>&3 3>&-
+fi
+
 specs=""
 if [ -d "$TARGET/specs" ]; then
   specs="$(find "$TARGET/specs" -name 'spec.md' | sort)"
@@ -204,6 +218,7 @@ fi
 fails=0
 warns=0
 files=0
+JSON_FINDINGS=""
 
 while IFS= read -r spec; do
   [ -z "$spec" ] && continue
@@ -523,8 +538,43 @@ EOF9
   fi
 
   if [ -n "$findings" ]; then
-    echo "spec-lint: $spec"
-    printf '%s\n' "$findings" | sed 's/^/  /'
+    if [ "$FORMAT_JSON" -eq 1 ]; then
+      # D5 FIX: collect findings as JSON objects for machine consumption.
+      # Stored in JSON_FINDINGS; emitted as a single JSON array at the end.
+      while IFS= read -r fline; do
+        [ -n "$fline" ] || continue
+        # Parse "FAIL F7 line N: ..." or "FAIL F10: ..." or "WARN W2: ..." format
+        if [[ "$fline" =~ ^(FAIL|WARN)\ ([FW][0-9]+)([[:space:]]+line\ [0-9]+:[[:space:]]+|[[:space:]]*:[[:space:]]+)(.*)$ ]]; then
+          verdict="${BASH_REMATCH[1]}"
+          check="${BASH_REMATCH[2]}"
+          # Save group 3 before inner regex overwrites BASH_REMATCH
+          line_prefix="${BASH_REMATCH[3]}"
+          reason="${BASH_REMATCH[4]}"
+          # Extract requirement name from reason if present
+          req=""
+          if [[ "$reason" =~ requirement\ \"([^\"]+)\" ]]; then
+            req="${BASH_REMATCH[1]}"
+          fi
+          # Extract line number if present (for F7/F9 findings with "line N:")
+          line_num=""
+          if [[ "$line_prefix" =~ line\ ([0-9]+) ]]; then
+            line_num="${BASH_REMATCH[1]}"
+          fi
+          # Extract artifact token from F9 reason if present
+          art_token=""
+          if [[ "$reason" =~ artifact\ \'([^\']+)\' ]]; then
+            art_token="${BASH_REMATCH[1]}"
+          fi
+          json_obj="$(jq -nc --arg check "$check" --arg verdict "$verdict" --arg req "$req" --arg reason "$reason" \
+            --argjson line "${line_num:-0}" --arg artifact "$art_token" \
+            '{check: $check, verdict: $verdict, requirement: $req, reason: $reason, line: $line, artifact: $artifact}')"
+          JSON_FINDINGS="${JSON_FINDINGS}${json_obj}"$'\n'
+        fi
+      done <<<"$findings"
+    else
+      echo "spec-lint: $spec"
+      printf '%s\n' "$findings" | sed 's/^/  /'
+    fi
     f="$(printf '%s\n' "$findings" | grep -c '^FAIL' || true)"
     w="$(printf '%s\n' "$findings" | grep -c '^WARN' || true)"
     fails=$((fails + f))
@@ -533,6 +583,19 @@ EOF9
 done <<EOF
 $specs
 EOF
+
+if [ "$FORMAT_JSON" -eq 1 ]; then
+  # D5 FIX: emit all collected findings as a single JSON array.
+  if [ -n "$JSON_FINDINGS" ]; then
+    printf '%s\n' "$JSON_FINDINGS" | jq -cs '.'
+  else
+    printf '[]\n'
+  fi
+  if [ "$fails" -gt 0 ]; then
+    exit 1
+  fi
+  exit 0
+fi
 
 echo "spec-lint: $files spec file(s), $fails FAIL, $warns WARN"
 if [ "$fails" -gt 0 ]; then

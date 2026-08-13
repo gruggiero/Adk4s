@@ -23,7 +23,7 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck jq
+          sudo apt-get install -y shellcheck jq python3
           # bats and shfmt are not in apt on all runners; pin explicitly.
           sudo npm install -g bats@1.14.0
           # openspec: the Ring 3 reachability tests render artifact instructions
@@ -36,7 +36,7 @@ jobs:
       - name: Verify prerequisites are present
         # A missing tool must fail here, not silently skip the ring below.
         run: |
-          for t in bash git jq shellcheck bats shfmt openspec; do
+          for t in bash git jq python3 shellcheck bats shfmt openspec; do
             command -v "$t" >/dev/null || { echo "missing prerequisite: $t"; exit 1; }
             printf '%-12s %s\n' "$t" "$(command -v "$t")"
           done

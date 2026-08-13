@@ -249,14 +249,22 @@
   the <code>evidence-ledger</code> / <code>chain-state</code> /
   <code>checkpoint-from-ledger</code> specs — chapter 12 covers the whole
   mechanism), the Rings line is <strong>generated, not authored</strong>.
-  Every ring result traces to a row an earlier step appended to an
+  Every ring result traces to a row an earlier step wrote to an
   append-only evidence ledger — command, exit status, baseline — and a ring
   with no matching row is rendered as having <em>no recorded evidence</em>,
-  never quietly folded into a passing summary. <code>tasks.md</code>'s
-  checkboxes are regenerated from the same tracker the same way, so the two
-  files cannot independently drift. Before that tooling exists in a given
-  schema version, the line is still hand-composed — the format is unchanged,
-  only its provenance is.
+  never quietly folded into a passing summary. The checkpoint reads the
+  per-spec baseline from <code>implementation-progress.md</code> (via
+  <code>--change-dir</code>) so that earlier specs stay green after HEAD
+  advances — the same forgiveness discipline <code>chain-state.sh</code>
+  uses. The preferred capture path is
+  <code>ledger.sh run</code>: the script executes the ring command itself,
+  records its own observed exit, and stamps the row with the artifact's
+  SHA-256, the stdout/stderr digest, and the wall time — so the row is
+  evidence of what happened, not testimony about what the agent claims
+  happened. <code>tasks.md</code>'s checkboxes are regenerated from the same
+  tracker the same way, so the two files cannot independently drift. Before
+  that tooling exists in a given schema version, the line is still
+  hand-composed — the format is unchanged, only its provenance is.
 </p>
 
 <div class="box rule">

@@ -92,5 +92,16 @@ elif (.baseline | type) != "string" then fail("baseline must be a string")
 elif (.baseline | test("^[0-9a-f]{7,40}$") | not) then
   fail("baseline must be a lowercase hex revision of 7-40 chars")
 
+# ── optional fields (D3: evidence-capture) ──────────────────────────────
+# These are present in rows written by `run` mode and absent in legacy
+# `append` rows. Both shapes are valid; the fields are checked only if
+# present, so a heterogeneous ledger (mixed legacy + capture) reads cleanly.
+elif (has("sha256") and (.sha256 | type) != "string") then
+  fail("sha256 must be a string when present")
+elif (has("digest") and (.digest | type) != "string") then
+  fail("digest must be a string when present")
+elif (has("wallTime") and ((.wallTime | type) != "number" or (.wallTime | floor) != .wallTime)) then
+  fail("wallTime must be an integer when present")
+
 else .
 end

@@ -54,9 +54,9 @@
   <div class="box-title">Rule · the gate checks must run anywhere</div>
   <p style="margin-bottom:0">
     The gate checks depend on a <strong>declared prerequisite set</strong>
-    (schema v12): <code>bash</code>, <code>git</code>, <code>jq</code> at
-    runtime, plus <code>shellcheck</code>, <code>bats</code>,
-    <code>shfmt</code> and <code>openspec</code> in CI —
+    (schema v12): <code>bash</code>, <code>git</code>, <code>jq</code>,
+    <code>python3</code> at runtime, plus <code>shellcheck</code>,
+    <code>bats</code>, <code>shfmt</code> and <code>openspec</code> in CI —
     <strong>no JVM, no network, no artifact repository</strong>. They run on a
     restricted CI runner that cannot reach Maven Central. Portability
     <em>is</em> a correctness property for a gate: a check that only runs on a
@@ -64,7 +64,12 @@
     zero-dependency (bash and <code>git grep</code> only); the reasoning is
     unchanged, but hand-rolled escaping and the absence of a test framework
     were where the defects lived, so the dependency set is now declared and
-    installable rather than empty.
+    installable rather than empty. <code>python3</code> joined the set when
+    <code>chain-state.sh</code> gained a graph-based path using
+    <code>openspec-graph.py</code> (the graph's JSON <code>export</code>
+    replaces three parallel awk parsers); a bash degraded mode exists when it
+    is unavailable, and <code>install-skills.sh --check-installed</code>
+    verifies the full set.
   </p>
 </div>
 
@@ -144,6 +149,17 @@ registry-check: OK (611 implementation-map tokens verified,
   why its clean run is meaningful.
 </p>
 
+<p>
+  <strong>JSON output.</strong> <code>spec-lint.sh --format json</code>
+  suppresses the human-readable CONTEXT block and emits findings as a single
+  JSON array of <code>{check, verdict, requirement, reason, line, artifact}</code>
+  objects — the machine interface <code>chain-state.sh</code> consumes instead
+  of regex-parsing human prose. An empty array means clean; a non-zero exit
+  means at least one FAIL. The human-readable format remains the default for
+  interactive use; the JSON format exists so the fact-extraction pipeline has
+  one parser, not two.
+</p>
+
 <h3>The CONTEXT block — why applicability is never judgement</h3>
 
 <p>
@@ -202,7 +218,7 @@ registry-check: OK (611 implementation-map tokens verified,
 
 <pre data-lang="bash"><code>spec-lint: CONTEXT — repository facts. These decide each conditional check's
            APPLICABILITY. Compliance remains yours; applicability does not.
-  schema                openspec/schemas/verified-scala3  v11
+  schema                openspec/schemas/verified-scala3  v12
   behavioural registry  openspec/concepts/             PRESENT (30 concepts)
     -&gt; check 17 ALTITUDE **APPLIES**. "N/A" is not a valid verdict for it.
   type inventory        openspec/concept-inventory.md  PRESENT (125 typed rows)
@@ -299,9 +315,37 @@ danger-scan: adk4s-core/src/main/scala/.../ToolsNode.scala
   mechanism at all before schema v12.
 </p>
 
-<pre data-lang="bash"><code>$ scanner/ledger.sh append --file evidence-ledger.jsonl --change my-change \
+<p>
+  <code>ledger.sh</code> has three subcommands. <code>append</code> is the
+  original mode — the agent supplies the exit code. <code>run</code> is
+  capture mode: the script itself executes the command (after a
+  <code>--</code> separator), records its own observed <code>$?</code>, and
+  rejects <code>--exit</code> as an argument. <code>verify</code> is replay
+  mode: it re-executes each row's command, compares the observed exit to the
+  recorded exit, and reports per-row <code>replay matches</code>,
+  <code>replay diverges</code>, or <code>manual/unreplayable</code>.
+</p>
+
+<pre data-lang="bash"><code># capture mode — the script observes the exit, not the agent
+$ scanner/ledger.sh run --file evidence-ledger.jsonl --change my-change \
     --spec my-spec --ring R3 --obligation "…" --artifact tests/foo.bats \
-    --command "bats tests/foo.bats" --exit 0 --baseline $(git rev-parse HEAD)
+    --baseline $(git rev-parse HEAD) -- bats tests/foo.bats
+ledger: run recorded exit=0 wallTime=1240ms
+
+# the row now carries sha256, digest, and wallTime
+$ scanner/ledger.sh read --file evidence-ledger.jsonl --change my-change \
+    --baseline $(git rev-parse HEAD)
+{"v":1,"ts":"2026-08-12T…","change":"my-change","spec":"my-spec",
+ "ring":"R3","obligation":"…","artifact":"tests/foo.bats",
+ "command":"bats tests/foo.bats","exit":0,"baseline":"a1b2c3d…",
+ "sha256":"9f86d0…","digest":"e3b0c4…","wallTime":1240}
+
+# replay mode — re-execute and compare
+$ scanner/ledger.sh verify --file evidence-ledger.jsonl
+ledger: line 1: replay matches (recorded 0, observed 0)
+ledger: line 2: replay diverges (recorded 0, observed 1)
+ledger: line 3: manual/unreplayable (ring=R8, artifact=reviews/r8.md)
+ledger: line 4: non-manual row command does not parse as shell (skipped replay): …
 
 $ scanner/chain-state.sh --change-dir openspec/changes/my-change \
     --change my-change --baseline $(git rev-parse HEAD)
@@ -317,7 +361,20 @@ $ scanner/checkpoint.sh report --ledger evidence-ledger.jsonl --change my-change
 <p>
   <code>ledger.sh</code> is append-only — there is no update or delete
   subcommand, on purpose — and every row carries the command that produced
-  it, so a row is re-checkable, not merely trusted. <code>chain-state.sh</code>
+  it, so a row is re-checkable, not merely trusted. Capture mode
+  (<code>run</code>) closes the one gap <code>append</code> left: the agent
+  supplied the exit code, which is the one field fabrication needs. In
+  <code>run</code> mode the script observes the exit itself, records the
+  artifact's SHA-256 at record time (<code>sha256</code>), the stdout/stderr
+  digest (<code>digest</code>), and the wall-clock duration
+  (<code>wallTime</code>) — so "the artifact that ran green is the artifact
+  present" is checkable without re-running, and replay divergence can
+  distinguish output-change from exit-change. If the artifact does not
+  resolve at run time (the command may create it), a WARNING is traced to
+  stderr rather than silently recording an empty hash. In <code>verify</code>
+  mode, a <code>sha256sum</code> failure is reported as a verify failure —
+  the prior <code>|| echo unknown</code> fallback that silently recorded a
+  fake hash was removed. <code>chain-state.sh</code>
   never re-derives bound/resolved itself; it reads <code>spec-lint.sh</code>'s
   own F7/F9 output and attributes it back to requirements, because a second
   implementation of reachability is exactly the drift this workflow exists to
@@ -449,13 +506,13 @@ $ scanner/impact-scan.sh org.adk4s.core.interrupt.AgentEvent
   to a different axis.
 </p>
 
-<h2>The artifact graph (prototype)</h2>
+<h2>The artifact graph</h2>
 
 <p>
   The workflow already <em>is</em> a graph — concepts declare actions, specs
   cite concepts, obligations name requirements, artifacts enforce them — but
-  the gate checks verify those edges <strong>pairwise</strong>. The prototype
-  makes the graph explicit so it can be queried transitively:
+  the gate checks verify those edges <strong>pairwise</strong>. The graph
+  makes those edges explicit so they can be queried transitively:
 </p>
 
 <pre data-lang="bash"><code>$ scanner/openspec-graph.py impact MemoryAwareRunner
@@ -467,13 +524,26 @@ $ scanner/impact-scan.sh org.adk4s.core.interrupt.AgentEvent
   reach: 1 spec, 8 requirements, 19 obligations, 8 enforcing artifacts
 
 $ scanner/openspec-graph.py obligations
-  verdict: PASS — every requirement reaches an artifact</code></pre>
+  verdict: PASS — every requirement reaches an artifact
+
+# JSON export — the single fact extractor for chain-state
+$ scanner/openspec-graph.py export --change-dir openspec/changes/my-change \
+    --change my-change
+{"specs":[…],"obligations":[
+  {"spec":"my-spec","obligation":"the parser round-trips",
+   "artifact":"tests/ParserSpec.scala","sources":[…]}
+]}</code></pre>
 
 <p>
   Its first run found the schema gap that became the Source-format mandate in
-  chapter 5. It is Python, so it stays advisory — the same reachability check
-  now also exists as F7 in the portable linter, which is the version that
-  gates.
+  chapter 5. The <code>export</code> subcommand emits the
+  req→oblig→artifact→code topology as JSON, and <code>chain-state.sh</code>
+  consumes it as a jq predicate — replacing three parallel awk parsers
+  (spec-lint, chain-state, the graph itself) with one extraction point. It
+  is Python, so <code>chain-state.sh</code> uses it as its primary path when
+  <code>python3</code> is available and falls back to a bash-only awk parser
+  when it is not; the same reachability check also exists as F7 in the
+  portable linter, which is the version that gates.
 </p>
 
 <h2>Mechanical vs judgement — the honest split</h2>
@@ -491,7 +561,10 @@ $ scanner/openspec-graph.py obligations
         Exhaustiveness (Ring 0)<br>
         Mutation score<br>
         Concept &amp; dependency deltas<br>
-        Discharged evidence (ledger + chain-state)
+        Discharged evidence (ledger + chain-state)<br>
+        Capture mode (<code>ledger.sh run</code>)<br>
+        Replay verification (<code>ledger.sh verify</code>)<br>
+        JSON fact extraction (<code>openspec-graph.py export</code>)
       </td>
       <td>
         Observability of a <em>Then</em><br>
@@ -534,7 +607,18 @@ $ scanner/openspec-graph.py obligations
 
 <h2>Setup, briefly</h2>
 
-<pre data-lang="bash"><code># gate checks — nothing to install
+<pre data-lang="bash"><code># verify the declared prerequisite set
+$ scanner/install-skills.sh --check-installed
+install-skills: bash — present
+install-skills: git — present
+install-skills: jq — present
+install-skills: python3 — present
+install-skills: shellcheck — present
+install-skills: bats — present
+install-skills: shfmt — present
+install-skills: all prerequisites present
+
+# gate checks — nothing to install
 $ openspec/schemas/verified-scala3/scanner/spec-lint.sh openspec/changes/&lt;change&gt;
 $ openspec/schemas/verified-scala3/scanner/registry-check.sh .
 
@@ -610,7 +694,8 @@ $ scanner/install-skills.sh</code></pre>
   <h4>Before moving on, you should be able to say</h4>
   <ul>
     <li>Why gate checks depend only on a declared prerequisite set, and semantic tools are advisory.</li>
-    <li>The three passes of registry-check and the seven spec-lint FAIL codes.</li>
+    <li>The three passes of registry-check and the ten spec-lint FAIL codes.</li>
+    <li>The difference between <code>ledger.sh append</code> (agent-supplied exit) and <code>ledger.sh run</code> (script-observed exit), and why <code>verify</code> makes a row re-checkable rather than merely trusted.</li>
     <li>The two scanner bugs and the general lesson about silent success.</li>
     <li>The freshness and resolve-first rules for semantic queries.</li>
     <li>Which column of the mechanical/judgement/human split can never shrink.</li>

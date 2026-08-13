@@ -46,7 +46,15 @@ setup() {
 # defect, so the ONLY F7/F9 findings are the ones each shape intends.
 
 report_of() { # $1=change-dir $2=change-name $3=baseline; prints the report json
-  "$CS" --change-dir "$1" --change "$2" --baseline "$3"
+  # R8 FIX: set OPENSPEC_ROOT so openspec-graph.py can find the test repo,
+  # and suppress stderr so trace lines don't corrupt JSON parsing in bats.
+  # Uses bash -c wrapper because bats `run` captures stderr into $output
+  # regardless of 2>/dev/null on the command line.
+  # change-dir is $FX/openspec/changes/<change>, so OPENSPEC_ROOT is ../../..
+  # (the directory containing the openspec/ tree).
+  OPENSPEC_ROOT="$(cd "$1/../../.." && pwd)" bash -c \
+    '"$1" --change-dir "$2" --change "$3" --baseline "$4" 2>/dev/null' \
+    bash "$CS" "$1" "$2" "$3"
 }
 
 spec_header() {

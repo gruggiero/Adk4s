@@ -11,10 +11,31 @@
 # after every schema upgrade.
 #
 # Usage: install-skills.sh [project-root]   (default: current directory)
+#        install-skills.sh --check-installed
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_SRC="$SCRIPT_DIR/../skills"
+
+# D5 FIX: --check-installed verifies the declared prerequisite set
+if [ "${1:-}" = "--check-installed" ]; then
+  missing=0
+  for prereq in bash git jq python3 shellcheck bats shfmt; do
+    if command -v "$prereq" >/dev/null 2>&1; then
+      printf 'install-skills: %s — present\n' "$prereq"
+    else
+      printf 'install-skills: %s — MISSING\n' "$prereq" >&2
+      missing=$((missing + 1))
+    fi
+  done
+  if [ "$missing" -gt 0 ]; then
+    printf 'install-skills: %d prerequisite(s) missing\n' "$missing" >&2
+    exit 1
+  fi
+  printf 'install-skills: all prerequisites present\n'
+  exit 0
+fi
+
 ROOT="${1:-.}"
 AGENT_DIRS=(".claude/skills" ".pi/skills" ".devin/skills")
 

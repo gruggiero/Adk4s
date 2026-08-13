@@ -240,6 +240,7 @@ testing that had to be hand-rolled were where the defects lived.
 | `bash` | every check and every hook — the interpreter they are written in |
 | `git` | every check — diff, ls-files, and the per-spec baseline |
 | `jq` | `gate.sh` and the scanners, for JSON parse and emit |
+| `python3` | `openspec-graph.py` — the fact extractor for chain-state (D5) |
 | `shellcheck` | Ring 1 — shell lint, run in CI and at apply Step 4 |
 | `bats` | Ring 3 — the shell test suites in `../tests/`, run in CI and at apply Step 6 |
 | `shfmt` | Ring 1 — shell formatting check, run in CI and at apply Step 4 |

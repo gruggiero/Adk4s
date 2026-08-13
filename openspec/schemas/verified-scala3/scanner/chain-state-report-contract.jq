@@ -32,7 +32,7 @@
 
 def fail($clause): error("chain-state-report-contract: " + $clause);
 
-def valid_reasons: ["unbound", "unresolved", "undischarged", "unattributable"];
+def valid_reasons: ["unbound", "unresolved", "undischarged", "unattributable", "failed"];
 
 # ── branch 1: the UNDETERMINED shape ─────────────────────────────────────
 if (type == "object" and (.undetermined // false) == true) then
@@ -143,8 +143,8 @@ elif ((.bound - .resolved) !=
       (.unresolved | map(select(.reasons as $r | ($r | index("unresolved")) or ($r | index("unattributable")))) | length)) then
   fail("bound - resolved must equal the number of unresolved entries reasoned \"unresolved\" or \"unattributable\"")
 elif ((.resolved - .discharged) !=
-      (.unresolved | map(select(.reasons as $r | $r | index("undischarged"))) | length)) then
-  fail("resolved - discharged must equal the number of unresolved entries reasoned \"undischarged\"")
+      (.unresolved | map(select(.reasons as $r | ($r | index("undischarged")) or ($r | index("failed")))) | length)) then
+  fail("resolved - discharged must equal the number of unresolved entries reasoned \"undischarged\" or \"failed\"")
 
 # unmapped_obligations: obligations whose Source is not resolvable to a single
 # requirement via the "Requirement: <title>" preferred form, but which DO

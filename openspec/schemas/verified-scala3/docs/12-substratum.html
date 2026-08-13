@@ -118,24 +118,29 @@
 <p>
   <code>scanner/ledger.sh</code> is deliberately the simplest thing that
   could make clause 3 mechanical: an append-only log, one JSON object per
-  line, of commands that were actually run.
+  line, of commands that were actually run. It has three subcommands:
+  <code>append</code> (legacy, agent-supplied exit), <code>run</code>
+  (capture, script-observed exit), and <code>verify</code> (replay,
+  re-executes and compares).
 </p>
 
-<pre data-lang="bash"><code>$ scanner/ledger.sh append --file evidence-ledger.jsonl \
+<pre data-lang="bash"><code># capture mode — the script executes the command and observes the exit itself
+$ scanner/ledger.sh run --file evidence-ledger.jsonl \
     --change my-change --spec my-spec --ring R3 \
     --obligation "the parser round-trips" --artifact tests/ParserSpec.scala \
-    --command "sbt parserSuite/test" --exit 0 \
-    --baseline $(git rev-parse HEAD)
+    --baseline $(git rev-parse HEAD) -- sbt parserSuite/test
+ledger: run recorded exit=0 wallTime=1740ms
 
 $ scanner/ledger.sh read --file evidence-ledger.jsonl \
     --change my-change --baseline $(git rev-parse HEAD)
-{"v":1,"ts":"2026-08-08T12:00:00Z","change":"my-change","spec":"my-spec",
+{"v":1,"ts":"2026-08-12T12:00:00Z","change":"my-change","spec":"my-spec",
  "ring":"R3","obligation":"the parser round-trips",
  "artifact":"tests/ParserSpec.scala","command":"sbt parserSuite/test",
- "exit":0,"baseline":"a1b2c3d…"}</code></pre>
+ "exit":0,"baseline":"a1b2c3d…",
+ "sha256":"9f86d081…","digest":"e3b0c442…","wallTime":1740}</code></pre>
 
 <p>
-  Three design choices carry all the weight, and each closes a specific way
+  Four design choices carry all the weight, and each closes a specific way
   a claim was found to outrun its evidence during this exact chapter's own
   construction:
 </p>
@@ -147,11 +152,15 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
       There is no <code>update</code> or <code>delete</code> subcommand —
       not a permission you could misuse, a verb that does not exist. A
       recorded run is evidence; evidence that can be edited after the fact
-      is testimony. The one thing this does <em>not</em> prevent is
-      in-process forgery — nothing stops a caller appending a row for a
-      command it never ran. Recording the command makes a row
-      <em>re-checkable</em>, which moves forgery from the default path to a
-      deliberate act. That is the honestly-stated limit, not a claim of more.
+      is testimony. The one thing <code>append</code> mode does <em>not</em>
+      prevent is in-process forgery — nothing stops a caller appending a row
+      for a command it never ran, with any exit code it chooses. Capture
+      mode (<code>run</code>) closes that gap: the script executes the
+      command itself, records its own observed <code>$?</code>, and rejects
+      <code>--exit</code> as an argument. Recording the command makes a row
+      <em>re-checkable</em> (<code>verify</code>), which moves forgery from
+      the default path to a deliberate act. That is the honestly-stated
+      limit, not a claim of more.
     </p>
   </div>
   <div class="box">
@@ -163,7 +172,42 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
       baseline (which the reader permits, for callers who genuinely want
       everything) is different from a caller who <em>discharges</em>
       something from a read: every caller that does, in this schema,
-      supplies the baseline itself, without exception.
+      supplies the baseline itself, without exception. The
+      <code>--forgive-unchanged</code> flag extends this: a row remains
+      discharged until its artifact actually changes
+      (<code>git diff --quiet &lt;baseline&gt; HEAD -- &lt;artifact&gt;</code>),
+      so a ring that ran green three specs ago is not falsely indicted just
+      because HEAD advanced.
+    </p>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="box">
+    <div class="box-title">Content-hashed, at record time</div>
+    <p style="margin-bottom:0">
+      A <code>run</code> row carries the artifact's SHA-256
+      (<code>sha256</code>), the stdout/stderr digest
+      (<code>digest</code>), and the wall-clock duration
+      (<code>wallTime</code>). Without the content hash, a row says "the
+      artifact ran green" but cannot verify that the artifact present now
+      is the one that ran. On replay divergence, the digest tells whether
+      the output changed; the wall time tells whether the environment
+      degraded. Legacy <code>append</code> rows lack these fields, and
+      that is valid — both shapes read cleanly from the same file.
+    </p>
+  </div>
+  <div class="box">
+    <div class="box-title">Replayable, not merely trusted</div>
+    <p style="margin-bottom:0">
+      <code>ledger.sh verify</code> re-executes each row's command, compares
+      the observed exit to the recorded exit, and reports per-row
+      <code>replay matches</code>, <code>replay diverges</code>, or
+      <code>manual/unreplayable</code>. A diverging row exits non-zero and
+      names the row; a manual/R8 row is explicitly named, never silently
+      skipped. "A row records the command and its exit, so it is
+      re-checkable by re-running it" — <code>verify</code> is the command
+      that actually runs it.
     </p>
   </div>
 </div>
@@ -200,7 +244,8 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
     --change my-change --baseline $(git rev-parse HEAD)
 {"total":9,"bound":9,"resolved":9,"discharged":7,
  "unresolved":[
-   {"spec":"my-spec","requirement":"the parser round-trips","reasons":["undischarged"]}
+   {"spec":"my-spec","requirement":"the parser round-trips","reasons":["undischarged"]},
+   {"spec":"my-spec","requirement":"the retry policy holds","reasons":["failed"]}
  ]}</code></pre>
 
 <p>
@@ -210,7 +255,16 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
   a second implementation of reachability is the exact drift defect chapter
   9 spent a whole section on. <em>Discharged</em> is the one genuinely new
   computation: every mapped obligation must have at least one matching,
-  same-baseline ledger row.
+  same-baseline ledger row with <code>exit: 0</code>.
+</p>
+
+<p>
+  Two reason-codes distinguish <em>why</em> a requirement is unresolved:
+  <code>undischarged</code> means no matching ledger row exists at all;
+  <code>failed</code> means a row exists but records a non-zero exit — the
+  ring ran and broke, which is different from "never ran" and must not be
+  conflated. A recorded red run is <em>negative evidence</em>, visible as
+  such, not silently folded into the same bucket as absence.
 </p>
 
 <div class="box danger">
@@ -230,12 +284,53 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
     The fix added a fourth classification, <code>unattributable</code>,
     checked before a title can ever be counted resolved or discharged: a
     bound title this script cannot itself attribute evidence to is reported
-    as exactly that, never silently folded into “fine”. Two more bugs in the
+    as exactly that, never silently folded into “fine”. In graph mode (when
+    <code>python3</code> is available) the graph resolves titles uniformly,
+    so <code>unattributable</code> never appears; it remains the safety net
+    for bash degraded mode. Two more bugs in the
     same family — substring matches (<code>grep -qF</code> without
     <code>-x</code>) letting one title's verdict bleed onto another whose
     name happened to be a prefix, and onto an unrelated line number 260
     lines away — were fixed by anchoring every lookup to the whole line, not
     a fragment of it.
+  </p>
+</div>
+
+<div class="box danger">
+  <div class="box-title">The substratum review — eight more, same shape</div>
+  <p>
+    A fresh-context review of the substratum itself
+    (<code>docs/openPoints/verified-scala3-substratum-review.md</code>,
+    2026-08-12) found eight defects (D1–D8), all the same shape: a claim
+    that outran its evidence. The two critical ones:
+  </p>
+  <ul>
+    <li><strong>D1 — a failed run discharged the obligation.</strong>
+      <code>chain-state.sh</code> matched on spec+obligation and never
+      checked <code>.exit</code>. A row recording <code>"exit": 1</code>
+      discharged the obligation — directly contradicting the schema's own
+      definition ("observed to run <em>green</em>"). Every discharged
+      fixture used <code>--exit 0</code>; the "recorded red run" case was
+      untested. Fixed by gating discharge on <code>exit == 0</code> and
+      adding the <code>failed</code> reason-code so a red run is visible as
+      negative evidence.</li>
+    <li><strong>D2 — HEAD advanced, every prior spec went stale.</strong>
+      The gate computed chain state at <code>git rev-parse HEAD</code> for
+      every active change. After spec N committed, HEAD advanced and every
+      prior spec's ledger rows read stale — the gate reported earlier specs
+      undischarged forever unless every ring was re-run after every commit.
+      Fixed with per-spec baselines (read from
+      <code>implementation-progress.md</code>) and
+      <code>--forgive-unchanged</code> (a row stays discharged until its
+      artifact actually changes).</li>
+  </ul>
+  <p style="margin-bottom:0">
+    The remaining six (D3–D8) address the ledger's trust model (capture
+    mode, replay, content hashes), parser divergence (single fact extractor,
+    JSON output), and hygiene (dangling references, dead code, heartbeat
+    pollution). Each was found by the workflow's own Ring 8 mechanism — the
+    substratum reviewing itself, which is the strongest argument for
+    fresh-context adversarial review of an author's own.
   </p>
 </div>
 
@@ -281,6 +376,20 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
   independently drift from the tracker again.
 </p>
 
+<p>
+  And <code>ledger.sh verify</code> closes the loop the ledger itself
+  opened: a row records the command and its exit, so it is re-checkable by
+  re-running it. Before <code>verify</code>, that sentence was a promise
+  — the command was stored, but nothing ran it. Now <code>verify</code>
+  re-executes every replayable row, compares exits, and reports
+  <code>replay matches</code> or <code>replay diverges</code> per row,
+  exiting non-zero on any divergence. Manual/R8 rows are named
+  <code>manual/unreplayable</code>, never silently skipped. A ledger that
+  passes <code>verify</code> is evidence that the recorded exits are still
+  the exits you would get — which is the strongest statement a re-checkable
+  record can make.
+</p>
+
 <h2>The one hook that blocks</h2>
 
 <p>
@@ -300,7 +409,8 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
   <p style="margin-bottom:0">
     A blocking gate is only as trustworthy as the evidence it blocks on. Had
     the completion gate shipped before the ledger's trailing-newline bug or
-    chain-state's <code>unattributable</code> fix, it would have been
+    chain-state's title-matching fix (<code>unattributable</code> in bash
+    mode, eliminated by the graph in graph mode), it would have been
     refusing turns — or worse, silently permitting them — on a chain-state
     computation that was itself capable of reporting a clean zero on no
     evidence at all. Sequencing the substratum's own construction this way
@@ -361,7 +471,7 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
       "It asked the human to classify it"
     ],
     "answer": 1,
-    "why": "Defaulting a flag to true and lowering it only inside a loop is the same shape as `case _ => validValue` — an empty input silently takes the 'everything is fine' branch. The fix, `unattributable`, is a fourth explicit state checked BEFORE the resolved/discharged loops, so zero attributable evidence can never be silently reported as success."
+    "why": "Defaulting a flag to true and lowering it only inside a loop is the same shape as `case _ => validValue` — an empty input silently takes the 'everything is fine' branch. The fix, `unattributable` (a bash-mode safety net; in graph mode the graph resolves titles uniformly so the state never arises), is a fourth explicit state checked BEFORE the resolved/discharged loops, so zero attributable evidence can never be silently reported as success."
   },
   {
     "q": "Why does checkpoint.sh check a ledger row's exit code before reporting a ring green, rather than treating any matching row as evidence of success?",
@@ -384,6 +494,28 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
     ],
     "answer": 1,
     "why": "This is chapter 11's Tier-B-before-Tier-A argument one layer deeper: promote enforcement onto evidence you have already verified, never onto evidence still being debugged. Each of the substratum's own components had a real, found 'claim outran evidence' bug during construction — building the blocking gate on top of any of them before they were fixed would have made the block itself untrustworthy."
+  },
+  {
+    "q": "ledger.sh has append, run, and verify subcommands. What does run mode add that append cannot provide?",
+    "options": [
+      "It runs the command faster",
+      "The script itself executes the command and records its own observed $? — append mode lets the agent supply any exit code, which is the one field fabrication needs. run mode rejects --exit and observes the exit directly, closing that gap",
+      "It allows deleting old rows",
+      "It produces prettier output"
+    ],
+    "answer": 1,
+    "why": "append mode trusts the agent's exit code; run mode does not. The agent supplies --exit 0 in append mode and nothing checks whether the command actually exited 0. In run mode the script runs the command after the -- separator, captures $?, and refuses --exit as an argument. The agent cannot fabricate the exit code because it does not supply one. Combined with sha256 (content hash at record time) and verify (replay), this moves the ledger from trusted testimony to checked evidence."
+  },
+  {
+    "q": "chain-state.sh reports a requirement with reason 'failed'. What does that mean, and how is it different from 'undischarged'?",
+    "options": [
+      "The script crashed while processing that requirement",
+      "A ledger row exists for that requirement but records a non-zero exit — the ring ran and broke. 'undischarged' means no matching row exists at all. Conflating them would hide negative evidence (a known failure) inside absence (never tested), the same bug as reporting a regressed ring as green",
+      "The requirement text is malformed",
+      "The human reviewer rejected it"
+    ],
+    "answer": 1,
+    "why": "D1 found that chain-state.sh discharged obligations on any matching row regardless of .exit — a recorded failed run (exit: 1) discharged the obligation, contradicting the definition 'observed to run green'. The fix gates discharge on exit == 0 and adds 'failed' as a distinct reason-code, so a red run is visible as negative evidence rather than silently certified as success."
   }
 ]
 </script>
@@ -392,17 +524,19 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
   <h4>Before moving on, you should be able to say</h4>
   <ul>
     <li>The three clauses of correctness, and which one had no mechanism before this chapter.</li>
-    <li>Why the evidence ledger is append-only structurally, not by convention — and what it still cannot prevent.</li>
-    <li>Why chain-state.sh never recomputes bound/resolved itself, and what <code>unattributable</code> is for.</li>
-    <li>The difference between a ledger row that is <em>absent</em> and one that is <em>present but failed</em> — and why a checkpoint must never conflate them.</li>
+    <li>Why the evidence ledger is append-only structurally, not by convention — and what <code>run</code> mode adds that <code>append</code> cannot.</li>
+    <li>Why chain-state.sh never recomputes bound/resolved itself, and what <code>unattributable</code> is for (bash degraded mode; in graph mode the graph resolves titles uniformly).</li>
+    <li>The difference between <code>undischarged</code> (no row) and <code>failed</code> (row with non-zero exit) — and why conflating them is the same bug as conflating "never ran" with "ran and broke".</li>
+    <li>What <code>ledger.sh verify</code> adds: a row was re-checkable in principle; <code>verify</code> makes it re-checked in practice.</li>
     <li>Why the one blocking hook in this schema shipped last, and what would have gone wrong had it shipped first.</li>
   </ul>
   <p style="margin-bottom:0">
     If you can only take one idea from this whole tutorial, it is the
     sentence this chapter states as a rule rather than derives from one:
     never let a claim outrun its evidence — including this workflow's own
-    claims about itself, which is exactly where three of the bugs above
-    were found.
+    claims about itself, which is exactly where the bugs above were found,
+    twice: first inside the substratum's own construction, then again in
+    the fresh-context review that found eight more.
   </p>
 </div>
 

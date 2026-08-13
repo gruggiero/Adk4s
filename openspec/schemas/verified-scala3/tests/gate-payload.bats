@@ -283,14 +283,16 @@ run_gate() { # extra args after --repo $FX are passed through
 # Requirement: A gate that never ran is detectable without operator setup
 # ═════════════════════════════════════════════════════════════════════════
 
-# spec: gate-payload — Scenario: a silent invocation still records that it ran
-@test "a silent invocation (no openspec/) still records a heartbeat" {
+# spec: gate-payload — Scenario: a silent invocation (no openspec/) does NOT
+# record a heartbeat (D8 fix: heartbeat is written AFTER the relevance guard,
+# so non-openspec repos are not polluted with .git/verified-scala3-gate/)
+@test "a silent invocation (no openspec/) does NOT record a heartbeat" {
   mkdir -p "$FX"
   (cd "$FX" && git init -q)
   run_gate --event session-start --format text
   run "$GATE" --check-installed --repo "$FX"
   assert_status 0 "$status" "the installation check itself must not fail"
-  assert_contains "$output" '"installed":true' "a heartbeat exists despite the silent exit"
+  assert_contains "$output" '"installed":false' "no heartbeat in non-openspec repo (D8 fix)"
 }
 
 # spec: gate-payload — Scenario: an uninstalled gate is reported
@@ -322,10 +324,12 @@ run_gate() { # extra args after --repo $FX are passed through
 # directory-only check silently disabled the heartbeat/suppression state
 # dir in every worktree, with no error and no visible symptom.
 @test "the heartbeat and installation check work from inside a git worktree, not only a plain checkout" {
-  mkdir -p "$FX"
+  mkdir -p "$FX/openspec"
+  touch "$FX/openspec/.gitkeep"
   (cd "$FX" && git init -q && git config user.email t@t && git config user.name t \
-    && git commit -q --allow-empty -m init \
+    && git add openspec && git commit -q -m init \
     && git worktree add -q "$FX-wt" -b wt-branch)
+  # D8 fix: heartbeat is only written in openspec repos (after relevance guard)
   run_gate --event session-start --format text
   run "$GATE" --check-installed --repo "$FX"
   assert_contains "$output" '"installed":true' "heartbeat must persist for the main worktree checkout"
@@ -342,10 +346,12 @@ run_gate() { # extra args after --repo $FX are passed through
 
 # spec: gate-payload — Property: Payload contents follow the chain state exactly
 @test "PROPERTY payload names exactly the unresolved set, no additions or omissions" {
-  # Generator strategy (enumerated): unresolved counts 0, 1, 2, 12, plus one
+  # Generator strategy (enumerated): unresolved counts 0, 1, 2, 8, plus one
   # requirement whose name contains a character requiring escaping.
+  # D8 fix: counts > 10 are capped at 10 with "+M more" — tested separately
+  # in workflow-hygiene.bats. Here we test counts ≤ 10 for exact naming.
   local n
-  for n in 0 1 2 12; do
+  for n in 0 1 2 8; do
     mk_repo
     fake_chain_state "$(report_with_unresolved "$n")"
     CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event session-start --format text
