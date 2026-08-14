@@ -103,5 +103,17 @@ elif (has("digest") and (.digest | type) != "string") then
 elif (has("wallTime") and ((.wallTime | type) != "number" or (.wallTime | floor) != .wallTime)) then
   fail("wallTime must be an integer when present")
 
+# ── session provenance (spec:judgment-ring-provenance) ───────────────────
+# R8 (adversarial-review) rows MUST carry a `session` field identifying the
+# producing session — the checkpoint compares it to the implementing session
+# to enforce the fresh-context mandate. Non-R8 rows MAY carry `session`
+# (optional); when present it must be a non-empty string.
+elif (.ring == "R8" and (has("session") | not)) then
+  fail("session is required for R8 (adversarial-review) rows — the checkpoint needs it to enforce the fresh-context mandate")
+elif (.ring == "R8" and has("session") and ((.session | type) != "string" or (.session | length) == 0)) then
+  fail("session must be a non-empty string for R8 rows")
+elif (has("session") and ((.session | type) != "string" or (.session | length) == 0)) then
+  fail("session must be a non-empty string when present")
+
 else .
 end

@@ -25,10 +25,14 @@ mk_repo() {
 
 # Helper: append a ledger row
 append_row() { # $1=file $2=change $3=spec $4=ring $5=obligation $6=exit $7=baseline $8=artifact $9=command
+  local session_args=()
+  if [ "$4" = "R8" ]; then
+    session_args=(--session "test-reviewer-session")
+  fi
   bash "$LEDGER" append \
     --file "$1" --change "$2" --spec "$3" --ring "$4" \
     --obligation "$5" --exit "$6" --baseline "$7" \
-    --artifact "$8" --command "$9"
+    --artifact "$8" --command "$9" "${session_args[@]}"
 }
 
 # ── D4: Manual ring rows must name a resolvable report artifact ──────────
@@ -58,7 +62,7 @@ append_row() { # $1=file $2=change $3=spec $4=ring $5=obligation $6=exit $7=base
   # We need to create a row without an artifact field. Since ledger.sh append
   # requires --artifact, we'll write the JSONL directly.
   cat > "$LEDGER_FILE" <<JSONL
-{"v":1,"ts":"2026-08-12T16:00:00Z","change":"test-change","spec":"only","ring":"R8","obligation":"Manual review","artifact":"","command":"fresh-context Agent review","exit":0,"baseline":"$BASELINE_SHA"}
+{"v":1,"ts":"2026-08-12T16:00:00Z","change":"test-change","spec":"only","ring":"R8","obligation":"Manual review","artifact":"","command":"fresh-context Agent review","exit":0,"baseline":"$BASELINE_SHA","session":"test-reviewer-session"}
 JSONL
   run bash "$LEDGER" verify --file "$LEDGER_FILE"
   [ "$status" -ne 0 ]

@@ -34,6 +34,14 @@
 // for pi would be exactly the "claim outran evidence" defect this whole
 // change targets.
 //
+// spec:harness-install-verification — the `tool_call` handler below is the
+// universal pre-execution tier for pi. It shells out to
+// `gate.sh --event tool-call` and maps a block decision to
+// `{block:true,reason}`. This is the wiring that makes specs 1–2 (oracle
+// ordering lock, human-grant lock) enforce on pi, not just on the 2/3
+// harnesses that honor Stop. The handler filters on write/edit/bash tool
+// names (the same set the Claude/Devin PreToolUse matcher covers).
+//
 // All logic lives in gate.sh. This file only decides WHEN to ask and WHERE to
 // put the answer — the same division that makes the adapters interchangeable.
 
@@ -64,6 +72,48 @@ function runGate(cwd: string, extraArgs: string[]): Promise<string> {
   });
 }
 
+// spec:harness-install-verification — run gate.sh --event tool-call and
+// parse the JSON decision. Returns {block: boolean, reason: string} or
+// undefined (allow) on any failure (fail-open: a context gate must never
+// strand the agent).
+function runToolCallGate(
+  cwd: string,
+  toolName: string,
+  filePath: string,
+): Promise<{ block: boolean; reason: string } | undefined> {
+  const script = join(cwd, GATE);
+  if (!existsSync(script)) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    execFile(
+      "bash",
+      [
+        script,
+        "--repo", cwd,
+        "--session", SESSION_ID,
+        "--event", "tool-call",
+        "--format", "json",
+        "--tool", toolName,
+        "--file", filePath,
+      ],
+      { cwd, timeout: TIMEOUT_MS, encoding: "utf8" },
+      (_err, stdout) => {
+        const output = (stdout ?? "").trim();
+        if (!output) return resolve(undefined);
+        try {
+          const parsed = JSON.parse(output);
+          if (parsed.decision === "block") {
+            resolve({ block: true, reason: parsed.reason ?? "blocked by verified-scala3 gate" });
+          } else {
+            resolve(undefined);
+          }
+        } catch {
+          resolve(undefined);
+        }
+      },
+    );
+  });
+}
+
 export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (_event, ctx: ExtensionContext) => {
     const text = await runGate(ctx.cwd, ["--event", "prompt-submit", "--format", "text"]);
@@ -76,6 +126,27 @@ export default function (pi: ExtensionAPI) {
         display: false,
       },
     };
+  });
+
+  // spec:harness-install-verification — Pre-execution gate (universal tier).
+  // Fires before write/edit/bash tools execute. If gate.sh returns a block
+  // decision, the tool call is blocked with the reason. This is the wiring
+  // that makes the oracle ordering lock and human-grant lock enforce on pi.
+  pi.on("tool_call", async (event, ctx: ExtensionContext) => {
+    const toolName: string = event.toolName;
+    // Filter to the same tool set the Claude/Devin PreToolUse matcher covers
+    if (toolName !== "write" && toolName !== "edit" && toolName !== "bash") return undefined;
+    const path = (event.input as { path?: string; command?: string }).path;
+    const command = (event.input as { command?: string }).command;
+    // For write/edit, use the file path; for bash, use the command string
+    const filePath = path ?? command ?? "";
+    if (!filePath) return undefined;
+
+    const result = await runToolCallGate(ctx.cwd, toolName, filePath);
+    if (!result || !result.block) return undefined;
+
+    // Block the tool call — pi's tool_call handler returns {block: true, reason}
+    return { block: true, reason: result.reason };
   });
 
   pi.on("tool_result", async (event, ctx: ExtensionContext) => {

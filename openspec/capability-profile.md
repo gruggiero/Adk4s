@@ -21,7 +21,7 @@
 | Scala version | 3.8.4 (main modules); 3.7.2 (`verified` module — Stainless frontend pin) | build.sbt, project/Versions.scala |
 | sbt version | 1.12.12 | project/build.properties |
 | JDK | 26 (Homebrew OpenJDK) | runtime |
-| Modules | 11: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-harness-api`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt (`adk4s-harness-api` at build.sbt:96 — added by the in-flight `add-harness-api-phase0` change) |
+| Modules | 12: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-harness-api`, `adk4s-harness-testkit`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
 | Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule). Any change extending a sealed ADT (e.g. `AgentEvent`, `AdkError`) MUST handle the new variant in every existing match or Ring 0 fails. | build.sbt scala3Options |
 | scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, exhaustiveness `-Wconf` escalations (shared via `scala3Options` val) | build.sbt |
 | Dependency management | Centralized: `project/Versions.scala` (all versions), `project/Dependencies.scala` (all ModuleIDs), `build.sbt` imports `Dependencies._` | project/*.scala |
@@ -35,7 +35,8 @@ adk4s-examples % Test → adk4s-memory-testkit                (test-scope — Fi
 adk4s-eval → structured-llm                                  (eval harness; landed by add-eval-core)
 adk4s-eval % Test → cats-effect-testkit                      (TestControl for deterministic concurrency)
 adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api
-adk4s-harness-api → adk4s-core, verified % Test               (Ring 6 bridge wired; in-flight add-harness-api-phase0)
+adk4s-harness-api → adk4s-core, verified % Test               (Ring 6 bridge wired)
+adk4s-harness-testkit → adk4s-harness-api, verified % Test     (main-scope munit — middleware laws)
 adk4s-optimize → structured-llm, verified % Test              (Ring 6 bridge; landed by archived 2026-08-01-add-optimizable-surface)
 adk4s-memory-testkit → adk4s-memory-api                     (main-scope munit — behavioral laws)
 adk4s-memory-api → adk4s-core                               (for Retriever/Document/RetrieverConfig)
@@ -58,12 +59,15 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | JSON (internal currency) | smithy4s `Document` (aliased as `JsonValue`) | 0.18.55 | `JsonValue` (= `smithy4s.Document`) is ADK4S's internal JSON currency, introduced by the archived `migrate-json-codec` change (2026-08-06). `JsonValue` is defined in `adk4s-core/src/main/scala/org/adk4s/core/json/JsonValue.scala`; `JsonValueCodec` bridges to/from `ujson.Value` at the llm4s boundary. `InterruptSignal.Stateful.state` is `JsonValue`; `Retriever.Document.metadata` is `Map[String, JsonValue]`. |
 | JSON (llm4s boundary) | upickle / ujson | 4.4.3 (explicitly declared; MUST match llm4s 0.3.4 transitive) | `ujson.Value` is confined to the llm4s boundary (`org.adk4s.core.json`, `org.adk4s.core.tools`) by Scalafix `NoUjsonIn*` rules. NOT circe. |
 | IDL / codegen | smithy4s (core + json) | 0.18.55 | Compile dep in structured-llm; sbt-codegen plugin on structured-llm-test-models. NOT touched by this change. |
-| Refined types | none | — | No Iron/refined. `MemoryPolicy` fields are plain typed values. |
+| Refined types | Iron | (see build.sbt `adk4s-harness-api` deps) | `MiddlewareName` (`NonEmpty`), `StateCell.CellId` (`NonEmpty & Match["[^/]+/[^/]+"]`). Used in `adk4s-harness-api` for type-safe identifiers. |
 | Telemetry | none | — | No otel4s/Daut. Ring 9 skip. |
 | LLM client | llm4s core | 0.3.4 (Maven Central) | `LLMClient`, `Conversation`, `Message` (`UserMessage`/`AssistantMessage`/`SystemMessage`/`ToolMessage`), `CompletionOptions`, `ToolFunction`, `ToolRegistry`, `Result[A]`. |
 | Workflow engine | workflows4s-core | 0.6.2 (Maven Central) | WIO monad, WorkflowContext, event sourcing. workflows4s-bpmn 0.6.2 in examples only. NOT touched by this change. |
 | Memory capability | adk4s-memory-api (project-local) | 0.1.0-SNAPSHOT | `AgentMemory[F]`, `Episode`, `SourceType`, `EpisodeOutcome`, `MemoryHit`, `TemporalScope`, `InMemoryAgentMemory`, `MemoryRetriever`. Shipped by archived `2026-07-05-add-memory-api` change. |
 | Memory laws | adk4s-memory-testkit (project-local) | 0.1.0-SNAPSHOT | `AgentMemoryLaws` in MAIN scope (munit main-scope). Downstream backends consume it as a regular dep. Consumed by `adk4s-examples % Test` (FileBackedAgentMemorySpec) via the archived `2026-07-26-add-cross-run-memory-example` change. |
+| Harness API | adk4s-harness-api (project-local) | 0.1.0-SNAPSHOT | `ModelStep`/`ToolStep` (Kleisli middleware), `MiddlewareStack`, `StateCell`/`HarnessState`, `SystemPrompt`/`PromptSection`. Uses Iron refined types. Shipped by archived `add-harness-api-phase0` change. |
+| Harness laws | adk4s-harness-testkit (project-local) | 0.1.0-SNAPSHOT | `AgentMiddlewareLaws` (L0–L10), `SemilatticeLaws` (L11), `DeterministicChatModel` (test double), Hedgehog `Generators` in MAIN scope. Downstream middleware authors consume as a regular dep. |
+| Evaluation | adk4s-eval (project-local) | 0.1.0-SNAPSHOT | `Evaluate`, `Dataset`, `Example`, `Metric`/`Metrics`, `Judges`, `EvalConfig`, `Trace`/`TraceEntry`, `EvalOutcome`/`EvalError`. LLM-based evaluation harness. Shipped by archived `add-eval-core` change. |
 | Configuration | typesafe-config | 1.4.9 | structured-llm, test-models. PureConfig NOT a dependency. |
 | Logging | logback-classic | 1.5.34 | examples only; slf4j transitive via llm4s |
 
@@ -179,10 +183,10 @@ danger-scan row is recorded N/A with this reason.
 | Purpose | Command |
 |---------|---------|
 | Main compile (all) | `sbt compile` |
-| Main compile (per module) | `sbt structured-llm/compile`, `sbt adk4s-core/compile`, `sbt adk4s-memory-api/compile`, `sbt adk4s-memory-testkit/compile`, `sbt adk4s-optimize/compile`, `sbt adk4s-orchestration/compile`, `sbt adk4s-examples/compile`, `sbt structured-llm-test-models/compile` |
+| Main compile (per module) | `sbt structured-llm/compile`, `sbt adk4s-core/compile`, `sbt adk4s-harness-api/compile`, `sbt adk4s-harness-testkit/compile`, `sbt adk4s-memory-api/compile`, `sbt adk4s-memory-testkit/compile`, `sbt adk4s-optimize/compile`, `sbt adk4s-orchestration/compile`, `sbt adk4s-eval/compile`, `sbt adk4s-examples/compile`, `sbt structured-llm-test-models/compile` |
 | Test compile (typed contracts) | `sbt <module>/Test/compile` |
 | Run tests (all) | `sbt test` |
-| Run tests (per module) | `sbt adk4s-core/test`, `sbt adk4s-orchestration/test`, `sbt adk4s-memory-api/test`, `sbt adk4s-optimize/test`, `sbt structured-llm/test` |
+| Run tests (per module) | `sbt adk4s-core/test`, `sbt adk4s-orchestration/test`, `sbt adk4s-harness-api/test`, `sbt adk4s-harness-testkit/test`, `sbt adk4s-memory-api/test`, `sbt adk4s-memory-testkit/test`, `sbt adk4s-optimize/test`, `sbt adk4s-eval/test`, `sbt structured-llm/test` |
 | Single test | `sbt "testOnly <fully.qualified.Spec>"` |
 | Lint (scalafix check) | `sbt scalafixAll --check` |
 | Lint (scalafix apply) | `sbt scalafixAll` |
@@ -211,6 +215,9 @@ danger-scan row is recorded N/A with this reason.
 | `org.adk4s.core.interrupt` (events) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, fs2, adk4s-core.error |
 | `org.adk4s.memory` (memory capability) | workflows4s, llm4s LLM client, fs2-io, adk4s-orchestration | cats-effect, fs2-core, adk4s-core (Retriever/Document) |
 | `org.adk4s.memory.testkit` (laws) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, munit (main), adk4s-memory-api |
+| `org.adk4s.harness` (middleware/harness API) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, adk4s-core, Iron (refined types), upickle |
+| `org.adk4s.harness.testkit` (middleware laws) | workflows4s, llm4s LLM client, adk4s-orchestration | cats-effect, munit (main), hedgehog (main), adk4s-harness-api |
+| `org.adk4s.eval` (evaluation harness) | workflows4s, llm4s LLM client, adk4s-core, adk4s-orchestration | cats-effect, fs2-core, structured-llm |
 | `org.adk4s.optimize` (optimizable surface) | workflows4s, llm4s LLM client, adk4s-core, adk4s-orchestration | cats-effect, fs2-core, structured-llm, ujson, munit (main), hedgehog (main) |
 | `org.adk4s.orchestration.memory` (memory orchestration hook) | workflows4s, llm4s LLM client, logback, http | cats-effect, fs2, adk4s-orchestration.agent, adk4s-core.interrupt, adk4s-memory-api, llm4s `Message` types (for context injection only) |
 | `org.adk4s.orchestration.*` (workflow layer) | logback, http | cats-effect, fs2, workflows4s, adk4s-core, structured-llm |
@@ -224,7 +231,7 @@ The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend
 
 | Ring | Available? | If unavailable: impact / setup task |
 |------|-----------|--------------------------------------|
-| 0 Compile | ✅ | `sbt compile` — all 10 modules (8 aggregated + `verified` + `adk4s-eval`). Exhaustiveness escalation active — any new sealed-ADT variant forces all matches to handle it. |
+| 0 Compile | ✅ | `sbt compile` — all 12 modules (10 aggregated + `verified` + `adk4s-eval`). Exhaustiveness escalation active — any new sealed-ADT variant forces all matches to handle it. |
 | 1 Lint | ✅ | Scalafix (DisableSyntax + RemoveUnused + OrganizeImports) + WartRemover (relaxed set) + scalafmt |
 | 2 Architecture | ⚠️ Advisory only | No custom scalafix arch rules installed. The layer rules above are manual (enforced by code review + import audit). |
 | 3 Property tests | ✅ | Hedgehog 0.13.1 via hedgehog-munit. Properties extend `HedgehogSuite`. Concurrency scenarios use `TestControl`. |
@@ -254,10 +261,8 @@ The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend
 | 8 Adversarial review | ✅ | Manual, fresh-context. No longer the *only* substantive ring for shell now that 1 and 3 are available. |
 | 9 Telemetry | ❌ | N/A. |
 
-**CI GAP** — the tools are installed on this host (mostly under
-`/home/linuxbrew/.linuxbrew/bin`) but the templates in
-`openspec/schemas/verified-scala3/ci/` install none of them and run only
-`registry-check.sh`. Until those templates gain an install step plus
-`shellcheck` / `bats` / `shfmt` invocations, Rings 1 and 3 for shell are
-**developer-local only**, which is the same opt-in weakness the hooks exist to
-address. Adding the CI step is in scope for `add-correctness-substratum`.
+**CI COVERAGE** — all three CI templates (`github-actions.yml`,
+`azure-pipelines.yml`, `gitlab-ci.yml`) now install and verify the
+prerequisite set, then run `shellcheck`, `shfmt` (changed files), `bats`,
+`registry-check.sh`, and `spec-lint.sh`. `danger-scan.sh` remains
+apply-phase only (diff-scoped to a per-spec baseline).

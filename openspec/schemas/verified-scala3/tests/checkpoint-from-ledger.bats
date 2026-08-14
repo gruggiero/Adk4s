@@ -27,9 +27,13 @@ setup() {
 # ── fixtures ──────────────────────────────────────────────────────────────
 
 append_row() { # $1=ring $2=baseline $3=obligation(default) $4=command(default true)
+  local session_args=()
+  if [ "$1" = "R8" ]; then
+    session_args=(--session "test-reviewer-session")
+  fi
   "$LEDGER" append --file "$LEDGER_FILE" --change "$CHG" --spec "$SPC" \
     --ring "$1" --obligation "${3:-Obligation for $1}" --artifact "artifact:$1" \
-    --command "${4:-true}" --exit 0 --baseline "$2" >/dev/null
+    --command "${4:-true}" --exit 0 --baseline "$2" "${session_args[@]}" >/dev/null
 }
 
 # A chain-state.sh-shaped report (already-approved shape from spec 3), with N
@@ -116,7 +120,7 @@ run_report() { # extra args after the fixed positional set are passed through
   append_row R0 "$BASE"
   append_row R1 "$BASE"
   append_row R8 "$BASE"
-  run_report --chain-state-json <(cs_report 4 4 4 4 0) --format text
+  run_report --session "test-impl-session" --chain-state-json <(cs_report 4 4 4 4 0) --format text
   assert_status 0 "$status" "fully green and fully discharged exits 0"
   assert_contains "$output" "total 4" "total must be reported"
   assert_contains "$output" "discharged 4" "discharged must equal total"
@@ -385,7 +389,7 @@ write_tasks() { # $1=content
   # one row per ring
   rm -f "$LEDGER_FILE"; : >"$LEDGER_FILE"
   append_row R0 "$BASE"; append_row R1 "$BASE"; append_row R8 "$BASE"
-  run_report --chain-state-json <(cs_report 0 0 0 0 0)
+  run_report --session "test-impl-session" --chain-state-json <(cs_report 0 0 0 0 0)
   greens="$(printf '%s' "$output" | jq -r '[.rings[] | select(.status=="green") | .ring] | sort | join(",")')"
   [ "$greens" = "R0,R1,R8" ] || { printf 'expected all three rings green, got %s\n' "$greens" >&2; return 1; }
   cases_ok=$((cases_ok + 1))
@@ -396,7 +400,7 @@ write_tasks() { # $1=content
   append_row R0 "$BASE" "first" "cmd-one"
   append_row R0 "$BASE" "second" "cmd-two"
   append_row R1 "$BASE"; append_row R8 "$BASE"
-  run_report --chain-state-json <(cs_report 0 0 0 0 0)
+  run_report --session "test-impl-session" --chain-state-json <(cs_report 0 0 0 0 0)
   count_r0="$(printf '%s' "$output" | jq -r '[.rings[] | select(.ring=="R0")] | length')"
   [ "$count_r0" -eq 1 ] || { printf 'expected R0 to appear exactly once despite 2 rows, got %s\n' "$count_r0" >&2; return 1; }
   cmd_r0="$(printf '%s' "$output" | jq -r '.rings[] | select(.ring=="R0") | .command')"
@@ -408,7 +412,7 @@ write_tasks() { # $1=content
   append_row R0 "$BASE"
   append_row R1 "$BASE2"
   append_row R8 "$BASE"
-  run_report --chain-state-json <(cs_report 0 0 0 0 0)
+  run_report --session "test-impl-session" --chain-state-json <(cs_report 0 0 0 0 0)
   greens="$(printf '%s' "$output" | jq -r '[.rings[] | select(.status=="green") | .ring] | sort | join(",")')"
   [ "$greens" = "R0,R8" ] || { printf 'expected only R0,R8 green (R1 is at a different baseline), got %s\n' "$greens" >&2; return 1; }
   cases_ok=$((cases_ok + 1))

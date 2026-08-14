@@ -18,6 +18,7 @@ setup() {
   SCHEMA="$(schema_dir)"
   ROOT="$(repo_root)"
   SCHEMA_YAML="$SCHEMA/schema.yaml"
+  CHANGELOG_MD="$SCHEMA/CHANGELOG.md"
   SPEC_TEMPLATE="$SCHEMA/templates/spec.md"
   HOOKS_README="$SCHEMA/hooks/README.md"
   GATE_SH="$SCHEMA/hooks/gate.sh"
@@ -348,18 +349,25 @@ EOF
   assert_contains "$output" "verified-scala3" "openspec status output"
 }
 
-@test "the schema version is 12" {
+@test "the schema version is 13" {
   run awk -F': *' '/^version:/ {print $2; exit}' "$SCHEMA_YAML"
   assert_status 0 "$status" "reading schema version"
-  [ "$output" = "12" ] || {
-    printf 'expected schema version 12, got: %s\n' "$output" >&2
+  [ "$output" = "13" ] || {
+    printf 'expected schema version 13, got: %s\n' "$output" >&2
     return 1
   }
 }
 
 @test "the changelog records the v12 entry" {
-  run head -40 "$SCHEMA_YAML"
-  assert_contains "$output" "12 —" "schema.yaml changelog"
+  [ -f "$CHANGELOG_MD" ] || return 1
+  run grep "^ 12 —" "$CHANGELOG_MD"
+  assert_contains "$output" "12 —" "CHANGELOG.md"
+}
+
+@test "the changelog records the v13 entry" {
+  [ -f "$CHANGELOG_MD" ] || return 1
+  run grep "^ 13 —" "$CHANGELOG_MD"
+  assert_contains "$output" "13 —" "CHANGELOG.md"
 }
 
 # ─────────────────────────────────────────────────────────────────────────

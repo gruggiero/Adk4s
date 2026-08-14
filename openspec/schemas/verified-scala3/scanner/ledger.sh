@@ -76,6 +76,7 @@ case "$SUB" in
 esac
 
 FILE="" CHANGE="" SPEC="" RING="" OBLIGATION="" ARTIFACT="" COMMAND="" EXIT="" BASELINE=""
+SESSION=""
 FORGIVE_UNCHANGED=0
 RUN_COMMAND=""
 
@@ -146,6 +147,11 @@ while [ $# -gt 0 ]; do
       BASELINE="$2"
       shift 2
       ;;
+    --session)
+      need_value --session "$#"
+      SESSION="$2"
+      shift 2
+      ;;
     --forgive-unchanged)
       FORGIVE_UNCHANGED=1
       shift
@@ -207,20 +213,47 @@ case "$SUB" in
     # Built with jq, never by string concatenation: the command field
     # routinely contains quotes and can contain newlines and backslashes, and
     # hand-rolled escaping is exactly where this project's shell defects live.
-    record="$(jq -c -n \
-      --argjson v "$SUPPORTED_V" \
-      --arg ts "$ts" \
-      --arg change "$CHANGE" \
-      --arg spec "$SPEC" \
-      --arg ring "$RING" \
-      --arg obligation "$OBLIGATION" \
-      --arg artifact "$ARTIFACT" \
-      --arg command "$COMMAND" \
-      --argjson exit "$EXIT" \
-      --arg baseline "$BASELINE" \
-      '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
-        obligation:$obligation, artifact:$artifact, command:$command,
-        exit:$exit, baseline:$baseline}' 2>/dev/null)"
+    # spec:judgment-ring-provenance — R8 rows carry a `session` field
+    # identifying the producing session. Non-R8 rows omit it (the contract
+    # makes it optional for non-R8 rings). Fail early with a clear message
+    # when R8 is requested without a session — the contract would reject it
+    # anyway, but naming the missing field before building the record gives
+    # the caller an actionable error.
+    if [ "$RING" = "R8" ] && [ -z "$SESSION" ]; then
+      die_finding "session is required for R8 (adversarial-review) rows — pass --session with the producing session's identity"
+    fi
+    if [ "$RING" = "R8" ] && [ -n "$SESSION" ]; then
+      record="$(jq -c -n \
+        --argjson v "$SUPPORTED_V" \
+        --arg ts "$ts" \
+        --arg change "$CHANGE" \
+        --arg spec "$SPEC" \
+        --arg ring "$RING" \
+        --arg obligation "$OBLIGATION" \
+        --arg artifact "$ARTIFACT" \
+        --arg command "$COMMAND" \
+        --argjson exit "$EXIT" \
+        --arg baseline "$BASELINE" \
+        --arg session "$SESSION" \
+        '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
+          obligation:$obligation, artifact:$artifact, command:$command,
+          exit:$exit, baseline:$baseline, session:$session}' 2>/dev/null)"
+    else
+      record="$(jq -c -n \
+        --argjson v "$SUPPORTED_V" \
+        --arg ts "$ts" \
+        --arg change "$CHANGE" \
+        --arg spec "$SPEC" \
+        --arg ring "$RING" \
+        --arg obligation "$OBLIGATION" \
+        --arg artifact "$ARTIFACT" \
+        --arg command "$COMMAND" \
+        --argjson exit "$EXIT" \
+        --arg baseline "$BASELINE" \
+        '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
+          obligation:$obligation, artifact:$artifact, command:$command,
+          exit:$exit, baseline:$baseline}' 2>/dev/null)"
+    fi
     [ -n "$record" ] || die_finding "could not build a record from the given values"
 
     err="$(contract_error "$record")"
@@ -295,24 +328,51 @@ case "$SUB" in
     rm -f "$run_tmp"
 
     # Build the record with new fields (sha256, digest, wallTime)
-    record="$(jq -c -n \
-      --argjson v "$SUPPORTED_V" \
-      --arg ts "$ts" \
-      --arg change "$CHANGE" \
-      --arg spec "$SPEC" \
-      --arg ring "$RING" \
-      --arg obligation "$OBLIGATION" \
-      --arg artifact "$ARTIFACT" \
-      --arg command "$RUN_COMMAND" \
-      --argjson exit "$observed_exit" \
-      --arg baseline "$BASELINE" \
-      --arg sha256 "$artifact_sha256" \
-      --arg digest "$run_digest" \
-      --argjson wallTime "$wall_time" \
-      '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
-        obligation:$obligation, artifact:$artifact, command:$command,
-        exit:$exit, baseline:$baseline, sha256:$sha256, digest:$digest,
-        wallTime:$wallTime}' 2>/dev/null)"
+    # spec:judgment-ring-provenance — R8 rows carry a `session` field.
+    # Fail early when R8 is requested without a session.
+    if [ "$RING" = "R8" ] && [ -z "$SESSION" ]; then
+      die_finding "session is required for R8 (adversarial-review) rows — pass --session with the producing session's identity"
+    fi
+    if [ "$RING" = "R8" ] && [ -n "$SESSION" ]; then
+      record="$(jq -c -n \
+        --argjson v "$SUPPORTED_V" \
+        --arg ts "$ts" \
+        --arg change "$CHANGE" \
+        --arg spec "$SPEC" \
+        --arg ring "$RING" \
+        --arg obligation "$OBLIGATION" \
+        --arg artifact "$ARTIFACT" \
+        --arg command "$RUN_COMMAND" \
+        --argjson exit "$observed_exit" \
+        --arg baseline "$BASELINE" \
+        --arg sha256 "$artifact_sha256" \
+        --arg digest "$run_digest" \
+        --argjson wallTime "$wall_time" \
+        --arg session "$SESSION" \
+        '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
+          obligation:$obligation, artifact:$artifact, command:$command,
+          exit:$exit, baseline:$baseline, sha256:$sha256, digest:$digest,
+          wallTime:$wallTime, session:$session}' 2>/dev/null)"
+    else
+      record="$(jq -c -n \
+        --argjson v "$SUPPORTED_V" \
+        --arg ts "$ts" \
+        --arg change "$CHANGE" \
+        --arg spec "$SPEC" \
+        --arg ring "$RING" \
+        --arg obligation "$OBLIGATION" \
+        --arg artifact "$ARTIFACT" \
+        --arg command "$RUN_COMMAND" \
+        --argjson exit "$observed_exit" \
+        --arg baseline "$BASELINE" \
+        --arg sha256 "$artifact_sha256" \
+        --arg digest "$run_digest" \
+        --argjson wallTime "$wall_time" \
+        '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
+          obligation:$obligation, artifact:$artifact, command:$command,
+          exit:$exit, baseline:$baseline, sha256:$sha256, digest:$digest,
+          wallTime:$wallTime}' 2>/dev/null)"
+    fi
     [ -n "$record" ] || die_finding "could not build a record from the given values"
 
     err="$(contract_error "$record")"

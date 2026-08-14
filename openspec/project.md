@@ -9,9 +9,15 @@ adk4s (Agent Development Kit for Scala 3) is a functional, type-safe agent toolk
 
 ```
 adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models
-adk4s-orchestration → adk4s-core, structured-llm, workflows4s-core
+adk4s-examples % Test → adk4s-memory-testkit
+adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api, workflows4s-core
+adk4s-harness-api → adk4s-core, verified % Test
+adk4s-harness-testkit → adk4s-harness-api, verified % Test
+adk4s-memory-api → adk4s-core
+adk4s-memory-testkit → adk4s-memory-api
+adk4s-optimize → structured-llm, verified % Test
+adk4s-eval → structured-llm
 adk4s-core → structured-llm, llm4s/core
-adk4s-optimize → structured-llm, verified (Test scope only)
 structured-llm → llm4s/core, workflows4s-core
 structured-llm-test-models → structured-llm (compile only, Smithy codegen)
 verified → (leaf module, Scala 3.7.2, Stainless, not aggregated by root)
@@ -23,7 +29,12 @@ verified → (leaf module, Scala 3.7.2, Stainless, not aggregated by root)
 - **structured-llm-test-models** — Smithy schemas (`.smithy` files) compiled via smithy4s. Generated types used in tests. Keeps test-only schemas isolated from production code.
 - **adk4s-core** — Components, tools, runnables, events, interrupts. `ChatModel`, `Tool`/`InvokableTool`/`StreamableTool`, `Agent`, `AgentTool`, `ToolsNode`, `ToolMiddleware`, `Runnable`/`Lambda`, `AgentEvent`/`AgentEventEmitter`, `InterruptSignal`, streaming utilities, `AdkError` hierarchy.
 - **adk4s-orchestration** — Agents, graphs, workflows. `ReactAgent`, `AgentRunner` (interrupt/resume), `WIOGraph`/`WIONode` (type-safe DAG), `Graph`/`GraphExecutor`, `Branch`/`Router`, `Chain`, `Workflow`, `StatefulNode`, `EventSourcedState`, `CheckpointStore`.
-- **adk4s-examples** — 55+ runnable examples (all extend `IOApp.Simple`). Run via `./adk4s-examples/run-example.sh <name>` or `sbt "adk4s-examples/runMain <FQCN>"`.
+- **adk4s-harness-api** — Middleware/harness API. `ModelStep`/`ToolStep` (Kleisli middleware), `MiddlewareStack`, `StateCell`/`HarnessState`, `SystemPrompt`/`PromptSection`. Uses Iron refined types for type-safe identifiers.
+- **adk4s-harness-testkit** — Downstream-consumable middleware laws. `AgentMiddlewareLaws` (L0–L10), `SemilatticeLaws` (L11), `DeterministicChatModel` (test double), Hedgehog `Generators` in MAIN scope.
+- **adk4s-memory-api** — Memory capability. `AgentMemory[F]`, `Episode`, `SourceType`, `MemoryHit`, `MemoryRetriever`, `InMemoryAgentMemory`.
+- **adk4s-memory-testkit** — Downstream-consumable behavioral laws. `AgentMemoryLaws` in MAIN scope (munit main-scope).
+- **adk4s-eval** — LLM-based evaluation harness. `Evaluate`, `Dataset`, `Example`, `Metric`/`Metrics`, `Judges`, `EvalConfig`, `Trace`/`TraceEntry`, `EvalOutcome`/`EvalError`.
+- **adk4s-examples** — 60 runnable examples (all extend `IOApp.Simple`). Run via `./adk4s-examples/run-example.sh <name>` or `sbt "adk4s-examples/runMain <FQCN>"`.
 - **adk4s-optimize** — Optimizable predictor surface (DSPy port Phase 0). `Optimizable[P]` typeclass with `Mirror`-based derivation, `PredictorState`/`PredictorPath`/`Demo` data types, `OptimizeError` ADT, `HasPredictorState` leaf capability, `Predict0` placeholder predictor, `OptimizerLaws` testkit. Depends on structured-llm (for placeholder) and verified (Test scope, for Ring 6 bridge).
 - **verified** — Leaf module pinned to Scala 3.7.2 for Stainless formal verification (Ring 6). Not aggregated by root. Run with `sbt -J-Xmx6g ring6`. Contains `PredictorKernel` PureScala model mirroring the `Optimizable` traversal algorithm.
 
@@ -46,10 +57,10 @@ verified → (leaf module, Scala 3.7.2, Stainless, not aggregated by root)
 ### Testing
 - MUnit 1.3.3 / munit-cats-effect 2.2.0 — test framework with IO support
 - Hedgehog 0.13.1 — property testing with integrated shrinking (`hedgehog-munit` % Test)
-- ~568 tests total across all modules
+- ~1314 tests total across all modules
 
 ### Code Quality
-- WartRemover 3.5.8 (sbt-wartremover, Ring 1 static analysis) — `Warts.unsafe` enabled with permanent exclusions for `TripleQuestionMark`, `Any` (Scala 3 string interpolation false positive), `DefaultArguments` (valid Scala API design feature)
+- WartRemover 3.6.1 (sbt-wartremover, Ring 1 static analysis) — `Warts.unsafe` enabled with permanent exclusions for `TripleQuestionMark`, `Any` (Scala 3 string interpolation false positive), `DefaultArguments` (valid Scala API design feature)
 - Scalafmt 2.6.1 — code formatting
 - Scalafix 0.14.7 — linting and code quality
 - Scoverage 2.4.4 — code coverage
@@ -95,7 +106,7 @@ verified → (leaf module, Scala 3.7.2, Stainless, not aggregated by root)
   - Test naming: descriptive, e.g., `"extract resume using smithy4s decoder"`
 - **Coverage**: Aim for high coverage on core parsing and orchestration logic
 - **Test Data**: Use `structured-llm-test-models` for Smithy schema test cases
-- **Run tests**: `sbt test` (~568 tests)
+- **Run tests**: `sbt test` (~1314 tests)
 
 ### Verification Rings
 The project uses a multi-ring verification strategy:
@@ -139,6 +150,25 @@ The project uses a multi-ring verification strategy:
 - **Graph / GraphExecutor**: Generic graph structure and parallel execution
 - **Branch / Router / Chain**: Conditional branching and linear chain execution
 - **StatefulNode / EventSourcedState**: State management with event sourcing
+
+### Harness API (adk4s-harness-api)
+- **ModelStep / ToolStep**: Kleisli-based composable middleware for LLM calls and tool execution
+- **MiddlewareStack**: Composable middleware stack with semilattice state merge
+- **StateCell / HarnessState**: Type-safe state cells with visibility (Private/Inherited/Shared)
+- **SystemPrompt / PromptSection**: Structured prompt assembly
+
+### Memory (adk4s-memory-api)
+- **AgentMemory[F]**: Effect-polymorphic memory interface for storing/retrieving episodes
+- **Episode**: Structured memory entry with SourceType, TemporalScope, and outcome
+- **MemoryRetriever**: Retrieval interface for querying memory
+- **InMemoryAgentMemory**: In-process implementation for testing
+
+### Evaluation (adk4s-eval)
+- **Evaluate**: Main evaluation pipeline — runs examples through an agent and scores outputs
+- **Dataset / Example**: Evaluation dataset structure with labeled examples
+- **Metric / Metrics**: Scoring interface with built-in metrics (exact match, LLM judge, etc.)
+- **Judges**: LLM-based judgment for subjective scoring
+- **Trace / TraceEntry**: Execution tracing for evaluation runs
 
 ### Smithy Integration
 - Output types defined in Smithy (`.smithy` files in `structured-llm-test-models/src/main/smithy`)

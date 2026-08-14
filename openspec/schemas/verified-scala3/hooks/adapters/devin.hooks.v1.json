@@ -19,6 +19,16 @@
       ]
     }
   ],
+  "PreToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "./openspec/schemas/verified-scala3/hooks/gate.sh --event tool-call --format hook-json"
+        }
+      ]
+    }
+  ],
   "PostToolUse": [
     {
       "hooks": [

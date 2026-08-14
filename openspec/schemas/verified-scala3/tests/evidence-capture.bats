@@ -26,10 +26,14 @@ mk_repo() {
 
 # Helper: append a ledger row (legacy mode)
 append_row() { # $1=file $2=change $3=spec $4=ring $5=obligation $6=exit $7=baseline $8=artifact $9=command
+  local session_args=()
+  if [ "$4" = "R8" ]; then
+    session_args=(--session "test-reviewer-session")
+  fi
   bash "$LEDGER" append \
     --file "$1" --change "$2" --spec "$3" --ring "$4" \
     --obligation "$5" --exit "$6" --baseline "$7" \
-    --artifact "$8" --command "$9"
+    --artifact "$8" --command "$9" "${session_args[@]}"
 }
 
 # ── D3: Capture mode observes the exit code ───────────────────────────────

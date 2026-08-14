@@ -35,7 +35,7 @@
 <main>
 <div class="prose">
 
-<div class="eyebrow">Chapter 12 · Schema v12</div>
+<div class="eyebrow">Chapter 12 · Schema v12 → v13</div>
 <h1>The correctness substratum</h1>
 <p class="lede">
   Chapter 5 gave you two clauses of correctness: a requirement is
@@ -61,9 +61,10 @@
   <div class="box-title">The fault dataset was the schema's own changelog</div>
   <p style="margin-bottom:0">
     This chapter's motivating evidence did not come from a new incident. It
-    came from re-reading <code>schema.yaml</code>'s own version history as
-    what it actually is — a record of defects this workflow has already
-    found in itself — and noticing the same shape recurring:
+    came from re-reading the schema's own version history (now in
+    <code>CHANGELOG.md</code>, sibling of <code>schema.yaml</code>) as what
+    it actually is — a record of defects this workflow has already found in
+    itself — and noticing the same shape recurring:
     <strong>a check reported PASS on evidence it never obtained.</strong>
     The altitude rule read N/A from memory instead of the filesystem
     (chapter 9). A version field sat three schema versions stale because
@@ -97,7 +98,7 @@
         green, in this session, with a recorded command</em>.</li>
   </ol>
   <p style="margin-bottom:0">
-    And the sentence schema v12 injects into every artifact instruction and
+    And the sentence schema v12+ injects into every artifact instruction and
     every apply-phase turn, unabbreviated:
     <strong>“NEVER LET A CLAIM OUTRUN ITS EVIDENCE.”</strong> —
     <em>“N/A” / “passes” / “already handled” are CLAIMS, not verdicts.</em>
@@ -390,7 +391,7 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
   record can make.
 </p>
 
-<h2>The one hook that blocks</h2>
+<h2>The hooks that block</h2>
 
 <p>
   Chapter 11 told this part of the story in full, including the two bugs
@@ -402,6 +403,21 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
   <strong>last</strong> thing this chapter's tooling built — after the
   ledger, after chain state, after the generated checkpoint had all run
   cleanly on their own.
+</p>
+
+<p>
+  Schema v13 then added the <strong>pre-execution <code>tool_call</code>
+  gate</strong>, which made enforcement universal. The completion gate
+  is a <strong>2/3-harness backstop</strong>: it works on Claude Code and
+  Devin, but pi has no blocking completion event in its extension API. The
+  pre-execution <code>tool_call</code> handler — wired into all three
+  adapter configs at v13 — is the tier that exists everywhere. On pi it is
+  the <em>only</em> enforcement surface. The completion gate catches an
+  agent that claims "spec complete" while its evidence says otherwise; the
+  pre-execution gate catches an agent that is about to make an edit while
+  the same evidence is unresolved — a different moment, on a different
+  event, and the one that is not limited by which harness you happen to be
+  running under.
 </p>
 
 <div class="box insight">
@@ -528,7 +544,8 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
     <li>Why chain-state.sh never recomputes bound/resolved itself, and what <code>unattributable</code> is for (bash degraded mode; in graph mode the graph resolves titles uniformly).</li>
     <li>The difference between <code>undischarged</code> (no row) and <code>failed</code> (row with non-zero exit) — and why conflating them is the same bug as conflating "never ran" with "ran and broke".</li>
     <li>What <code>ledger.sh verify</code> adds: a row was re-checkable in principle; <code>verify</code> makes it re-checked in practice.</li>
-    <li>Why the one blocking hook in this schema shipped last, and what would have gone wrong had it shipped first.</li>
+    <li>Why the completion gate shipped last, and what would have gone wrong had it shipped first.</li>
+    <li>The difference between the completion gate (2/3-harness backstop, schema v12) and the pre-execution <code>tool_call</code> gate (universal, schema v13) — and which one exists on pi.</li>
   </ul>
   <p style="margin-bottom:0">
     If you can only take one idea from this whole tutorial, it is the

@@ -84,7 +84,7 @@ need_value() { # $1=flag $2=remaining count
 
 case "$SUB" in
   report)
-    LEDGER_FILE="" CHANGE="" SPEC="" BASELINE="" RINGS="" CS_JSON="" FORMAT="json" CHANGE_DIR=""
+    LEDGER_FILE="" CHANGE="" SPEC="" BASELINE="" RINGS="" CS_JSON="" FORMAT="json" CHANGE_DIR="" SESSION=""
     while [ $# -gt 0 ]; do
       case "$1" in
         --ledger)
@@ -125,6 +125,11 @@ case "$SUB" in
         --change-dir)
           need_value --change-dir "$#"
           CHANGE_DIR="$2"
+          shift 2
+          ;;
+        --session)
+          need_value --session "$#"
+          SESSION="$2"
           shift 2
           ;;
         *) die_finding "unrecognised argument: $1" ;;
@@ -232,8 +237,52 @@ case "$SUB" in
         # same failing command, and could make the whole checkpoint exit 0.
         # A row is evidence of what actually happened, not evidence of
         # success; only an exit-0 row discharges the obligation.
-        printf '%s' "$last_row" | jq -c --arg ring "$r" \
-          '{ring:$ring, status:(if .exit == 0 then "green" else "failed" end), obligation:.obligation, artifact:.artifact, command:.command, exit:.exit}' >>"$RING_ROWS"
+        #
+        # spec:judgment-ring-provenance — R8 rows carry a `session` field.
+        # The checkpoint compares it to the implementing session ($SESSION):
+        # - same session → "same-session" (no fresh-context evidence)
+        # - different session → "green" (fresh-context discharged)
+        # - PPID fallback (starts with "ppid-") → "unverified-session" (limitation)
+        # - no --session arg → "unverified-session" (limitation — cannot verify)
+        # The fail-open-on-empty-SESSION is intentional: the checkpoint can't
+        # verify fresh-context without the implementing session, so it reports
+        # a limitation requiring explicit human attestation, NOT "green".
+        if [ "$r" = "R8" ]; then
+          r8_session="$(printf '%s' "$last_row" | jq -r '.session // empty')"
+          if [ -z "$SESSION" ]; then
+            # No implementing session provided — cannot verify fresh-context.
+            # Report as a limitation, NOT as green (spec Requirement 3).
+            printf '%s' "$last_row" | jq -c --arg ring "$r" \
+              '{ring:$ring, status:(if .exit == 0 then "unverified-session" else "failed" end), obligation:.obligation, artifact:.artifact, command:.command, exit:.exit,
+                note:"No implementing session provided to checkpoint — cannot verify fresh-context, requires explicit human attestation of freshness"}' >>"$RING_ROWS"
+          elif [ -z "$r8_session" ]; then
+            # No session field — the contract should have rejected this row,
+            # but if it slipped through (legacy row), flag it.
+            printf '%s' "$last_row" | jq -c --arg ring "$r" \
+              '{ring:$ring, status:"same-session", obligation:.obligation, artifact:.artifact, command:.command, exit:.exit,
+                note:"R8 row has no session field — cannot verify fresh-context"}' >>"$RING_ROWS"
+          elif [ "$r8_session" = "$SESSION" ]; then
+            printf '%s' "$last_row" | jq -c --arg ring "$r" --arg sess "$SESSION" \
+              '{ring:$ring, status:"same-session", obligation:.obligation, artifact:.artifact, command:.command, exit:.exit,
+                note:"R8 review recorded in same session as implementation — no fresh-context evidence (session: \($sess))"}' >>"$RING_ROWS"
+          else
+            # Check if the session is a PPID fallback (unverified)
+            case "$r8_session" in
+              ppid-*)
+                printf '%s' "$last_row" | jq -c --arg ring "$r" --arg sess "$r8_session" \
+                  '{ring:$ring, status:(if .exit == 0 then "unverified-session" else "failed" end), obligation:.obligation, artifact:.artifact, command:.command, exit:.exit,
+                    note:"R8 session is the PPID fallback (\($sess)) — unverified session source, requires explicit human attestation of freshness"}' >>"$RING_ROWS"
+                ;;
+              *)
+                printf '%s' "$last_row" | jq -c --arg ring "$r" \
+                  '{ring:$ring, status:(if .exit == 0 then "green" else "failed" end), obligation:.obligation, artifact:.artifact, command:.command, exit:.exit}' >>"$RING_ROWS"
+                ;;
+            esac
+          fi
+        else
+          printf '%s' "$last_row" | jq -c --arg ring "$r" \
+            '{ring:$ring, status:(if .exit == 0 then "green" else "failed" end), obligation:.obligation, artifact:.artifact, command:.command, exit:.exit}' >>"$RING_ROWS"
+        fi
       else
         jq -cn --arg ring "$r" '{ring:$ring, status:"unevidenced"}' >>"$RING_ROWS"
       fi
@@ -258,19 +307,68 @@ case "$SUB" in
       die_undetermined "internal error — requested rings [${requested_sorted%,}], assembled [$reported_sorted]"
     fi
 
+    # spec: human-grant-lock — tee the report output to git-dir state so the
+    # gate can record a checkpoint-presentation. The gate consumes this file
+    # on its next event, hashes it, writes a presentation record, and deletes
+    # it. The report's stdout is unchanged. If STATE_DIR or SESSION is
+    # unavailable, this side effect is silently skipped (the gate fails open).
+    ckpt_state_dir=""
+    if [ -n "$SESSION" ]; then
+      ckpt_repo=""
+      if [ -n "$CHANGE_DIR" ]; then
+        ckpt_repo="$(cd "$CHANGE_DIR" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || true)"
+      fi
+      if [ -n "$ckpt_repo" ]; then
+        ckpt_git_dir="$(cd "$ckpt_repo" && git rev-parse --absolute-git-dir 2>/dev/null || true)"
+        if [ -n "$ckpt_git_dir" ]; then
+          ckpt_state_dir="$ckpt_git_dir/verified-scala3-gate"
+          mkdir -p "$ckpt_state_dir" 2>/dev/null || true
+          [ -d "$ckpt_state_dir" ] || ckpt_state_dir=""
+        fi
+      fi
+    fi
+    ckpt_output_file=""
+    if [ -n "$ckpt_state_dir" ]; then
+      ckpt_output_file="$ckpt_state_dir/checkpoint-output-$CHANGE-$SPEC-$SESSION"
+    fi
+
     if [ "$FORMAT" = "text" ]; then
-      printf '%s' "$report" | jq -r '
-        "checkpoint: \(.change)/\(.spec) @ \(.baseline)"
-        + (.rings | map("\n  \(.ring): " +
-            (if .status == "green" then "green (\(.command))"
-             elif .status == "failed" then "FAILED (\(.command), exit \(.exit))"
-             else "no recorded evidence" end)) | join(""))
-        + "\n  chain state: total \(.chain_state.total)  bound \(.chain_state.bound)  resolved \(.chain_state.resolved)  discharged \(.chain_state.discharged)  unresolved \(.chain_state.unresolved | length)"
-        + (if (.chain_state.unresolved | length) > 0
-           then "\n" + (.chain_state.unresolved | map("    " + .requirement + " (" + (.reasons | join(",")) + ")") | join("\n"))
-           else "" end)'
+      # Pipe through tee to write to state dir while also printing to stdout.
+      # The original code used printf '%s' | jq -r '...' — we preserve that
+      # exact output, adding only the tee side effect.
+      if [ -n "$ckpt_output_file" ]; then
+        printf '%s' "$report" | jq -r '
+          "checkpoint: \(.change)/\(.spec) @ \(.baseline)"
+          + (.rings | map("\n  \(.ring): " +
+              (if .status == "green" then "green (\(.command))"
+               elif .status == "failed" then "FAILED (\(.command), exit \(.exit))"
+               elif .status == "same-session" then "SAME-SESSION (\(.command)) — \(.note // "no fresh-context evidence")"
+               elif .status == "unverified-session" then "UNVERIFIED-SESSION (\(.command)) — \(.note // "requires human attestation")"
+               else "no recorded evidence" end)) | join(""))
+          + "\n  chain state: total \(.chain_state.total)  bound \(.chain_state.bound)  resolved \(.chain_state.resolved)  discharged \(.chain_state.discharged)  unresolved \(.chain_state.unresolved | length)"
+          + (if (.chain_state.unresolved | length) > 0
+             then "\n" + (.chain_state.unresolved | map("    " + .requirement + " (" + (.reasons | join(",")) + ")") | join("\n"))
+             else "" end)' | tee "$ckpt_output_file" 2>/dev/null
+      else
+        printf '%s' "$report" | jq -r '
+          "checkpoint: \(.change)/\(.spec) @ \(.baseline)"
+          + (.rings | map("\n  \(.ring): " +
+              (if .status == "green" then "green (\(.command))"
+               elif .status == "failed" then "FAILED (\(.command), exit \(.exit))"
+               elif .status == "same-session" then "SAME-SESSION (\(.command)) — \(.note // "no fresh-context evidence")"
+               elif .status == "unverified-session" then "UNVERIFIED-SESSION (\(.command)) — \(.note // "requires human attestation")"
+               else "no recorded evidence" end)) | join(""))
+          + "\n  chain state: total \(.chain_state.total)  bound \(.chain_state.bound)  resolved \(.chain_state.resolved)  discharged \(.chain_state.discharged)  unresolved \(.chain_state.unresolved | length)"
+          + (if (.chain_state.unresolved | length) > 0
+             then "\n" + (.chain_state.unresolved | map("    " + .requirement + " (" + (.reasons | join(",")) + ")") | join("\n"))
+             else "" end)'
+      fi
     else
-      printf '%s\n' "$report"
+      if [ -n "$ckpt_output_file" ]; then
+        printf '%s\n' "$report" | tee "$ckpt_output_file" 2>/dev/null
+      else
+        printf '%s\n' "$report"
+      fi
     fi
 
     all_green="$(printf '%s' "$report" | jq -r '[.rings[] | select(.status != "green")] | length == 0')"

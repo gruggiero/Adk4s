@@ -30,6 +30,8 @@
 #   gate.sh --event session-start|prompt-submit [--format hook-json|text]
 #           [--repo PATH] [--session ID]
 #   gate.sh --event post-edit --file PATH [--repo PATH] [--format hook-json|text]
+#   gate.sh --event tool-call --file PATH [--tool NAME] [--repo PATH]
+#           [--session ID] [--format hook-json|text]
 #   gate.sh --event completion [--turn-text TEXT] [--stop-hook-active true|false]
 #           [--repo PATH] [--session ID] [--format hook-json|text]
 #   gate.sh --check-installed [--repo PATH]
@@ -46,10 +48,11 @@
 # and DANGER_SCAN_OVERRIDE do the same for the post-edit tier.
 #
 # Exit codes: --event post-edit is always 0 (Tier A' is informational only,
-# and can never block — see spec:hook-tiers). --event completion is the ONE
-# genuine block in this whole schema: 0 allow, 1 refuse (unresolved
-# requirements, named), 2 refuse (chain state undetermined — a distinct
-# reason, never conflated with "unresolved"). Every other event is
+# and can never block — see spec:hook-tiers). --event tool-call is 0 allow,
+# 2 refuse (oracle phase blocks a production edit — the pre-execution tier,
+# spec:oracle-ordering-lock). --event completion is 0 allow, 1 refuse
+# (unresolved requirements, named), 2 refuse (chain state undetermined — a
+# distinct reason, never conflated with "unresolved"). Every other event is
 # unconditionally 0, unchanged.
 set -uo pipefail # NOT -e: a failed probe degrades, it does not abort
 
@@ -62,6 +65,9 @@ FILE_PATH=""
 TURN_TEXT=""
 STOP_HOOK_ACTIVE=""
 STOP_HOOK_ACTIVE_GIVEN=0
+TOOL_NAME=""
+GATE_COMMAND=""
+GATE_EXIT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -96,6 +102,18 @@ while [ $# -gt 0 ]; do
     --stop-hook-active)
       STOP_HOOK_ACTIVE="${2:-}"
       STOP_HOOK_ACTIVE_GIVEN=1
+      shift 2
+      ;;
+    --tool)
+      TOOL_NAME="${2:-}"
+      shift 2
+      ;;
+    --command)
+      GATE_COMMAND="${2:-}"
+      shift 2
+      ;;
+    --exit)
+      GATE_EXIT="${2:-}"
       shift 2
       ;;
     *) shift ;;
@@ -251,6 +269,363 @@ fi
 
 write_heartbeat
 
+# ── checkpoint-presentation sweep (spec: human-grant-lock) ───────────────
+# On EVERY event, scan for checkpoint-output files left by checkpoint.sh
+# report. For each, hash the content, write a presentation record, and
+# consume (delete) the output file. This makes "the agent ran the Step-13
+# checkpoint command" a recorded fact the gate can check on the next event.
+# If STATE_DIR is unavailable, this is silently skipped (fail-open).
+if [ -n "$STATE_DIR" ] && [ -d "$STATE_DIR" ]; then
+  for ckpt_out in "$STATE_DIR"/checkpoint-output-*-*-*; do
+    [ -f "$ckpt_out" ] || continue
+    # Parse change and spec from the filename: checkpoint-output-<change>-<spec>-<session>
+    # The change name and spec name can contain hyphens, so we extract from
+    # the end: the last segment is the session, the second-to-last is the
+    # spec, and everything before is the change name (with the prefix).
+    base_name="$(basename "$ckpt_out")"
+    # Strip the "checkpoint-output-" prefix
+    rest="${base_name#checkpoint-output-}"
+    # Session is the last component
+    ckpt_session="${rest##*-}"
+    rest_without_session="${rest%-*}"
+    # Spec is the last component of what remains
+    ckpt_spec="${rest_without_session##*-}"
+    ckpt_change="${rest_without_session%-*}"
+    # Hash the content
+    ckpt_hash="$(sha256sum "$ckpt_out" 2>/dev/null | cut -d' ' -f1)"
+    if [ -n "$ckpt_hash" ] && [ -n "$ckpt_change" ] && [ -n "$ckpt_spec" ] && [ -n "$ckpt_session" ]; then
+      printf '%s' "$ckpt_hash" >"$STATE_DIR/presentation-$ckpt_change-$ckpt_spec-$ckpt_session" 2>/dev/null || true
+      trace "presentation recorded for $ckpt_change/$ckpt_spec (session $ckpt_session)"
+    fi
+    # Consume the output file regardless (don't reprocess on every event)
+    rm -f "$ckpt_out" 2>/dev/null || true
+  done
+fi
+
+# ── event: tool-call (pre-execution gate — oracle ordering lock) ─────────
+# spec: oracle-ordering-lock. The universal blocking tier: refuses a
+# write/edit to */src/main/** while the (change, spec) phase state is
+# `oracle`, and transitions the phase forward only on recorded ledger
+# evidence (RED run → implementation, GREEN run after RED → verified).
+# The agent is never blocked from producing the unblocking evidence: test
+# edits, change-artifact edits, and workflow-tooling edits are ALWAYS
+# allowed. Same bounded-refusal discipline as completion: fail open when
+# STATE_DIR is unavailable, one refusal per turn, escape hatch honored.
+if [ "$EVENT" = "tool-call" ]; then
+  # Resolve --file from stdin payload if not given on the command line
+  # (same pattern as post-edit).
+  if [ -z "$FILE_PATH" ] && [ ! -t 0 ]; then
+    tool_call_payload="$(cat 2>/dev/null || true)"
+    FILE_PATH="$(printf '%s' "$tool_call_payload" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null)"
+    [ -z "$TOOL_NAME" ] && TOOL_NAME="$(printf '%s' "$tool_call_payload" | jq -r '.tool_name // empty' 2>/dev/null)"
+  fi
+
+  # Normalize to absolute path (same as post-edit — relative paths match
+  # neither the production nor the test path shape).
+  case "$FILE_PATH" in
+    /*) : ;;
+    "") : ;;
+    *) FILE_PATH="$REPO/$FILE_PATH" ;;
+  esac
+
+  # Only production source edits are in scope for the oracle lock.
+  # */src/main/**/*.scala — the same shape danger-scan and post-edit use.
+  is_prod_edit=0
+  case "$FILE_PATH" in
+    */src/main/*.scala) is_prod_edit=1 ;;
+  esac
+
+  if [ "$is_prod_edit" -eq 0 ]; then
+    # spec: human-grant-lock — non-production paths that target spec N+1's
+    # Step-0 signature (implementation-progress.md or spec N+1's spec dir)
+    # are blocked if spec N has a presentation but no grant. This is the
+    # tacit-approval fix: the agent cannot begin the next spec without a
+    # human grant (a user prompt after the checkpoint).
+    if [ -z "$STATE_DIR" ]; then
+      trace "tool-call: non-production path, allow — $FILE_PATH (STATE_DIR unavailable)"
+      exit 0
+    fi
+
+    # Discover the active change (same as the oracle phase check below)
+    grant_change=""
+    for chg in "$REPO"/openspec/changes/*/; do
+      [ -d "$chg" ] || continue
+      case "$chg" in */archive/*) continue ;; esac
+      grant_change="$(basename "$chg")"
+      break
+    done
+
+    if [ -n "$grant_change" ]; then
+      # Determine if this file is a Step-0 signature for spec N+1:
+      # 1. edits to implementation-progress.md
+      # 2. edits under a spec dir
+      is_step0_signature=0
+      target_spec=""
+      case "$FILE_PATH" in
+        */openspec/changes/$grant_change/implementation-progress.md)
+          is_step0_signature=1
+          # Any edit to implementation-progress.md is treated as a Step-0
+          # signature — the gate can't see which section is being edited.
+          # The target spec is "the next spec after the last granted spec".
+          ;;
+        */openspec/changes/$grant_change/specs/*)
+          is_step0_signature=1
+          # Extract the spec name from the path
+          spec_part="${FILE_PATH##*/openspec/changes/"$grant_change"/specs/}"
+          target_spec="${spec_part%%/*}"
+          ;;
+      esac
+
+      if [ "$is_step0_signature" -eq 1 ]; then
+        # Get the ordered list of spec dirs (alphabetical = implementation order)
+        spec_list=""
+        for spec_d in "$REPO"/openspec/changes/$grant_change/specs/*/; do
+          [ -d "$spec_d" ] || continue
+          spec_list="$spec_list $(basename "$spec_d")"
+        done
+        spec_list="$(printf '%s' "$spec_list" | tr ' ' '\n' | sort | tr '\n' ' ')"
+
+        # Find the first spec that has a presentation but no grant — that's
+        # the spec N whose grant is required. The target is spec N+1.
+        # If target_spec is set (from a spec-dir path), check that the
+        # immediately prior spec has a grant.
+        required_grant_spec=""
+        prev_spec=""
+        for s in $spec_list; do
+          if [ -n "$target_spec" ] && [ "$s" = "$target_spec" ]; then
+            # The target is this spec; the required grant is for the prior spec
+            required_grant_spec="$prev_spec"
+            break
+          fi
+          # For implementation-progress.md edits, find the first spec with
+          # a presentation but no grant — the next spec after it is the target
+          pres_f="$STATE_DIR/presentation-$grant_change-$s-$SESSION"
+          grant_f="$STATE_DIR/grant-$grant_change-$s-$SESSION"
+          if [ -f "$pres_f" ] && [ ! -f "$grant_f" ]; then
+            required_grant_spec="$s"
+            break
+          fi
+          prev_spec="$s"
+        done
+
+        if [ -n "$required_grant_spec" ]; then
+          # Bounded refusal: one grant-refusal per turn
+          grant_refusal_marker="$STATE_DIR/grant-refused-$SESSION"
+          if [ -f "$grant_refusal_marker" ]; then
+            trace "tool-call: already refused grant once this turn, allow"
+            exit 0
+          fi
+          # Check if the required grant actually exists (it might have been
+          # written by a prompt-submit since we last checked)
+          grant_f="$STATE_DIR/grant-$grant_change-$required_grant_spec-$SESSION"
+          if [ ! -f "$grant_f" ]; then
+            # Block: no grant for the required spec
+            if ! : >"$grant_refusal_marker" 2>/dev/null; then
+              trace "tool-call: failed to write grant-refusal marker, failing open"
+              exit 0
+            fi
+            reason="$required_grant_spec grant: next-spec Step-0 blocked — no human grant for spec $required_grant_spec. A user prompt must arrive after the checkpoint presentation (prompt-submit event) to write the grant."
+            trace "tool-call: refuse (missing grant for $required_grant_spec)"
+            if [ "$FORMAT" = "text" ]; then
+              printf '%s\n' "$reason" >&2
+              exit 2
+            fi
+            if command -v jq >/dev/null 2>&1; then
+              jq -cn --arg r "$reason" '{decision:"block", reason:$r}'
+            else
+              printf '{"decision":"block","reason":"%s"}\n' "$reason"
+            fi
+            exit 0
+          fi
+        fi
+      fi
+    fi
+
+    trace "tool-call: non-production path, allow — $FILE_PATH"
+    exit 0
+  fi
+
+  # Fail open when STATE_DIR is unavailable — a block without a bound is
+  # not safe (same discipline as the completion gate).
+  if [ -z "$STATE_DIR" ]; then
+    trace "tool-call: allow — bounded-refusal state unavailable (STATE_DIR unset), failing open"
+    exit 0
+  fi
+
+  # Bounded refusal: one block per turn. If already refused in this
+  # session, allow (prevents a loop where every edit is blocked with no
+  # way forward). Cleared on prompt-submit (new turn), same as completion.
+  tool_refusal_marker="$STATE_DIR/tool-call-refused-$SESSION"
+  if [ -f "$tool_refusal_marker" ]; then
+    trace "tool-call: already refused once this turn, allow"
+    exit 0
+  fi
+
+  # Discover the active change and spec from the file path.
+  # The file path must be under openspec/changes/<change>/specs/<spec>/
+  # for the phase to be relevant — but a PRODUCTION edit is NOT under
+  # openspec/, so the change/spec is discovered from the ACTIVE change
+  # (the first non-archived change dir), and the spec from the first
+  # spec dir under it. This is deliberately coarse: the gate's job is to
+  # prevent oracle inversion for the active change, and there is exactly
+  # one active change at a time in the normal apply flow.
+  active_change=""
+  for chg in "$REPO"/openspec/changes/*/; do
+    [ -d "$chg" ] || continue
+    case "$chg" in */archive/*) continue ;; esac
+    active_change="$(basename "$chg")"
+    break
+  done
+
+  if [ -z "$active_change" ]; then
+    trace "tool-call: no active change, allow"
+    exit 0
+  fi
+
+  # Discover the spec from the change's specs/ directory. The phase is
+  # per (change, spec); in the normal apply flow there is one spec being
+  # worked on at a time. If there are multiple spec dirs, the one whose
+  # phase file exists is the active one; otherwise the first.
+  active_spec=""
+  chg_dir="$REPO/openspec/changes/$active_change"
+  if [ -d "$chg_dir/specs" ]; then
+    for spec_dir in "$chg_dir"/specs/*/; do
+      [ -d "$spec_dir" ] || continue
+      spec_name="$(basename "$spec_dir")"
+      # Prefer the spec whose phase file exists (the one being worked on)
+      if [ -f "$STATE_DIR/phase-$active_change-$spec_name" ]; then
+        active_spec="$spec_name"
+        break
+      fi
+      # Fallback: first spec dir
+      [ -z "$active_spec" ] && active_spec="$spec_name"
+    done
+  fi
+
+  if [ -z "$active_spec" ]; then
+    trace "tool-call: no spec dir found for $active_change, allow"
+    exit 0
+  fi
+
+  phase_file="$STATE_DIR/phase-$active_change-$active_spec"
+
+  # Read current phase (default: oracle if no phase file exists)
+  current_phase="oracle"
+  [ -f "$phase_file" ] && current_phase="$(cat "$phase_file" 2>/dev/null || echo oracle)"
+  case "$current_phase" in
+    oracle | implementation | verified) ;;
+    *) current_phase="oracle" ;;
+  esac
+
+  # The ledger file: the default location inside the change directory.
+  ledger_file="$chg_dir/evidence-ledger.jsonl"
+
+  # ── polarity predicate ───────────────────────────────────────────────
+  # Pure function of ledger rows ⊕ git merge-base --is-ancestor.
+  # Evaluates whether a RED or GREEN run exists for (change, spec) at a
+  # baseline that is an ancestor of HEAD.
+  head_sha="$(cd "$REPO" && git rev-parse HEAD 2>/dev/null || echo "")"
+
+  # Check if a RED row exists (exit != 0, baseline ancestor of HEAD)
+  # R8 FIX: the typed contract specifies .ring == "R3" — only test-execution
+  # evidence (Ring 3) advances the oracle phase. A row from another ring
+  # (e.g. R8 adversarial review) must NOT advance the phase, or a self-
+  # assessed review could unlock implementation without a real test run.
+  red_exists=0
+  red_baseline=""
+  if [ -n "$head_sha" ] && [ -f "$ledger_file" ] && command -v jq >/dev/null 2>&1; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -n "$line" ] || continue
+      row_change="$(printf '%s' "$line" | jq -r '.change // empty' 2>/dev/null)"
+      row_spec="$(printf '%s' "$line" | jq -r '.spec // empty' 2>/dev/null)"
+      row_ring="$(printf '%s' "$line" | jq -r '.ring // empty' 2>/dev/null)"
+      [ "$row_change" = "$active_change" ] && [ "$row_spec" = "$active_spec" ] || continue
+      [ "$row_ring" = "R3" ] || continue
+      row_exit="$(printf '%s' "$line" | jq -r '.exit // empty' 2>/dev/null)"
+      row_base="$(printf '%s' "$line" | jq -r '.baseline // empty' 2>/dev/null)"
+      [ -n "$row_exit" ] && [ -n "$row_base" ] || continue
+      [ "$row_exit" != "0" ] || continue
+      # Check ancestry: is row_base an ancestor of HEAD?
+      if (cd "$REPO" && git merge-base --is-ancestor "$row_base" HEAD) 2>/dev/null; then
+        red_exists=1
+        red_baseline="$row_base"
+        break
+      fi
+    done <"$ledger_file"
+  fi
+
+  # Check if a GREEN row exists (exit == 0, baseline ancestor of HEAD,
+  # and descendant of the RED row's baseline). Same R3 ring requirement.
+  green_exists=0
+  if [ -n "$head_sha" ] && [ -f "$ledger_file" ] && command -v jq >/dev/null 2>&1; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -n "$line" ] || continue
+      row_change="$(printf '%s' "$line" | jq -r '.change // empty' 2>/dev/null)"
+      row_spec="$(printf '%s' "$line" | jq -r '.spec // empty' 2>/dev/null)"
+      row_ring="$(printf '%s' "$line" | jq -r '.ring // empty' 2>/dev/null)"
+      [ "$row_change" = "$active_change" ] && [ "$row_spec" = "$active_spec" ] || continue
+      [ "$row_ring" = "R3" ] || continue
+      row_exit="$(printf '%s' "$line" | jq -r '.exit // empty' 2>/dev/null)"
+      row_base="$(printf '%s' "$line" | jq -r '.baseline // empty' 2>/dev/null)"
+      [ -n "$row_exit" ] && [ -n "$row_base" ] || continue
+      [ "$row_exit" = "0" ] || continue
+      # Green row must be an ancestor of HEAD
+      (cd "$REPO" && git merge-base --is-ancestor "$row_base" HEAD) 2>/dev/null || continue
+      # If we have a RED baseline, green must be a descendant of it
+      if [ -n "$red_baseline" ]; then
+        (cd "$REPO" && git merge-base --is-ancestor "$red_baseline" "$row_base") 2>/dev/null || continue
+      fi
+      green_exists=1
+      break
+    done <"$ledger_file"
+  fi
+
+  # ── phase transitions (additive, read-only-into-state) ───────────────
+  # oracle → implementation: on a recorded RED run
+  # implementation → verified: on a GREEN run after a RED run
+  new_phase="$current_phase"
+  if [ "$current_phase" = "oracle" ] && [ "$red_exists" -eq 1 ]; then
+    new_phase="implementation"
+  fi
+  if [ "$new_phase" = "implementation" ] && [ "$red_exists" -eq 1 ] && [ "$green_exists" -eq 1 ]; then
+    new_phase="verified"
+  fi
+
+  # Write the new phase if it changed
+  if [ "$new_phase" != "$current_phase" ]; then
+    printf '%s' "$new_phase" >"$phase_file" 2>/dev/null || true
+    trace "tool-call: phase $current_phase → $new_phase ($active_change/$active_spec)"
+  fi
+
+  # ── decision ─────────────────────────────────────────────────────────
+  # Block only if the phase is still oracle (no RED run advanced it).
+  # implementation and verified phases allow production edits.
+  if [ "$new_phase" = "oracle" ]; then
+    # R8 FIX: if the refusal marker cannot be written, fail open rather than
+    # risk a deadlock where every tool-call in the turn is blocked with no
+    # bound. Same discipline as the completion gate's bounded-refusal safety.
+    if ! : >"$tool_refusal_marker" 2>/dev/null; then
+      trace "tool-call: failed to write refusal marker, failing open to avoid deadlock"
+      exit 0
+    fi
+    reason="$active_spec oracle: production edit blocked — the oracle phase has not advanced. Run the test oracle first (ledger.sh run -- … -- sbt <module>/test) to record a RED run and advance to implementation."
+    trace "tool-call: refuse (oracle phase, $active_change/$active_spec)"
+    if [ "$FORMAT" = "text" ]; then
+      printf '%s\n' "$reason" >&2
+      exit 2
+    fi
+    if command -v jq >/dev/null 2>&1; then
+      jq -cn --arg r "$reason" '{decision:"block", reason:$r}'
+    else
+      printf '{"decision":"block","reason":"%s"}\n' "$reason"
+    fi
+    exit 0
+  fi
+
+  trace "tool-call: allow (phase $new_phase, $active_change/$active_spec)"
+  exit 0
+fi
+
 # ── event: post-edit (Tier A', informational only — NEVER blocks) ────────
 # spec: hook-tiers. Runs the relevant existing check immediately after a
 # file edit and returns its findings; the file is already on disk by the
@@ -349,6 +724,151 @@ danger-scan: check could not run (script not found)"
       ;;
   esac
   exit 0
+fi
+
+# ── event: post-bash (Tier A', observation only — NEVER blocks) ──────────
+# spec: ambient-evidence-capture. After a bash tool call completes, match
+# the command against an enumerated ring-shape table and append a ledger
+# row with the harness-observed exit code. The row uses the existing
+# ledger.sh append subcommand (no format change). Non-matching commands
+# are simply not recorded. The gate ALWAYS exits 0 (post-hoc tier).
+if [ "$EVENT" = "post-bash" ]; then
+  trace "post-bash: command='$GATE_COMMAND' exit=$GATE_EXIT"
+
+  # Always exit 0, regardless of what happens below
+  _post_bash_exit0() { exit 0; }
+
+  # Fail open: no command or exit → nothing to record
+  [ -n "$GATE_COMMAND" ] || _post_bash_exit0
+  [ -n "$GATE_EXIT" ] || _post_bash_exit0
+
+  # De-duplication: if the command is an explicit ledger.sh run, skip
+  # (the explicit run already recorded a row with sha256/digest/wallTime)
+  case "$GATE_COMMAND" in
+    *ledger.sh\ run*) trace "post-bash: de-duplicated (explicit ledger.sh run)"; _post_bash_exit0 ;;
+  esac
+
+  # Ring-shape match table (enumerated, conservative)
+  # Patterns matched with bash case globs. Only commands the apply
+  # instruction names as ring executions are in the table.
+  match_ring="" match_obligation="" match_artifact=""
+  case "$GATE_COMMAND" in
+    # Conservative: must START with "sbt" and contain "test" somewhere.
+    # No leading wildcard — `echo "sbt test"` does not match (doesn't
+    # start with sbt). The trailing * handles args after test (e.g.
+    # `sbt adk4s-core/test -- --excluded-tags=Slow`).
+    sbt\ *test*)
+      match_ring="R0"
+      match_obligation="bats run"
+      match_artifact="tests/"
+      ;;
+    # Script patterns: leading * handles path prefixes (the command may
+    # be `openspec/.../danger-scan.sh <sha>`). Trailing * handles args.
+    *danger-scan.sh*)
+      match_ring="R8"
+      match_obligation="adversarial review"
+      match_artifact="review.md"
+      ;;
+    *registry-check.sh*)
+      match_ring="R1"
+      match_obligation="static analysis"
+      match_artifact="registry.json"
+      ;;
+    *spec-lint.sh*)
+      match_ring="R1"
+      match_obligation="spec lint"
+      match_artifact="spec.md"
+      ;;
+    *checkpoint.sh\ report*)
+      # Checkpoint is not a ring — it's the presentation, not evidence
+      trace "post-bash: checkpoint.sh report is not a ring shape"
+      _post_bash_exit0
+      ;;
+    *)
+      # Non-matching command — not recorded
+      trace "post-bash: no ring shape match, not recorded"
+      _post_bash_exit0
+      ;;
+  esac
+
+  # We have a match — append a ledger row
+  # Fail open: if STATE_DIR unavailable, skip recording
+  [ -n "$STATE_DIR" ] || { trace "post-bash: STATE_DIR unavailable, skipping record"; _post_bash_exit0; }
+
+  # Discover the active change (same as tool-call handler)
+  postbash_change=""
+  for chg in "$REPO"/openspec/changes/*/; do
+    [ -d "$chg" ] || continue
+    case "$chg" in */archive/*) continue ;; esac
+    postbash_change="$(basename "$chg")"
+    break
+  done
+
+  # Derive spec: find the first spec with a presentation but no grant
+  # (the spec currently being worked on), or "unknown" if not derivable
+  postbash_spec="unknown"
+  if [ -n "$postbash_change" ] && [ -d "$REPO/openspec/changes/$postbash_change/specs" ]; then
+    for spec_d in "$REPO"/openspec/changes/$postbash_change/specs/*/; do
+      [ -d "$spec_d" ] || continue
+      s_name="$(basename "$spec_d")"
+      pres_f="$STATE_DIR/presentation-$postbash_change-$s_name-$SESSION"
+      grant_f="$STATE_DIR/grant-$postbash_change-$s_name-$SESSION"
+      # If there's a presentation and a grant, this spec is done — skip
+      # If there's a presentation but no grant, this is the current spec
+      # If there's no presentation, this might be the current spec
+      if [ -f "$pres_f" ] && [ ! -f "$grant_f" ]; then
+        postbash_spec="$s_name"
+        break
+      fi
+    done
+    # If no spec with presentation-but-no-grant found, try the first spec
+    if [ "$postbash_spec" = "unknown" ]; then
+      for spec_d in "$REPO"/openspec/changes/$postbash_change/specs/*/; do
+        [ -d "$spec_d" ] || continue
+        postbash_spec="$(basename "$spec_d")"
+        break
+      done
+    fi
+  fi
+
+  # Derive baseline: current HEAD SHA
+  postbash_baseline="$(cd "$REPO" 2>/dev/null && git rev-parse --short HEAD 2>/dev/null || echo "0000000")"
+
+  # Locate the ledger file
+  postbash_ledger=""
+  if [ -n "$postbash_change" ]; then
+    postbash_ledger="$REPO/openspec/changes/$postbash_change/evidence-ledger.jsonl"
+  fi
+
+  # Locate ledger.sh
+  postbash_ledger_sh="$SCANNER/ledger.sh"
+  [ -f "$postbash_ledger_sh" ] || { trace "post-bash: ledger.sh not found, skipping"; _post_bash_exit0; }
+
+  # Append the row using ledger.sh append (existing subcommand, no format change)
+  # spec:judgment-ring-provenance — R8 rows require a session field; pass
+  # $SESSION when the ring is R8 and session is available.
+  if [ -n "$postbash_ledger" ] && [ -n "$postbash_change" ] && [ -n "$postbash_spec" ] && [ -n "$match_ring" ]; then
+    postbash_session_args=()
+    if [ "$match_ring" = "R8" ] && [ -n "$SESSION" ]; then
+      postbash_session_args=(--session "$SESSION")
+    fi
+    "$postbash_ledger_sh" append \
+      --file "$postbash_ledger" \
+      --change "$postbash_change" \
+      --spec "$postbash_spec" \
+      --ring "$match_ring" \
+      --obligation "$match_obligation" \
+      --artifact "$match_artifact" \
+      --command "$GATE_COMMAND" \
+      --exit "$GATE_EXIT" \
+      --baseline "$postbash_baseline" \
+      "${postbash_session_args[@]}" 2>&1 | while IFS= read -r line; do trace "post-bash: ledger: $line"; done
+    trace "post-bash: row appended (ring=$match_ring, exit=$GATE_EXIT)"
+  else
+    trace "post-bash: missing required fields, skipping record"
+  fi
+
+  _post_bash_exit0
 fi
 
 # ── event: completion (Tier A — the ONE genuine block in this schema) ────
@@ -509,11 +1029,38 @@ $names"
 fi
 
 # A new turn begins at prompt-submit — also the natural point to clear any
-# completion-gate refusal recorded for the PREVIOUS turn, so a refusal never
-# carries into the next one without needing a native turn-id from every
-# harness (Scenario: "refusal state does not carry into the next turn").
+# completion-gate or tool-call-gate refusal recorded for the PREVIOUS turn,
+# so a refusal never carries into the next one without needing a native
+# turn-id from every harness (Scenario: "refusal state does not carry into
+# the next turn").
+#
+# spec: human-grant-lock — prompt-submit is also the ONLY event that writes
+# grant tokens. A grant for spec N is written when a presentation record for
+# spec N exists (the agent ran the Step-13 checkpoint). The grant links to
+# the presentation by copying its hash. No other event writes grants.
 if [ "$EVENT" = "prompt-submit" ] && [ -n "$STATE_DIR" ]; then
   rm -f "$STATE_DIR/completion-refused-$SESSION" 2>/dev/null || true
+  rm -f "$STATE_DIR/tool-call-refused-$SESSION" 2>/dev/null || true
+  rm -f "$STATE_DIR/grant-refused-$SESSION" 2>/dev/null || true
+
+  # Write grants for all specs that have a presentation record but no grant yet
+  for pres_file in "$STATE_DIR"/presentation-*-*-"$SESSION"; do
+    [ -f "$pres_file" ] || continue
+    pres_base="$(basename "$pres_file")"
+    pres_rest="${pres_base#presentation-}"
+    pres_rest_no_session="${pres_rest%-*}"
+    pres_spec="${pres_rest_no_session##*-}"
+    pres_change="${pres_rest_no_session%-*}"
+    grant_file="$STATE_DIR/grant-$pres_change-$pres_spec-$SESSION"
+    # Write the grant only if it doesn't already exist (idempotent)
+    if [ ! -f "$grant_file" ]; then
+      pres_hash="$(cat "$pres_file" 2>/dev/null)"
+      if [ -n "$pres_hash" ]; then
+        printf '%s' "$pres_hash" >"$grant_file" 2>/dev/null || true
+        trace "grant written for $pres_change/$pres_spec (session $SESSION)"
+      fi
+    fi
+  done
 fi
 
 schema_ver="$(awk -F': *' '/^version:/ {print $2; exit}' "$SCHEMA_YAML" 2>/dev/null)"

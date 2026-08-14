@@ -101,7 +101,7 @@
    "body":"<p>The agent no longer decides. The harness invokes the script at a lifecycle event — session start, a file write, a commit — regardless of what the agent intended.</p><p><strong>Fails when:</strong> the hook is not installed on this machine, or a blocking hook misfires and strands the agent with no way forward.</p><p style='margin-bottom:0'><strong>The trade:</strong> you buy certainty about <em>whether</em> and you pay in configuration that lives outside the repository.</p>" },
 
  { "short":"5 CI", "label":"Rung 5 · A gate in CI",
-   "body":"<p>The check runs on the server, on every push, for every contributor, with no local configuration at all. Nothing merges without it.</p><p><strong>Fails when:</strong> feedback arrives minutes after the mistake instead of seconds, so the agent has already built on top of it.</p><p style='margin-bottom:0'><strong>Not a replacement for rung 4:</strong> CI catches it eventually; the hook catches it while the agent is still holding the context that produced it. Use both — this is exactly why the gate checks are bash + <code>git grep</code> only.</p>" }
+   "body":"<p>The check runs on the server, on every push, for every contributor, with no local configuration at all. Nothing merges without it.</p><p><strong>Fails when:</strong> feedback arrives minutes after the mistake instead of seconds, so the agent has already built on top of it.</p><p style='margin-bottom:0'><strong>Not a replacement for rung 4:</strong> CI catches it eventually; the hook catches it while the agent is still holding the context that produced it. Use both — the gate checks depend on a declared prerequisite set (bash, git, jq, shellcheck, bats, shfmt), not on zero dependencies; the reasoning that motivated the old zero-dependency rule is served by declaring and installing the set, not by having none.</p>" }
 ]
 </script>
 
@@ -185,7 +185,14 @@
   typed. And the five events this workflow needs —
   <code>SessionStart</code>, <code>UserPromptSubmit</code>,
   <code>PreToolUse</code>, <code>PostToolUse</code>, <code>Stop</code> — exist
-  in <em>every</em> one of them, under different names.
+  in <em>every</em> one of them, under different names. Schema v13 promoted
+  <code>PreToolUse</code> (called <code>tool_call</code> on pi) to the
+  <strong>universal enforcement tier</strong>: it fires before the tool runs,
+  not after, so a blocking decision refuses the edit itself rather than
+  reporting findings after the fact. This is the control plane that made
+  enforcement universal — and it is the one tier that exists on all three
+  harnesses, including pi where the completion (<code>Stop</code>) event has
+  no blocking API at all.
 </p>
 
 <div class="box rule">
@@ -296,11 +303,34 @@
   “on evidence” means in practice, not a fixed calendar interval. Tier A
   itself split the same way the two-column box above predicts:
   <code>post-edit</code> (findings only, still cannot block) shipped first;
-  the <strong>one</strong> genuinely blocking event in this whole schema —
-  <code>completion</code>, refusing a turn that claims a checkpoint while
-  the evidence ledger (chapter 12) shows unresolved requirements — shipped
-  last, and only after post-edit had itself run cleanly.
+  the <strong>completion</strong> gate — refusing a turn that claims a
+  checkpoint while the evidence ledger (chapter 12) shows unresolved
+  requirements — shipped last, and only after post-edit had itself run
+  cleanly.
 </p>
+
+<p>
+  Schema v13 then added the <strong>pre-execution <code>tool_call</code>
+  gate</strong>, which is the tier that made enforcement universal. The
+  completion gate is a <strong>2/3-harness backstop</strong>: it works on
+  Claude Code and Devin, but pi has no blocking completion event — verified
+  absent from pi's extension API, not an oversight. The pre-execution
+  <code>tool_call</code> handler, by contrast, exists on all three. On pi
+  it is the <em>only</em> enforcement surface; on Claude Code and Devin it
+  runs alongside the completion gate. An agent's honest picture of what is
+  and isn't enforced depends on knowing this asymmetry.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Harness</th><th>Pre-execution (<code>tool_call</code>/<code>PreToolUse</code>)</th><th>Completion (<code>Stop</code>)</th></tr></thead>
+  <tbody>
+    <tr><td>Claude Code</td><td>✅ wired (schema v13)</td><td>✅ wired (schema v12)</td></tr>
+    <tr><td>Devin CLI</td><td>✅ wired (schema v13)</td><td>✅ wired (schema v12, not stress-tested)</td></tr>
+    <tr><td>pi</td><td>✅ wired (schema v13)</td><td>❌ no blocking API in pi's extension model</td></tr>
+  </tbody>
+</table>
+</div>
 
 <div class="box danger">
   <div class="box-title">The near miss, found by the fresh-context review before it shipped</div>
@@ -416,7 +446,11 @@
     the mistake; refusing an unsubstantiated claim, once and escapably, is
     not the same mistake wearing a different label — but it is exactly the
     kind of subsystem worth building last, after everything non-blocking has
-    proven itself, and worth reviewing hardest.
+    proven itself, and worth reviewing hardest. Note too that the
+    pre-execution <code>tool_call</code> gate (schema v13) is a separate
+    mechanism on a different event — it refuses the edit before it happens,
+    not the turn after it has completed — and it is the tier that works on
+    all three harnesses, where the completion gate does not.
   </p>
 </div>
 
@@ -520,6 +554,7 @@
     <li>Explain the difference between a documentary rule and an enforced one, and place any check on the five-rung ladder.</li>
     <li>Say why the hook <em>script</em> transfers across agents while the hook <em>config</em> does not — and design so only the script matters.</li>
     <li>Justify shipping context injection before blocking gates, in terms of the two failure modes.</li>
+    <li>Distinguish the pre-execution <code>tool_call</code> gate (universal, schema v13) from the completion <code>Stop</code> gate (2/3-harness backstop), and say which one exists on pi.</li>
     <li>Verify a hook at all three levels, and explain why an empty trace log would be ambiguous if silent runs were not logged.</li>
     <li>Name three things that should <em>not</em> be hooks, and why.</li>
   </ul>

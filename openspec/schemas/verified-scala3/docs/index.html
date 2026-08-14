@@ -46,7 +46,7 @@
 </p>
 
 <div class="meta">
-  Schema version 12 · Reading time ≈ 4.5 hours end to end · Interactive:
+  Schema version 13 · Reading time ≈ 4.5 hours end to end · Interactive:
   every chapter has drills, and chapters 3 and 5 embed a working port of the
   real <code>spec-lint.sh</code> you can paste specs into.
 </div>
@@ -231,7 +231,8 @@
     <h3>Making it stick</h3>
     <p>Every check so far is opt-in. The enforcement ladder from prose to CI,
        agent hooks and how far they transfer between Claude Code, pi and Devin,
-       and why you ship context injection before blocking gates.</p>
+       the pre-execution tool_call gate (schema v13's universal enforcement
+       tier), and why you ship context injection before blocking gates.</p>
     <span class="ctime">≈ 25 min · enforcement</span>
   </a>
 
@@ -240,10 +241,11 @@
     <h3>The correctness substratum</h3>
     <p>The third clause: bound and resolved say a mechanism exists; discharged
        says it was actually observed to run green. The evidence ledger (capture
-       and replay), chain state, the generated checkpoint, and the one hook in
-       this schema allowed to block — and the real bugs found building each of
+       and replay), chain state, the generated checkpoint, the completion gate
+       as a 2/3-harness backstop, and the pre-execution tool_call gate that
+       made enforcement universal — and the real bugs found building each of
        them, twice.</p>
-    <span class="ctime">≈ 30 min · schema v12</span>
+    <span class="ctime">≈ 30 min · schema v13</span>
   </a>
 
 </div>
