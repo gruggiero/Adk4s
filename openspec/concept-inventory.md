@@ -37,9 +37,12 @@
 
 ## Refined / Opaque Types
 
-<!-- No Iron/refined library is present in the stack (see capability-profile.md).
-     The opaque types below are plain `opaque type` newtypes WITHOUT Iron
-     constraints. -->
+<!-- Iron IS present in the stack (iron + iron-cats 3.3.2 + iron-upickle; see
+     capability-profile.md). The `add-iron-refined-types` change migrated the
+     project's newtypes to Iron `RefinedType` with compile-time literal checking
+     and `refineEither` runtime construction. Rows below record the constraint
+     expression for each. Plain `opaque type` newtypes (no Iron constraint) are
+     marked "(none — plain opaque type)". -->
 
 | Type | Underlying | Constraint | Package | Introduced By |
 |------|-----------|------------|---------|---------------|
@@ -54,6 +57,8 @@
 | `MiddlewareName` | `String` | `NonEmpty` (Iron RefinedType) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state; migrated by add-iron-refined-types/harness-state |
 | `StateCell.CellId` | `String` | `NonEmpty & Match["[^/]+/[^/]+"]` (Iron RefinedType) | `org.adk4s.harness` | spec:add-harness-api-phase0/harness-state; migrated by add-iron-refined-types/harness-state |
 | `CheckpointStore.CheckpointId` | `String` | `NonEmpty` (Iron RefinedType) | `org.adk4s.orchestration.interrupt` | spec:add-harness-api-phase0/checkpoint-store-fpoly; migrated by add-iron-refined-types/checkpoint-store-fpoly |
+| `CallKey` | `String` | (none — plain opaque type; well-formedness guaranteed by `CallKey.fromCanonical` digest function) | `org.adk4s.record` | spec:add-adk4s-record/call-key |
+| `RolloutId` | `String` | `NonEmpty` (Iron RefinedType; `refineEither` returns `Either[ConfigError, RolloutId]`) | `org.adk4s.record` | spec:add-adk4s-record/call-key |
 
 ## Type Aliases
 
@@ -115,6 +120,15 @@
 | `StackKernel.Visibility` (model) | sealed abstract class | `PrivateV`, `InheritedV`, `SharedV(merge)` | `org.adk4s.verified.StackKernel` | spec:add-harness-api-phase0/middleware-stack (Ring 6 PureScala model) |
 | `EvalOutcome[+O]` | enum | `Succeeded(value: O)`, `Failed(error: Throwable)` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `EvalError` | sealed trait (extends Throwable) | `TooManyErrors[I, O](count, max, partial)` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `RequestMutation` | enum | `ChangeProvider`, `ChangeModel`, `ReorderMessages`, `ChangeTemperature`, `ChangeMaxTokens`, `ChangeTopP`, `ChangeStopSequences`, `AddTool`, `RemoveTool`, `ChangeToolSchema`, `ChangeSystemPrompt`, `ChangeRolloutId` | `org.adk4s.record` | spec:add-adk4s-record/call-key |
+| `NonAffectingMutation` | enum | `RegenerateToolCallIds`, `ChangeProviderRequestId`, `ChangeLatency`, `ChangeTokenUsage`, `ChangeTimestamp` | `org.adk4s.record` | spec:add-adk4s-record/call-key |
+| `CallKind` | generated enum (Smithy IDL) | `MODEL`, `TOOL`, `EMBEDDING` | `org.adk4s.record.canonical` | spec:add-adk4s-record/call-key (generated from `canonical_form.smithy` via smithy4s codegen) |
+| `CanonicalBody` | generated union (Smithy IDL) | `ModelCase(ModelBody)`, `ToolCase(ToolBody)`, `EmbeddingCase(EmbeddingBody)` | `org.adk4s.record.canonical` | spec:add-adk4s-record/call-key (generated from `canonical_form.smithy`) |
+| `CanonicalMessage` | generated union (Smithy IDL) | `UserCase(UserMessage)`, `SystemCase(SystemMessage)`, `AssistantCase(AssistantMessage)`, `ToolCase(ToolMessage)` | `org.adk4s.record.canonical` | spec:add-adk4s-record/call-key (generated from `canonical_form.smithy`) |
+| `RecorderError` | sealed trait (extends AdkError) | `SinkWriteFailed(cause: Throwable)`, `SinkReadFailed(cause: Throwable)`, `CodecFailed(message: String, input: String)` | `org.adk4s.core.error` | spec:add-adk4s-record/recorder-sink |
+| `CallRecord` | generated union (Smithy IDL) | `SucceededCase(SucceededRecord)`, `FailedCase(FailedRecord)` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
+| `RecordPayload` | generated union (Smithy IDL) | `ModelCase(ModelPayload)`, `ToolCase(ToolPayload)`, `EmbeddingCase(EmbeddingPayload)` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
+| `Classification` | generated enum (Smithy IDL) | `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, `RESTRICTED` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
 
 > Note: `adk4s-examples` defines many per-example `sealed trait` state/event
 > types. These are application-edge code, not reusable library concepts, and
@@ -209,6 +223,15 @@
 | `ToolCallCtx` | `input: ToolInput, state: HarnessState` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
 | `ToolCallOut` | `output: ToolOutput, state: HarnessState` | `org.adk4s.harness` | spec:add-harness-api-phase0/agent-middleware |
 | `MiddlewareStack[F[_]]` | (private constructor; `middlewares: List[AgentMiddleware[F]]`; public methods: `allCells`, `allTools`, `allSections(state)`, `beforeAgent`, `afterAgent`, `wrapModelCall`, `wrapToolCall`, `++`; companion: `empty[F]`, `validated[F]`) | `org.adk4s.harness` | spec:add-harness-api-phase0/middleware-stack |
+| `ToolDef` | `name: String, description: String, schemaJson: String` | `org.adk4s.record` | spec:add-adk4s-record/call-key |
+| `ModelCallRequest` | `provider: String, model: String, conversation: Conversation, tools: List[ToolDef], systemPrompt: String, options: CompletionOptions, rollout: Option[RolloutId], outputSchema: Option[String], stopSequences: List[String], providerRequestId: Option[String], latencyMs: Option[Long], tokenUsage: Option[Long], timestamp: Option[Long]` | `org.adk4s.record` | spec:add-adk4s-record/call-key |
+| `SucceededRecord` | generated case class (Smithy IDL): `key: String, seq: Long, kind: CallKind, payload: RecordPayload, classification: Classification` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
+| `FailedRecord` | generated case class (Smithy IDL): `key: String, seq: Long, kind: CallKind, error: RecordedError, classification: Classification` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
+| `ModelPayload` | generated case class (Smithy IDL): `content: String, finishReason: Option[String], toolCalls: Option[List[ModelToolCall]], promptTokens: Option[Int], completionTokens: Option[Int], totalTokens: Option[Int]` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
+| `ToolPayload` | generated case class (Smithy IDL): `name: String, arguments: Document, callId: String, isError: Boolean` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
+| `EmbeddingPayload` | generated case class (Smithy IDL): `model: String, tokenCount: Option[Int], dimensions: Option[Int]` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
+| `RecordedError` | generated case class (Smithy IDL): `errorType: String, message: String, cause: Option[String]` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
+| `ModelToolCall` | generated case class (Smithy IDL): `id: String, name: String, arguments: Document` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink (generated from `record_form.smithy`) |
 
 ## Service Traits
 
@@ -235,6 +258,7 @@
 | `Optimizable[P]` | `P` (no F constraint) | `predictors(p: P): Vector[(PredictorPath, PredictorState)]`, `update(p, path, f): P`, `updateEither(p, path, f): Either[OptimizeError, P]`, `updateAll(p, f): P` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `HasPredictorState[Self]` | `Self` (no F constraint) | `state(self: Self): PredictorState`, `withState(self: Self, s: PredictorState): Self` | `org.adk4s.optimize` | spec:add-optimizable-surface/optimizable-surface |
 | `Metric[F[_], I, O]` | `F` (Applicative bound) | `apply(gold: Example[I, O], pred: O, trace: Option[Trace]): F[Score]`, `map(f: Score => Score): Metric[F, I, O]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
+| `Recorder[F[_]]` | `F` (Applicative on noop, Concurrent on inMemory, Async on file) | `lookup(key: CallKey): F[Option[CallRecord]]`, `record(key: CallKey, outcome: CallRecord): F[Unit]`, `nextSeq: F[Long]`; companion: `noop[F: Applicative]`, `inMemory[F: Concurrent](maxEntries: Positive): F[Recorder[F]]`, `file[F: Async](path: Path): Resource[F, Recorder[F]]` | `org.adk4s.record` | spec:add-adk4s-record/recorder-sink — implementations: `NoopRecorder`, `InMemoryRecorder`, `FileRecorder` |
 
 ## Objects (Factories and Utilities)
 
@@ -247,18 +271,42 @@
 | `Metrics` | object | `exactMatch[F]: Metric[F, String, String]` | `org.adk4s.eval` | spec:add-eval-core/eval-core |
 | `Judges` | object (factory) | `semanticF1[F](structured, threshold): Metric[F, String, String]`, `completeAndGrounded[F](structured, threshold): Metric[F, String, String]`, `defaultThreshold: Double` | `org.adk4s.eval` | spec:add-eval-core/llm-judges |
 | `JsonValueCodec` | object (boundary adapter) | `toUjson(JsonValue): ujson.Value`, `fromUjson(ujson.Value): JsonValue` | `org.adk4s.core.json` | spec:migrate-json-codec/json-value-model |
+| `Canonicalization` | object (pure functions) | `fromModelCall(ModelCallRequest): CanonicalForm`, `fromToolCall(ToolInput): CanonicalForm`, `fromEmbedding(String, String): CanonicalForm` | `org.adk4s.record.canonical` | spec:add-adk4s-record/call-key |
+| `CanonicalFormOps` | object (convenience constructors) | `from(ModelCallRequest): CanonicalForm`, `fromToolCall(ToolInput): CanonicalForm`, `fromEmbedding(String, String): CanonicalForm`, `fromJson(String): Either[String, CanonicalForm]` | `org.adk4s.record` | spec:add-adk4s-record/call-key |
 
 ## Smithy Models
 
-<!-- Smithy IDL structures driving smithy4s codegen. All live in
-     structured-llm-test-models/src/main/smithy/. These are TEST fixtures,
-     not production domain types — recorded for completeness. This change
-     introduces NO new Smithy models. -->
+<!-- Smithy IDL structures driving smithy4s codegen. Production domain types
+     live in adk4s-record/src/main/smithy/. Test fixtures live in
+     structured-llm-test-models/src/main/smithy/. -->
 
 | Model | Kind | Location | Introduced By |
 |-------|------|----------|---------------|
 | `Resume`, `MarketingCampaign`, `Product`, `Traveler`, `TravelBooking`, `Invoice`, `Attendee`, `EventRegistration`, `Address`, `Shipment`, `SupportTicket`, `Order`, `LoyaltyProgram`, `Patient`, `HealthcareAppointment`, `ProjectTask`, `VehicleInspection`, `Payment`, `CustomerProfile`, `InventoryItem`, `HRCandidate`, `BankTransaction`, `SubscriptionPlan`, `InsuranceClaim` | structure | `structured-llm-test-models/src/main/smithy/*.smithy` | pre-existing |
 | `examples.smithy` shapes | structure | `structured-llm-test-models/src/main/smithy/examples.smithy` | pre-existing |
+| `CanonicalForm` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `CallKind` | enum | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `CanonicalBody` | union | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `ModelBody` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `ToolBody` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `EmbeddingBody` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `CanonicalMessage` | union | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `UserMessage` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `SystemMessage` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `AssistantMessage` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `ToolMessage` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `CanonicalToolCall` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `CanonicalToolDef` | structure | `adk4s-record/src/main/smithy/canonical_form.smithy` | spec:add-adk4s-record/call-key |
+| `Classification` | enum | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `CallRecord` | union | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `SucceededRecord` | structure | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `FailedRecord` | structure | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `RecordPayload` | union | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `ModelPayload` | structure | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `ToolPayload` | structure | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `EmbeddingPayload` | structure | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `RecordedError` | structure | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
+| `ModelToolCall` | structure | `adk4s-record/src/main/smithy/record_form.smithy` | spec:add-adk4s-record/recorder-sink |
 
 ## Property Generators
 
@@ -278,6 +326,28 @@
 | `genHit` | `Gen[MemoryHit]` | `adk4s-memory-api/src/test/.../Generators.scala` | pre-existing — **REUSED** |
 | `genConfig` | `Gen[RetrieverConfig]` | `adk4s-memory-api/src/test/.../Generators.scala` | pre-existing — **REUSED** |
 | `genRoleString`, `genSerializableMessage` | `Gen[String]`, `Gen[SerializableMessage]` | `adk4s-core/src/test/.../MessageTypeDedupSerializationSpec.scala` | pre-existing |
+| `genToolDef` | `Gen[ToolDef]` | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genModelRequest` | `Gen[ModelCallRequest]` | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genRolloutId` | `Gen[RolloutId]` | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genConversation` | `Gen[Conversation]` | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genConversationWithToolCalls` | `Gen[Conversation]` | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genMessage`, `genTurn`, `genUserMessage`, `genSystemMessage`, `genAssistantMessageNoTools`, `genAssistantMessageWithTools`, `genToolCall`, `genToolMessage` | `Gen[Message]`, `Gen[List[Message]]`, etc. | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genRequestMutationPair`, `genRequestMutation`, `removeToolGen`, `changeSchemaGen` | `Gen[(ModelCallRequest, RequestMutation)]`, `Gen[RequestMutation]` | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genNonAffectingMutationPair`, `genNonAffectingMutation` | `Gen[(ModelCallRequest, NonAffectingMutation)]`, `Gen[NonAffectingMutation]` | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genRolloutPair` | `Gen[(ModelCallRequest, Option[RolloutId], Option[RolloutId])]` | `adk4s-record/src/test/.../CallKeySpec.scala` | spec:add-adk4s-record/call-key |
+| `genCallKey` | `Gen[CallKey]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genClassification` | `Gen[Classification]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genCallKind` | `Gen[CallKind]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genRecordedError` | `Gen[RecordedError]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genModelPayload` | `Gen[ModelPayload]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genToolPayload` | `Gen[ToolPayload]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genEmbeddingPayload` | `Gen[EmbeddingPayload]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genRecordPayload` | `Gen[RecordPayload]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genSucceededRecord` | `Gen[CallRecord]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genFailedRecord` | `Gen[CallRecord]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genCallRecord` | `Gen[CallRecord]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genSeqOps` | `Gen[List[RecorderOp]]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
+| `genBoundedOps` | `Gen[List[(CallKey, CallRecord)]]` | `adk4s-record/src/test/.../RecorderSpec.scala` | spec:add-adk4s-record/recorder-sink |
 
 > This change will add new Hedgehog generators for `MemoryPolicy` and
 > `List[MemoryHit]` rendering in
@@ -357,29 +427,77 @@ The following 3 concepts were introduced by `spec:add-eval-core/llm-judges` and 
 | `CompleteAndGroundedJudge` | case class | `org.adk4s.eval` | shipped |
 | `Judges` | object (factory) | `org.adk4s.eval` | shipped |
 
+### add-adk4s-record change — call-key spec concepts
+
+The following concepts were introduced by `spec:add-adk4s-record/call-key` and are now in the main tables above. Recorded here for provenance:
+
+| Type | Kind | Package | Status |
+|------|------|---------|--------|
+| `CallKey` | opaque type | `org.adk4s.record` | shipped |
+| `RolloutId` | Iron RefinedType (`String :| NonEmpty`) | `org.adk4s.record` | shipped |
+| `CallKind` | generated enum (Smithy IDL) | `org.adk4s.record.canonical` | shipped |
+| `CanonicalForm` | generated case class (Smithy IDL) | `org.adk4s.record.canonical` | shipped |
+| `CanonicalBody` | generated union (Smithy IDL) | `org.adk4s.record.canonical` | shipped |
+| `CanonicalMessage` | generated union (Smithy IDL) | `org.adk4s.record.canonical` | shipped |
+| `ModelBody`, `ToolBody`, `EmbeddingBody` | generated structures (Smithy IDL) | `org.adk4s.record.canonical` | shipped |
+| `UserMessage`, `SystemMessage`, `AssistantMessage`, `ToolMessage` | generated structures (Smithy IDL) | `org.adk4s.record.canonical` | shipped |
+| `CanonicalToolCall`, `CanonicalToolDef` | generated structures (Smithy IDL) | `org.adk4s.record.canonical` | shipped |
+| `RequestMutation` | enum | `org.adk4s.record` | shipped |
+| `NonAffectingMutation` | enum | `org.adk4s.record` | shipped |
+| `ToolDef` | case class | `org.adk4s.record` | shipped |
+| `ModelCallRequest` | case class | `org.adk4s.record` | shipped |
+| `Canonicalization` | object (pure functions) | `org.adk4s.record.canonical` | shipped |
+| `CanonicalFormOps` | object (convenience constructors) | `org.adk4s.record` | shipped |
+| `normalizeToolCallIds` | function | `org.adk4s.record.canonical` | shipped |
+| `keyVersion` | val (`Int = 1`) | `org.adk4s.record` | shipped |
+
+### add-adk4s-record change — recorder-sink spec concepts
+
+The following concepts were introduced by `spec:add-adk4s-record/recorder-sink` and are now in the main tables above. Recorded here for provenance:
+
+| Type | Kind | Package | Status |
+|------|------|---------|--------|
+| `RecorderError` | sealed trait (extends AdkError) | `org.adk4s.core.error` | shipped |
+| `RecorderError.SinkWriteFailed` | case class | `org.adk4s.core.error` | shipped |
+| `RecorderError.SinkReadFailed` | case class | `org.adk4s.core.error` | shipped |
+| `RecorderError.CodecFailed` | case class | `org.adk4s.core.error` | shipped |
+| `Recorder[F[_]]` | service trait | `org.adk4s.record` | shipped |
+| `NoopRecorder[F[_]]` | class (implements Recorder) | `org.adk4s.record` | shipped |
+| `InMemoryRecorder[F[_]]` | class (implements Recorder) | `org.adk4s.record` | shipped |
+| `FileRecorder[F[_]]` | class (implements Recorder) | `org.adk4s.record.file` | shipped |
+| `RecorderInstances` | object (factory) | `org.adk4s.record` | shipped |
+| `CallRecord` | generated union (Smithy IDL) | `org.adk4s.record` | shipped |
+| `SucceededRecord` | generated case class (Smithy IDL) | `org.adk4s.record` | shipped |
+| `FailedRecord` | generated case class (Smithy IDL) | `org.adk4s.record` | shipped |
+| `RecordPayload` | generated union (Smithy IDL) | `org.adk4s.record` | shipped |
+| `ModelPayload` | generated case class (Smithy IDL) | `org.adk4s.record` | shipped |
+| `ToolPayload` | generated case class (Smithy IDL) | `org.adk4s.record` | shipped |
+| `EmbeddingPayload` | generated case class (Smithy IDL) | `org.adk4s.record` | shipped |
+| `RecordedError` | generated case class (Smithy IDL) | `org.adk4s.record` | shipped |
+| `ModelToolCall` | generated case class (Smithy IDL) | `org.adk4s.record` | shipped |
+| `Classification` | generated enum (Smithy IDL) | `org.adk4s.record` | shipped |
+| `Redaction` | type alias (`RecordPayload => RecordPayload`) | `org.adk4s.record` | spec:add-adk4s-record/recorded-wrappers |
+| `RecordedChatModel` | object/factory (`ChatModel[F]` decorator) | `org.adk4s.record` | spec:add-adk4s-record/recorded-wrappers |
+| `RecordedEmbedder` | object/factory (`Embedder[F]` decorator) | `org.adk4s.record` | spec:add-adk4s-record/recorded-wrappers |
+| `RecordingToolMiddleware` | object/factory (`ToolMiddleware` factory) | `org.adk4s.record` | spec:add-adk4s-record/recorded-wrappers |
+| `ModelPayloadOps` | object (convenience constructor) | `org.adk4s.record` | spec:add-adk4s-record/recorded-wrappers |
+| `RecorderLaws` | class (Hedgehog property testkit, 13 laws RL0–RL12) | `org.adk4s.record` | spec:add-adk4s-record/recorder-laws |
+
 ## Consistency Check
 
-**Last verified: 2026-08-08** (by `add-correctness-substratum`), using the
+**Last verified: 2026-08-15** (by `add-adk4s-record/recorder-sink`), using the
 SEMANTIC scanner — `scanner/scan.sh` (scala-cli 1.5.0 + Scalameta).
 
 - **Scanner status**: ✅ **WORKS multi-module.** Run result:
-  `7 opaque types, 63 sealed types, 294 case classes, 15 service traits,
-  45 smithy models, 123 generators`; 0 parse failures reported.
-- **Opaque types**: scanner set matches this inventory's table **exactly, 7/7**
-  — `ToolSchema`, `RunPath`, `NodeKey`, `FieldPath`, `StateCell.CellId`,
-  `MiddlewareName`, `Schema`.
-- **Opaque type constraints**: confirmed NO Iron/refined library in the stack;
-  all 7 are plain newtypes without constraints.
+  `6 opaque types, 76 sealed types, 346 case classes, 18 service traits,
+  62 smithy models, 228 generators`; 0 parse failures reported.
+  (Note: scanner counts source files only; generated smithy4s types in
+  `target/` are not counted — they are tracked via the Smithy Models table.)
+- **Delta from call-key (spec 2)**: +1 sealed trait (RecorderError), +1 service trait (Recorder), +7 smithy models (record_form.smithy structures), +13 generators (RecorderSpec.scala).
 - **Package paths**: all recorded package paths match real `package` clauses
   in the scanned sources (`org.adk4s.core.*`, `org.adk4s.orchestration.*`,
   `org.adk4s.memory`, `org.adk4s.memory.testkit`, `org.adk4s.structured.*`,
-  `org.adk4s.harness`, `org.adk4s.eval`).
-- **Memory-api entries**: cross-checked against
-  `adk4s-memory-api/src/main/scala/org/adk4s/memory/*.scala` — `AgentMemory`,
-  `Episode`, `SourceType`, `EpisodeOutcome`, `MemoryHit`, `TemporalScope`,
-  `InMemoryAgentMemory`, `MemoryRetriever` all present and shipped.
-- **Generators**: `adk4s-memory-api/src/test/scala/org/adk4s/memory/Generators.scala`
-  contains every generator listed above.
+  `org.adk4s.harness`, `org.adk4s.eval`, `org.adk4s.record`, `org.adk4s.record.file`).
 - **Discrepancies in the TABLES**: none.
 
 <!-- CORRECTED 2026-08-08. Two prose claims here were stale and one of them was

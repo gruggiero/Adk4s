@@ -166,6 +166,16 @@ ledger_field() { # $1=field
 }
 
 # spec: ambient-evidence-capture — Scenario: a danger-scan invocation is a ring shape
+#
+# AMENDED (ambient-capture wiring): this scenario asserted `ring=R8`, which was
+# wrong in a way the scenario's own words do not require — the Then clause says
+# only "a row is appended for the danger-scan ring", and R8 is the ADVERSARIAL
+# REVIEW ring, a judgment a fresh-context agent renders. danger-scan.sh is a
+# static scan. Filing it as R8 made every scan assert a review that never
+# happened, and R8 additionally carries the fresh-context mandate, so the row
+# claimed provenance it could not have. R1 (static analysis) is what the
+# command actually is; the scenario's intent — a danger-scan invocation
+# produces a row — is unchanged and still asserted.
 @test "a danger-scan invocation is a ring shape" {
   mk_repo
   run_gate --event post-bash --command "openspec/schemas/verified-scala3/scanner/danger-scan.sh abc1234" --exit 0 --format text
@@ -174,8 +184,8 @@ ledger_field() { # $1=field
     printf 'expected at least 1 ledger row for danger-scan, got %s\n' "$(ledger_count)" >&2
     return 1
   }
-  [ "$(ledger_field ring)" = "R8" ] || {
-    printf 'expected ring=R8 for danger-scan, got %s\n' "$(ledger_field ring)" >&2
+  [ "$(ledger_field ring)" = "R1" ] || {
+    printf 'expected ring=R1 (static analysis) for danger-scan, got %s\n' "$(ledger_field ring)" >&2
     return 1
   }
 }

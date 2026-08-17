@@ -115,6 +115,30 @@ case class ConfigError(field: String, invalidValue: String, constraint: String) 
 case class GraphCompilationError(errors: List[AdkError]) extends AdkError:
   def message: String = s"Graph compilation failed (${errors.length} error(s)): ${errors.map(_.message).mkString(", ")}"
 
+/**
+ * Typed error for recorder sink failures (write/read/codec).
+ *
+ * Carries the failing operation context. `SinkWriteFailed` and
+ * `SinkReadFailed` wrap the underlying I/O cause; `CodecFailed` carries
+ * the malformed input string for diagnostics.
+ *
+ * spec: add-adk4s-record/recorder-sink — Requirement: Recorder is an effect-polymorphic sink algebra
+ */
+sealed trait RecorderError extends AdkError
+
+object RecorderError:
+  case class SinkWriteFailed(cause: Throwable) extends RecorderError:
+    initCause(cause)
+    def message: String =
+      s"Recorder sink write failed: ${Option(cause).map(_.getMessage).getOrElse("unknown")}"
+
+  case class SinkReadFailed(cause: Throwable) extends RecorderError:
+    initCause(cause)
+    def message: String =
+      s"Recorder sink read failed: ${Option(cause).map(_.getMessage).getOrElse("unknown")}"
+
+  case class CodecFailed(message: String, input: String) extends RecorderError
+
 object AdkError:
   given Show[AdkError] = Show.show(_.message)
 

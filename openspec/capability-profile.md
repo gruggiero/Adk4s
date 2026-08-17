@@ -21,7 +21,7 @@
 | Scala version | 3.8.4 (main modules); 3.7.2 (`verified` module — Stainless frontend pin) | build.sbt, project/Versions.scala |
 | sbt version | 1.12.12 | project/build.properties |
 | JDK | 26 (Homebrew OpenJDK) | runtime |
-| Modules | 12: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-harness-api`, `adk4s-harness-testkit`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `verified` (leaf, not aggregated) | build.sbt |
+| Modules | 13: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-harness-api`, `adk4s-harness-testkit`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `adk4s-record`, `verified` (leaf, not aggregated) | build.sbt |
 | Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule). Any change extending a sealed ADT (e.g. `AgentEvent`, `AdkError`) MUST handle the new variant in every existing match or Ring 0 fails. | build.sbt scala3Options |
 | scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, exhaustiveness `-Wconf` escalations (shared via `scala3Options` val) | build.sbt |
 | Dependency management | Centralized: `project/Versions.scala` (all versions), `project/Dependencies.scala` (all ModuleIDs), `build.sbt` imports `Dependencies._` | project/*.scala |
@@ -30,11 +30,12 @@
 ### Module dependency graph (current)
 
 ```
-adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models
+adk4s-examples → adk4s-core, adk4s-orchestration, structured-llm, structured-llm-test-models, adk4s-eval
 adk4s-examples % Test → adk4s-memory-testkit                (test-scope — FileBackedAgentMemorySpec laws; landed by archived 2026-07-26-add-cross-run-memory-example)
 adk4s-eval → structured-llm                                  (eval harness; landed by add-eval-core)
 adk4s-eval % Test → cats-effect-testkit                      (TestControl for deterministic concurrency)
-adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api
+adk4s-orchestration → adk4s-core, structured-llm, adk4s-memory-api, adk4s-harness-api, adk4s-harness-testkit % Test
+adk4s-record → adk4s-core, verified % Test                   (deterministic call recording; landed by add-adk4s-record spec 1)
 adk4s-harness-api → adk4s-core, verified % Test               (Ring 6 bridge wired)
 adk4s-harness-testkit → adk4s-harness-api, verified % Test     (main-scope munit — middleware laws)
 adk4s-optimize → structured-llm, verified % Test              (Ring 6 bridge; landed by archived 2026-08-01-add-optimizable-surface)
@@ -59,7 +60,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | JSON (internal currency) | smithy4s `Document` (aliased as `JsonValue`) | 0.18.55 | `JsonValue` (= `smithy4s.Document`) is ADK4S's internal JSON currency, introduced by the archived `migrate-json-codec` change (2026-08-06). `JsonValue` is defined in `adk4s-core/src/main/scala/org/adk4s/core/json/JsonValue.scala`; `JsonValueCodec` bridges to/from `ujson.Value` at the llm4s boundary. `InterruptSignal.Stateful.state` is `JsonValue`; `Retriever.Document.metadata` is `Map[String, JsonValue]`. |
 | JSON (llm4s boundary) | upickle / ujson | 4.4.3 (explicitly declared; MUST match llm4s 0.3.4 transitive) | `ujson.Value` is confined to the llm4s boundary (`org.adk4s.core.json`, `org.adk4s.core.tools`) by Scalafix `NoUjsonIn*` rules. NOT circe. |
 | IDL / codegen | smithy4s (core + json) | 0.18.55 | Compile dep in structured-llm; sbt-codegen plugin on structured-llm-test-models. NOT touched by this change. |
-| Refined types | Iron | (see build.sbt `adk4s-harness-api` deps) | `MiddlewareName` (`NonEmpty`), `StateCell.CellId` (`NonEmpty & Match["[^/]+/[^/]+"]`). Used in `adk4s-harness-api` for type-safe identifiers. |
+| Refined types | Iron (`iron` + `iron-cats`) + `iron-upickle` | 3.3.2 | Used in `structured-llm`, `adk4s-core`, `adk4s-harness-api` (full `iron` + `ironUpickle`); `adk4s-orchestration` (`ironUpickle` only). Established refined newtypes: `NodeKey` (`NonEmpty & Not[Reserved]`), `Positive`/`NonNegative` (`numeric.Positive`/`Positive0`), `MiddlewareName` (`NonEmpty`), `StateCell.CellId` (`NonEmpty & Match["[^/]+/[^/]+"]`), `CheckpointStore.CheckpointId` (`NonEmpty`). The `add-iron-refined-types` change migrated the project's newtypes to Iron. `iron-cats` provides Eq/Show/Order instances. |
 | Telemetry | none | — | No otel4s/Daut. Ring 9 skip. |
 | LLM client | llm4s core | 0.3.4 (Maven Central) | `LLMClient`, `Conversation`, `Message` (`UserMessage`/`AssistantMessage`/`SystemMessage`/`ToolMessage`), `CompletionOptions`, `ToolFunction`, `ToolRegistry`, `Result[A]`. |
 | Workflow engine | workflows4s-core | 0.6.2 (Maven Central) | WIO monad, WorkflowContext, event sourcing. workflows4s-bpmn 0.6.2 in examples only. NOT touched by this change. |
@@ -79,7 +80,7 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Property testing | Hedgehog 0.13.1 (hedgehog-munit % Test) | Properties extend `hedgehog.munit.HedgehogSuite` with `property("…") { for x <- gen.forAll yield <Result> }`. Integrated shrinking, NO `Arbitrary` typeclass, explicit `Range` sizing. NOT ScalaCheck/munit-scalacheck. Coverage ASSERTIONS via Hedgehog `cover` (fails when a label's percentage is unmet); seed-fixing via Hedgehog fixed `Seed`. |
 | Deterministic concurrency test kit | cats-effect `TestControl` (`cats.effect.unsafe.TestControl`) | Available transitively via cats-effect 3.7.0 (no extra dep needed). Any change touching concurrency/timeouts/cancellation/interruption MUST use `TestControl` to drive `IO` deterministically — never wall-clock sleeps. munit-cats-effect provides `munit.CatsEffectSuite` for IO assertions. |
 | Actor test kits | N/A | No actor framework detected |
-| Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list (currently `**/harness/HarnessState.scala`, stryker4s.conf:12) — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. Ring 5 covers **Scala only**: there is no mutation tooling for the workflow's bash scripts. |
+| Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list (currently 5 `adk4s-harness-testkit` files: `AgentMiddlewareLaws`, `SemilatticeLaws`, `SimpleHarnessLoop`, `DeterministicChatModel`, `Generators`) — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. Ring 5 covers **Scala only**: there is no mutation tooling for the workflow's bash scripts. |
 | Formal verification | Stainless (bundled jar + local Maven repo) | **Frontend Scala version**: 3.7.2 (the `verified` leaf module is pinned to it; the rest of the build stays on 3.8.4 — a version mismatch is NOT "Ring 6 unavailable", it is why the mirror is a separately-pinned leaf). **Mirror module**: `verified/` exists (StainlessPlugin, `stainlessEnabled := false` by default, not aggregated); alias `sbt -J-Xmx6g ring6`. **Contents**: `PredictorKernel` (predictor-enumeration mirror, landed by archived `2026-08-01-add-optimizable-surface`). `adk4s-optimize dependsOn(verified % Test)` is wired; `PredictorModelBridgeSpec` bridge test runs in `adk4s-optimize/test`. Stainless 0.9.9.3 with smt-z3 fallback (Z3 4.13.4). Candidate kernels for future changes: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation. |
 | Model checking | none | No TLA+/Apalache. Ring 7 skip. |
 | Memory test double | `InMemoryAgentMemory` (adk4s-memory-api, main scope) | Used as the `AgentMemory[IO]` implementation in hook tests — no LLM, no network. |

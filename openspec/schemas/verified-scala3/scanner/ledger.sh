@@ -77,6 +77,7 @@ esac
 
 FILE="" CHANGE="" SPEC="" RING="" OBLIGATION="" ARTIFACT="" COMMAND="" EXIT="" BASELINE=""
 SESSION=""
+SOURCE=""
 FORGIVE_UNCHANGED=0
 RUN_COMMAND=""
 
@@ -152,6 +153,18 @@ while [ $# -gt 0 ]; do
       SESSION="$2"
       shift 2
       ;;
+    # Only the gate passes this, and only on the ambient path. `run` mode
+    # rejects it: a run row's observer is the script itself, recorded by the
+    # digest it computes, and letting a caller ALSO label it would create two
+    # disagreeing statements of who watched the command.
+    --source)
+      if [ "$SUB" = "run" ]; then
+        die_finding "run mode does not accept --source; a run row is self-observed"
+      fi
+      need_value --source "$#"
+      SOURCE="$2"
+      shift 2
+      ;;
     --forgive-unchanged)
       FORGIVE_UNCHANGED=1
       shift
@@ -222,38 +235,28 @@ case "$SUB" in
     if [ "$RING" = "R8" ] && [ -z "$SESSION" ]; then
       die_finding "session is required for R8 (adversarial-review) rows — pass --session with the producing session's identity"
     fi
-    if [ "$RING" = "R8" ] && [ -n "$SESSION" ]; then
-      record="$(jq -c -n \
-        --argjson v "$SUPPORTED_V" \
-        --arg ts "$ts" \
-        --arg change "$CHANGE" \
-        --arg spec "$SPEC" \
-        --arg ring "$RING" \
-        --arg obligation "$OBLIGATION" \
-        --arg artifact "$ARTIFACT" \
-        --arg command "$COMMAND" \
-        --argjson exit "$EXIT" \
-        --arg baseline "$BASELINE" \
-        --arg session "$SESSION" \
-        '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
-          obligation:$obligation, artifact:$artifact, command:$command,
-          exit:$exit, baseline:$baseline, session:$session}' 2>/dev/null)"
-    else
-      record="$(jq -c -n \
-        --argjson v "$SUPPORTED_V" \
-        --arg ts "$ts" \
-        --arg change "$CHANGE" \
-        --arg spec "$SPEC" \
-        --arg ring "$RING" \
-        --arg obligation "$OBLIGATION" \
-        --arg artifact "$ARTIFACT" \
-        --arg command "$COMMAND" \
-        --argjson exit "$EXIT" \
-        --arg baseline "$BASELINE" \
-        '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
-          obligation:$obligation, artifact:$artifact, command:$command,
-          exit:$exit, baseline:$baseline}' 2>/dev/null)"
-    fi
+    # ONE builder, with the optional fields merged in when they are set —
+    # not one branch per combination. Two hand-copied field lists were
+    # already free to drift from each other; a third (source) would have made
+    # four, and the drift would show up as a row silently missing a field.
+    record="$(jq -c -n \
+      --argjson v "$SUPPORTED_V" \
+      --arg ts "$ts" \
+      --arg change "$CHANGE" \
+      --arg spec "$SPEC" \
+      --arg ring "$RING" \
+      --arg obligation "$OBLIGATION" \
+      --arg artifact "$ARTIFACT" \
+      --arg command "$COMMAND" \
+      --argjson exit "$EXIT" \
+      --arg baseline "$BASELINE" \
+      --arg session "$SESSION" \
+      --arg source "$SOURCE" \
+      '{v:$v, ts:$ts, change:$change, spec:$spec, ring:$ring,
+        obligation:$obligation, artifact:$artifact, command:$command,
+        exit:$exit, baseline:$baseline}
+       + (if $session != "" then {session:$session} else {} end)
+       + (if $source  != "" then {source:$source}  else {} end)' 2>/dev/null)"
     [ -n "$record" ] || die_finding "could not build a record from the given values"
 
     err="$(contract_error "$record")"

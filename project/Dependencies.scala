@@ -126,9 +126,6 @@ object Dependencies {
   val smithy4sCodegen: ModuleID =
     "com.disneystreaming.smithy4s" % "smithy4s-sbt-codegen" % Versions.Smithy4s
 
-  val scalafixRules: ModuleID =
-    "ch.epfl.scala" %% "scalafix-rules" % Versions.ScalafixRules
-
   val sbtWartremover: ModuleID =
     "org.wartremover" % "sbt-wartremover" % Versions.SbtWartremover
 

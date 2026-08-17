@@ -230,12 +230,43 @@ COMPLETION_CLAIM='## ✓ Spec 3/6 complete: chain-state'
 RING_ONLY_TEXT='Ring 8: fresh-context review PASS. Continuing with the remaining work.'
 NO_CLAIM_TEXT='Still investigating the failing test, will report back shortly.'
 
+# ── how a turn ASSERTS COMPLETION ────────────────────────────────────────
+# The requirement is unchanged: completion is refused when the turn asserts a
+# checkpoint/spec/ring result and the chain is not discharged. What changed is
+# how the gate DETECTS that assertion. It used to match text in the turn
+# transcript; it now reads the checkpoint presentation marker that
+# checkpoint.sh's own output produces. Text matching was approximate by
+# construction — the spec's own obligation table recorded that as an accepted
+# limit — and it failed twice in practice (a case-sensitive regex missed
+# "COMPLETE"; a tight pattern missed "Spec 3/7: recorder-sink — COMPLETE").
+#
+# So these tests construct the claim the way the gate now recognises one.
+# --turn-text no longer carries any meaning for the trigger and is dropped
+# from the completion tests rather than left in to look load-bearing.
+#
+# NOTE on the turn-kind domain: the spec enumerates three kinds {asserts
+# completion, asserts a ring result, asserts nothing}. Under a deterministic
+# trigger the last two are realised IDENTICALLY (no marker) — the distinction
+# only ever existed because a text heuristic could confuse them. The
+# enumeration is kept because it is the spec's stated domain, and the case it
+# guards (ring-result language must not read as a completion claim) is now
+# true by construction rather than by pattern.
+claim_completion() { # $1=session — mark this turn as asserting completion
+  local gitdir state encoded
+  gitdir="$(cd "$FX" && git rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+  state="$gitdir/verified-scala3-gate"
+  mkdir -p "$state"
+  encoded="$(printf '%s' "$1" | jq -Rr '@base64' | tr '+/=' '-_.')"
+  printf 'deadbeef' >"$state/presentation-some-change-only-$encoded"
+}
+
 # spec: hook-tiers — Scenario: a completion claim with unresolved requirements is refused
 @test "a completion claim with unresolved requirements is refused and names them" {
   mk_repo
   fake_chain_state "$(cs_report 2)"
+  claim_completion "sess-refuse-1"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-refuse-1" --format text
+    --session "sess-refuse-1" --format text
   assert_status 1 "$status" "a completion claim over unresolved requirements is a finding"
   assert_contains "$output" "Req 0" "the refusal must name the unresolved requirements"
   assert_contains "$output" "Req 1" "the refusal must name the unresolved requirements"
@@ -245,8 +276,9 @@ NO_CLAIM_TEXT='Still investigating the failing test, will report back shortly.'
 @test "a completion claim with a fully discharged chain proceeds" {
   mk_repo
   fake_chain_state "$(cs_report 0)"
+  claim_completion "sess-proceed-1"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-proceed-1" --format text
+    --session "sess-proceed-1" --format text
   assert_status 0 "$status" "a fully discharged completion claim must proceed"
 }
 
@@ -273,8 +305,9 @@ NO_CLAIM_TEXT='Still investigating the failing test, will report back shortly.'
 @test "undetermined chain state refuses completion with a distinct reason" {
   mk_repo
   fake_chain_state "$(cs_undetermined)" 2
+  claim_completion "sess-undetermined-1"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-undetermined-1" --format text
+    --session "sess-undetermined-1" --format text
   assert_status 2 "$status" "undetermined evidence must never permit completion"
   assert_contains "$output" "could not be determined" "the reason must say evidence could not be determined"
   assert_not_contains "$output" "unresolved requirement" "must not be worded as an unresolved-requirements refusal"
@@ -288,11 +321,13 @@ NO_CLAIM_TEXT='Still investigating the failing test, will report back shortly.'
 @test "a second completion attempt in the same turn proceeds after the first refusal" {
   mk_repo
   fake_chain_state "$(cs_report 3)"
+  claim_completion "sess-bounded-1"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-bounded-1" --format text
+    --session "sess-bounded-1" --format text
   assert_status 1 "$status" "the first attempt is refused"
+  claim_completion "sess-bounded-1"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-bounded-1" --format text
+    --session "sess-bounded-1" --format text
   assert_status 0 "$status" "the second attempt in the same turn must proceed, not refuse again"
 }
 
@@ -300,12 +335,15 @@ NO_CLAIM_TEXT='Still investigating the failing test, will report back shortly.'
 @test "a new turn (marked by prompt-submit) is refused again if still unresolved" {
   mk_repo
   fake_chain_state "$(cs_report 3)"
+  claim_completion "sess-bounded-2"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-bounded-2" --format text
+    --session "sess-bounded-2" --format text
   assert_status 1 "$status" "the first attempt is refused"
+  claim_completion "sess-bounded-2"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event prompt-submit --session "sess-bounded-2" --format text >/dev/null
+  claim_completion "sess-bounded-2"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-bounded-2" --format text
+    --session "sess-bounded-2" --format text
   assert_status 1 "$status" "a genuinely new turn must be evaluated fresh, not silently allowed by stale refusal state"
 }
 
@@ -321,15 +359,17 @@ NO_CLAIM_TEXT='Still investigating the failing test, will report back shortly.'
 @test "hook-json format signals a refusal via decision:block on exit 0, for both refusal reasons" {
   mk_repo
   fake_chain_state "$(cs_report 2)"
+  claim_completion "sess-hookjson-unresolved"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-hookjson-unresolved" --format hook-json
+    --session "sess-hookjson-unresolved" --format hook-json
   assert_status 0 "$status" "hook-json must exit 0 so Claude Code actually reads the JSON decision"
   assert_contains "$output" '"decision":"block"' "the refusal must be signalled via decision:block, not exit code alone"
   assert_contains "$output" "Req 0" "the unresolved requirements must still be named in the reason"
 
   fake_chain_state "$(cs_undetermined)" 2
+  claim_completion "sess-hookjson-undetermined"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-hookjson-undetermined" --format hook-json
+    --session "sess-hookjson-undetermined" --format hook-json
   assert_status 0 "$status" "hook-json must exit 0 for the undetermined refusal too"
   assert_contains "$output" '"decision":"block"' "the undetermined refusal must also be signalled via decision:block"
   assert_contains "$output" "could not be determined" "the reason must remain distinct in hook-json format too"
@@ -338,8 +378,9 @@ NO_CLAIM_TEXT='Still investigating the failing test, will report back shortly.'
 @test "hook-json format emits nothing (no decision field) when completion proceeds" {
   mk_repo
   fake_chain_state "$(cs_report 0)"
+  claim_completion "sess-hookjson-allow"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --session "sess-hookjson-allow" --format hook-json
+    --session "sess-hookjson-allow" --format hook-json
   assert_status 0 "$status" "allow is exit 0"
   assert_not_contains "$output" "decision" "a proceeding turn must carry no decision field at all — silence where it does not apply"
 }
@@ -360,46 +401,55 @@ NO_CLAIM_TEXT='Still investigating the failing test, will report back shortly.'
   local i
   for i in 1 2 3; do
     CHAIN_STATE_OVERRIDE="$FAKE_CS" run env -u CLAUDE_CODE_SESSION_ID "$GATE" --repo "$no_git_fx" \
-      --event completion --turn-text "$COMPLETION_CLAIM" --session "sess-nogit-1" --format text
+      --event completion --session "sess-nogit-1" --format text
     assert_status 0 "$status" "attempt $i must not block: refusing without a bounding mechanism is not safe, so this event fails open"
   done
 }
 
-# FOUND at Ring 8: `tail -c 20000` AFTER extracting every string from the
-# transcript tail silently dropped a genuine, exact, unparaphrased
-# completion claim whenever enough OTHER text (e.g. a large tool-call
-# argument) followed it in the same window, pushing the claim itself out of
-# what was kept. This constructs exactly that shape via the real stdin/
-# transcript path (not --turn-text, which bypasses extraction entirely).
-@test "a genuine completion claim is not dropped by transcript-extraction truncation" {
+# SUPERSEDED MECHANISM, PRESERVED CONCERN. The original test guarded a real
+# Ring 8 finding: `tail -c 20000` applied AFTER extracting every string from
+# the transcript dropped a genuine completion claim whenever enough other text
+# followed it in the same window. That extraction no longer exists — the
+# trigger is the checkpoint presentation marker — so the specific truncation
+# it described is unreachable.
+#
+# The CONCERN behind it is not obsolete, and deleting the test would quietly
+# discard it: a genuine claim must never go undetected because of what else
+# the turn happens to contain. Restated against the current mechanism, and
+# made stronger by it — detection must be independent of transcript content
+# entirely, so the case that used to fail (a real claim buried under bulk
+# output) is now asserted to pass with no claim text present at all.
+@test "a genuine completion claim is detected regardless of transcript content" {
   mk_repo
   fake_chain_state "$(cs_report 2)"
   local transcript="$BATS_TEST_TMPDIR/transcript.jsonl"
   {
-    printf '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$COMPLETION_CLAIM"
-    # a large amount of trailing string content in the SAME transcript tail
-    # window, simulating a big tool-call argument after the claim
+    # bulk output and NO claim phrasing anywhere: under the old text trigger
+    # this shape is precisely what hid a real claim.
     python3 -c "import json; print(json.dumps({'type':'message','message':{'role':'assistant','content':[{'type':'tool_use','input':{'content':'x'*25000}}]}}))" 2>/dev/null \
       || printf '{"type":"message","message":{"role":"assistant","content":[{"type":"tool_use","input":{"content":"%s"}}]}}\n' "$(printf 'x%.0s' $(seq 1 25000))"
   } >"$transcript"
+  claim_completion "sess-transcript-1"
   payload="$(jq -nc --arg tp "$transcript" '{stop_hook_active:false, transcript_path:$tp}')"
   run bash -c "CHAIN_STATE_OVERRIDE='$FAKE_CS' '$GATE' --repo '$FX' --event completion --session sess-transcript-1 --format text <<<'$payload'"
-  assert_status 1 "$status" "the claim must still be detected despite trailing content in the same transcript window"
+  assert_status 1 "$status" "the claim must be detected from the checkpoint marker, whatever the transcript holds"
 }
 
 @test "stop_hook_active always allows, bypassing refusal entirely" {
   mk_repo
   fake_chain_state "$(cs_report 3)"
+  claim_completion "sess-active-1"
   CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-    --turn-text "$COMPLETION_CLAIM" --stop-hook-active true --session "sess-active-1" --format text
+    --stop-hook-active true --session "sess-active-1" --format text
   assert_status 0 "$status" "stop_hook_active true means the harness is already re-invoking after a prior block"
 }
 
 @test "the completion gate respects VERIFIED_SCALA3_HOOKS=off" {
   mk_repo
   fake_chain_state "$(cs_report 3)"
+  claim_completion "sess-off-1"
   run env -u CLAUDE_CODE_SESSION_ID VERIFIED_SCALA3_HOOKS=off CHAIN_STATE_OVERRIDE="$FAKE_CS" \
-    "$GATE" --repo "$FX" --event completion --turn-text "$COMPLETION_CLAIM" --session "sess-off-1" --format text
+    "$GATE" --repo "$FX" --event completion --session "sess-off-1" --format text
   assert_status 0 "$status" "the escape hatch must disable the completion gate too"
 }
 
@@ -528,8 +578,12 @@ EOF
       else
         fake_chain_state "$(cs_report "$n")"
       fi
+      # "asserts completion" is now the checkpoint marker, not the turn text.
+      # The other two kinds are realised by its ABSENCE — see the note at
+      # claim_completion for why they collapse to the same construction.
+      [ "$turn_kind" = "claim" ] && claim_completion "sess-prop3-$ti-$si"
       CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-        --turn-text "$turn_text" --session "sess-prop3-$ti-$si" --format text
+        --session "sess-prop3-$ti-$si" --format text
       local should_refuse=0
       if [ "$turn_kind" = "claim" ] && [ "$state_name" != "full" ]; then
         should_refuse=1
@@ -559,9 +613,10 @@ EOF
   for n in 1 2 3 5; do
     local refusals=0 i
     local session="sess-prop4-$n"
+    claim_completion "$session"
     for i in $(seq 1 "$n"); do
       CHAIN_STATE_OVERRIDE="$FAKE_CS" run_gate --event completion \
-        --turn-text "$COMPLETION_CLAIM" --session "$session" --format text
+        --session "$session" --format text
       [ "$status" -eq 0 ] || refusals=$((refusals + 1))
     done
     # FOUND while confirming RED polarity: asserting only "<= 1" is

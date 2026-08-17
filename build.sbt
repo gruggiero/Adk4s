@@ -15,7 +15,11 @@ ThisBuild / libraryDependencySchemes ++= Seq(
 )
 
 // --- scalafix ---
-ThisBuild / scalafixDependencies += scalafixRules
+// Note: built-in rules (DisableSyntax, RemoveUnused, OrganizeImports) are
+// already included transitively in scalafix-cli, which fetchAndClassloadInstance
+// fetches automatically. Do NOT add scalafix-rules as a scalafixDependency —
+// scalafix 0.14.x publishes it with CrossVersion.full only, and %% (binary)
+// resolution fails. scalafixDependencies is for CUSTOM external rules only.
 ThisBuild / scalafixOnCompile := false  // Disabled for now
 Test / scalafix / unmanagedSources := Seq.empty
 
@@ -45,6 +49,8 @@ lazy val scala3Options: Seq[String] = Seq(
   "-feature",
   "-unchecked",
   "-Xkind-projector:underscores",
+  // Required by scalafix RemoveUnused rule and OrganizeImports.removeUnused
+  "-Wunused:all",
   // Ring 0 exhaustiveness escalation (verified-scala3 schema): an
   // inexhaustive match over a sealed type must fail compilation, not warn —
   // the schema's no-catch-all rules are unenforceable otherwise.
@@ -222,6 +228,39 @@ lazy val `adk4s-eval` = (project in file("adk4s-eval"))
     scalacOptions ++= scala3Options
   )
 
+// ── adk4s-record — deterministic call recording + content-hash caching ────
+// Recording middleware over a pluggable Recorder[F] sink, with canonical
+// content-hash keys (CallKey), three reference backends (noop, inMemory,
+// file), and RecorderLaws (RL0–RL12) in main scope.
+// Depends on adk4s-core for ChatModel, Embedder, ToolMiddleware, JsonValue,
+// AdkError, Iron refined types (NodeKey precedent). Depends on `verified` at
+// Test scope for the Ring 6 bridge (NormalizationModel, RecorderCoherenceModel;
+// TASTy backward compatible: 3.8.4 reads 3.7.2).
+// MUST NOT depend on workflows4s, adk4s-orchestration, adk4s-optimize,
+// adk4s-eval, or logback (Ring 2 purity rule). fs2-io is a module-level
+// dependency but confined to org.adk4s.record.file by convention + import
+// audit scenario; canonicalization (org.adk4s.record.canonical) imports
+// neither fs2 nor cats.effect (AR-REC-1, AR-REC-2).
+// munit + hedgehog-munit are in MAIN scope (not % Test) because RecorderLaws
+// is a downstream-consumable main API — the adk4s-harness-testkit precedent.
+lazy val `adk4s-record` = (project in file("adk4s-record"))
+  .dependsOn(
+    `adk4s-core`,
+    `verified` % Test,
+    `adk4s-harness-testkit` % Test
+  )
+  .settings(
+    name := "adk4s-record",
+    libraryDependencies ++= Seq(
+      catsEffect,
+      munitMain,
+      munitCatsEffect,
+      hedgehogMunitMain
+    ) ++ fs2 ++ smithy4s ++ iron ++ testDeps,
+    scalacOptions ++= scala3Options
+  )
+  .enablePlugins(Smithy4sCodegenPlugin)
+
 lazy val `adk4s-orchestration` = (project in file("adk4s-orchestration"))
   .dependsOn(
     `adk4s-core`,
@@ -247,6 +286,8 @@ lazy val `adk4s-examples` = (project in file("adk4s-examples"))
     `structured-llm`,
     `structured-llm-test-models`,
     `adk4s-eval`,
+    `adk4s-record`,
+    `adk4s-harness-testkit`,
     `adk4s-memory-testkit` % Test
   )
   .settings(
@@ -275,6 +316,16 @@ lazy val `adk4s-examples` = (project in file("adk4s-examples"))
 // backward-compatible). Contains pure-model mirrors of algorithms to verify.
 // Not aggregated by root, so normal builds skip Stainless.
 // Run Ring 6 with: sbt -J-Xmx6g ring6
+
+// Task: merge ScalaZ3 classes + native libs into the Stainless plugin jar.
+// The Stainless plugin's classloader only searches its own jar, so the
+// ScalaZ3 wrapper (z3.Z3Wrapper) must be in the same jar for Inox to
+// detect the native Z3 interface. This task is idempotent: it checks
+// whether the plugin jar already contains z3/Z3Wrapper.class.
+// Returns the path to the merged jar (may be the original if no merge
+// was needed, or a new file if the merge was performed).
+lazy val mergeScalaZ3Plugin = taskKey[java.io.File]("Merge ScalaZ3 into the Stainless plugin jar, returning the merged jar path")
+
 lazy val `verified` = (project in file("verified"))
   .enablePlugins(StainlessPlugin)
   .settings(
@@ -303,17 +354,93 @@ lazy val `verified` = (project in file("verified"))
     publish / skip   := true,
     // Z3 native interface: Stainless 0.9.9.3 uses the ScalaZ3 wrapper (not
     // com.microsoft.z3 directly). The ScalaZ3 jar is not bundled with the
-    // Stainless plugin for Scala 3, so the native Z3 interface is unavailable.
-    // Ring 6 falls back to smt-z3 (Z3 via SMT-LIB subprocess), which is slower
-    // but functional. To enable the native interface, build ScalaZ3 from
-    // source for Scala 3.7.2 and add the jar to unmanagedClasspath.
+    // Stainless plugin for Scala 3, so we build it from source and place it
+    // in verified/unmanaged/. The jar bundles libscalaz3.so, libz3.so, and
+    // libz3java.so for Z3 4.13.4, plus the com.microsoft.z3 Java bindings.
+    //
+    // The native Z3 interface is faster than the smt-z3 fallback (1.4s vs
+    // 2.5s for 111 VCs) and can discharge VCs that the SMT-LIB subprocess
+    // solver times out on.
+    //
+    // The ScalaZ3 classes must be in the SAME jar as the Stainless plugin
+    // because the plugin's classloader only searches its own jar. We merge
+    // the ScalaZ3 jar into the Stainless plugin jar before compilation.
     // See: https://github.com/epfl-lara/ScalaZ3
+    // Build: see /tmp/scalaz3 (modified to use pre-built Z3 4.13.4)
+    stainlessExtraDeps += "ch.epfl.lara" % "scalaz3_3" % "4.13.4"
+      from s"file://${baseDirectory.value / "unmanaged" / "scalaz3_3-4.13.4.jar"}",
+    // Task: merge ScalaZ3 jar into the Stainless plugin jar (idempotent).
+    // Returns the path to the jar that should be used as the -Xplugin: path.
+    // Does NOT depend on scalacOptions (which would create a cycle) — instead
+    // computes the plugin jar path from known build constants.
+    mergeScalaZ3Plugin := {
+      val scalaz3  = baseDirectory.value / "unmanaged" / "scalaz3_3-4.13.4.jar"
+      // The Stainless plugin jar is at:
+      //   <root>/target/scala-<rootScalaVer>/compiler_plugins/
+      //     stainless-dotty-plugin_<verifiedScalaVer>-<stainlessVer>.jar
+      val pluginDir = baseDirectory.value.getParentFile / "target" /
+        s"scala-${Versions.Scala}" / "compiler_plugins"
+      val pluginJar = pluginDir / s"stainless-dotty-plugin_${Versions.ScalaVerified}-0.9.9.3.jar"
+      if (!pluginJar.exists || !scalaz3.exists) {
+        pluginJar  // return original path even if it doesn't exist yet
+      } else {
+        // The merged jar is a new file alongside the original plugin jar.
+        // Check if the merged jar already exists and contains Z3Wrapper.
+        val outJar = pluginJar.getParentFile / (pluginJar.getName.stripSuffix(".jar") + "-merged.jar")
+        val needsMerge = !outJar.exists || {
+          val p = new java.util.jar.JarFile(outJar)
+          val has = p.getEntry("z3/Z3Wrapper.class") != null
+          p.close()
+          !has
+        }
+        if (needsMerge) {
+          val log = streams.value.log
+          log.info(s"Merging ScalaZ3 into Stainless plugin jar: $outJar")
+          val tmpDir = java.nio.file.Files.createTempDirectory("stainless-merge")
+          // Extract both jars into the same temp dir using the jar tool
+          new java.lang.ProcessBuilder("jar", "xf", pluginJar.getAbsolutePath)
+            .directory(tmpDir.toFile).inheritIO().start().waitFor()
+          new java.lang.ProcessBuilder("jar", "xf", scalaz3.getAbsolutePath)
+            .directory(tmpDir.toFile).inheritIO().start().waitFor()
+          // Repackage with 0 compression (fast, avoids corruption issues)
+          new java.lang.ProcessBuilder(
+            "jar", "cf0", outJar.getAbsolutePath,
+            "-C", tmpDir.toFile.getAbsolutePath, "."
+          ).inheritIO().start().waitFor()
+          // Clean up temp dir
+          java.nio.file.Files.walk(tmpDir)
+            .sorted(java.util.Comparator.reverseOrder())
+            .forEach(p => java.nio.file.Files.delete(p))
+          outJar
+        } else {
+          outJar
+        }
+      }
+    },
+    // Override scalacOptions to use the merged plugin jar when stainlessEnabled.
+    // The .value call refers to the PREVIOUS definition (set by the Stainless
+    // plugin), so this is not circular.
+    Compile / scalacOptions := {
+      val opts   = (Compile / scalacOptions).value
+      val merged = mergeScalaZ3Plugin.value
+      if (stainlessEnabled.value) {
+        opts.map { opt =>
+          if (opt.startsWith("-Xplugin:") && opt.contains("stainless-dotty-plugin"))
+            "-Xplugin:" + merged.getAbsolutePath
+          else
+            opt
+        }
+      } else opts
+    }
   )
 
 // Ring 6 — run Stainless verification (needs a big heap; z3 single-threaded).
 // The smt-z3 fallback solver requires the z3 binary in PATH:
 //   PATH=/home/gruggiero/opt/z3-4.13.4/z3-4.13.4-x64-glibc-2.35/bin:$PATH \
 //   sbt -J-Xmx6g ring6
+// The mergeScalaZ3Plugin task runs automatically as part of scalacOptions
+// evaluation, merging the ScalaZ3 native Z3 wrapper into the Stainless
+// plugin jar before compilation.
 addCommandAlias(
   "ring6",
   "; set verified / stainlessEnabled := true ; verified / compile"

@@ -56,12 +56,13 @@ object StackKernel:
    */
   @pure
   def project(parent: State, cells: List[Cell]): State =
-    cells.foldLeft(empty)((child, cell) =>
-      cell.visibility match
-        case PrivateV()   => child.updated(cell.id, cell.initial)
-        case InheritedV() => child.updated(cell.id, parent.getOrElse(cell.id, cell.initial))
-        case SharedV(_)   => child.updated(cell.id, parent.getOrElse(cell.id, cell.initial))
-    )
+    cells
+      .foldLeft(empty)((child, cell) =>
+        cell.visibility match
+          case PrivateV()   => child.updated(cell.id, cell.initial)
+          case InheritedV() => child.updated(cell.id, parent.getOrElse(cell.id, cell.initial))
+          case SharedV(_)   => child.updated(cell.id, parent.getOrElse(cell.id, cell.initial))
+      )
       .ensuring(result =>
         cells.forall { c =>
           c.visibility match
@@ -81,15 +82,16 @@ object StackKernel:
    */
   @pure
   def mergeBack(parent: State, children: List[State], cells: List[Cell]): State =
-    cells.foldLeft(parent)((acc, cell) =>
-      cell.visibility match
-        case SharedV(merge) =>
-          val folded: BigInt = children.foldLeft(parent.getOrElse(cell.id, cell.initial))((a, child) =>
-            merge(a, child.getOrElse(cell.id, cell.initial))
-          )
-          acc.updated(cell.id, folded)
-        case _ => acc // danger-scan:allow spec-contract-code — PrivateV/InheritedV both preserve parent unchanged
-    )
+    cells
+      .foldLeft(parent)((acc, cell) =>
+        cell.visibility match
+          case SharedV(merge) =>
+            val folded: BigInt = children.foldLeft(parent.getOrElse(cell.id, cell.initial))((a, child) =>
+              merge(a, child.getOrElse(cell.id, cell.initial))
+            )
+            acc.updated(cell.id, folded)
+          case _ => acc // danger-scan:allow spec-contract-code — PrivateV/InheritedV both preserve parent unchanged
+      )
       .ensuring(result =>
         cells.forall { c =>
           c.visibility match

@@ -97,22 +97,36 @@ if os.path.exists(dst):
             sys.exit(f"install-hooks: {dst} is not valid JSON — fix it or merge by hand")
 frag = json.load(open(frag_path))
 hooks = cur.setdefault("hooks", {})
-entries = hooks.setdefault("SessionStart", [])
-new = frag["hooks"]["SessionStart"][0]
-cmd = new["hooks"][0]["command"]
-# idempotent: never append a second copy of the same command
-already = any(
-    h.get("command") == cmd
-    for e in entries
-    for h in e.get("hooks", [])
-)
-if already:
-    print("  (SessionStart hook already present — left unchanged)")
-else:
-    entries.append(new)
+
+# EVERY event the adapter declares, not just SessionStart. Merging one event
+# meant the documented install path could never wire the tiers that actually
+# enforce anything — post-bash (the ambient evidence writer), PreToolUse, Stop
+# — so a project could run install-hooks, see it succeed, and still have only
+# context injection. The adapter file is the statement of what gets installed;
+# this loop just applies it.
+added, skipped = [], []
+for event, frag_entries in frag["hooks"].items():
+    entries = hooks.setdefault(event, [])
+    for new in frag_entries:
+        for h in new.get("hooks", []):
+            cmd = h.get("command")
+            # idempotent per COMMAND, so re-running never appends a duplicate
+            # and an adapter that grows a second entry for one event (Edit vs
+            # Bash on PostToolUse) still installs both.
+            if any(x.get("command") == cmd for e in entries for x in e.get("hooks", [])):
+                skipped.append(f"{event}: {new.get('matcher', '')}".strip())
+                continue
+            entries.append({**new, "hooks": [h]})
+            added.append(f"{event}: {new.get('matcher', '')}".strip())
+
+if added:
     with open(dst, "w") as f:
         json.dump(cur, f, indent=2)
         f.write("\n")
+    for a in added:
+        print(f"  + {a}")
+for s in skipped:
+    print(f"  (already present — {s})")
 PY
         else
           echo "  python3 not found — add this to $dst by hand:"

@@ -202,14 +202,27 @@ case "$SUB" in
     if [ -n "$CHANGE_DIR" ]; then
       PROGRESS_FILE="$CHANGE_DIR/implementation-progress.md"
       if [ -f "$PROGRESS_FILE" ]; then
-        PROGRESS_BASELINE="$(grep -oE '\*\*BASELINE SHA\*\*: `?[a-f0-9]{7,40}`?' "$PROGRESS_FILE" | head -1 | grep -oE '[a-f0-9]{7,40}')"
+        # Extract the per-spec baseline for THIS spec (not the first one in the file).
+        # The file has sections: "## Spec N/7: <spec-name>" followed by "- **BASELINE SHA**: `<sha>`".
+        # awk finds the section matching $SPEC, then prints the first SHA on the next BASELINE line.
+        PROGRESS_BASELINE="$(awk -v spec="$SPEC" '
+          /^## Spec [0-9]+\/[0-9]+: / {
+            section=$0; sub(/^## Spec [0-9]+\/[0-9]+: /, "", section)
+            in_spec=(index(section, spec) > 0)
+            next
+          }
+          in_spec && /\*\*BASELINE SHA\*\*/ {
+            match($0, /[a-f0-9]{7,40}/)
+            if (RSTART > 0) { print substr($0, RSTART, RLENGTH); exit }
+          }
+        ' "$PROGRESS_FILE")"
         if [ -n "$PROGRESS_BASELINE" ]; then
           EFFECTIVE_BASELINE="$PROGRESS_BASELINE"
-          printf 'checkpoint: using per-spec baseline %s from implementation-progress.md (gate baseline: %s)\n' \
-            "$EFFECTIVE_BASELINE" "$BASELINE" >&2
+          printf 'checkpoint: using per-spec baseline %s for spec %s from implementation-progress.md (gate baseline: %s)\n' \
+            "$EFFECTIVE_BASELINE" "$SPEC" "$BASELINE" >&2
         else
-          printf 'checkpoint: no per-spec baseline in implementation-progress.md, falling back to gate baseline %s\n' \
-            "$BASELINE" >&2
+          printf 'checkpoint: no per-spec baseline for spec %s in implementation-progress.md, falling back to gate baseline %s\n' \
+            "$SPEC" "$BASELINE" >&2
         fi
       fi
     fi

@@ -103,6 +103,21 @@ elif (has("digest") and (.digest | type) != "string") then
 elif (has("wallTime") and ((.wallTime | type) != "number" or (.wallTime | floor) != .wallTime)) then
   fail("wallTime must be an integer when present")
 
+# ── observer provenance (ambient capture wiring) ─────────────────────────
+# WHO OBSERVED the exit this row records. Absent means a bare `append`: the
+# agent typed the exit code, so the row is testimony. "ambient" means the
+# gate wrote it from the harness's own post-tool payload, so the row is a
+# witness. `run` rows are told apart by their `digest` (the script observed
+# its own exit), not by this field.
+#
+# Closed domain, for the same reason `rings` is closed: an unrecognised
+# provenance must be REJECTED at write time. Accepting one would let a row
+# claim an observer that nothing defines, and reconcile.sh would then either
+# count it as a witness it is not, or silently ignore it — both of which
+# turn an unverifiable claim back into a clean-looking result.
+elif (has("source") and ((.source | type) != "string" or .source != "ambient")) then
+  fail("source must be \"ambient\" when present")
+
 # ── session provenance (spec:judgment-ring-provenance) ───────────────────
 # R8 (adversarial-review) rows MUST carry a `session` field identifying the
 # producing session — the checkpoint compares it to the implementing session

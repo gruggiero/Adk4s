@@ -30,7 +30,6 @@ object Versions {
   val SbtScalafmt: String      = "2.6.1"
   val SbtScoverage: String     = "2.4.4"
   val SbtAssembly: String      = "2.3.1"
-  val ScalafixRules: String    = "0.14.7"
   val SbtWartremover: String   = "3.5.8"
   val SbtStryker4s: String     = "0.21.0"
 }

@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>13 · Simulation — verified-scala3</title>
+<link rel="stylesheet" href="assets/tutorial.css">
+<style>
+/* page-specific: the simulation widget */
+.sim { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden;
+       box-shadow: var(--shadow); margin: 1.6rem 0; background: var(--bg-raised); }
+.sim-head { display: flex; align-items: center; gap: .6rem; padding: .6rem .9rem;
+            background: var(--bg-sunken); border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+.sim-head .spacer { flex: 1; }
+.sim-btn { font-family: var(--mono); font-size: .76rem; padding: .3rem .8rem; border: 1px solid var(--rule);
+           border-radius: 6px; background: var(--bg-raised); color: var(--fg); cursor: pointer; }
+.sim-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.sim-btn:disabled { opacity: .38; cursor: default; }
+.sim-pos { font-family: var(--mono); font-size: .74rem; color: var(--fg-muted); }
+.sim-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); }
+@media (max-width: 1060px) { .sim-grid { grid-template-columns: 1fr; } }
+.sim-main { padding: 1rem 1.1rem; border-right: 1px solid var(--rule); min-height: 26rem; }
+.sim-main pre, .sim-state pre { font-size: .74rem; }
+.sim-state { background: var(--bg-sunken); min-height: 26rem; display: flex; flex-direction: column; }
+.sim-state .tab-panel { overflow: auto; max-height: 34rem; flex: 1; }
+.step-actor { font-family: var(--mono); font-size: .66rem; letter-spacing: .09em; text-transform: uppercase;
+              padding: .12rem .45rem; border-radius: 4px; margin-right: .4rem; }
+.a-agent  { background: var(--accent-bg); color: var(--accent); }
+.a-hook   { background: var(--wise-bg);  color: var(--wise); }
+.a-human  { background: var(--warn-bg);  color: var(--warn); }
+.a-ci     { background: var(--ok-bg);    color: var(--ok); }
+.step-phase { font-family: var(--mono); font-size: .66rem; color: var(--fg-faint); margin-left: .35rem; }
+.sim-main h3 { margin: .55rem 0 .55rem; font-size: 1.02rem; }
+.what-changed { border: 1px dashed var(--rule); border-radius: 8px; padding: .55rem .8rem; margin-top: .9rem;
+                background: var(--bg); font-size: .8rem; }
+.what-changed h5 { margin: 0 0 .35rem; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-muted); }
+.what-changed ul { margin: 0; padding-left: 1.1rem; }
+.what-changed li { margin: .18rem 0; }
+.sim-track { padding: .55rem .8rem; border-top: 1px solid var(--rule); background: var(--bg-raised);
+             display: flex; flex-wrap: wrap; gap: .3rem; }
+.track-grp { font-family: var(--mono); font-size: .62rem; color: var(--fg-faint); align-self: center; margin: 0 .25rem 0 .5rem; }
+.stchip { font-family: var(--mono); font-size: .66rem; border: 1px solid var(--rule); border-radius: 5px;
+          padding: .14rem .42rem; cursor: pointer; background: var(--bg); color: var(--fg-muted); }
+.stchip:hover { border-color: var(--accent); color: var(--accent); }
+.stchip.done { border-color: var(--ok); color: var(--ok); }
+.stchip.cur { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+/* state tables */
+.st { border-collapse: collapse; width: 100%; font-size: .72rem; }
+.st th { font-family: var(--mono); font-size: .62rem; text-transform: uppercase; letter-spacing: .06em;
+         color: var(--fg-muted); text-align: left; padding: .25rem .45rem; border-bottom: 1px solid var(--rule);
+         position: sticky; top: 0; background: var(--bg-sunken); }
+.st td { padding: .28rem .45rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top;
+         font-family: var(--mono); }
+.st tr.fresh td { background: var(--accent-bg); }
+.st tr.fresh td:first-child { border-left: 3px solid var(--accent); }
+.pill { display:inline-block; font-size: .62rem; padding: .05rem .35rem; border-radius: 8px; font-weight: 700; }
+.pill.new { background: var(--ok-bg); color: var(--ok); }
+.pill.mod { background: var(--warn-bg); color: var(--warn); }
+.pill.y { background: var(--ok-bg); color: var(--ok); }
+.pill.n { background: var(--bad-bg); color: var(--bad); }
+.pill.na { background: var(--bg-sunken); color: var(--fg-faint); font-weight: 400; }
+.pillx { font-family: var(--mono); font-size: .68rem; }
+.hlog { font-size: .7rem; }
+.hlog .hevt { padding: .4rem .55rem; border-bottom: 1px solid var(--rule-soft); }
+.hlog .hevt.fresh { background: var(--accent-bg); border-left: 3px solid var(--accent); }
+.hlog .hkind { font-family: var(--mono); font-size: .62rem; font-weight: 700; letter-spacing: .05em; }
+.hlog .hk-b { color: var(--wise); } .hlog .hk-a { color: var(--warn); } .hlog .hk-block { color: var(--bad); }
+.hlog pre { margin: .3rem 0 0; font-size: .66rem; }
+.empty-note { color: var(--fg-faint); font-size: .74rem; font-family: var(--mono); padding: .8rem; }
+.sim-legend { font-size: .72rem; color: var(--fg-muted); margin: .4rem 0 1.4rem; }
+.sim-legend code { font-size: .68rem; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand-sub">Workflow tutorial</div>
+  <ul class="chapters">
+    <li><a href="index.html"><span class="num">·</span> Start here</a></li>
+    <li><a href="01-why.html"><span class="num">1</span> Why green tests lie</a></li>
+    <li><a href="02-map.html"><span class="num">2</span> The map</a></li>
+    <li><a href="03-specs.html"><span class="num">3</span> Writing specs</a></li>
+    <li><a href="04-concepts.html"><span class="num">4</span> The two ledgers</a></li>
+    <li><a href="05-obligations.html"><span class="num">5</span> Proof obligations</a></li>
+    <li><a href="06-contract-oracle.html"><span class="num">6</span> Contract &amp; oracle</a></li>
+    <li><a href="07-rings.html"><span class="num">7</span> The rings</a></li>
+    <li><a href="08-apply-loop.html"><span class="num">8</span> The apply loop</a></li>
+    <li><a href="09-tooling.html"><span class="num">9</span> The tooling</a></li>
+    <li><a href="10-practice.html"><span class="num">10</span> In practice</a></li>
+    <li><a href="11-enforcement.html"><span class="num">11</span> Making it stick</a></li>
+    <li><a href="12-substratum.html"><span class="num">12</span> The correctness substratum</a></li>
+    <li><a class="current" href="13-simulation.html"><span class="num">13</span> Simulation</a></li>
+  </ul>
+  <div class="toc-title">On this page</div>
+  <ul id="toc"></ul>
+  <button class="theme-toggle" type="button">◐ theme</button>
+</nav>
+
+<main>
+<div class="prose">
+
+<div class="eyebrow">Chapter 13 · capstone</div>
+<h1>The whole workflow, simulated end to end</h1>
+<p class="lede">
+  This chapter runs one fake, three-spec change — <code>add-shipment-quoting</code> —
+  through the entire verified-scala3 machine: planning artifacts, the per-spec apply
+  loop (Steps 0–13), hooks firing on every turn, the evidence ledger filling row by
+  row, the completion gate refusing a premature claim, and the final archive.
+  Part A is the static reference (phases, rings, hooks, persisted state). Part B is
+  the stepper. Everything shown in the state panels is cumulative — what you see at
+  step <em>n</em> is exactly what would exist on disk at that moment.
+</p>
+
+<div class="meta">
+  Simulated change: <code>add-shipment-quoting</code> · 3 specs · detected stack:
+  sbt + munit/ScalaCheck + Stryker4s; telemetry stack absent · sessions:
+  <code>s-work</code> (implementing) and <code>s-review</code> (fresh-context reviewer)
+</div>
+
+<!-- ══════════════════════════════ PART A ══════════════════════════════ -->
+
+<h2 id="a-lifecycle">A1 · The lifecycle at a glance</h2>
+<p>Two phases surround one loop. <strong>Planning</strong> produces the change's
+artifacts in DAG order; the <strong>apply loop</strong> then executes one spec at a time
+through Steps 0–13, with a mandatory human stop after each spec; <strong>archive</strong>
+folds the delta specs into <code>openspec/specs/</code> and the change into
+<code>openspec/changes/archive/</code>.</p>
+
+<div data-pipeline="lifecycle"></div>
+<script type="application/json" id="lifecycle">
+[
+ { "short":"proposal", "label":"proposal.md · planning · simulation step 1",
+   "body":"<p><strong>Requires:</strong> nothing — it is the DAG root.</p><p><strong>Content:</strong> intent and scope, the <em>verification strategy</em> (which rings apply and why), the correctness risk level, existing/new concepts, and the typed-contract decision table.</p><p><strong>Persists:</strong> <code>openspec/changes/&lt;change&gt;/proposal.md</code>, human-reviewed before anything else exists.</p>" },
+ { "short":"capability-check", "label":"capability-check.md · planning · step 2",
+   "body":"<p><strong>Requires:</strong> proposal.</p><p><strong>Content:</strong> verifies the project-scoped <code>openspec/capability-profile.md</code> — test framework, lint, mutation tooling, telemetry presence. Whether a conditional ring applies is answered HERE, from the repository, not inferred later. Absent stacks become recorded skips with date and mechanism.</p>" },
+ { "short":"inventory-check", "label":"inventory-check.md · planning · step 3",
+   "body":"<p><strong>Requires:</strong> proposal.</p><p><strong>Content:</strong> re-runs the semantic concept scanner against <code>openspec/concept-inventory.md</code>; the change inherits provenance ('reuse <code>Money</code>') instead of re-scanning or, worse, re-declaring a parallel type.</p>" },
+ { "short":"specs/*", "label":"specs/&lt;name&gt;/spec.md · planning · step 4",
+   "body":"<p><strong>Requires:</strong> proposal, capability-check, inventory-check.</p><p><strong>Content:</strong> delta specs — SHALL/MUST requirements, scenarios, Ring 3 properties with generator strategies, and the Proof-Obligations table that makes every requirement <em>bound</em> to a mechanism and named artifact. Post-edit lint runs on every save.</p>" },
+ { "short":"spec-lint", "label":"spec-lint.md · planning · step 5",
+   "body":"<p><strong>Requires:</strong> specs.</p><p><strong>Content:</strong> the mechanical F1–F10 verdict plus the CONTEXT block (applicability as machine-attested fact), with the judgment checks recorded on top. F9 (artifact tokens resolve to files) is deliberately OFF now and only runs at Step 12.</p>" },
+ { "short":"design", "label":"design.md · planning · step 6",
+   "body":"<p><strong>Requires:</strong> specs, spec-lint.</p><p><strong>Content:</strong> effect boundaries, the Ring 6 triage table (which pure kernels get direct Stainless or the verified-mirror treatment), the Ring 4 compatibility story, and Key Design Decisions with rationale.</p>" },
+ { "short":"implementation-order", "label":"implementation-order.md · planning · step 7",
+   "body":"<p><strong>Requires:</strong> design.</p><p><strong>Content:</strong> dependency-ordered sequence, per-spec complexity and risk, and the <em>human gate tier</em> — combined contract+oracle gate only for simple AND low-risk specs; everything else keeps two separate stops.</p>" },
+ { "short":"tasks", "label":"tasks.md · planning · step 8",
+   "body":"<p><strong>Requires:</strong> implementation-order.</p><p><strong>Content:</strong> the OpenSpec CLI checklist. <em>Derived output</em>: seeded unchecked, then regenerated from implementation-progress.md at every checkpoint — never hand-maintained, because two hand-maintained trackers drift.</p>" },
+ { "short":"apply × N specs", "label":"The apply loop · Steps 0–13 per spec · steps 9–28",
+   "body":"<p><strong>Requires:</strong> all planning artifacts approved.</p><p><strong>Content:</strong> baseline (Step 0) → typed contract (1, gate) → test oracle red (2, gate) → implementation + Rings 0–3 (3–6) → conditional Rings 4/8/5/6/7/9 (7–11) → concept delta + inventory (12) → checkpoint (13). One spec fully verified before the next begins. See table A3 for the per-step prerequisites and what each persists.</p>" },
+ { "short":"checkpoint + commit", "label":"Step 13 · per-spec · steps 16, 25, 28",
+   "body":"<p><strong>Requires:</strong> every applicable ring green, evidence recorded in the ledger at this spec's baseline, no unresolved R8 verdict.</p><p><strong>Content:</strong> <code>checkpoint.sh report</code> verbatim; the per-spec commit becomes the checkpoint's durable identity AND the next spec's baseline; tasks.md regenerated. Then the mandatory STOP.</p>" },
+ { "short":"next spec?", "label":"The human gate between specs · steps 16, 25",
+   "body":"<p><strong>Requires:</strong> explicit human approval of the checkpoint — “continue”, “next”, “proceed”.</p><p><strong>Content:</strong> no implicit carry-over: approval of spec N never pre-approves spec N+1. In the simulation this is the amber “human gate” actor at steps 16 and 25 (and step 28 for the final spec).</p>" },
+ { "short":"archive", "label":"Archive · step 29",
+   "body":"<p><strong>Requires:</strong> all specs checkpointed and approved; chain-state fully discharged (bound = resolved = discharged = every requirement).</p><p><strong>Content:</strong> <code>openspec archive</code> folds delta specs into <code>openspec/specs/</code> and moves the change — with its ledger, progress tracker, snapshots and checkpoint reports — under <code>openspec/changes/archive/</code> as the permanent evidence trail.</p>" }
+]
+</script>
+
+<h2 id="a-artifacts">A2 · Planning artifacts and their prerequisites</h2>
+<div class="table-wrap wide"><table>
+<tr><th>Artifact</th><th>Requires</th><th>Role</th></tr>
+<tr><td><code>proposal.md</code></td><td>—</td><td>Intent, scope, verification strategy (which rings apply), correctness risk level, existing/new concepts, typed-contract decision table</td></tr>
+<tr><td><code>capability-check.md</code></td><td>proposal</td><td>Verifies the <em>project-scoped</em> <code>openspec/capability-profile.md</code> (detected stack: test framework, lint, mutation, metals endpoint, telemetry presence). Everything downstream generates for the detected stack, never an assumed one</td></tr>
+<tr><td><code>inventory-check.md</code></td><td>proposal</td><td>Verifies the project-scoped <code>openspec/concept-inventory.md</code> against the semantic scanner; the change inherits provenance instead of re-scanning</td></tr>
+<tr><td><code>specs/&lt;name&gt;/spec.md</code></td><td>proposal, capability-check, inventory-check</td><td>Delta specs: requirements (SHALL/MUST) + scenarios + Properties (Ring 3, with generator strategies) + <strong>Proof Obligations</strong> table binding every requirement to an enforcement mechanism and artifact</td></tr>
+<tr><td><code>spec-lint.md</code></td><td>specs</td><td>Mechanical F1–F10 verdict + CONTEXT facts (which conditional rules apply, read from the repo, never inferred) + judgment checks recorded by hand</td></tr>
+<tr><td><code>design.md</code></td><td>specs, spec-lint</td><td>Effect boundaries, Ring 6 triage (pure kernels → direct or verified-mirror), compatibility story (Ring 4), Key Design Decisions with rationale</td></tr>
+<tr><td><code>implementation-order.md</code></td><td>design</td><td>Implementation sequence, per-spec complexity, <strong>human gate tier</strong> (combined only for simple+low-risk), ring applicability per spec</td></tr>
+<tr><td><code>tasks.md</code></td><td>implementation-order</td><td>OpenSpec CLI checklist — <em>derived output</em>, regenerated at every checkpoint from implementation-progress.md, never hand-maintained</td></tr>
+</table></div>
+
+<h2 id="a-steps">A3 · The per-spec apply loop — Steps 0–13, with prerequisites</h2>
+<div class="table-wrap wide"><table>
+<tr><th>Step</th><th>What happens</th><th>Prerequisite / gate</th><th>Persists</th></tr>
+<tr><td><strong>0</strong> Baseline + concept check</td><td><code>gate.sh --check-installed</code> (STOP if hooks are not installed); clean tree required; record <code>git rev-parse HEAD</code> as the <em>baseline SHA</em>; inventory snapshot <code>-before</code>; registry-check if <code>openspec/concepts/</code> exists; impact-scan if a public type widens — all applicability read from the repo</td><td>Hooks installed · clean git tree · proof-obligations table complete</td><td><code>implementation-progress.md</code> baseline row · <code>inventory-snapshots/&lt;spec&gt;-before.md</code></td></tr>
+<tr><td><strong>1</strong> Typed contract</td><td>Compile-only types/signatures/error algebra in the <em>test</em> source graph (files under <code>openspec/changes/…</code> are not compiled by sbt — that gives false confidence)</td><td><strong>Human gate 1</strong> (deferred only in combined tier; a waiver needs explicit human approval)</td><td><code>&lt;module&gt;/src/test/scala/…/typecontract/*TypeContract.scala</code></td></tr>
+<tr><td><strong>2</strong> Test oracle</td><td>Tests written from spec + approved contract <em>only</em>, before implementation exists; one test per scenario; properties with declared generators; polarity run must be RED</td><td><strong>Human gate 2</strong> · oracle/generator tampering forbidden downstream (generators are part of the approved oracle)</td><td>Test files compiling red · coverage cross-reference tables</td></tr>
+<tr><td><strong>3</strong> Ring 0 — implementation + compile</td><td>Implement against the approved contract; signature pins keep the conformance assertion compiling forever; main+test compile, ≤3 iterations</td><td>Gates 1+2 approved</td><td>Production sources · contract→pin conversion</td></tr>
+<tr><td><strong>4</strong> Ring 1 — lint + danger scan</td><td>scalafix/scalafmt/WartRemover; <code>danger-scan.sh &lt;baseline&gt;</code> — every candidate removed or justified with a <code>// danger-scan:allow</code> comment</td><td>Ring 0 green</td><td>Justification comments · ledger row (via <code>ledger.sh run</code>)</td></tr>
+<tr><td><strong>5</strong> Ring 2 — architecture</td><td>LayerDependencies, SealedDomainTypes, EffectDiscipline, … per design + capability profile</td><td>Ring 1 green</td><td>Ledger row</td></tr>
+<tr><td><strong>6</strong> Ring 3 — run the oracle</td><td><code>sbt &lt;module&gt;/test</code>; fix the <em>implementation</em>, never the oracle; polarity red→green confirmed; concurrency tests repeat-run N=20; <em>cross-module regression</em> over dependents; spec's Requirement↔Test table updated</td><td>Ring 3 is mandatory for every code-changing spec (waivers: docs/format/build-meta/test-only, human-approved in proposal)</td><td>Ledger rows · spec cross-ref table</td></tr>
+<tr><td><strong>7</strong> Ring 4 — wire/persistence</td><td>Round-trip per format; old persisted fixtures still decode; only if the spec touches serialization/persistence/wire</td><td>Applicability from proposal's verification strategy</td><td>Fixtures · ledger rows</td></tr>
+<tr><td><strong>8</strong> Ring 8 — adversarial review</td><td><strong>Fresh context, mandatory.</strong> A reviewer with no implementation conversation compares every requirement against <code>git diff &lt;baseline&gt;</code>; hunts silent fallbacks, <code>case _</code> defaults, invalid states via public constructors. Verdicts: PASS / PARTIAL / FAIL per requirement. Runs <em>before</em> the expensive rings on purpose</td><td>Rings 0–4 green · fresh session (the ledger R8 row carries <code>session</code>; the checkpoint compares it to the implementing session)</td><td>Compliance report · possibly new tests · ledger R8 row</td></tr>
+<tr><td><strong>9</strong> Ring 5 — mutation</td><td>Stryker dynamically targeted at the <code>git diff &lt;baseline&gt;</code> file list (never a fixed <code>mutate</code> list); thresholds by criticality; every survivor killed, marked equivalent, or excluded with rationale</td><td>Mutation tool present per capability profile · runs on final code (hence after Ring 8)</td><td>Score record · ledger rows</td></tr>
+<tr><td><strong>10</strong> Rings 6/7 — formal / model checking</td><td>Ring 6 where a pure algorithmic kernel exists: direct PureScala, or the <em>verified mirror</em> (mirror module + bridge property test binding the proof to shipped code — without the bridge the ring proves nothing about what you run). Ring 7 optional for distributed invariants</td><td>Design's Ring 6 triage table</td><td>Mirror module · bridge test · ledger rows</td></tr>
+<tr><td><strong>11</strong> Ring 9 — telemetry</td><td>Runtime monitors from temporal properties; only if the spec declares them AND the telemetry stack exists per the profile — otherwise skip <em>with the recorded impact, date, and mechanism</em></td><td>Capability profile</td><td>Ledger row or recorded skip</td></tr>
+<tr><td><strong>12</strong> Concept delta + inventory</td><td>Scanner re-run → <code>-after</code> snapshot; machine diff vs <code>-before</code> must equal Concepts Introduced exactly; <code>spec-lint.sh --artifacts</code> (F9: every artifact token resolves to a tracked file — this flips <em>resolved</em>); build-dependency delta; removal audit; update project inventory and concept registry</td><td>All applicable rings green</td><td><code>-after.md</code> snapshot · <code>openspec/concept-inventory.md</code> · registry</td></tr>
+<tr><td><strong>13</strong> Checkpoint</td><td><code>checkpoint.sh report</code> output pasted <em>verbatim</em> as the Rings section; per-spec commit <code>&lt;change&gt;: spec n/m — &lt;name&gt;</code>; record the hash in progress; <code>regenerate-tasks</code>; present the fixed checkpoint structure; <strong>STOP until the human says "continue"</strong></td><td>Every ring row present in the ledger at this baseline; no R8 FAIL/PARTIAL without explicit human decision</td><td>Commit · progress tracker · regenerated tasks.md</td></tr>
+</table></div>
+
+<h2 id="a-hooks">A4 · Hooks — what fires when</h2>
+<p>The scripts fix what happens <em>when</em> checks run; hooks fix <em>whether</em> they run.
+All logic lives in <code>hooks/gate.sh</code>; harness adapters only decide when to ask
+and where to put the answer.</p>
+<div class="table-wrap wide"><table>
+<tr><th>Event</th><th>Tier</th><th>When it fires</th><th>What it does</th><th>Exit contract</th></tr>
+<tr><td><code>session-start</code></td><td>B — inject</td><td>New agent session</td><td>Emits a two-part banner: <strong>(1)</strong> the short invariant (<em>“N/A” / “passes” / “already handled” are CLAIMS, not verdicts</em>); <strong>(2)</strong> the session context — schema version read from <code>schema.yaml</code>; <strong>INSTRUCTION DRIFT</strong> warnings when an installed skill’s <code>generatedBy: verified-scala3-schema/&lt;N&gt;</code> stamp (searched across repo + HOME <code>.agents/.claude/.pi/.zcode</code> roots) is older than the schema; applicability rows citing the <em>numbered</em> judgment checks (3, 6, 17 ALTITUDE, 18 CONCURRENCY — including the detected deterministic test kit); workflow position; and a live <strong>chain-state section naming unresolved requirements</strong> when a change is active — closed by the <code>gate checks</code> tool list and the “READ FROM DISK … facts, not recollection” trailer</td><td>Always 0 — never blocks</td></tr>
+<tr><td><code>prompt-submit</code></td><td>B — inject</td><td>Every user prompt</td><td>Re-injects the same banner <em>only if the facts changed</em> this session (fingerprint suppression) — survives context compaction without spamming unchanged payloads</td><td>Always 0</td></tr>
+<tr><td><code>tool-call</code></td><td>A — pre-execution</td><td>Before <code>write</code>/<code>edit</code>/<code>bash</code> on protected files</td><td>Two locks. <strong>Oracle-ordering lock:</strong> refuses a <em>production-source</em> edit while the current step is the test-oracle phase (the oracle must be derived from the spec, not from implementation). <strong>Human-grant lock (v13):</strong> refuses non-production writes targeting spec N+1 while spec N’s checkpoint has been presented but no granting user prompt has been observed — approval must be a harness-observed grant, not agent prose</td><td>0 allow · 2 refuse (<code>{"decision":"block",…}</code>)</td></tr>
+<tr><td><code>post-edit</code></td><td>A — advise</td><td>After an edit lands</td><td>Classifies the path: a spec under an active change → runs <code>spec-lint --artifacts</code>; a production <code>.scala</code> → runs <code>danger-scan</code>; findings returned as context. The edit already happened, so blocking is meaningless</td><td>Always 0</td></tr>
+<tr><td><code>completion</code></td><td>A — the one genuine block</td><td>Turn completion</td><td>If the turn claims a checkpoint/ring result while chain-state reports unresolved requirements → refuse, <em>naming them</em>. Chain-state itself undetermined → refuse with a <em>distinct</em> reason. Bounded: at most one refusal per turn (<code>stop_hook_active</code>, or a session-scoped marker cleared on the next prompt-submit — never deadlocks). Ships on Claude Code and Devin; <strong>pi has no blocking completion event</strong> (verified absent, not an oversight) — on pi the pre-execution tier is the only enforcement surface</td><td>0 allow · 1 unresolved · 2 undetermined</td></tr>
+</table></div>
+<p>Escape hatch: <code>VERIFIED_SCALA3_HOOKS=off</code>. Heartbeat: every invocation — even
+silent ones — writes <code>--check-installed</code> state under the repo's git-dir
+(resolved via <code>git rev-parse --absolute-git-dir</code>, so worktrees work).
+If <code>openspec/</code> is absent the hook emits nothing at all.</p>
+
+<h2 id="a-state">A5 · The full persisted-state census</h2>
+<div class="table-wrap wide"><table>
+<tr><th>Path</th><th>Written when</th><th>What it proves</th></tr>
+<tr><td><code>openspec/changes/&lt;change&gt;/…</code> (8 planning artifacts)</td><td>Planning phase</td><td>Intent, detected stack, spec quality, design, sequence — all human-reviewed before code exists</td></tr>
+<tr><td><code>implementation-progress.md</code></td><td>Steps 0, 13</td><td>Single source of truth for per-spec state: baseline SHA, per-ring status, commit hash</td></tr>
+<tr><td><code>tasks.md</code></td><td>Step 13 (regenerated)</td><td>Derives from progress so the OpenSpec CLI agrees with the tracker</td></tr>
+<tr><td><code>inventory-snapshots/&lt;spec&gt;-{before,after}.md</code></td><td>Steps 0, 12</td><td>Machine diff = concept delta; scope creep has nowhere to hide</td></tr>
+<tr><td><code>evidence-ledger.jsonl</code></td><td>Every ring run (via <code>ledger.sh run …</code>)</td><td>Append-only: command + exit code + baseline per obligation. A row is re-checkable by re-running its command. R8 rows carry the reviewing <code>session</code></td></tr>
+<tr><td><code>openspec/concept-inventory.md</code> · <code>openspec/concepts/*.md</code></td><td>Step 12</td><td>Project-level concept provenance accumulates across changes</td></tr>
+<tr><td>Per-spec commits <code>&lt;change&gt;: spec n/m …</code></td><td>Step 13</td><td>The checkpoint's durable identity; makes every <code>git diff &lt;baseline&gt;</code> exact and per-spec</td></tr>
+<tr><td>Git-dir hook state (heartbeat, fingerprints, refusal marker)</td><td>Every hook invocation</td><td>"The gate actually fired" is checkable after the fact; suppression is per-session</td></tr>
+<tr><td><code>…/skills/openspec-*/SKILL.md</code> — the <code>generatedBy: verified-scala3-schema/&lt;N&gt;</code> stamp</td><td><code>install-skills.sh</code> runs</td><td>What the instruction-drift detector in the session banner compares against <code>schema.yaml</code>'s version — an installed-but-stale skill can no longer be followed silently</td></tr>
+<tr><td><code>openspec/specs/</code> + <code>changes/archive/&lt;date&gt;-&lt;change&gt;/</code></td><td>Archive</td><td>Deltas fold into the living spec set; the change becomes history</td></tr>
+</table></div>
+
+<!-- ══════════════════════════════ PART B ══════════════════════════════ -->
+
+<h2 id="b-sim">B · The simulation</h2>
+<p>Step through <code>add-shipment-quoting</code> (30 steps; arrow keys work). Left pane:
+what the agent, hooks, and human do. Right pane: the persisted state <em>at this
+point</em> — files (tab 1), the evidence ledger (2), per-requirement chain state
+<em>bound / resolved / discharged</em> (3), and the hook log (4). Freshly-changed rows
+are highlighted in blue.</p>
+
+<div class="sim-legend">
+  Chain semantics — <strong>bound</strong>: ≥1 proof obligation names the requirement (spec-lint F7; satisfied once specs pass lint) ·
+  <strong>resolved</strong>: obligation artifacts resolve to tracked files (F9; deliberately not run until Step 12 — an artifact token is a commitment, not a fact, before implementation exists) ·
+  <strong>discharged</strong>: a green run recorded in the ledger at this spec's baseline.
+  Baselines: <code>b0=a1b2c30</code> (start of spec 1), <code>b1=9f04d1e</code>, <code>b2=77c21aa</code> — each spec's baseline is the previous spec's checkpoint commit.
+</div>
+
+<div class="sim" id="sim-root">
+  <div class="sim-head">
+    <button class="sim-btn" id="sim-prev" type="button">‹ prev</button>
+    <button class="sim-btn" id="sim-next" type="button">next ›</button>
+    <span class="sim-pos" id="sim-pos"></span>
+    <span class="spacer"></span>
+    <span class="sim-pos" id="sim-session"></span>
+  </div>
+  <div class="sim-grid">
+    <div class="sim-main">
+      <span class="step-actor" id="sim-actor"></span><span class="step-phase" id="sim-phase"></span>
+      <h3 id="sim-title"></h3>
+      <div id="sim-body"></div>
+      <div class="what-changed" id="sim-wc-wrap" style="display:none">
+        <h5>What changed in this step</h5>
+        <ul id="sim-wc"></ul>
+      </div>
+    </div>
+    <div class="sim-state tabs" id="sim-state">
+      <div class="tab-bar">
+        <button type="button">Files</button>
+        <button type="button">Evidence ledger</button>
+        <button type="button">Chain state</button>
+        <button type="button">Hook log</button>
+      </div>
+      <div class="tab-panel"><div id="st-files"></div></div>
+      <div class="tab-panel"><div id="st-ledger"></div></div>
+      <div class="tab-panel"><div id="st-chain"></div></div>
+      <div class="tab-panel"><div id="st-hooks"></div></div>
+    </div>
+  </div>
+  <div class="sim-track" id="sim-track"></div>
+</div>
+
+<h3 id="b-read">How to read the verdicts</h3>
+<ul>
+<li><strong>The red→green polarity flips (steps 11, 19)</strong> are the evidence the oracle has teeth: a test that never fails when the implementation is absent proves nothing.</li>
+<li><strong>The tool-call blocks (steps 11, 16)</strong> and the <strong>completion refusal (step 21)</strong> are the moments the harness actively stops the agent: the oracle-ordering lock, the human-grant lock, and the completion gate's single bounded refusal. Everything else is context, not coercion.</li>
+<li><strong>The resolved column stays “deferred” until Step 12</strong> — artifact tokens are a commitment at spec time and only become facts when <code>--artifacts</code> (F9) runs against the now-existing files.</li>
+<li><strong>Ring 8 rows carry <code>session: s-review</code></strong> — the checkpoint compares it against the implementing session <code>s-work</code> to enforce the fresh-context mandate mechanically.</li>
+<li><strong>Every ledger row stores its command and baseline</strong>, so "discharged" is re-checkable evidence, not testimony.</li>
+</ul>
+
+</div>
+
+<div class="chapter-nav">
+  <a href="12-substratum.html"><span class="dir">← Chapter 12</span> The correctness substratum</a>
+  <a class="next" href="index.html"><span class="dir">Back to</span> Start here</a>
+</div>
+
+</main>
+</div>
+
+<script src="assets/tutorial.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var B0 = "a1b2c30", B1 = "9f04d1e", B2 = "77c21aa"; // b1==c1, b2==c2
+  var REQ = {
+    "LR-1": "Registry rejects duplicate lane codes",
+    "LR-2": "Unknown lane lookup returns LaneNotFound, never throws",
+    "QE-1": "quote = base + perKm*dist + fuel surcharge; money rounds half-even to 2dp",
+    "QE-2": "Quotes monotonic in distance; negative distance rejected",
+    "API-1": "POST /quotes JSON round-trips; Money serializes as decimal string",
+    "API-2": "Unknown lane => 400 with UnknownLane error variant, never 500"
+  };
+  var REQ_SPEC = { "LR-1":"lane-registry","LR-2":"lane-registry","QE-1":"quote-engine","QE-2":"quote-engine","API-1":"shipment-api","API-2":"shipment-api" };
+
+  function L(ts, spec, ring, obl, art, exit, base, session) {
+    return { ts: ts, change: "add-shipment-quoting", spec: spec, ring: ring,
+             obligation: obl, artifact: art, exit: exit, baseline: base, session: session || null };
+  }
+  function H(time, kind, cls, title) { return { time: time, kind: kind, cls: cls, title: title }; }
+  function F(path, st, note) { return { path: path, st: st, note: note || "" }; }
+
+  // ── step definitions ─────────────────────────────────────────────────────
+  var STEPS = [
+
+  { phase: "Session", actor: "hook", session: "s-work",
+    title: "0 · Session bootstrap — the gate introduces itself",
+    body: `<p>The user opens the repo in their harness. Before any agent turn,
+      the harness runs <code>gate.sh --event session-start</code>. The gate detects
+      <code>openspec/</code> and assembles the two-part banner — the short invariant,
+      then the session context read from disk <em>right now</em>: schema version,
+      applicability rows for the conditional checks (including a machine-attested
+      N/A for ALTITUDE — read, not inferred), the detected test kit, workflow
+      position, and the gate-checks list — returned as <code>additionalContext</code>.
+      (Had any installed skill copy carried a <code>generatedBy</code> stamp older
+      than v13, an <b>INSTRUCTION DRIFT</b> warning would appear in this banner,
+      naming the root and the version, with the re-install instruction.)</p>
+      <pre data-lang="bash">verified-scala3 — invariant (schema v13)
+  NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
+  "N/A" / "passes" / "already handled" are CLAIMS, not verdicts.
+
+verified-scala3 — session context (schema v13, injected by hooks/gate.sh)
+  schema                openspec/schemas/verified-scala3  v13
+  behavioural registry  openspec/concepts/             ABSENT
+    -> check 17 ALTITUDE is N/A (attested by this script, not assumed).
+  type inventory        openspec/concept-inventory.md  PRESENT (2 typed rows)
+    -> check 6 (reused concepts exist) **APPLIES**.
+  capability profile    openspec/capability-profile.md PRESENT
+    -> checks 3 and 18 (CONCURRENCY) **APPLY**
+       deterministic test kit detected: TestControl
+  active changes: none · next artifact: proposal
+
+  gate checks   scanner/spec-lint.sh · registry-check.sh ·
+                danger-scan.sh · scanner/chain-state.sh
+
+The lines above were READ FROM DISK just now; they are facts, not
+recollection. ...</pre>
+      <p>It also writes its <strong>heartbeat</strong> unconditionally — even this
+      silent-looking moment leaves a checkable record in the git-dir.</p>`,
+    wc: ["Heartbeat written to git-dir state (internal, not committed)"],
+    hooks: [H("09:00:01Z","session-start","hk-b","Tier B inject — banner (1.4 KB) inserted before model context")]
+  },
+
+  { phase: "Planning", actor: "human", session: "s-work",
+    title: "1 · “Create a change: add-shipment-quoting”",
+    body: `<p>The human's prompt triggers <code>--event prompt-submit</code>. The gate
+      fingerprints the facts, sees they have not changed <em>in this session</em>,
+      and prints nothing — suppression is a feature, not silence. The agent scaffolds
+      the change directory and writes <code>proposal.md</code>: scope, verification
+      strategy (<em>Rings 0–3 for all; R4 for shipment-api; R5 for quote-engine;
+      R6 via verified-mirror for the engine's money kernel; R8 mandatory; R9
+      telemetry — stack absent, will be recorded as a stated skip</em>), correctness
+      risk (lane-registry <b>low</b> ⇒ combined gate tier; quote-engine <b>high</b> —
+      money arithmetic; shipment-api medium).</p>`,
+    wc: ["proposal.md created — the change now exists for the OpenSpec CLI",
+         "prompt-submit hook fired; payload suppressed (facts unchanged)"],
+    files: [F("openspec/changes/add-shipment-quoting/proposal.md","new","risk levels + ring strategy")],
+    hooks: [H("09:01:12Z","prompt-submit","hk-b","Tier B — checked fingerprint, suppressed (no output)")]
+  },
+
+  { phase: "Planning", actor: "agent", session: "s-work",
+    title: "2 · Capability check — the stack is detected, not assumed",
+    body: `<p><code>capability-check.md</code> verifies the project profile:
+      sbt 1.12 · munit + ScalaCheck · WartRemover active (fatal warnings ON, so no
+      exhaustiveness escalation needed) · Stryker4s present · <em>telemetry stack:
+      absent</em>. That last row is why Ring 9 will be a recorded skip with date and
+      mechanism — a recorded limitation, re-established later rather than inherited.</p>`,
+    wc: ["capability-check.md created — every later artifact generates for THIS stack"],
+    files: [F("openspec/changes/add-shipment-quoting/capability-check.md","new","sbt, munit+ScalaCheck, Stryker4s, no telemetry")]
+  },
+
+  { phase: "Planning", actor: "agent", session: "s-work",
+    title: "3 · Inventory check — inherit, don't recreate",
+    body: `<p>Runs the semantic concept scanner and compares against
+      <code>openspec/concept-inventory.md</code>: <code>Money</code> (Iron-refined,
+      2dp enforced) and <code>Carrier</code> exist and are reused; no drift found.
+      The proposal's “Existing Concepts” table is grounded in this file, not memory.</p>`,
+    wc: ["inventory-check.md created — Money is reused, never re-declared"],
+    files: [F("openspec/changes/add-shipment-quoting/inventory-check.md","new","no drift; Money, Carrier reused")]
+  },
+
+  { phase: "Planning", actor: "hook", session: "s-work",
+    title: "4 · Specs written — post-edit lint fires on every spec save",
+    body: `<p>Three delta specs: <code>lane-registry</code>, <code>quote-engine</code>,
+      <code>shipment-api</code> — requirements (SHALL/MUST), scenarios, Ring 3
+      properties with generator strategies, and the Proof-Obligations table binding
+      every requirement. Each write triggers the harness's
+      <code>PostToolUse</code>/<code>tool_result</code> wiring →
+      <code>gate.sh --event post-edit --file …/spec.md</code> →
+      <code>spec-lint.sh</code> runs immediately on that spec.
+      First save of quote-engine's spec: an F3 finding (a Property block missing its
+      generator strategy) comes back as context; the agent adds
+      <code>**Generator strategy**: constructive</code> and the next post-edit run is clean.</p>`,
+    wc: ["3 spec files created · one F3 finding surfaced in-loop and fixed before any judgment pass",
+         "All six requirements BOUND (lint now passes with ≥1 obligation per requirement)"],
+    files: [
+      F("openspec/changes/add-shipment-quoting/specs/lane-registry/spec.md","new","LR-1, LR-2 + obligations"),
+      F("openspec/changes/add-shipment-quoting/specs/quote-engine/spec.md","mod","QE-1, QE-2 — F3 fixed: generator strategy added"),
+      F("openspec/changes/add-shipment-quoting/specs/shipment-api/spec.md","new","API-1, API-2 + obligations")],
+    chain: {"LR-1":{b:1},"LR-2":{b:1},"QE-1":{b:1},"QE-2":{b:1},"API-1":{b:1},"API-2":{b:1}},
+    hooks: [H("09:14:02Z","post-edit","hk-a","Tier A advise — spec-lint (quote-engine/spec.md): FAIL F3 · 1 Property without generator strategy"),
+            H("09:16:47Z","post-edit","hk-a","Tier A advise — spec-lint (quote-engine/spec.md): clean · F1–F8 pass, W1: 1 vague word (listed, not failing)")]
+  },
+
+  { phase: "Planning", actor: "agent", session: "s-work",
+    title: "5 · The spec-lint artifact — the judgment half, on top of the mechanical half",
+    body: `<p><code>spec-lint.sh</code> (full run, not <code>--artifacts</code> — artifacts
+      don't exist yet; F9 is deliberately off pre-implementation) passes F1–F10 for all
+      three specs. The agent then records the <em>judgment</em> checks in
+      <code>spec-lint.md</code>: observability, testability, altitude. The CONTEXT block's
+      applicability facts are quoted from the mechanical run, so the document and the
+      tool can never disagree.</p>`,
+    wc: ["spec-lint.md created — mechanical checks machine-passed; judgment checks recorded"],
+    files: [F("openspec/changes/add-shipment-quoting/spec-lint.md","new","F1–F8 pass · judgment checks recorded")]
+  },
+
+  { phase: "Planning", actor: "agent", session: "s-work",
+    title: "6 · Design — the Ring 6 triage decides the mirror",
+    body: `<p><code>design.md</code> records effect boundaries (registry/engine pure,
+      routes effectful), the Ring 6 triage table — <em>quote-engine's
+      <code>price(base, perKm, dist, fuel)</code> plus half-even rounding is a pure
+      kernel ⇒ Ring 6 applies via verified-mirror (the shipped types use Iron-refined
+      Money that Stainless cannot model — precisely the case the mirror pattern exists
+      for)</em> — and the Ring 4 compatibility story for the API (Money wire format:
+      decimal string; round-trip obligatory).</p>`,
+    wc: ["design.md created — R6 applicability is decided HERE, not at Step 10"],
+    files: [F("openspec/changes/add-shipment-quoting/design.md","new","Ring 6 triage: mirror for price/rounding kernel")]
+  },
+
+  { phase: "Planning", actor: "human", session: "s-work",
+    title: "7 · Implementation order — sequence and gate tiers",
+    body: `<p><code>implementation-order.md</code>: lane-registry → quote-engine →
+      shipment-api (dependency-ordered). Complexity × risk gives the <strong>human gate
+      tiers</strong>: lane-registry is simple+low ⇒ <em>combined</em> tier (contract and
+      oracle presented together after Step 2); quote-engine is high risk ⇒ two separate
+      stops; shipment-api, being the wire boundary, also keeps two. Tiering spends human
+      attention where the risk is — it never skips work. The human approves the order.</p>`,
+    wc: ["implementation-order.md created and APPROVED — including the gate tier per spec"],
+    files: [F("openspec/changes/add-shipment-quoting/implementation-order.md","new","LR→QE→API; tiers: combined / separate / separate")]
+  },
+
+  { phase: "Planning", actor: "agent", session: "s-work",
+    title: "8 · tasks.md — derived, never hand-maintained",
+    body: `<p><code>tasks.md</code> is generated from the implementation sequence so the
+      OpenSpec CLI can count progress. <code>implementation-progress.md</code> is seeded
+      alongside as the single source of truth — empty checkboxes, no baselines yet.
+      Planning is complete: the machine now enters the per-spec loop.</p>`,
+    wc: ["tasks.md + implementation-progress.md seeded — all boxes unchecked"],
+    files: [F("openspec/changes/add-shipment-quoting/tasks.md","new","derived"),
+            F("openspec/changes/add-shipment-quoting/implementation-progress.md","new","single source of truth for the loop")]
+  },
+
+  { phase: "Apply · lane-registry (1/3)", actor: "agent", session: "s-work",
+    title: "9 · Step 0 — baseline, pre-flight, applicability facts",
+    body: `<p>Pre-flight: <code>gate.sh --check-installed</code> →
+      <code>{"installed":true,"event":"prompt-submit"}</code> — the gate is actually
+      firing; without this, nothing else in the loop is guaranteed to be watched.
+      Working tree clean → baseline <code>b0 = a1b2c30</code> recorded in
+      implementation-progress.md. Registry gate: <em>applies?</em> — the CONTEXT fact says
+      <code>openspec/concepts/</code> is absent ⇒ <em>not applicable</em>, stated as a
+      fact, not skipped from memory. Impact scan: lane-registry introduces only NEW
+      public types and widens none ⇒ n/a, recorded. Inventory snapshot
+      <code>lane-registry-before.md</code> written for Step 12's machine diff.</p>`,
+    wc: ["Baseline b0=a1b2c30 persisted in implementation-progress.md",
+         "inventory-snapshots/lane-registry-before.md written",
+         "Registry / impact-scan applicability read from the repo and recorded"],
+    files: [F("openspec/changes/add-shipment-quoting/implementation-progress.md","mod","baseline b0 for lane-registry"),
+            F("openspec/changes/add-shipment-quoting/inventory-snapshots/lane-registry-before.md","new","Step 12's reference")],
+    hooks: [H("09:22:10Z","bash --check-installed","hk-a","Pre-flight — {installed:true, event:'prompt-submit'} — proceed")]
+  },
+
+  { phase: "Apply · lane-registry (1/3)", actor: "agent", session: "s-work",
+    title: "10 · Step 1 — typed contract, genuinely compiled",
+    body: `<p>The contract lives where sbt compiles it:
+      <code>modules/core/src/test/scala/…/typecontract/LaneRegistryTypeContract.scala</code> —
+      <code>opaque type LaneCode</code> with a smart constructor rejecting blanks,
+      <code>sealed trait LaneError { DuplicateLane; LaneNotFound(code) }</code>,
+      service signatures with <code>???</code> bodies, compile-negative stubs for the
+      forbidden constructions. <code>sbt core/Test/compile</code> → green.
+      <em>Combined tier: no stop here — the presentation carries into the single gate
+      after Step 2.</em></p>`,
+    wc: ["LaneRegistryTypeContract.scala created in TEST sources; compiles green"],
+    files: [F("modules/core/src/test/scala/ship/typecontract/LaneRegistryTypeContract.scala","new","opaque LaneCode, LaneError algebra, ??? bodies")]
+  },
+
+  { phase: "Apply · lane-registry (1/3)", actor: "hook", session: "s-work",
+    title: "11 · Step 2 — oracle from the spec; the tool-call gate blocks a shortcut",
+    body: `<p>Tests are derived from the spec + approved contract only: two scenario
+      tests (duplicate-reject, not-found), one property (lookup-after-register
+      round-trip), a constructive <code>Gen[LaneCode]</code>. While writing them, the
+      agent drifts and starts editing the production file <em>to shape it for the
+      test</em>. The harness's pre-execution wiring fires
+      <code>--event tool-call</code> → the oracle-ordering lock refuses: during the
+      oracle phase, production sources are read-only. The agent goes back to the test
+      file and runs the polarity suite: <strong>RED</strong> — exactly as designed.
+      The combined human gate now presents contract + oracle together; approved.</p>
+      <pre data-lang="bash">{"decision":"block",
+ "reason":"oracle phase: production edit to modules/core/src/main refused
+           until the test oracle is approved (spec:oracle-ordering-lock)"}</pre>`,
+    wc: ["LaneRegistrySuite.scala created (2 scenarios, 1 property) — polarity: RED (expected)",
+         "tool-call hook BLOCKED a production edit · HUMAN APPROVED the combined gate"],
+    files: [F("modules/core/src/test/scala/ship/LaneRegistrySuite.scala","new","oracle — red by design")],
+    hooks: [H("09:31:55Z","tool-call","hk-block","Tier A pre-execution — REFUSED edit of LaneRegistry.scala (oracle-ordering lock), exit 2")]
+  },
+
+  { phase: "Apply · lane-registry (1/3)", actor: "agent", session: "s-work",
+    title: "12 · Step 3 — implementation; post-edit runs danger-scan on every save",
+    body: `<p><code>LaneRegistry.scala</code> + <code>package.scala</code> (the
+      <code>LaneCode</code> opaque type promoted from the contract — the contract file
+      is kept and converted into permanent signature pins). Every save of a production
+      <code>.scala</code> file fires the post-edit tier: <code>danger-scan</code>
+      reports clean — <em>“clean” is the script exiting 0, not memory</em>.
+      <code>sbt core/compile core/Test/compile</code> green in one iteration,
+      recorded in the ledger as the R0 row: the first discharge evidence exists.</p>`,
+    wc: ["Production code exists; compile GREEN · ledger row R0 @b0 (first evidence)",
+         "Contract file converted to permanent signature pins"],
+    files: [F("modules/core/src/main/scala/ship/LaneRegistry.scala","new","registry service"),
+            F("modules/core/src/main/scala/ship/package.scala","new","opaque LaneCode (smart ctor)"),
+            F("modules/core/src/test/scala/ship/typecontract/LaneRegistryTypeContract.scala","mod","→ conformance pins (still compiles)")],
+    ledger: [L("09:40:12Z","lane-registry","R0","compiles clean (exhaustive matches)","sbt core/compile core/Test/compile",0,B0)],
+    hooks: [H("09:38:40Z","post-edit","hk-a","Tier A advise — danger-scan (LaneRegistry.scala): clean"),
+            H("09:40:15Z","ledger run","hk-b","ledger.sh run — R0 row appended, exit 0, baseline a1b2c30")]
+  },
+
+  { phase: "Apply · lane-registry (1/3)", actor: "ci", session: "s-work",
+    title: "13 · Steps 4–6 — lint, then the oracle flips red→green",
+    body: `<p>Ring 1: scalafix/scalafmt/WartRemover clean; danger-scan on the anchored
+      diff clean → ledger R1. Ring 3: <code>sbt core/test</code> — the polarity runs
+      flip: all 3 red tests green (red→green IS the implementation evidence);
+      cross-module regression (<code>api</code> depends on <code>core</code>) green →
+      ledger R3. The spec's Requirement↔Test cross-reference table is updated — and with
+      green rows at baseline <code>b0</code>, LR-1 and LR-2 become
+      <strong>discharged</strong>. (Resolved stays deferred: F9 only runs at Step 12.)</p>`,
+    wc: ["Ledger rows R1, R3 @b0 · spec cross-ref table now all ✅",
+         "CHAIN: LR-1, LR-2 → discharged ✓ (bound ✓ since step 4; resolved — deferred to Step 12)"],
+    files: [F("openspec/changes/add-shipment-quoting/specs/lane-registry/spec.md","mod","Requirement↔Test table added")],
+    ledger: [L("09:44:03Z","lane-registry","R1","lint + danger-scan clean on diff a1b2c30","sbt scalafix --check; scalafmtCheckAll; danger-scan.sh a1b2c30",0,B0),
+             L("09:47:31Z","lane-registry","R3","oracle green; polarity 3 red→green confirmed","sbt core/test api/test",0,B0)],
+    chain: {"LR-1":{d:1},"LR-2":{d:1}}
+  },
+
+  { phase: "Apply · lane-registry (1/3)", actor: "agent", session: "s-review",
+    title: "14 · Step 8 — adversarial review in a FRESH session",
+    body: `<p>A new session (<code>s-review</code>) starts with <em>no</em> implementation
+      conversation. Its only inputs: the spec, the approved contract, and
+      <code>git diff a1b2c30</code>. Session-start injects the banner again (state is
+      per-session). Verdict: <strong>PASS</strong> on LR-1 and LR-2 — no silent
+      fallbacks, the public surface cannot construct an invalid registry. The review is
+      recorded as an R8 ledger row <em>carrying <code>session: s-review</code></em> —
+      the checkpoint will mechanically compare it against <code>s-work</code>; a
+      self-review row would not satisfy the row's contract.</p>`,
+    wc: ["SESSION SWITCH: s-review (fresh context) · compliance report: PASS ×2",
+         "Ledger R8 row with session: s-review"],
+    ledger: [L("09:58:20Z","lane-registry","R8","per-requirement compliance: PASS x2","adversarial review of diff a1b2c30",0,B0,"s-review")],
+    hooks: [H("09:52:00Z","session-start","hk-b","Tier B inject — new session s-review gets the banner fresh")]
+  },
+
+  { phase: "Apply · lane-registry (1/3)", actor: "agent", session: "s-work",
+    title: "15 · Step 12 — the delta must equal the commitment; then resolved flips",
+    body: `<p>Scanner re-run → <code>lane-registry-after.md</code>; the machine diff vs
+      <code>-before</code> contains exactly <code>LaneCode</code>,
+      <code>LaneError</code>, <code>LaneRegistry</code> — the Concepts Introduced table,
+      nothing else. <code>spec-lint.sh --artifacts</code> (F9 now ON): every artifact
+      token — the suite file, the signature pins — resolves to a tracked file ⇒
+      LR-1/LR-2 flip to <strong>resolved ✓</strong>. Build-dep delta: none. The
+      project inventory is updated with the three new concepts, provenance
+      <code>spec:add-shipment-quoting/lane-registry</code>.</p>`,
+    wc: ["CHAIN: LR-1, LR-2 → resolved ✓ — the full bound/resolved/discharged chain is now closed for spec 1",
+         "concept-inventory.md accumulates 3 new concepts with provenance"],
+    files: [F("openspec/changes/add-shipment-quoting/inventory-snapshots/lane-registry-after.md","new","diff == Concepts Introduced exactly"),
+            F("openspec/concept-inventory.md","mod","+LaneCode, LaneError, LaneRegistry (provenance recorded)"),
+            F("openspec/changes/add-shipment-quoting/implementation-progress.md","mod","concept delta verified; build-dep delta: none")],
+    chain: {"LR-1":{r:1},"LR-2":{r:1}}
+  },
+
+  { phase: "Apply · lane-registry (1/3)", actor: "human", session: "s-work",
+    title: "16 · Step 13 — checkpoint, commit, and the mandatory stop",
+    body: `<p><code>checkpoint.sh report</code> (fed by chain-state + the ledger) is
+      pasted <em>verbatim</em>: R0 ✅ · R1 ✅ · R2 ⏭ n/a · R3 ✅ (polarity 3 red→green) ·
+      R4 ⏭ · R5 ⏭ (waived in proposal for this simple spec) · R6 ⏭ · R8 ✅ (s-review) ·
+      R9 ⏭. Then the per-spec commit
+      <code>9f04d1e — add-shipment-quoting: spec 1/3 — lane-registry</code> becomes the
+      durable checkpoint identity <em>and the next spec's baseline</em>. The hash goes
+      into progress; <code>regenerate-tasks</code> rewrites tasks.md's checkboxes
+      (committed separately — the hash it records did not exist before the first
+      commit). The agent presents the fixed checkpoint structure and <strong>stops</strong>.
+      Human: “continue.”</p>
+      <p>One more lock guards exactly this moment: between the checkpoint
+      presentation and the observed granting prompt, the agent must not pre-stage
+      spec 2. The <strong>human-grant lock</strong> (v13) refuses non-production
+      writes that target spec N+1 while spec N's presentation has no
+      harness-observed grant — approval must be an observed event, not agent
+      prose. The agent tries anyway (drafting spec 2's scaffold) and is blocked;
+      only after “continue” is observed does the lock open.</p>`,
+    wc: ["COMMIT c1=9f04d1e (= next baseline b1) · tasks.md regenerated (derived)",
+         "HUMAN-GRANT LOCK blocked pre-staging of spec 2 until the granting prompt was observed",
+         "Human approval recorded — spec 2 may now begin"],
+    hooks: [H("10:01:37Z","tool-call","hk-block","Tier A pre-execution — human-grant lock: refused write targeting spec 2 (no observed grant after spec-1 presentation), exit 2"),
+            H("10:02:50Z","prompt-submit","hk-b","Tier B — granting prompt observed ('continue'); human-grant lock releases")],
+    files: [F("openspec/changes/add-shipment-quoting/implementation-progress.md","mod","spec 1/3 ✅ @ commit 9f04d1e"),
+            F("openspec/changes/add-shipment-quoting/tasks.md","mod","spec-1 boxes checked — regenerated, not edited")]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "agent", session: "s-work",
+    title: "17 · Step 0 — new baseline; applicability is re-derived, never inherited",
+    body: `<p>Baseline <code>b1 = 9f04d1e</code> — spec 1's commit. Every diff this spec
+      computes is anchored there, never the unanchored working tree (which after spec 1
+      would contain another spec's changes). Impact scan: the engine ADDS the
+      <code>QuoteError</code> ADT and reuses <code>Money</code> — no existing public
+      type's variant set grows ⇒ n/a, recorded with the reason. Snapshot
+      <code>quote-engine-before.md</code>. Two human gates ahead (separate tier).</p>`,
+    wc: ["Baseline b1=9f04d1e persisted · snapshot written · impact-scan n/a recorded with reason"],
+    files: [F("openspec/changes/add-shipment-quoting/implementation-progress.md","mod","baseline b1 for quote-engine"),
+            F("openspec/changes/add-shipment-quoting/inventory-snapshots/quote-engine-before.md","new","")]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "human", session: "s-work",
+    title: "18 · Step 1 — contract, then HUMAN GATE 1",
+    body: `<p><code>QuoteEngineTypeContract.scala</code>: the pure kernel
+      <code>def price(lane: Lane, dist: DistanceKm, fuel: FuelSurcharge): Either[QuoteError, Money]</code>,
+      <code>sealed trait QuoteError { NegativeDistance(km); UnknownLane(code) }</code>,
+      properties as structured comments, compile-negative stubs (you cannot build a
+      <code>Money</code> from a raw Double). Compiles green. <strong>STOP — gate 1.</strong>
+      The human reads the error algebra, asks where rounding happens (answer: inside
+      <code>Money.of</code>, half-even), approves.</p>`,
+    wc: ["QuoteEngineTypeContract.scala compiles · HUMAN GATE 1 approved (separate tier — no merge with gate 2)"],
+    files: [F("modules/core/src/test/scala/ship/typecontract/QuoteEngineTypeContract.scala","new","price kernel signature + error algebra")]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "human", session: "s-work",
+    title: "19 · Step 2 — the oracle with teeth, then HUMAN GATE 2",
+    body: `<p>From the spec only: scenario tests for QE-1 (the spec's worked examples —
+      e.g. base €25, perKm €1.80, 120 km, fuel 8% ⇒ €257.84, exercising half-even at
+      the 2dp boundary) and QE-2 (monotonicity property with a constructive pair
+      generator dist₁ ≤ dist₂; negative-distance scenario). Every test cites
+      <code>// spec: quote-engine — Scenario: …</code>. Polarity run: <strong>4 RED</strong>.
+      <strong>STOP — gate 2.</strong> Approved — the generators are now part of the
+      approved oracle; narrowing one later is tampering and needs re-approval.</p>`,
+    wc: ["QuoteEngineSuite.scala — polarity 4 RED · HUMAN GATE 2 approved (generators locked)"],
+    files: [F("modules/core/src/test/scala/ship/QuoteEngineSuite.scala","new","scenarios + monotonicity property — red by design")]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "agent", session: "s-work",
+    title: "20 · Steps 3–5 — implement, lint, architecture",
+    body: `<p><code>QuoteEngine.scala</code> implemented against the approved signatures;
+      <code>Money.of</code> rounds <code>HALF_EVEN</code>. Ring 0 green → ledger R0 @b1.
+      Ring 1 clean → R1. Ring 2: the engine imports nothing effectful; error discipline
+      holds (no <code>Try</code>, sealed errors only) → R2. All three rows land at
+      baseline <code>b1</code> — anchored diffs mean spec 1's files are never conflated
+      with this spec's evidence.</p>`,
+    wc: ["QuoteEngine.scala + Money.of implemented · ledger R0/R1/R2 @b1"],
+    files: [F("modules/core/src/main/scala/ship/QuoteEngine.scala","new","pure kernel, promoted from the contract"),
+            F("modules/core/src/main/scala/ship/Money.scala","new","of() rounds HALF_EVEN to 2dp (reuses inventory concept)")],
+    ledger: [L("10:31:00Z","quote-engine","R0","compiles clean","sbt core/compile core/Test/compile",0,B1),
+             L("10:33:44Z","quote-engine","R1","lint + danger-scan clean on diff 9f04d1e","sbt scalafix --check; danger-scan.sh 9f04d1e",0,B1),
+             L("10:34:10Z","quote-engine","R2","pure kernel: no effectful imports; sealed errors only","architecture rules (design: effect boundaries)",0,B1)]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "hook", session: "s-work",
+    title: "21 · Step 6 — a red test, and the completion gate catches a premature claim",
+    body: `<p><code>sbt core/test</code>: monotonicity green, negative-distance green —
+      but the half-even scenario is <strong>still RED</strong>: the engine rounds
+      <em>before</em> the fuel surcharge; the spec says after. The agent writes
+      “Spec 2/3 complete” and tries to end the turn anyway. The harness fires
+      <code>--event completion</code>: the heuristic matches the checkpoint marker,
+      chain-state reports QE-1 has no discharged row at this baseline →
+      <strong>refusal, exit 1, naming it</strong>.</p>
+      <pre data-lang="bash">{"decision":"block",
+ "reason":"completion claim with unresolved requirements: QE-1
+   (quote = base + perKm*dist + fuel surcharge; money rounds half-even to 2dp)
+   has no discharged ledger row at baseline 9f04d1e"}</pre>
+      <p>The bounded-refusal marker is set — one refusal max per turn, never a deadlock.
+      The agent fixes the rounding order — the <em>implementation</em> changes; the
+      scenario and its generator are untouchable (they are the approved oracle) —
+      reruns red→green, records R3. The next completion attempt finds QE-1/QE-2
+      discharged ⇒ exit 0.</p>`,
+    wc: ["COMPLETION GATE REFUSED the premature claim (exit 1) · bug fixed in the implementation only",
+         "Ledger R3 @b1 · CHAIN: QE-1, QE-2 discharged ✓"],
+    files: [F("modules/core/src/main/scala/ship/QuoteEngine.scala","mod","fuel surcharge applied BEFORE rounding — spec order"),
+            F("openspec/changes/add-shipment-quoting/specs/quote-engine/spec.md","mod","Requirement↔Test table")],
+    ledger: [L("10:52:18Z","quote-engine","R3","oracle green after rounding-order fix; polarity 4 red→green","sbt core/test api/test",0,B1)],
+    chain: {"QE-1":{d:1},"QE-2":{d:1}},
+    hooks: [H("10:49:02Z","completion","hk-block","Tier A completion — REFUSAL exit 1, names QE-1; bounded-refusal marker set for s-work"),
+            H("10:52:31Z","completion","hk-a","Tier A completion — chain-state discharged for quote-engine ⇒ exit 0 allow")]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "agent", session: "s-review",
+    title: "22 · Step 8 — the fresh reviewer finds what the tests can't see",
+    body: `<p><code>s-review</code> again, diff <code>9f04d1e</code>. Verdicts: QE-1
+      PASS; QE-2 <strong>PARTIAL</strong> — a private helper silently <em>clamps
+      negative distance to zero</em> instead of rejecting it; the violation is
+      unreachable via the public path only because the happy pipeline validates first.
+      Exactly the defect class tests miss: they never called the helper. Fix: the
+      helper returns <code>Either[QuoteError, …]</code> like everything else; a new
+      direct-construction test is added; Rings 0–3 re-run (cheap, anchored at b1);
+      re-review: PASS. The R8 row is recorded with <code>session: s-review</code>.</p>`,
+    wc: ["R8 verdict PARTIAL→PASS · 1 test added by the reviewer-driven fix · ledger R8 @b1 (s-review)",
+         "Rings 0–3 re-run as affected; ledger updated"],
+    files: [F("modules/core/src/main/scala/ship/QuoteEngine.scala","mod","helper no longer clamps; Either all the way"),
+            F("modules/core/src/test/scala/ship/QuoteEngineSuite.scala","mod","+direct-construction negative scenario")],
+    ledger: [L("11:07:45Z","quote-engine","R8","PARTIAL (negative-distance clamp) → fixed → PASS","adversarial review of diff 9f04d1e",0,B1,"s-review"),
+             L("11:12:03Z","quote-engine","R3","re-run after R8 fix: still green","sbt core/test api/test",0,B1)]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "ci", session: "s-work",
+    title: "23 · Step 9 — mutation testing, aimed at THIS spec's diff only",
+    body: `<p><code>git diff --name-only 9f04d1e</code> ⇒ the mutate list is generated for
+      exactly <code>QuoteEngine.scala</code> and <code>Money.scala</code> — never a
+      fixed conf list. Stryker4s: 93% on the pure kernel (threshold 90–95 for pure
+      domain logic). Two survivors: the fuel-order swap mutant — <em>killed by the
+      reviewer's new test</em> (Ring 8's tests kill mutants, which is why it runs
+      before the expensive rings) — and an equivalent mutant in now-dead post-fix
+      code (removed). Score and dispositions recorded; ledger R5 @b1.</p>`,
+    wc: ["Stryker score 93% · 1 survivor killed, 1 equivalent removed · ledger R5 @b1"],
+    ledger: [L("11:26:50Z","quote-engine","R5","mutation 93% on targeted mutate={QuoteEngine, Money}","sbt stryker (conf restored afterwards)",0,B1)]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "ci", session: "s-work",
+    title: "24 · Step 10 — Ring 6: a proof about code you actually run",
+    body: `<p>The verified mirror per design's triage: leaf module
+      <code>verified/money-mirror</code> (pinned to the Stainless frontend's Scala
+      version, depends on nothing project-local) models price in <code>BigInt</code>
+      cents and proves <em>monotonicity</em> and <em>rounding totality</em>;
+      <code>sbt ring6</code> green → first R6 row. The <strong>bridge property
+      test</strong> (production module, test-scope dependency on the mirror) runs the
+      shipped <code>QuoteEngine.price</code> and the mirror on the same generated
+      inputs and asserts agreement — <em>without this row the proof is about a program
+      nobody runs</em>. Bridge green → second R6 row.</p>`,
+    wc: ["verified/money-mirror module created · Stainless green · bridge property test green · 2 ledger R6 rows @b1"],
+    files: [F("verified/money-mirror/src/main/scala/ship/mirror/MoneyMirror.scala","new","proven monotonicity + rounding totality"),
+            F("modules/core/src/test/scala/ship/MoneyMirrorBridgeSuite.scala","new","shipped code ≡ mirror on generated inputs")],
+    ledger: [L("11:40:11Z","quote-engine","R6","stainless: monotonicity, rounding totality verified","sbt ring6 (money-mirror)",0,B1),
+             L("11:42:37Z","quote-engine","R6","bridge property: shipped ≡ mirror","sbt 'core/testOnly ship.MoneyMirrorBridgeSuite'",0,B1)]
+  },
+
+  { phase: "Apply · quote-engine (2/3)", actor: "human", session: "s-work",
+    title: "25 · Steps 12–13 — spec 2 closes its chain; commit c2",
+    body: `<p>The snapshot diff equals the commitment — <code>QuoteError</code> and
+      <code>QuoteEngine.price</code> new; the existing <code>Money</code> row gains a
+      method (provenance appended, not duplicated). No scope creep. F9
+      <code>--artifacts</code> passes ⇒ QE-1/QE-2 <strong>resolved ✓</strong>. Removal
+      audit: nothing was removed. Verbatim checkpoint report; commit
+      <code>77c21aa — spec 2/3 — quote-engine</code>; tracker + tasks committed;
+      checkpoint presented; <strong>STOP</strong>. Human: “continue”.</p>`,
+    wc: ["CHAIN: QE-1, QE-2 resolved ✓ · COMMIT c2=77c21aa (=b2) · tasks.md regenerated · human approved"],
+    files: [F("openspec/changes/add-shipment-quoting/inventory-snapshots/quote-engine-after.md","new","delta == commitment"),
+            F("openspec/concept-inventory.md","mod","Money.of enriched; QuoteEngine, QuoteError added"),
+            F("openspec/changes/add-shipment-quoting/implementation-progress.md","mod","spec 2/3 ✅ @ 77c21aa"),
+            F("openspec/changes/add-shipment-quoting/tasks.md","mod","regenerated")],
+    chain: {"QE-1":{r:1},"QE-2":{r:1}}
+  },
+
+  { phase: "Apply · shipment-api (3/3)", actor: "agent", session: "s-work",
+    title: "26 · Spec 3, Steps 0–6 compressed — same machine, same discipline",
+    body: `<p>Baseline <code>b2 = 77c21aa</code>. Separate gates: the contract (route
+      types; <code>QuoteRequest/QuoteResponse</code> with Money as a decimal string)
+      approved; the oracle (round-trip properties per API-1; a 400/UnknownLane
+      scenario per API-2) red, approved. Implementation in <code>modules/api</code>;
+      post-edit danger-scans clean; R0/R1/R3 land at <code>b2</code>; cross-module
+      regression runs <code>core</code> even though <code>api</code> is the owning
+      module — <code>core</code> <em>depends on nothing changed</em> but its suite is
+      cheap, and a core refinement can break downstream with no type-widening
+      involved. ⇒ API-1/API-2 discharged ✓.</p>`,
+    wc: ["QuoteRoutes.scala + codecs implemented · ledger R0/R1/R3 @b2 · CHAIN: API-1, API-2 discharged ✓"],
+    files: [F("modules/api/src/test/scala/ship/typecontract/ShipmentApiTypeContract.scala","new","route + codec contract"),
+            F("modules/api/src/test/scala/ship/ShipmentApiSuite.scala","new","round-trip properties + 400 scenario — red→green"),
+            F("modules/api/src/main/scala/ship/QuoteRoutes.scala","new","POST /quotes")],
+    ledger: [L("12:20:05Z","shipment-api","R0","compiles clean","sbt api/compile api/Test/compile",0,B2),
+             L("12:22:41Z","shipment-api","R1","lint + danger-scan clean on diff 77c21aa","sbt scalafix --check; danger-scan.sh 77c21aa",0,B2),
+             L("12:31:17Z","shipment-api","R3","oracle green; cross-module incl. core","sbt api/test core/test",0,B2)],
+    chain: {"API-1":{d:1},"API-2":{d:1}}
+  },
+
+  { phase: "Apply · shipment-api (3/3)", actor: "ci", session: "s-work",
+    title: "27 · Steps 7 & 11 — Ring 4 green; Ring 9 skipped with the reason on record",
+    body: `<p>Ring 4 (the spec touches the wire format): encode→decode == id in both
+      directions; a golden fixture <code>quote-response.v1.json</code> created from the
+      current encoding so future changes have a compatibility baseline; unknown-field
+      behavior matches the spec → R4 row @b2. Ring 9: the capability profile says the
+      telemetry stack is <em>absent</em> — the skip is recorded with date, mechanism,
+      and correctness impact (<em>“temporal properties for quote latency remain
+      runtime-unverified; establish the otel stack in a future change”</em>) —
+      satisfying <em>a recorded limitation is re-established before it is relied
+      upon</em>, instead of a silent gap.</p>`,
+    wc: ["Golden fixture created · ledger R4 row @b2 · R9 recorded-skip (date + mechanism + impact) in the progress tracker"],
+    files: [F("modules/api/src/test/resources/fixtures/quote-response.v1.json","new","compatibility baseline"),
+            F("openspec/changes/add-shipment-quoting/implementation-progress.md","mod","R9: skipped — stack absent (capability-check.md, 2026-08-14), impact stated")],
+    ledger: [L("12:38:52Z","shipment-api","R4","encode→decode == id; golden fixture decodes to expected value","sbt 'api/testOnly ship.WireCompatSuite'",0,B2)]
+  },
+
+  { phase: "Apply · shipment-api (3/3)", actor: "human", session: "s-work",
+    title: "28 · Step 8 + Steps 12–13 — final spec, final commit",
+    body: `<p>Fresh-context review (<code>s-review</code>) on diff <code>77c21aa</code>:
+      PASS ×2; R8 row with <code>session: s-review</code>. Snapshot diff == Concepts
+      Introduced (<code>QuoteRoutes</code>, codecs); F9 artifacts resolve ⇒ API-1/API-2
+      <strong>resolved ✓</strong>. Inventory updated; removal audit: nothing removed.
+      Commit <code>e58b3f0 — spec 3/3 — shipment-api</code>. Checkpoint with verbatim
+      rings, STOP, human approves. The whole change's chain is now closed.</p>`,
+    wc: ["Ledger R8 @b2 (s-review) · CHAIN: API-1, API-2 resolved ✓ — ALL SIX REQUIREMENTS fully discharged",
+         "COMMIT c3=e58b3f0 · tasks.md regenerated"],
+    files: [F("openspec/changes/add-shipment-quoting/inventory-snapshots/shipment-api-before.md","new",""),
+            F("openspec/changes/add-shipment-quoting/inventory-snapshots/shipment-api-after.md","new","delta == commitment"),
+            F("openspec/concept-inventory.md","mod","+QuoteRoutes, codecs"),
+            F("openspec/changes/add-shipment-quoting/implementation-progress.md","mod","spec 3/3 ✅ @ e58b3f0"),
+            F("openspec/changes/add-shipment-quoting/tasks.md","mod","all boxes checked")],
+    ledger: [L("12:51:09Z","shipment-api","R8","per-requirement compliance: PASS x2","adversarial review of diff 77c21aa",0,B2,"s-review")],
+    chain: {"API-1":{r:1},"API-2":{r:1}}
+  },
+
+  { phase: "Archive", actor: "agent", session: "s-work",
+    title: "29 · Final summary + archive — the claim finally matches the evidence",
+    body: `<p><code>chain-state.sh --change add-shipment-quoting --baseline e58b3f0</code>:
+      <code>{"bound":6,"resolved":6,"discharged":6,"unresolved":[]}</code> — exit 0.
+      The final turn's completion claim passes the gate on the first try because the
+      chain is closed, not because anyone said so. <code>openspec archive
+      add-shipment-quoting</code> folds the delta specs into
+      <code>openspec/specs/</code> and moves the change to
+      <code>openspec/changes/archive/2026-08-14-add-shipment-quoting/</code>, carrying
+      its ledger, progress tracker, snapshots, and checkpoint reports as the permanent
+      evidence trail. The next session's banner will read “active changes: none”.</p>
+      <p><strong>What the machine bought:</strong> an oracle that failed until the code
+      existed (polarity); a production-edit block during oracle authoring; a completion
+      refusal that caught a premature claim by name; a fresh-context review that found
+      a private-path violation no test exercised; a mutation score aimed at exactly
+      this change; a proof bound to shipped code by a bridge test; and a ledger in
+      which every claim above is a re-runnable row at a recorded baseline.</p>`,
+    wc: ["chain-state: 6/6/6 discharged — the completion gate exits 0 on the first try",
+         "Archive: specs folded into openspec/specs/; the change + evidence trail preserved under archive/"],
+    files: [F("openspec/specs/lane-registry/spec.md","new","canonical spec (folded delta)"),
+            F("openspec/specs/quote-engine/spec.md","new","canonical spec (folded delta)"),
+            F("openspec/specs/shipment-api/spec.md","new","canonical spec (folded delta)"),
+            F("openspec/changes/archive/2026-08-14-add-shipment-quoting/…","new","entire change + ledger + tracker + snapshots")],
+    hooks: [H("13:02:44Z","completion","hk-a","Tier A completion — chain discharged for the change ⇒ exit 0; final summary allowed")]
+  }
+
+  ];
+
+  // ── cumulative state at step index i ─────────────────────────────────────
+  function stateAt(idx) {
+    var files = [], ledger = [], hooks = [];
+    var chain = {};
+    Object.keys(REQ).forEach(function (k) { chain[k] = { b: 0, r: 0, d: 0 }; });
+    for (var i = 0; i <= idx; i++) {
+      var s = STEPS[i];
+      (s.files || []).forEach(function (f) {
+        var ex = null;
+        for (var j = 0; j < files.length; j++) if (files[j].f.path === f.path) ex = files[j];
+        if (ex) { ex.f = f; ex.at = i; } else files.push({ f: f, at: i });
+      });
+      ledger = ledger.concat((s.ledger || []).map(function (r) { return { r: r, at: i }; }));
+      hooks  = hooks.concat((s.hooks  || []).map(function (h) { return { h: h, at: i }; }));
+      if (s.chain) Object.keys(s.chain).forEach(function (k) {
+        var c = s.chain[k];
+        if (c.b) chain[k].b = 1; if (c.r) chain[k].r = 1; if (c.d) chain[k].d = 1;
+      });
+    }
+    return { files: files, ledger: ledger, hooks: hooks, chain: chain };
+  }
+
+  // ── rendering ────────────────────────────────────────────────────────────
+  function esc(t) { return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  var CUR = 0, freshChain = {};
+
+  function renderFiles(st) {
+    if (!st.files.length) return '<div class="empty-note">nothing on disk yet</div>';
+    var rows = st.files.map(function (e) {
+      var fresh = (e.at === CUR);
+      var pill = e.f.st === "new" ? '<span class="pill new">new</span>'
+               : e.f.st === "mod" ? '<span class="pill mod">mod</span>' : "";
+      return '<tr class="' + (fresh ? "fresh" : "") + '"><td>' + esc(e.f.path) + '</td><td>'
+        + pill + '</td><td>' + esc(e.f.note || "") + '</td></tr>';
+    }).join("");
+    return '<table class="st"><tr><th>path</th><th></th><th>note</th></tr>' + rows + '</table>';
+  }
+
+  function renderLedger(st) {
+    if (!st.ledger.length) return '<div class="empty-note">empty — no ring has produced evidence yet</div>';
+    var rows = st.ledger.map(function (e) {
+      var r = e.r, fresh = (e.at === CUR);
+      return '<tr class="' + (fresh ? "fresh" : "") + '"><td>' + r.ring + '</td><td>' + esc(r.spec)
+        + '</td><td>' + esc(r.artifact) + '</td><td>' + r.exit + '</td><td>' + r.baseline
+        + '</td><td>' + (r.session ? esc(r.session) : '<span class="pill na">—</span>') + '</td></tr>';
+    }).join("");
+    return '<table class="st"><tr><th>ring</th><th>spec</th><th>command / obligation (' + st.ledger.length + ' rows)</th><th>exit</th><th>baseline</th><th>session</th></tr>' + rows + '</table>'
+      + '<div class="empty-note">evidence-ledger.jsonl · append-only · each row re-checkable by re-running its command</div>';
+  }
+
+  function renderChain(st) {
+    var rows = Object.keys(REQ).map(function (k) {
+      var c = st.chain[k];
+      function cell(v, deferred) {
+        if (v) return '<span class="pill y">✓</span>';
+        if (deferred) return '<span class="pill na">deferred</span>';
+        return '<span class="pill n">✗</span>';
+      }
+      var changed = freshChain[k];
+      return '<tr class="' + (changed ? "fresh" : "") + '"><td>' + k + ' <span class="pill na">' + REQ_SPEC[k] + '</span></td>'
+        + '<td style="font-family:var(--sans);font-size:.72rem">' + esc(REQ[k]) + '</td>'
+        + '<td>' + cell(c.b) + '</td><td>' + cell(c.r, !c.r && c.b) + '</td><td>' + cell(c.d) + '</td></tr>';
+    }).join("");
+    return '<table class="st"><tr><th>req</th><th>shall</th><th>bound</th><th>resolved</th><th>discharged</th></tr>' + rows + '</table>'
+      + '<div class="empty-note">bound: ≥1 obligation names it (F7) · resolved: obligation artifacts exist as tracked files (F9, checked at Step 12) · discharged: green ledger row at the spec baseline</div>';
+  }
+
+  function renderHooks(st) {
+    if (!st.hooks.length) return '<div class="empty-note">no hook invocations yet</div>';
+    return '<div class="hlog">' + st.hooks.map(function (e) {
+      var h = e.h, fresh = (e.at === CUR);
+      return '<div class="hevt ' + (fresh ? "fresh" : "") + '"><span class="hkind ' + h.cls + '">'
+        + esc(h.kind) + '</span> <span class="pillx" style="color:var(--fg-faint)">' + h.time + '</span>'
+        + '<div>' + h.title + '</div></div>';
+    }).join("") + '</div>';
+  }
+
+  // ── stepper ──────────────────────────────────────────────────────────────
+  function buildTrack() {
+    var track = document.getElementById("sim-track");
+    var html = "", lastPhase = "";
+    STEPS.forEach(function (s, i) {
+      if (s.phase !== lastPhase) { html += '<span class="track-grp">' + esc(s.phase) + '</span>'; lastPhase = s.phase; }
+      html += '<span class="stchip" data-i="' + i + '" title="' + esc(s.title) + '">' + i + '</span>';
+    });
+    track.innerHTML = html;
+    track.addEventListener("click", function (ev) {
+      var t = ev.target.closest ? ev.target.closest(".stchip") : null;
+      if (t) { CUR = parseInt(t.getAttribute("data-i"), 10); render(); }
+    });
+  }
+
+  var ACTOR_CLS = { agent: "a-agent", hook: "a-hook", human: "a-human", ci: "a-ci" };
+  var ACTOR_LBL = { agent: "agent", hook: "hook fires", human: "human gate", ci: "tool run" };
+
+  function render() {
+    var s = STEPS[CUR];
+    freshChain = s.chain || {};
+    document.getElementById("sim-actor").textContent = ACTOR_LBL[s.actor];
+    document.getElementById("sim-actor").className = "step-actor " + (ACTOR_CLS[s.actor] || "a-agent");
+    document.getElementById("sim-phase").textContent = s.phase;
+    document.getElementById("sim-title").textContent = s.title;
+    document.getElementById("sim-body").innerHTML = s.body;
+    document.getElementById("sim-pos").textContent = "step " + CUR + " / " + (STEPS.length - 1);
+    document.getElementById("sim-session").textContent = "session: " + s.session;
+    var wc = document.getElementById("sim-wc"), wrap = document.getElementById("sim-wc-wrap");
+    if (s.wc && s.wc.length) {
+      wrap.style.display = "";
+      wc.innerHTML = s.wc.map(function (w) { return "<li>" + w + "</li>"; }).join("");
+    } else wrap.style.display = "none";
+    document.getElementById("sim-prev").disabled = (CUR === 0);
+    document.getElementById("sim-next").disabled = (CUR === STEPS.length - 1);
+    Array.prototype.forEach.call(document.querySelectorAll(".stchip"), function (c) {
+      var i = parseInt(c.getAttribute("data-i"), 10);
+      c.classList.toggle("cur", i === CUR);
+      c.classList.toggle("done", i < CUR);
+    });
+    var st = stateAt(CUR);
+    document.getElementById("st-files").innerHTML  = renderFiles(st);
+    document.getElementById("st-ledger").innerHTML = renderLedger(st);
+    document.getElementById("st-chain").innerHTML  = renderChain(st);
+    document.getElementById("st-hooks").innerHTML  = renderHooks(st);
+  }
+
+  document.getElementById("sim-prev").addEventListener("click", function () { if (CUR > 0) { CUR--; render(); } });
+  document.getElementById("sim-next").addEventListener("click", function () { if (CUR < STEPS.length - 1) { CUR++; render(); } });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.target && /^(INPUT|TEXTAREA)$/.test(ev.target.tagName)) return;
+    if (ev.key === "ArrowRight") { if (CUR < STEPS.length - 1) { CUR++; render(); } }
+    if (ev.key === "ArrowLeft")  { if (CUR > 0) { CUR--; render(); } }
+  });
+
+  buildTrack();
+  render();
+})();
+</script>
+</body>
+</html>

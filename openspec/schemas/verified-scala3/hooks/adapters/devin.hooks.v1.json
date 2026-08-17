@@ -35,6 +35,10 @@
         {
           "type": "command",
           "command": "./openspec/schemas/verified-scala3/hooks/gate.sh --event post-edit --format hook-json"
+        },
+        {
+          "type": "command",
+          "command": "./openspec/schemas/verified-scala3/hooks/gate.sh --event post-bash --format hook-json"
         }
       ]
     }
