@@ -20,6 +20,13 @@ object Versions {
   val Iron: String           = "3.3.2"
   val Logback: String        = "1.5.34"
 
+  // --- probatio tooling (R-X3 allowed-dependency set) ---
+  // os-lib + mainargs are com.lihaoyi libs used by the probatio CLI port.
+  // Both are GraalVM-native-image-safe (no reflection). scalameta is
+  // spike-gated (V1) and added when the concept-scanner port is scheduled.
+  val OsLib: String          = "0.11.8"   // released 2026-01-26
+  val Mainargs: String       = "0.7.8"    // released 2025-12-26
+
   // --- Testing ---
   val Munit: String            = "1.3.3"
   val MunitCatsEffect: String  = "2.2.0"

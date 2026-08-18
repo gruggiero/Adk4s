@@ -374,12 +374,47 @@ if [ "$EVENT" = "tool-call" ]; then
     */src/main/*.scala) is_prod_edit=1 ;;
   esac
 
+  # Allowlist: VERIFIED_SCALA3_ALLOW_PATHS is a colon-separated list of
+  # absolute path prefixes. If the file path starts with any of them, the
+  # gate allows the edit unconditionally — bypassing both the oracle lock
+  # and the predecessor check. This is for throwaway spike/experiment code
+  # in separate subprojects that aren't part of any spec's Expected Changed
+  # Production Files (e.g. workflow/spike/ for toolchain validation).
+  # Per-session env var, same pattern as VERIFIED_SCALA3_ACTIVE_SPEC.
+  # Example: export VERIFIED_SCALA3_ALLOW_PATHS="/home/user/repo/workflow/spike"
+  if [ -n "${VERIFIED_SCALA3_ALLOW_PATHS:-}" ] && [ "$is_prod_edit" -eq 1 ]; then
+    IFS=':' read -ra _allow_paths <<< "${VERIFIED_SCALA3_ALLOW_PATHS}"
+    for _prefix in "${_allow_paths[@]}"; do
+      case "$FILE_PATH" in
+        "$_prefix"*)
+          trace "tool-call: file under allow-listed path $_prefix, allow — $FILE_PATH"
+          exit 0
+          ;;
+      esac
+    done
+  fi
+
   if [ "$is_prod_edit" -eq 0 ]; then
     # spec: human-grant-lock — non-production paths that target spec N+1's
     # Step-0 signature (implementation-progress.md or spec N+1's spec dir)
     # are blocked if spec N has a presentation but no grant. This is the
     # tacit-approval fix: the agent cannot begin the next spec without a
     # human grant (a user prompt after the checkpoint).
+    #
+    # READ-ONLY TOOLS: the grant lock prevents STARTING a spec (editing spec
+    # files, updating implementation-progress). Reading a spec to understand
+    # what needs to be done is not starting it. The Devin adapter fires
+    # PreToolUse for every tool (no matcher), so without this check, reading
+    # a spec file would be blocked — preventing the agent from even reading
+    # the requirements it needs to plan the work.
+    case "$TOOL_NAME" in
+      Read|read|View|view|Grep|grep|Glob|glob|Search|search|"")
+        # Read-only tools (or unknown tool name) — allow
+        trace "tool-call: read-only tool '$TOOL_NAME', allow — $FILE_PATH"
+        exit 0
+        ;;
+    esac
+
     if [ -z "$STATE_DIR" ]; then
       trace "tool-call: non-production path, allow — $FILE_PATH (STATE_DIR unavailable)"
       exit 0

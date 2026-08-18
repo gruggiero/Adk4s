@@ -59,6 +59,22 @@ lazy val scala3Options: Seq[String] = Seq(
   // "-source:future"
 )
 
+// --- probatio strict compiler flags (R-CS1–R-CS5) ---
+// Scoped to probatio-core/probatio-cli ONLY (R-CS5). NOT applied repo-wide.
+// These flags make the silent-fallback defect class a compile error:
+//   R-CS1: -Werror (master switch — every other strict flag is load-bearing)
+//   R-CS2: deprecation + feature escalation (forbids deprecated-alias paths)
+//   R-CS3: -Wvalue:discard (discarded validator result = compile error)
+//   R-CS4: -Ysafe-init (unsafe init order = compile error)
+//   R-CS5: scoping (this val is only appended to probatio subprojects)
+lazy val probatioScalacOptions: Seq[String] = Seq(
+  "-Werror",
+  "-Wconf:cat=deprecation:e",
+  "-Wconf:cat=feature:e",
+  "-Wvalue:discard",
+  "-Ysafe-init"
+)
+
 // ---------------------------------------------------------------------------
 // Modules
 // ---------------------------------------------------------------------------
@@ -432,6 +448,134 @@ lazy val `verified` = (project in file("verified"))
         }
       } else opts
     }
+  )
+
+// ── R-ARCH1: dependency-lint rule ──────────────────────────────────────────
+// Fails if any workflow/* project's resolved classpath reaches a forbidden
+// dependency (cats, cats-effect, fs2, llm4s, workflows4s, scalacheck, adk4s-*).
+// This is the build-level enforcement of the probatio leaf-by-construction
+// invariant: probatio depends on NOTHING adk4s-side. The rule checks the
+// resolved `update` report (not just direct deps) so transitive leaks are
+// caught too.
+lazy val dependencyLint = taskKey[Unit](
+  "R-ARCH1: fail if this project's resolved classpath reaches a forbidden dependency"
+)
+
+/** R-ARCH1 forbidden predicate. Returns true if the module is in the closed
+  * forbidden set: cats/cats-effect (org.typelevel), fs2 (co.fs2), llm4s
+  * (org.llm4s), workflows4s (org.business4s), scalacheck (org.scalacheck),
+  * adk4s-* (org.adk4s). munit (org.scalameta) and hedgehog (qa.hedgehog) are
+  * NOT forbidden — they are in the R-X3 allowed set. */
+def isForbiddenDependency(module: ModuleID): Boolean = {
+  val org: String = module.organization
+  val name: String = module.name
+  org == "org.typelevel" && (name == "cats" || name.startsWith("cats-")) ||
+  org == "co.fs2" ||
+  org == "org.llm4s" ||
+  org == "org.business4s" ||
+  org == "org.scalacheck" ||
+  org == "org.adk4s"
+}
+
+// ── probatio-core — ported logic (Scala 3.8.4, pure by construction) ───────
+// ADTs (LedgerRecord, ChainStateReport, GatePayload, LintReport, Outcome),
+// validators (ex-jq contracts), verdict logic, banner/drift engine, metals
+// client. NO main, NO args, NO GraalVM config. Depends on NOTHING adk4s-side
+// (R-ARCH1). NO cats, NO cats-effect, NO fs2 (R-X3).
+lazy val `probatio-core` = (project in file("workflow/core"))
+  .dependsOn(
+    `probatio-verified` % Test
+  )
+  .settings(
+    name := "probatio-core",
+    organization := "org.sinemenda.probatio",
+    libraryDependencies ++= Seq(
+      Dependencies.osLib,
+      Dependencies.upickle.head
+    ) ++ Dependencies.probatioTestDeps,
+    scalacOptions ++= scala3Options ++ probatioScalacOptions,
+    // R-ARCH1: dependency-lint runs as part of compile to enforce the
+    // leaf-by-construction invariant at build time.
+    dependencyLint := {
+      val report: UpdateReport = update.value
+      val log: sbt.Logger = streams.value.log
+      val forbidden: Seq[ModuleID] = report.allModules.filter(isForbiddenDependency)
+      val msgs: Seq[String] = forbidden.map(m =>
+        s"  ${m.organization}:${m.name}:${m.revision}"
+      )
+      if (forbidden.nonEmpty) {
+        sys.error(
+          s"R-ARCH1 violation: ${name.value} reaches forbidden dependencies:\n" +
+            msgs.mkString("\n")
+        )
+      } else {
+        log.info(s"R-ARCH1: ${name.value} classpath clean (no forbidden dependencies)")
+      }
+    }
+  )
+
+// ── probatio-verified — Ring 6 mirror leaf (Scala 3.7.2, Stainless) ────────
+// PureScala models of chain-state verdict logic, 12-clause validator, banner
+// engine. Pinned to 3.7.2 for the Stainless frontend. Depends on NOTHING
+// project-local. NOT aggregated by root (normal builds skip Stainless).
+lazy val `probatio-verified` = (project in file("verified/probatio"))
+  .enablePlugins(StainlessPlugin)
+  .settings(
+    name := "probatio-verified",
+    organization := "org.sinemenda.probatio",
+    scalaVersion := Versions.ScalaVerified,
+    scalacOptions := Seq(
+      "-deprecation",
+      "-feature",
+      "-Wconf:src=.*stainless-library.*:silent"
+    ),
+    wartremoverErrors := Seq.empty,
+    libraryDependencies ~= (_.filterNot(_.organization == "org.wartremover")),
+    semanticdbEnabled := false,
+    stainlessEnabled := false,
+    publish / skip := true,
+    dependencyLint := {
+      val report: UpdateReport = update.value
+      val log: sbt.Logger = streams.value.log
+      val forbidden: Seq[ModuleID] = report.allModules.filter(isForbiddenDependency)
+      val msgs: Seq[String] = forbidden.map(m =>
+        s"  ${m.organization}:${m.name}:${m.revision}"
+      )
+      if (forbidden.nonEmpty) {
+        sys.error(
+          s"R-ARCH1 violation: ${name.value} reaches forbidden dependencies:\n" +
+            msgs.mkString("\n")
+        )
+      } else {
+        log.info(s"R-ARCH1: ${name.value} classpath clean (no forbidden dependencies)")
+      }
+    }
+  )
+
+// Command alias: run dependency-lint across all probatio subprojects.
+addCommandAlias(
+  "probatioDependencyLint",
+  "; probatio-core/dependencyLint ; probatio-verified/dependencyLint"
+)
+
+// ── V1 spike — throwaway native-image toolchain proof ──────────────────────
+// NOT spec-1 production. This subproject exists only to discharge the V1
+// hard-blocker: prove GraalVM native-image can build a probatio-style CLI
+// (uPickle + os-lib + mainargs) without hand-maintained reflection config.
+// Deleted after V1/V2 pass. Excluded from dependency-lint (spike-only).
+lazy val `probatio-spike` = (project in file("workflow/spike"))
+  .settings(
+    name := "probatio-spike",
+    organization := "org.sinemenda.probatio",
+    libraryDependencies ++= Seq(
+      Dependencies.osLib,
+      Dependencies.mainargs,
+      Dependencies.upickle.head
+    ),
+    scalacOptions ++= scala3Options,  // NO probatioScalacOptions — spike is throwaway
+    // Assembly config for native-image input: single fat JAR, main class set.
+    Compile / mainClass := Some("org.sinemenda.probatio.spike.SpikeMain"),
+    assembly / mainClass := Some("org.sinemenda.probatio.spike.SpikeMain")
   )
 
 // Ring 6 — run Stainless verification (needs a big heap; z3 single-threaded).
