@@ -86,6 +86,14 @@ object Dependencies {
     "qa.hedgehog" %% "hedgehog-munit" % Versions.Hedgehog % Test
   )
 
+  /** sbt-probatio plugin test dependencies — Hedgehog 0.13.1 for Scala 2.12
+    * (sbt 1.x plugin runtime). munit + hedgehog-munit ONLY. NO probatio-core
+    * dependency (R-S1). NO cats/cats-effect (R-ARCH1). */
+  val sbtPluginTestDeps: Seq[ModuleID] = Seq(
+    "org.scalameta" %% "munit" % Versions.Munit % Test,
+    "qa.hedgehog" %% "hedgehog-munit" % Versions.Hedgehog % Test
+  )
+
   // --- Property testing: Hedgehog ---
   // Hedgehog provides integrated shrinking with no Arbitrary typeclass.
   // hedgehog-core carries the Gen/Property API.

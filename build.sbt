@@ -463,7 +463,10 @@ lazy val dependencyLint = taskKey[Unit](
 /** R-ARCH1 forbidden predicate. Returns true if the module is in the closed
   * forbidden set: cats/cats-effect (org.typelevel), fs2 (co.fs2), llm4s
   * (org.llm4s), workflows4s (org.business4s), scalacheck (org.scalacheck),
-  * adk4s-* (org.adk4s). munit (org.scalameta) and hedgehog (qa.hedgehog) are
+  * adk4s-* (org.adk4s), probatio-core (org.sinemenda.probatio — R-S1 forbids
+  * the plugin from linking probatio-core via Maven artifact; project deps via
+  * .dependsOn do NOT appear in update reports, so this only catches Maven
+  * artifact leaks). munit (org.scalameta) and hedgehog (qa.hedgehog) are
   * NOT forbidden — they are in the R-X3 allowed set. */
 def isForbiddenDependency(module: ModuleID): Boolean = {
   val org: String = module.organization
@@ -473,7 +476,8 @@ def isForbiddenDependency(module: ModuleID): Boolean = {
   org == "org.llm4s" ||
   org == "org.business4s" ||
   org == "org.scalacheck" ||
-  org == "org.adk4s"
+  org == "org.adk4s" ||
+  org == "org.sinemenda.probatio"
 }
 
 // ── probatio-core — ported logic (Scala 3.8.4, pure by construction) ───────
@@ -530,6 +534,45 @@ lazy val `probatio-cli` = (project in file("workflow/cli"))
       Dependencies.upickle.head
     ) ++ Dependencies.probatioTestDeps,
     scalacOptions ++= scala3Options ++ probatioScalacOptions,
+    dependencyLint := {
+      val report: UpdateReport = update.value
+      val log: sbt.Logger = streams.value.log
+      val forbidden: Seq[ModuleID] = report.allModules.filter(isForbiddenDependency)
+      val msgs: Seq[String] = forbidden.map(m =>
+        s"  ${m.organization}:${m.name}:${m.revision}"
+      )
+      if (forbidden.nonEmpty) {
+        sys.error(
+          s"R-ARCH1 violation: ${name.value} reaches forbidden dependencies:\n" +
+            msgs.mkString("\n")
+        )
+      } else {
+        log.info(s"R-ARCH1: ${name.value} classpath clean (no forbidden dependencies)")
+      }
+    }
+  )
+
+// ── sbt-probatio — sbt 1.x AutoPlugin (Scala 2.12, thin build adapter) ──────
+// Thin build-integration plugin: declares settings/tasks, resolves the
+// probatio binary, delegates all tool execution to the binary via argv +
+// exit codes + stdout JSON. Links NO probatio-core code (R-S1) — all
+// communication is subprocess invocation. NO cats, NO cats-effect (R-ARCH1).
+// The plugin's only dependencies are sbt APIs and the Scala 2.12 stdlib.
+// sbt-2-ready: no GlobalScope abuse, no deprecated operators, Def.task
+// composition only (R-S2).
+lazy val `sbt-probatio` = (project in file("workflow/plugin"))
+  .enablePlugins(SbtPlugin)
+  .settings(
+    name := "sbt-probatio",
+    organization := "org.sinemenda.probatio",
+    scalaVersion := Versions.Scala2_12,
+    // SbtPlugin sets sbtPlugin := true and configures publishing.
+    // The plugin targets sbt 1.x today; sbt 2.x migration is out of scope
+    // (proposal §2.2) but the code is sbt-2-ready (R-S2).
+    libraryDependencies ++= Dependencies.sbtPluginTestDeps,
+    // R-ARCH1: dependency-lint rule — fails if any forbidden dependency
+    // (cats, cats-effect, fs2, llm4s, workflows4s, scalacheck, adk4s-*)
+    // appears on the plugin's classpath. Also catches probatio-core leaks.
     dependencyLint := {
       val report: UpdateReport = update.value
       val log: sbt.Logger = streams.value.log
@@ -642,7 +685,7 @@ lazy val `probatio-verified` = (project in file("verified/probatio"))
 // Command alias: run dependency-lint across all probatio subprojects.
 addCommandAlias(
   "probatioDependencyLint",
-  "; probatio-core/dependencyLint ; probatio-cli/dependencyLint ; probatio-verified/dependencyLint"
+  "; probatio-core/dependencyLint ; probatio-cli/dependencyLint ; sbt-probatio/dependencyLint ; probatio-verified/dependencyLint"
 )
 
 // ── V1 spike — throwaway native-image toolchain proof ──────────────────────

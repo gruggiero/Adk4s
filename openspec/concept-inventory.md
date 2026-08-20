@@ -599,3 +599,23 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `ExitCodeDoc` | final case class (code, label, condition) | `org.sinemenda.probatio.cli` | shipped |
 | `CliErrorRender` | object (render: CliError → String) | `org.sinemenda.probatio.cli` | shipped |
 | `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `RegistryCheckCmd` / `ReconcileCmd` / `ScanCmd` / `RemovalAuditCmd` / `DangerScanCmd` / `ImpactScanCmd` / `MetalsCmd` / `ConceptScannerCmd` / `GraphCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints) | `org.sinemenda.probatio.cli` | shipped |
+
+### port-scanner-to-probatio change — sbt-plugin spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ProbatioPlugin` | sbt AutoPlugin (Scala 2.12, object extends AutoPlugin) | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioVersion` | sbt SettingKey[String] | `org.sinemenda.probatio.plugin` | shipped |
+| `graalVMHome` | sbt SettingKey[Option[String]] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioInstall` | sbt TaskKey[File] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioSpecLint` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioChainState` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioCheckpoint` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioLedgerAppend` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioGateShim` | sbt TaskKey[File] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioUninstall` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `ShimGenerator` | object (generateShim: String → String — pure 3-line shim generator) | `org.sinemenda.probatio.plugin` | shipped |
+| `ExitCodeMapping` | object (mapExitCode: (String, Int, String) → Either[String, Unit] — three-way exit protocol mapping) | `org.sinemenda.probatio.plugin` | shipped |
+| `InstallResolver` | object (resolve: ResolutionScenario → ResolutionResult — pure install resolution model) | `org.sinemenda.probatio.plugin` | shipped |
+| `ResolutionScenario` | sealed trait (PrebuiltAvailable, PrebuiltChecksumInvalid, JarFallback, NativeImage) | `org.sinemenda.probatio.plugin` | shipped |
+| `ResolutionResult` | final case class (path: Option[String], logLines: List[String]) | `org.sinemenda.probatio.plugin` | shipped |

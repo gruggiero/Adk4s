@@ -8,6 +8,7 @@ object Versions {
   // --- Language / runtime ---
   val Scala: String       = "3.8.4"
   val ScalaVerified: String = "3.7.2" // Stainless frontend pin (Ring 6)
+  val Scala2_12: String   = "2.12.20" // sbt 1.x plugin Scala version
 
   // --- Core libraries ---
   val Llm4s: String          = "0.3.4"

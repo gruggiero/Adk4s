@@ -169,3 +169,101 @@ Chain-state result: total=52, bound=52, resolved=52, discharged=17
 which haven't been implemented yet).
 
 ### STOP — awaiting human validation before Spec 2 (cli-protocol)
+
+## Spec 2 (cli-protocol) — Checkpoint 2026-08-19
+
+Spec 2 completed and verified. All rings discharged. See evidence-ledger.jsonl
+for the cli-protocol RED/GREEN runs and ring discharge rows.
+
+## Spec 3 (sbt-plugin) — Checkpoint 2026-08-20
+
+### Step 1 — Typed contract + Implementation (DONE)
+
+4 production source files created in
+`workflow/plugin/src/main/scala/org/sinemenda/probatio/plugin/`:
+- `ProbatioPlugin.scala` — sbt 1.x AutoPlugin (Scala 2.12.20) with 7 task
+  keys + 2 setting keys, all side effects inside `Def.task` bodies
+- `ShimGenerator.scala` — pure function: 3-line shim generator (shebang +
+  exec + trailing newline), idempotent by construction
+- `ExitCodeMapping.scala` — three-way exit protocol mapping (0→Right,
+  1→Left(finding with count N), 2→Left(undetermined)), distinguishable
+  messages containing "reported N finding(s)" vs "could not determine"
+- `InstallResolver.scala` — pure install resolution model with sealed
+  `ResolutionScenario` enum (4 cases: PrebuiltAvailable,
+  PrebuiltChecksumInvalid, JarFallback, NativeImage) and
+  `ResolutionResult` case class
+
+### Step 2 — Oracle tests (DONE)
+
+5 test files in
+`workflow/plugin/src/test/scala/org/sinemenda/probatio/plugin/`:
+- `ShimGeneratorSpec.scala` — 1 Hedgehog property (shim-idempotency) +
+  5 scenario tests (3-line format, byte-identical, path tracking, shebang,
+  exec line)
+- `ExitCodeMappingSpec.scala` — 1 Hedgehog property
+  (exit-code-mapping-distinct with count N) + 7 scenario tests (exit 0/1/2
+  mapping, both fail build, zero findings, empty reason, unexpected code)
+- `InstallResolverSpec.scala` — 1 Hedgehog property
+  (install-resolution-order: each fallback emits exactly one distinct log
+  line) + 7 scenario tests (prebuilt, JAR fallback, checksum invalid,
+  native-image, no silent fallback, distinguishable, 4-case enum)
+- `PluginSourceLintSpec.scala` — 5 source-lint tests (no probatio-core
+  imports, no deprecated operators, no GlobalScope abuse, no load-time
+  side effects, all tasks use Def.task)
+- `ProbatioPluginSuite.scala` — Hedgehog+munit base class
+
+Total: 3 Hedgehog properties + 24 scenario tests = 27 tests.
+
+### Step 3 — RED run (DONE)
+`sbt sbt-probatio/test` → exit=1 (54 compilation errors — all "not found:
+value ShimGenerator/ExitCodeMapping/InstallResolver/ResolutionScenario/
+ResolutionResult"). Recorded in evidence-ledger.jsonl.
+
+### Step 4 — GREEN run (DONE)
+`sbt sbt-probatio/test` → 27 passed, 0 failed, 0 errors. exit=0.
+Recorded in evidence-ledger.jsonl.
+
+### Ring discharge status
+| Ring | Status | Evidence |
+|------|--------|----------|
+| R0 (Scala 2.12 compile) | DISCHARGED | sbt-probatio/compile exit=0 |
+| R1 (scalafmt + WartRemover) | DISCHARGED | scalafmtCheck exit=0, WartRemover clean (NonUnitStatements, IterableOps, EitherProjectionPartial, Return all fixed) |
+| R2 (dependency-lint) | DISCHARGED | sbt-probatio/dependencyLint exit=0 — no forbidden deps (org.sinemenda.probatio added to isForbiddenDependency) |
+| R3 (property tests) | DISCHARGED | 27 tests pass, 3 Hedgehog properties (shim-idempotency, exit-code-mapping-distinct, install-resolution-order) |
+| R8 (adversarial review) | DISCHARGED | 3 gaps found and fixed: (1) org.sinemenda.probatio added to isForbiddenDependency (R-S1/R-ARCH1), (2) InstallResolver wired into probatioInstall task (R-S3), (3) findingMessage includes count N per spec format (R-S4) |
+
+### R8 adversarial review — gaps found and fixed
+
+The R8 review (fresh context subagent) found 3 compliance gaps:
+
+1. **R-S1/R-ARCH1 (CRITICAL):** `isForbiddenDependency` in build.sbt did not
+   check for `org.sinemenda.probatio` — a Maven artifact dependency on
+   probatio-core would pass the lint rule. **Fix:** Added
+   `org == "org.sinemenda.probatio"` to the predicate.
+
+2. **R-S3 (CRITICAL):** The `probatioInstall` task had hardcoded logic that
+   didn't use the `InstallResolver` pure model — tests exercised the model
+   but the task could diverge. **Fix:** Wired `InstallResolver.resolve` into
+   the task: real-world state → scenario → `InstallResolver.resolve` → log
+   line → side effect. No fallback is silent (case None → sys.error).
+
+3. **R-S4 (MINOR):** `findingMessage` didn't include the count N in the
+   spec-mandated format `"probatio <tool> reported N finding(s): …"`.
+   **Fix:** Added `findingCount: Int` parameter to `mapExitCode` and
+   `findingMessage`, with `extractCount` helper for backwards compatibility.
+   Property test updated to verify `reported $findings` is present.
+
+### Concept delta (DONE)
+15 new concepts added to `openspec/concept-inventory.md` under
+`port-scanner-to-probatio change — sbt-plugin spec concepts`:
+ProbatioPlugin, probatioVersion, graalVMHome, probatioInstall,
+probatioSpecLint, probatioChainState, probatioCheckpoint,
+probatioLedgerAppend, probatioGateShim, probatioUninstall, ShimGenerator,
+ExitCodeMapping, InstallResolver, ResolutionScenario, ResolutionResult.
+
+### Implementation-order.md fix
+Updated the Expected Changed Production Files table for sbt-plugin to list
+exact filenames instead of `*.scala` glob (the gate's AWK script does exact
+path matching, not glob matching — same fix as spec 1).
+
+### STOP — awaiting human validation before Spec 4 (native-packaging)
