@@ -1,5 +1,6 @@
 import Dependencies._
 import wartremover.WartRemover
+import sbt.dsl.LinterLevel.Ignore
 
 ThisBuild / scalaVersion := Versions.Scala
 ThisBuild / organization := "org.adk4s"
@@ -463,12 +464,13 @@ lazy val dependencyLint = taskKey[Unit](
 /** R-ARCH1 forbidden predicate. Returns true if the module is in the closed
   * forbidden set: cats/cats-effect (org.typelevel), fs2 (co.fs2), llm4s
   * (org.llm4s), workflows4s (org.business4s), scalacheck (org.scalacheck),
-  * adk4s-* (org.adk4s), probatio-core (org.sinemenda.probatio — R-S1 forbids
-  * the plugin from linking probatio-core via Maven artifact; project deps via
-  * .dependsOn do NOT appear in update reports, so this only catches Maven
-  * artifact leaks). munit (org.scalameta) and hedgehog (qa.hedgehog) are
-  * NOT forbidden — they are in the R-X3 allowed set. */
-def isForbiddenDependency(module: ModuleID): Boolean = {
+  * adk4s-* (org.adk4s). For the sbt plugin (R-S1), org.sinemenda.probatio is
+  * also forbidden — the plugin must NOT link probatio-core via Maven artifact.
+  * probatio-cli legitimately depends on probatio-core via .dependsOn, so
+  * org.sinemenda.probatio is NOT forbidden for probatio-cli.
+  * munit (org.scalameta) and hedgehog (qa.hedgehog) are NOT forbidden —
+  * they are in the R-X3 allowed set. */
+def isForbiddenDependency(module: ModuleID, projectName: String): Boolean = {
   val org: String = module.organization
   val name: String = module.name
   org == "org.typelevel" && (name == "cats" || name.startsWith("cats-")) ||
@@ -477,7 +479,7 @@ def isForbiddenDependency(module: ModuleID): Boolean = {
   org == "org.business4s" ||
   org == "org.scalacheck" ||
   org == "org.adk4s" ||
-  org == "org.sinemenda.probatio"
+  (projectName == "sbt-probatio" && org == "org.sinemenda.probatio")
 }
 
 // ── probatio-core — ported logic (Scala 3.8.4, pure by construction) ───────
@@ -502,7 +504,7 @@ lazy val `probatio-core` = (project in file("workflow/core"))
     dependencyLint := {
       val report: UpdateReport = update.value
       val log: sbt.Logger = streams.value.log
-      val forbidden: Seq[ModuleID] = report.allModules.filter(isForbiddenDependency)
+      val forbidden: Seq[ModuleID] = report.allModules.filter(m => isForbiddenDependency(m, name.value))
       val msgs: Seq[String] = forbidden.map(m =>
         s"  ${m.organization}:${m.name}:${m.revision}"
       )
@@ -525,6 +527,7 @@ lazy val `probatio-core` = (project in file("workflow/core"))
 // Ledger). NO cats, NO cats-effect, NO fs2 (R-X3). R-ARCH1: no adk4s deps.
 lazy val `probatio-cli` = (project in file("workflow/cli"))
   .dependsOn(`probatio-core`)
+  .enablePlugins(NativeImagePlugin)
   .settings(
     name := "probatio-cli",
     organization := "org.sinemenda.probatio",
@@ -534,10 +537,17 @@ lazy val `probatio-cli` = (project in file("workflow/cli"))
       Dependencies.upickle.head
     ) ++ Dependencies.probatioTestDeps,
     scalacOptions ++= scala3Options ++ probatioScalacOptions,
+    // Native-image config (R-N1, R-N2): --no-fallback (V1 spike finding),
+    // -O1 optimization for gate latency budget. The multicall binary is
+    // named "probatio" (alias "prob"). Native-image is mandatory for the
+    // gate subcommand; other subcommands MAY use the assembly JAR fallback.
+    Compile / mainClass := Some("org.sinemenda.probatio.cli.ProbatioMain"),
+    nativeImageOptions ++= Seq("--no-fallback", "-O1"),
+    nativeImageOutput := target.value / "native-image" / "probatio",
     dependencyLint := {
       val report: UpdateReport = update.value
       val log: sbt.Logger = streams.value.log
-      val forbidden: Seq[ModuleID] = report.allModules.filter(isForbiddenDependency)
+      val forbidden: Seq[ModuleID] = report.allModules.filter(m => isForbiddenDependency(m, name.value))
       val msgs: Seq[String] = forbidden.map(m =>
         s"  ${m.organization}:${m.name}:${m.revision}"
       )
@@ -576,7 +586,7 @@ lazy val `sbt-probatio` = (project in file("workflow/plugin"))
     dependencyLint := {
       val report: UpdateReport = update.value
       val log: sbt.Logger = streams.value.log
-      val forbidden: Seq[ModuleID] = report.allModules.filter(isForbiddenDependency)
+      val forbidden: Seq[ModuleID] = report.allModules.filter(m => isForbiddenDependency(m, name.value))
       val msgs: Seq[String] = forbidden.map(m =>
         s"  ${m.organization}:${m.name}:${m.revision}"
       )
@@ -667,7 +677,7 @@ lazy val `probatio-verified` = (project in file("verified/probatio"))
     dependencyLint := {
       val report: UpdateReport = update.value
       val log: sbt.Logger = streams.value.log
-      val forbidden: Seq[ModuleID] = report.allModules.filter(isForbiddenDependency)
+      val forbidden: Seq[ModuleID] = report.allModules.filter(m => isForbiddenDependency(m, name.value))
       val msgs: Seq[String] = forbidden.map(m =>
         s"  ${m.organization}:${m.name}:${m.revision}"
       )

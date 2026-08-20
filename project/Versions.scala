@@ -40,4 +40,5 @@ object Versions {
   val SbtAssembly: String      = "2.3.1"
   val SbtWartremover: String   = "3.5.8"
   val SbtStryker4s: String     = "0.21.0"
+  val SbtNativeImage: String   = "0.4.0"
 }

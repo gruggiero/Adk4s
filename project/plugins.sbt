@@ -5,6 +5,9 @@ addSbtPlugin("org.scoverage"  % "sbt-scoverage"  % "2.4.4")
 addSbtPlugin("com.eed3si9n"   % "sbt-assembly"   % "2.3.1")
 addSbtPlugin("com.disneystreaming.smithy4s" % "smithy4s-sbt-codegen" % "0.18.55")
 
+// Native packaging — GraalVM native-image (R-N1, R-N2)
+addSbtPlugin("org.scalameta" % "sbt-native-image" % "0.4.0")
+
 // Ring 1 — WartRemover static analysis
 addSbtPlugin("org.wartremover" % "sbt-wartremover" % "3.6.1")
 

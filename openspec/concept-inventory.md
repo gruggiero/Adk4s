@@ -619,3 +619,19 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `InstallResolver` | object (resolve: ResolutionScenario → ResolutionResult — pure install resolution model) | `org.sinemenda.probatio.plugin` | shipped |
 | `ResolutionScenario` | sealed trait (PrebuiltAvailable, PrebuiltChecksumInvalid, JarFallback, NativeImage) | `org.sinemenda.probatio.plugin` | shipped |
 | `ResolutionResult` | final case class (path: Option[String], logLines: List[String]) | `org.sinemenda.probatio.plugin` | shipped |
+
+### port-scanner-to-probatio change — native-packaging spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `Platform` | enum (LinuxX86_64, MacosAarch64, MacosX86_64, WindowsX86_64) | `org.sinemenda.probatio.packaging` | shipped |
+| `ReleaseArtifact` | enum (NativeBinary(Platform), AssemblyJar, SourcesJar, Sbom, Checksum(String)) | `org.sinemenda.probatio.packaging` | shipped |
+| `ChecksumVerifier` | object (computeSha256, verify, verifyForExecution) | `org.sinemenda.probatio.packaging` | shipped |
+| `ChecksumResult` | enum (Proceed, Mismatch(artifactName, expected, actual)) | `org.sinemenda.probatio.packaging` | shipped |
+| `Sbom` | final case class (derives ReadWriter — SPDX 2.3 model) | `org.sinemenda.probatio.packaging` | shipped |
+| `SbomPackage` | final case class (derives ReadWriter) | `org.sinemenda.probatio.packaging` | shipped |
+| `ReleaseManifest` | final case class (derives ReadWriter — version, artifacts, checksums, sbom, builtFromCI) | `org.sinemenda.probatio.packaging` | shipped |
+| `ReleaseValidator` | object (validateCompleteness, validatePlatformCoverage, validateSbom, validateChecksums, validateCIProvenance, validateAll) | `org.sinemenda.probatio.packaging` | shipped |
+| `BinaryResolution` | object (resolve: subcommand + platform + availability → ResolutionResult) | `org.sinemenda.probatio.packaging` | shipped |
+| `ResolutionResult` | enum (NativeBinary(path), JarFallback(path, warning), Blocked(reason)) | `org.sinemenda.probatio.packaging` | shipped |
+

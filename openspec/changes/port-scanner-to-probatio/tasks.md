@@ -60,18 +60,18 @@ apply phase also tracks detailed state in implementation-progress.md.
 
 ## 4. native-packaging
 
-- [ ] Prerequisite: GraalVM native-image plugin/config in build.sbt; native-image-config directory for workflow/cli
-- [ ] Step 1 — typed contract: release artifact manifest (binary + JAR + SHA-256 + SBOM + sources per platform), CI workflow structure, native-image build config (compiles, human gate 1/2)
-- [ ] Step 2 — test oracle: 18 scenarios + 4 Hedgehog properties (checksum-roundtrip, SBOM-parseability, release-artifact-completeness, CI-reproducibility) (human gate 2/2)
-- [ ] Step 3 — implementation: native-image build for gate (mandatory) + other subcommands (optional-with-warning), GitHub Releases CI pipeline (linux-x86_64, macos-aarch64, macos-x86_64, windows-x86_64 JAR-only), SHA-256 checksums, SBOM generation, sources JAR
-- [ ] R0: native-image build succeeds for gate binary
+- [x] Prerequisite: GraalVM native-image plugin/config in build.sbt; native-image-config directory for workflow/cli
+- [x] Step 1 — typed contract: release artifact manifest (binary + JAR + SHA-256 + SBOM + sources per platform), CI workflow structure, native-image build config (compiles, human gate 1/2)
+- [x] Step 2 — test oracle: 18 scenarios + 4 Hedgehog properties (checksum-roundtrip, SBOM-parseability, release-artifact-completeness, CI-reproducibility) (human gate 2/2)
+- [x] Step 3 — implementation: native-image build for gate (mandatory) + other subcommands (optional-with-warning), GitHub Releases CI pipeline (linux-x86_64, macos-aarch64, macos-x86_64, windows-x86_64 JAR-only), SHA-256 checksums, SBOM generation, sources JAR
+- [x] R0: native-image build succeeds for gate binary
 - [ ] R1: shellcheck + shfmt on any retained scripts
-- [ ] R2: dependency-lint rule passes
-- [ ] R3: 4 Hedgehog properties green
+- [x] R2: dependency-lint rule passes
+- [x] R3: 4 Hedgehog properties green
 - [ ] R4: release artifacts byte-stable (checksum verification, SBOM parseability)
-- [ ] R8: adversarial review — look for silent JAR fallback on supported platform, tampered download accepted, locally-built artifacts accepted
-- [ ] V1/V2 spike gates verified (from Phase 0) — R-N1 latency budget met
-- [ ] Concept-delta check + inventory update + checkpoint
+- [x] R8: adversarial review — look for silent JAR fallback on supported platform, tampered download accepted, locally-built artifacts accepted
+- [x] V1/V2 spike gates verified (from Phase 0) — R-N1 latency budget met
+- [x] Concept-delta check + inventory update + checkpoint
 
 ## 5. migration-protocol
 

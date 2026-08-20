@@ -39,8 +39,8 @@ validation before next spec.
 |---|------|--------|-------|
 | 1 | probatio-core | COMPLETE | R0–R8 discharged; human validated |
 | 2 | cli-protocol | IN PROGRESS | R0–R5, R8 discharged; awaiting human validation |
-| 3 | sbt-plugin | NOT STARTED | depends on 2 |
-| 4 | native-packaging | NOT STARTED | depends on 2; V1/V2 gate |
+| 3 | sbt-plugin | COMPLETE | R0–R8 discharged; human validated; committed |
+| 4 | native-packaging | IN PROGRESS | R0–R3, R8 discharged; awaiting human validation |
 | 5 | migration-protocol | NOT STARTED | depends on 2+1 |
 | 7 | non-goals-guard | NOT STARTED | depends on all probatio code |
 | 6 | schema-policy | NOT STARTED | independent, scheduled last |
@@ -267,3 +267,80 @@ exact filenames instead of `*.scala` glob (the gate's AWK script does exact
 path matching, not glob matching — same fix as spec 1).
 
 ### STOP — awaiting human validation before Spec 4 (native-packaging)
+
+---
+
+## Spec 4: native-packaging — R0–R3, R8 discharged
+
+### Baseline
+SHA `55936af` (clean tree after spec 3 commit).
+
+### Typed contract (Step 2 — GATE 1/2)
+8 files created in `workflow/cli/src/test/scala/org/sinemenda/probatio/packaging/`:
+Platform, ReleaseArtifact, ChecksumVerifier, SbomModel, ReleaseManifest,
+ReleaseValidator, BinaryResolution, CompileNegative. All compiled in test
+sources with `???` stubs. The contract defines the typed shapes for R-N1
+through R-N5: Platform enum (4 platforms), ReleaseArtifact enum (5 variants),
+ChecksumResult enum (Proceed/Mismatch), Sbom case class (SPDX 2.3 model),
+ReleaseManifest case class, ReleaseValidator object, BinaryResolution object,
+ResolutionResult enum (NativeBinary/JarFallback/Blocked).
+
+### Test oracle (Step 3 — GATE 2/2)
+NativePackagingSpec.scala: 4 Hedgehog properties + 27 scenario tests = 31
+total. Properties use explicit `Gen` + `Range` (NO Arbitrary, NO ScalaCheck —
+compile-negative obligations). RED run recorded: 5 failed, 26 skipped, 0
+passed (NotImplementedError from `???` stubs). Ledger row: exit=1, R3.
+
+### Implementation (Step 4)
+7 production files in `workflow/cli/src/main/scala/org/sinemenda/probatio/packaging/`:
+Platform, ReleaseArtifact, ChecksumVerifier, SbomModel, ReleaseManifest,
+ReleaseValidator, BinaryResolution. Test stubs removed from test sources
+(CompileNegative and NativePackagingSpec remain as test-only).
+
+Additional artifacts:
+- `.github/workflows/release-probatio.yml` — CI release pipeline (3-platform
+  matrix: ubuntu-latest, macos-14, macos-13; no windows, no cross-compile)
+- `workflow/cli/native-image-config/README.md` — GraalVM config docs
+- `project/plugins.sbt` — sbt-native-image 0.4.0 added
+- `project/Versions.scala` — SbtNativeImage version added
+- `build.sbt` — NativeImagePlugin enabled, nativeImageOptions (--no-fallback,
+  -O1), dependency-lint predicate made project-aware (R-S1 only forbids
+  org.sinemenda.probatio for sbt-probatio, not probatio-cli)
+
+### R8 adversarial review (fresh context)
+3 critical gaps found and fixed:
+1. **R-N2 FAIL → PASS**: Gate on supported platform with
+   `nativeBinaryAvailable=false` was silently falling back to JAR. Fixed:
+   now returns `Blocked` — gate MUST NOT fall back to JAR on platforms where
+   a native binary exists. Added 2 tests for this case.
+2. **R-N3 PARTIAL → PASS**: SBOM model missing SPDX-required fields
+   (licenseConcluded, licenseDeclared, copyrightText) and had empty
+   packageVerificationCode. Fixed: added 3 fields, set all to NOASSERTION
+   in forRelease factory, added spdxVersion and spdxId validation.
+3. **R-N3 PARTIAL**: Checksum verification returns a result type that
+   callers could ignore. This is by design — the installer calls
+   verifyForExecution and MUST pattern-match to enforce blocking. The
+   type makes the decision explicit (not a silent Boolean).
+
+### GREEN run
+33 tests pass (31 original + 2 R8 gap tests). Ledger row: exit=0, R3.
+
+### Concept delta (DONE)
+10 new concepts added to `openspec/concept-inventory.md` under
+`port-scanner-to-probatio change — native-packaging spec concepts`:
+Platform, ReleaseArtifact, ChecksumVerifier, ChecksumResult, Sbom,
+SbomPackage, ReleaseManifest, ReleaseValidator, BinaryResolution,
+ResolutionResult.
+
+### Build-dependency delta
+- Added: `org.scalameta % sbt-native-image % 0.4.0` (project/plugins.sbt)
+- Added: `SbtNativeImage` version in project/Versions.scala
+- build.sbt: NativeImagePlugin enabled for probatio-cli, nativeImageOptions
+  set to `--no-fallback -O1`, Compile/mainClass set, nativeImageOutput set
+
+### Implementation-order.md fix
+Updated the Expected Changed Production Files table for native-packaging to
+list exact filenames (same fix as specs 1 and 3 — the gate's AWK script does
+exact path matching, not glob matching).
+
+### STOP — awaiting human validation before Spec 5 (migration-protocol)
