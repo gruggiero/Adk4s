@@ -659,24 +659,24 @@ obligations and Hedgehog properties (Ring 3), not by a PureScala mirror.
 
 | Obligation | Source | Enforcement | Artifact |
 |------------|--------|-------------|----------|
-| One subcommand per predecessor script | Requirement: One subcommand per predecessor script | CLI surface snapshot test (enumerate subcommands, assert 1:1 with predecessor set) | CLI surface snapshot test (to be created in probatio-cli test sources) |
-| No subcommands beyond predecessor set | Requirement: One subcommand per predecessor script | CLI surface snapshot test + compile-negative (sealed enum) | CLI surface snapshot test + Subcommand sealed enum (to be created) |
-| Three-way exit protocol for every subcommand | Requirement: Three-way exit protocol for every subcommand | bats oracle (unchanged) + property test (exit-code-mapping-is-total-and-disjoint) | existing bats oracle + Hedgehog exit-code property test (to be created) |
+| One subcommand per predecessor script | Requirement: One subcommand per predecessor script | CLI surface snapshot test (enumerate subcommands, assert 1:1 with predecessor set) | CliSurfaceSpec.scala (created) |
+| No subcommands beyond predecessor set | Requirement: One subcommand per predecessor script | CLI surface snapshot test + compile-negative (sealed enum) | CliSurfaceSpec.scala + Subcommand.scala (created) |
+| Three-way exit protocol for every subcommand | Requirement: Three-way exit protocol for every subcommand | bats oracle (unchanged) + property test (exit-code-mapping-is-total-and-disjoint) | existing bats oracle + ExitCodeSpec.scala (created) |
 | Undetermined never collapsed into finding | Requirement: Undetermined is never collapsed into a finding | property test (undetermined-never-collapses) + compile-negative (exhaustive match, no `case _`) | Hedgehog undetermined-collapse property test + Outcome sealed enum (to be created) |
-| Output on undetermined emitted on stdout | Requirement: Output on undetermined is still emitted on stdout | bats oracle (chain-state, gate) + scenario test | existing bats oracle + CLI output scenario test (to be created) |
+| Output on undetermined emitted on stdout | Requirement: Output on undetermined is still emitted on stdout | bats oracle (chain-state, gate) + scenario test | existing bats oracle + CliOutputSpec.scala (created) |
 | Stdout payloads byte-compatible with contracts | Requirement: Stdout payloads are byte-compatible with the contract files | conformance property test (stdout-conformance-with-jq-contracts) + bats oracle | Hedgehog stdout-conformance property test + existing bats oracle |
-| Arg parsing errors name the flag | Requirement: Arg parsing errors name the missing or invalid flag | property test (arg-parse-error-attribution) + arg-parse oracle extension | Hedgehog arg-parse property test (to be created) + arg-parse bats extension (to be created) |
-| Help lists every flag with default | Requirement: Help lists every flag with its default | property test (help-lists-every-flag) + scenario test | Hedgehog help-completeness property test (to be created) |
-| Multicall dispatch by argv(1) and argv(0) | Requirement: Multicall dispatch by argv(1) and argv(0) | property test (multicall-dispatch-equivalence) + scenario test | Hedgehog multicall-dispatch property test (to be created) |
-| Append-only ledger surface | Requirement: Append-only ledger surface — no mutation subcommands | compile-negative (sealed enum, no mutation constructor) + CLI surface snapshot test | Subcommand sealed enum + CLI surface snapshot test (to be created) |
-| Exit-code mapping totality | Property: exit-code-mapping-is-total-and-disjoint | property test (Hedgehog) | Hedgehog exit-code property test (to be created) |
-| Multicall dispatch equivalence | Property: multicall-dispatch-equivalence | property test (Hedgehog) | Hedgehog multicall-dispatch property test (to be created) |
-| Stdout conformance | Property: stdout-conformance-with-jq-contracts | property test (Hedgehog) + jq contract fixtures | Hedgehog stdout-conformance property test (to be created) |
-| Arg-parse error attribution | Property: arg-parse-error-attribution | property test (Hedgehog) | Hedgehog arg-parse property test (to be created) |
-| Help completeness | Property: help-lists-every-flag | property test (Hedgehog) | Hedgehog help-completeness property test (to be created) |
-| No adk4s dependency (R-ARCH1) | Requirement: One subcommand per predecessor script (R-ARCH1 cross-cutting) | build-level dependency-lint rule (CI step) | build.sbt dependency-lint rule (to be created) |
-| No mutation subcommand in enum | Requirement: Append-only ledger surface — no mutation subcommands | compile-negative test | Subcommand compile-negative test (to be created) |
-| No exit code outside {0,1,2} | Requirement: Three-way exit protocol for every subcommand | compile-negative (exhaustive match + `-Werror`) | ExitCode sealed enum with exhaustive match (to be created) |
+| Arg parsing errors name the flag | Requirement: Arg parsing errors name the missing or invalid flag | property test (arg-parse-error-attribution) + arg-parse oracle extension | CliParseErrorSpec.scala (created) + arg-parse bats extension (to be created) |
+| Help lists every flag with default | Requirement: Help lists every flag with its default | property test (help-lists-every-flag) + scenario test | CliHelpSpec.scala (created) |
+| Multicall dispatch by argv(1) and argv(0) | Requirement: Multicall dispatch by argv(1) and argv(0) | property test (multicall-dispatch-equivalence) + scenario test | MulticallDispatchSpec.scala (created) |
+| Append-only ledger surface | Requirement: Append-only ledger surface — no mutation subcommands | compile-negative (sealed enum, no mutation constructor) + CLI surface snapshot test | Subcommand.scala + CliSurfaceSpec.scala (created) |
+| Exit-code mapping totality | Property: exit-code-mapping-is-total-and-disjoint | property test (Hedgehog) | ExitCodeSpec.scala (created) |
+| Multicall dispatch equivalence | Property: multicall-dispatch-equivalence | property test (Hedgehog) | MulticallDispatchSpec.scala (created) |
+| Stdout conformance | Property: stdout-conformance-with-jq-contracts | property test (Hedgehog) + jq contract fixtures | CliConformanceSpec.scala (created) |
+| Arg-parse error attribution | Property: arg-parse-error-attribution | property test (Hedgehog) | CliParseErrorSpec.scala (created) |
+| Help completeness | Property: help-lists-every-flag | property test (Hedgehog) | CliHelpSpec.scala (created) |
+| No adk4s dependency (R-ARCH1) | Requirement: One subcommand per predecessor script (R-ARCH1 cross-cutting) | build-level dependency-lint rule (CI step) | build.sbt dependency-lint rule (created) |
+| No mutation subcommand in enum | Requirement: Append-only ledger surface — no mutation subcommands | compile-negative test | SubcommandTypeContract.scala (created) |
+| No exit code outside {0,1,2} | Requirement: Three-way exit protocol for every subcommand | compile-negative (exhaustive match + `-Werror`) | ExitCode.scala + SubcommandTypeContract.scala (created) |
 
 ## Implementation Anchors
 

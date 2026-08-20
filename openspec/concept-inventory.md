@@ -553,3 +553,49 @@ The 2 WEAK rows are pre-existing in `react-agent.md` (`isDefined`, `foreach` cit
 
 > Registry concept count: **31** (`openspec/concepts/*.md`, excluding
 > `README.md`) as of 2026-08-08. The previous note in this section said 25.
+
+### port-scanner-to-probatio change — probatio-core spec concepts
+
+The following concepts were introduced by `spec:port-scanner-to-probatio/probatio-core`:
+
+| Type | Kind | Package | Status |
+|------|------|---------|--------|
+| `Outcome[+A]` | enum (Ran, Finding, Undetermined) | `org.sinemenda.probatio.core` | shipped |
+| `Ring` | enum (R0–R9, Manual) | `org.sinemenda.probatio.core` | shipped |
+| `ContractViolation` | sealed trait (12 clause variants) | `org.sinemenda.probatio.core` | shipped |
+| `LedgerRecord` | final case class (private[core] constructor) | `org.sinemenda.probatio.core` | shipped |
+| `LedgerRecordOptional` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `Ledger.LedgerData` | final case class (immutable, append-only) | `org.sinemenda.probatio.core` | shipped |
+| `UnresolvedReason` | enum (Unbound, Unresolved, Undischarged, Unattributable, Failed) | `org.sinemenda.probatio.core` | shipped |
+| `UnresolvedEntry` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `UnmappedObligation` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `ChainStateReport` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `ChainStateUndetermined` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `ChainState.Requirement` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `Verdict` | enum (Bound, Resolved, Unbound) | `org.sinemenda.probatio.core` | shipped |
+| `CheckId` | enum (F1–F10) | `org.sinemenda.probatio.core` | shipped |
+| `RequirementVerdict` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `LintWarning` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `LintReport` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `HookSpecificOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `GatePayload` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `InstallRootScan` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `DriftWarning` | sealed trait (VersionMismatch, PreRenameStamp) | `org.sinemenda.probatio.core` | shipped |
+| `DriftScanResult` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `BannerInputs` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `ActiveChangeWithChainState` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `BannerOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `MetalsClient.LspMessage` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `MetalsClient.MetalsError` | sealed trait (FramingError, HandshakeFailed, Timeout) | `org.sinemenda.probatio.core` | shipped |
+| `MetalsClient.MetalsSession` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `Subcommand` | enum (16 cases: Gate, SpecLint, ChainState, Ledger, Checkpoint, RegistryCheck, Reconcile, Scan, RemovalAudit, DangerScan, ImpactScan, Metals, ConceptScanner, Graph, InstallSkills, InstallHooks) | `org.sinemenda.probatio.cli` | shipped |
+| `ExitCode` | enum (3 cases: Clean, Finding, Undetermined) | `org.sinemenda.probatio.cli` | shipped |
+| `CliError` | sealed abstract class (UnknownSubcommand, MissingValue, InvalidEnum, UnknownFlag) | `org.sinemenda.probatio.cli` | shipped |
+| `MulticallDispatch` | object (resolve: argv0 + argv1 → Either[CliError, Subcommand]) | `org.sinemenda.probatio.cli` | shipped |
+| `HelpOutput` | final case class (subcommand, flags: List[FlagHelp], exitCodes: List[ExitCodeDoc]) | `org.sinemenda.probatio.cli` | shipped |
+| `HelpRegistry` | object (helpFor: Subcommand → HelpOutput) | `org.sinemenda.probatio.cli` | shipped |
+| `ProbatioMain` | object (dispatch: Array[String] → Int — multicall entry point) | `org.sinemenda.probatio.cli` | shipped |
+| `FlagHelp` | final case class (name, description, default) | `org.sinemenda.probatio.cli` | shipped |
+| `ExitCodeDoc` | final case class (code, label, condition) | `org.sinemenda.probatio.cli` | shipped |
+| `CliErrorRender` | object (render: CliError → String) | `org.sinemenda.probatio.cli` | shipped |
+| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `RegistryCheckCmd` / `ReconcileCmd` / `ScanCmd` / `RemovalAuditCmd` / `DangerScanCmd` / `ImpactScanCmd` / `MetalsCmd` / `ConceptScannerCmd` / `GraphCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints) | `org.sinemenda.probatio.cli` | shipped |

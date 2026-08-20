@@ -1218,16 +1218,16 @@ property("shipped banner engine agrees with the Stainless model on drift detecti
 | BannerEngineKernel drift totality (every present root checked, "no skill installed" emitted) | Requirement: Instruction drift is detected across all install roots + Formal Contract: BannerEngineKernel | formal contract (Ring 6, Stainless) | BannerEngineKernel (verified mirror) |
 | BannerEngineKernel determinism (same input, same output) | Requirement: The drift, context, and banner engine is a pure function + Formal Contract: BannerEngineKernel | formal contract (Ring 6, Stainless) | BannerEngineKernel (verified mirror) |
 | Shipped banner engine conforms to the verified model | Requirement: The drift, context, and banner engine is a pure function + Formal Contract: BannerEngineKernel | bridge property (Ring 3 + Ring 6) | BannerEngineModelBridgeTests |
-| No `Ledger.update`/`delete`/`rewrite` | Compile-Negative: Ledger has no update/delete/rewrite | compile-negative test (`assertDoesNotCompile`) | LedgerSpec |
-| No fourth `Outcome` case | Compile-Negative: Outcome with a fourth case | compile-negative test (`assertDoesNotCompile`) | OutcomeSpec |
-| No `case _` in `Outcome` match | Compile-Negative: case _ in an Outcome match | Scalafix DisableSyntax + WartRemover | build, adversarial review |
-| No `Ring` value outside the closed domain | Compile-Negative: Ring with a value outside the closed domain | compile-negative test (`assertDoesNotCompile`) | LedgerRecordSpec |
-| No 13th `ContractViolation` variant | Compile-Negative: ContractViolation with a 13th variant | compile-negative test (`assertDoesNotCompile`) | LedgerValidatorSpec |
-| No `asInstanceOf` in probatio code | Compile-Negative: asInstanceOf in probatio code | WartRemover `AsInstanceOf` wart (scoped) | build |
-| No cats/cats-effect import in probatio-core | Compile-Negative: cats or cats-effect import in probatio-core | dependency-lint rule (R-ARCH1 extension) + code-review gate | build, adversarial review |
-| No file I/O in probatio-core pure functions | Compile-Negative: scala.io.Source or java.nio.file in probatio-core pure functions | Scalafix rule + code-review gate | build, adversarial review |
-| No `System.getenv`/`System.currentTimeMillis` in probatio-core | Compile-Negative: System.getenv or System.currentTimeMillis in probatio-core pure functions | Scalafix rule + code-review gate | build, adversarial review |
-| No `Arbitrary`-based Hedgehog generators | Compile-Negative: Arbitrary-based Hedgehog generators | code-review gate | adversarial review |
+| No `Ledger.update`/`delete`/`rewrite` | Requirement: The ledger is append-only at the type level + Compile-Negative: Ledger has no update/delete/rewrite | compile-negative test (`assertDoesNotCompile`) | LedgerSpec |
+| No fourth `Outcome` case | Requirement: The three-way exit protocol is a sealed enum + Compile-Negative: Outcome with a fourth case | compile-negative test (`assertDoesNotCompile`) | OutcomeSpec |
+| No `case _` in `Outcome` match | Requirement: Undetermined is never collapsed into a finding + Compile-Negative: case _ in an Outcome match | Scalafix DisableSyntax + WartRemover | build, adversarial review |
+| No `Ring` value outside the closed domain | Requirement: LedgerRecord is an immutable product type with total clause validation + Compile-Negative: Ring with a value outside the closed domain | compile-negative test (`assertDoesNotCompile`) | LedgerRecordSpec |
+| No 13th `ContractViolation` variant | Requirement: LedgerRecord is an immutable product type with total clause validation + Compile-Negative: ContractViolation with a 13th variant | compile-negative test (`assertDoesNotCompile`) | LedgerValidatorSpec |
+| No `asInstanceOf` in probatio code | Requirement: The strict flag set is scoped to probatio, not applied repo-wide + Compile-Negative: asInstanceOf in probatio code | WartRemover `AsInstanceOf` wart (scoped) | build |
+| No cats/cats-effect import in probatio-core | Requirement: The strict flag set is scoped to probatio, not applied repo-wide + Compile-Negative: cats or cats-effect import in probatio-core | dependency-lint rule (R-ARCH1 extension) + code-review gate | build, adversarial review |
+| No file I/O in probatio-core pure functions | Requirement: The drift, context, and banner engine is a pure function + Compile-Negative: scala.io.Source or java.nio.file in probatio-core pure functions | Scalafix rule + code-review gate | build, adversarial review |
+| No `System.getenv`/`System.currentTimeMillis` in probatio-core | Requirement: The drift, context, and banner engine is a pure function + Compile-Negative: System.getenv or System.currentTimeMillis in probatio-core pure functions | Scalafix rule + code-review gate | build, adversarial review |
+| No `Arbitrary`-based Hedgehog generators | Requirement: The port preserves lint F1–F10 verdicts on every fixture + Compile-Negative: Arbitrary-based Hedgehog generators | code-review gate | adversarial review |
 | probatio depends on nothing adk4s-side (R-ARCH1) | Requirement: The strict flag set is scoped to probatio, not applied repo-wide | build-level dependency-lint rule (fails if any `workflow/*` project's classpath reaches an adk4s module) | build, Ring 2 |
 
 ## Implementation Anchors

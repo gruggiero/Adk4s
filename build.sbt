@@ -71,8 +71,7 @@ lazy val probatioScalacOptions: Seq[String] = Seq(
   "-Werror",
   "-Wconf:cat=deprecation:e",
   "-Wconf:cat=feature:e",
-  "-Wvalue:discard",
-  "-Ysafe-init"
+  "-Wsafe-init"
 )
 
 // ---------------------------------------------------------------------------
@@ -514,6 +513,41 @@ lazy val `probatio-core` = (project in file("workflow/core"))
     }
   )
 
+// ── probatio-cli — multicall CLI (Scala 3.8.4, mainargs + os-lib + uPickle) ─
+// The public CLI protocol: one subcommand per predecessor script, three-way
+// exit codes (0/1/2), byte-compatible stdout payloads, arg-parse error
+// attribution, --help with defaults, multicall dispatch by argv(1) and argv(0).
+// Depends on probatio-core (Outcome, LintReport, ChainStateReport, GatePayload,
+// Ledger). NO cats, NO cats-effect, NO fs2 (R-X3). R-ARCH1: no adk4s deps.
+lazy val `probatio-cli` = (project in file("workflow/cli"))
+  .dependsOn(`probatio-core`)
+  .settings(
+    name := "probatio-cli",
+    organization := "org.sinemenda.probatio",
+    libraryDependencies ++= Seq(
+      Dependencies.osLib,
+      Dependencies.mainargs,
+      Dependencies.upickle.head
+    ) ++ Dependencies.probatioTestDeps,
+    scalacOptions ++= scala3Options ++ probatioScalacOptions,
+    dependencyLint := {
+      val report: UpdateReport = update.value
+      val log: sbt.Logger = streams.value.log
+      val forbidden: Seq[ModuleID] = report.allModules.filter(isForbiddenDependency)
+      val msgs: Seq[String] = forbidden.map(m =>
+        s"  ${m.organization}:${m.name}:${m.revision}"
+      )
+      if (forbidden.nonEmpty) {
+        sys.error(
+          s"R-ARCH1 violation: ${name.value} reaches forbidden dependencies:\n" +
+            msgs.mkString("\n")
+        )
+      } else {
+        log.info(s"R-ARCH1: ${name.value} classpath clean (no forbidden dependencies)")
+      }
+    }
+  )
+
 // ── probatio-verified — Ring 6 mirror leaf (Scala 3.7.2, Stainless) ────────
 // PureScala models of chain-state verdict logic, 12-clause validator, banner
 // engine. Pinned to 3.7.2 for the Stainless frontend. Depends on NOTHING
@@ -534,6 +568,59 @@ lazy val `probatio-verified` = (project in file("verified/probatio"))
     semanticdbEnabled := false,
     stainlessEnabled := false,
     publish / skip := true,
+    // Native Z3: same ScalaZ3 jar as the `verified` project, but located at
+    // verified/unmanaged/ (one level up from this project's baseDirectory).
+    // See verified/unmanaged/README.md for the jar-merge explanation.
+    stainlessExtraDeps += "ch.epfl.lara" % "scalaz3_3" % "4.13.4"
+      from s"file://${baseDirectory.value.getParentFile / "unmanaged" / "scalaz3_3-4.13.4.jar"}",
+    mergeScalaZ3Plugin := {
+      val scalaz3  = baseDirectory.value.getParentFile / "unmanaged" / "scalaz3_3-4.13.4.jar"
+      val pluginDir = baseDirectory.value.getParentFile.getParentFile / "target" /
+        s"scala-${Versions.Scala}" / "compiler_plugins"
+      val pluginJar = pluginDir / s"stainless-dotty-plugin_${Versions.ScalaVerified}-0.9.9.3.jar"
+      if (!pluginJar.exists || !scalaz3.exists) {
+        pluginJar
+      } else {
+        val outJar = pluginJar.getParentFile / (pluginJar.getName.stripSuffix(".jar") + "-merged.jar")
+        val needsMerge = !outJar.exists || {
+          val p = new java.util.jar.JarFile(outJar)
+          val has = p.getEntry("z3/Z3Wrapper.class") != null
+          p.close()
+          !has
+        }
+        if (needsMerge) {
+          val log = streams.value.log
+          log.info(s"Merging ScalaZ3 into Stainless plugin jar: $outJar")
+          val tmpDir = java.nio.file.Files.createTempDirectory("stainless-merge")
+          new java.lang.ProcessBuilder("jar", "xf", pluginJar.getAbsolutePath)
+            .directory(tmpDir.toFile).inheritIO().start().waitFor()
+          new java.lang.ProcessBuilder("jar", "xf", scalaz3.getAbsolutePath)
+            .directory(tmpDir.toFile).inheritIO().start().waitFor()
+          new java.lang.ProcessBuilder(
+            "jar", "cf0", outJar.getAbsolutePath,
+            "-C", tmpDir.toFile.getAbsolutePath, "."
+          ).inheritIO().start().waitFor()
+          java.nio.file.Files.walk(tmpDir)
+            .sorted(java.util.Comparator.reverseOrder())
+            .forEach(p => java.nio.file.Files.delete(p))
+          outJar
+        } else {
+          outJar
+        }
+      }
+    },
+    Compile / scalacOptions := {
+      val opts   = (Compile / scalacOptions).value
+      val merged = mergeScalaZ3Plugin.value
+      if (stainlessEnabled.value) {
+        opts.map { opt =>
+          if (opt.startsWith("-Xplugin:") && opt.contains("stainless-dotty-plugin"))
+            "-Xplugin:" + merged.getAbsolutePath
+          else
+            opt
+        }
+      } else opts
+    },
     dependencyLint := {
       val report: UpdateReport = update.value
       val log: sbt.Logger = streams.value.log
@@ -555,7 +642,7 @@ lazy val `probatio-verified` = (project in file("verified/probatio"))
 // Command alias: run dependency-lint across all probatio subprojects.
 addCommandAlias(
   "probatioDependencyLint",
-  "; probatio-core/dependencyLint ; probatio-verified/dependencyLint"
+  "; probatio-core/dependencyLint ; probatio-cli/dependencyLint ; probatio-verified/dependencyLint"
 )
 
 // ── V1 spike — throwaway native-image toolchain proof ──────────────────────
@@ -587,5 +674,5 @@ lazy val `probatio-spike` = (project in file("workflow/spike"))
 // plugin jar before compilation.
 addCommandAlias(
   "ring6",
-  "; set verified / stainlessEnabled := true ; verified / compile"
+  "; set verified / stainlessEnabled := true ; verified / compile ; set probatio-verified / stainlessEnabled := true ; probatio-verified / compile"
 )

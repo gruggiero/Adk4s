@@ -610,6 +610,20 @@ if [ "$EVENT" = "tool-call" ]; then
     exit 0
   fi
 
+  # ── oracle ordering lock (production source edits) ───────────────────
+  # Read-only tools are never blocked by the oracle lock. Reading a
+  # production file (e.g. spec 1's types when implementing spec 2) is not
+  # writing production code. The Devin adapter fires PreToolUse for every
+  # tool (no matcher), so without this check, reading a src/main/*.scala
+  # file would be blocked — preventing the agent from reading the types
+  # it depends on.
+  case "$TOOL_NAME" in
+    Read|read|View|view|Grep|grep|Glob|glob|Search|search|"")
+      trace "tool-call: read-only tool '$TOOL_NAME' on production path, allow — $FILE_PATH"
+      exit 0
+      ;;
+  esac
+
   # Fail open when STATE_DIR is unavailable — a block without a bound is
   # not safe (same discipline as the completion gate).
   if [ -z "$STATE_DIR" ]; then
