@@ -9,7 +9,7 @@ description: >
   you need "who uses X", "what is X", or the public-type-change impact scan
   — before reaching for grep.
 metadata:
-  generatedBy: verified-scala3-schema/7.0.0
+  generatedBy: verified-scala3-schema/13.0.0
 ---
 
 # Code Intelligence Skill (Metals MCP, option B)

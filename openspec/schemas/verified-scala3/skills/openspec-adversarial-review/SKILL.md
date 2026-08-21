@@ -14,7 +14,7 @@ globs:
   - "src/main/scala/**/*.scala"
   - "src/test/scala/**/*.scala"
 metadata:
-  generatedBy: verified-scala3-schema/7.0.0
+  generatedBy: verified-scala3-schema/13.0.0
 ---
 
 # Adversarial Spec-Compliance Review Skill (Ring 8)

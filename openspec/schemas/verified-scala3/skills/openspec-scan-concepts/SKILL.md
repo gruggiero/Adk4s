@@ -14,7 +14,7 @@ globs:
   - "**/src/test/scala/**/*.scala"
   - "**/src/main/smithy/**/*.smithy"
 metadata:
-  generatedBy: verified-scala3-schema/7.0.0
+  generatedBy: verified-scala3-schema/13.0.0
 
 ---
 
