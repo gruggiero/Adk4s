@@ -122,10 +122,15 @@ final class SkillDocLintCheck extends ProbatioCliSuite:
     }
 
     // A broken reference: a skill doc references a predecessor script for a
-    // tool that HAS been ported (the script has been removed).
+    // tool that HAS been ported (the script has been removed). A reference is
+    // only broken if the referenced path does NOT exist on disk — during the
+    // migration, the predecessor scripts still exist until the actual swap.
+    // The simulated state tells us which tools are ported; the filesystem
+    // tells us whether the script has actually been removed.
     val broken: List[SkillDocReference] = allRefs.filter { ref =>
       ref.isPredecessorReference &&
-      state.portedTools.exists(tool => ref.referencedPath.contains(predecessorScriptName(tool)))
+      state.portedTools.exists(tool => ref.referencedPath.contains(predecessorScriptName(tool))) &&
+      !predecessorPathExists(ref.referencedPath)
     }
 
     // A forward reference: a skill doc references a probatio tool invocation
@@ -197,3 +202,10 @@ final class SkillDocLintCheck extends ProbatioCliSuite:
     case ToolId.DangerScan => "danger-scan.sh"
     case ToolId.Reconcile  => "reconcile.sh"
     case ToolId.Gate       => "gate.sh"
+
+  // ── Helper: check whether a predecessor script path exists on disk.
+  // During the migration, predecessor scripts still exist until the actual
+  // tool swap. A reference is only broken if the script has been removed.
+  private def predecessorPathExists(referencedPath: String): Boolean =
+    val path: os.Path = os.pwd / os.SubPath(referencedPath)
+    os.exists(path)
