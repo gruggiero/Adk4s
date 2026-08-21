@@ -252,12 +252,19 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
 
   // ── Property: F1–F10 verdict stability across the port
   // spec: non-goals-guard — Property: F1–F10 verdict stability across the port
+  // The verdicts are cached so spec-lint.sh is invoked once per fixture, not
+  // once per Hedgehog iteration (200 subprocess calls would time out).
   property("F1–F10 verdict stability across the port"):
+    val fixtures: List[String] = allFixtures
+    val bashVerdicts: Map[String, FixtureVerdict] =
+      fixtures.map(f => f -> bashSpecLint(f)).toMap
+    val probatioVerdicts: Map[String, FixtureVerdict] =
+      fixtures.map(f => f -> probatioSpecLint(f)).toMap
     for
-      fixture <- Gen.element(allFixtures(0), allFixtures.drop(1)).forAll
+      fixture <- Gen.element(fixtures(0), fixtures.drop(1)).forAll
     yield
-      val expected: FixtureVerdict = bashSpecLint(fixture)
-      val actual: FixtureVerdict = probatioSpecLint(fixture)
+      val expected: FixtureVerdict = bashVerdicts(fixture)
+      val actual: FixtureVerdict = probatioVerdicts(fixture)
       Result.diff(actual, expected) { (a, e) =>
         a.verdict == e.verdict && a.warnings == e.warnings
       }
@@ -275,12 +282,16 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
 
   // ── Property: oracle immutability at every migration step
   // spec: non-goals-guard — Property: oracle immutability at every migration step
+  // The oracle check results are cached so git show is invoked once per
+  // commit, not once per Hedgehog iteration.
   property("oracle immutability at every migration step"):
+    val commits: List[String] = migrationCommitsOnMain
+    val oracleResults: Map[String, OracleImmutabilityResult] =
+      commits.map(c => c -> checkOracleImmutability(c)).toMap
     for
-      commits = migrationCommitsOnMain
       commit <- Gen.element(commits(0), commits.drop(1)).forAll
     yield
-      val result: OracleImmutabilityResult = checkOracleImmutability(commit)
+      val result: OracleImmutabilityResult = oracleResults(commit)
       Result.assert(isImmutable(result))
 
   // ══ Implementations (Step 3 — GREEN run) ═════════════════════════════════
