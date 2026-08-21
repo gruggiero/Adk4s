@@ -654,3 +654,19 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `SkillDocReference` | final case class (skillDocPath, referencedPath, line — isPredecessorReference, isPortedReference) | `org.sinemenda.probatio.migration` | test-only |
 | `SkillDocLintResult` | final case class (brokenReferences, forwardReferences — isClean) | `org.sinemenda.probatio.migration` | test-only |
 | `ToolId` (migration) | enum (SpecLint, ChainState, DangerScan, Reconcile, Gate — swapOrder, overrideEnvVar) | `org.sinemenda.probatio.migration` | test-only |
+
+### port-scanner-to-probatio change — non-goals-guard spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `FeatureFreezeViolation` | enum (NewLintCheck(checkId), VerdictAlteration(fixture, expected, actual), NewWorkflowFeature(featureDescription)) | `org.sinemenda.probatio.guard` | test-only |
+| `FeatureFreezeVerdict` | enum (Accepted, Rejected(violation, reason)) | `org.sinemenda.probatio.guard` | test-only |
+| `KnownCheckId` | enum (F1–F10 closed set — allIds, isKnown) | `org.sinemenda.probatio.guard` | test-only |
+| `FixtureVerdict` | final case class (fixture, verdict, warnings) | `org.sinemenda.probatio.guard` | test-only |
+| `DependencyModule` | final case class (organization, name) | `org.sinemenda.probatio.guard` | test-only |
+| `AllowedDependencySet` | object (allowed, forbidden, isAllowed, isForbidden, isForbiddenOrg — closed dependency set) | `org.sinemenda.probatio.guard` | test-only |
+| `WorkflowSubproject` | enum (ProbatioCore, ProbatioCli, SbtProbatio, ProbatioVerified — all) | `org.sinemenda.probatio.guard` | test-only |
+| `DependencyBoundaryResult` | enum (Clean(subproject), Violation(subproject, module)) | `org.sinemenda.probatio.guard` | test-only |
+| `HookPayload` | final case class (decision, hookSpecificOutput) | `org.sinemenda.probatio.guard` | test-only |
+| `PayloadStabilityResult` | enum (Stable, Unstable(field, before, after)) | `org.sinemenda.probatio.guard` | test-only |
+| `OracleImmutabilityResult` | enum (Immutable(commit), Modified(commit, file)) | `org.sinemenda.probatio.guard` | test-only |

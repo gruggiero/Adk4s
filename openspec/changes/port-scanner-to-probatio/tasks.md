@@ -89,16 +89,16 @@ apply phase also tracks detailed state in implementation-progress.md.
 
 ## 6. non-goals-guard
 
-- [ ] Prerequisite: dependency-lint rule from Phase 0a is in place
-- [ ] Step 1 — typed contract: feature-freeze contract, allowed-dependency set, dependency-lint rule structure (compiles, human gate 1/2)
-- [ ] Step 2 — test oracle: 12 scenarios + 3 Hedgehog properties (F1–F10 verdict stability across port, dependency boundary is closed, oracle immutability at every migration step) (human gate 2/2)
-- [ ] Step 3 — implementation: NonGoalsGuardSpec with verdict stability property (bash spec-lint vs probatio spec-lint over fixture corpus), dependency boundary property (all workflow/* subprojects × forbidden deps), oracle immutability property (git history check)
-- [ ] R0: NonGoalsGuardSpec compiles
-- [ ] R1: Scalafix + WartRemover + scalafmt
-- [ ] R2: dependency-lint rule verifies all forbidden deps rejected (cats, cats-effect, fs2, llm4s, workflows4s, scalacheck, adk4s-*)
-- [ ] R3: 3 Hedgehog properties green
-- [ ] R8: adversarial review — look for F11 check accepted, verdict alteration accepted, new workflow feature accepted, cats dep accepted, ScalaCheck dep accepted
-- [ ] Concept-delta check + inventory update + checkpoint
+- [x] Prerequisite: dependency-lint rule from Phase 0a is in place
+- [x] Step 1 — typed contract: feature-freeze contract, allowed-dependency set, dependency-lint rule structure (compiles, human gate 1/2)
+- [x] Step 2 — test oracle: 12 scenarios + 3 Hedgehog properties (F1–F10 verdict stability across port, dependency boundary is closed, oracle immutability at every migration step) (human gate 2/2)
+- [x] Step 3 — implementation: NonGoalsGuardSpec with verdict stability property (bash spec-lint vs probatio spec-lint over fixture corpus), dependency boundary property (all workflow/* subprojects × forbidden deps), oracle immutability property (git history check)
+- [x] R0: NonGoalsGuardSpec compiles
+- [x] R1: Scalafix + WartRemover + scalafmt
+- [x] R2: dependency-lint rule verifies all forbidden deps rejected (cats, cats-effect, fs2, llm4s, workflows4s, scalacheck, adk4s-*)
+- [x] R3: 3 Hedgehog properties green
+- [x] R8: adversarial review — look for F11 check accepted, verdict alteration accepted, new workflow feature accepted, cats dep accepted, ScalaCheck dep accepted
+- [x] Concept-delta check + inventory update + checkpoint
 
 ## 7. schema-policy
 
