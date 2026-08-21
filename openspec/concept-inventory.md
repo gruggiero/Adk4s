@@ -635,3 +635,22 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `BinaryResolution` | object (resolve: subcommand + platform + availability → ResolutionResult) | `org.sinemenda.probatio.packaging` | shipped |
 | `ResolutionResult` | enum (NativeBinary(path), JarFallback(path, warning), Blocked(reason)) | `org.sinemenda.probatio.packaging` | shipped |
 
+### port-scanner-to-probatio change — migration-protocol spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ConformanceModel` | object (Ring 6 PureScala model: modelValidate, modelContract, conformance, conformanceNoFalsePositive, conformanceNoFalseNegative, totality) | `org.sinemenda.probatio.verified` | shipped |
+| `RecordModel` | final case class (finite representation of ledger record clauses for Ring 6) | `org.sinemenda.probatio.verified` | shipped |
+| `ContractId` | enum (LedgerRecord, ChainStateReport, GateHookJson) | `org.sinemenda.probatio.migration` | test-only |
+| `ContractJudgment` | enum (Accept, Reject(clause)) | `org.sinemenda.probatio.migration` | test-only |
+| `ValidatorJudgment` | enum (Accept, Reject(reason)) | `org.sinemenda.probatio.migration` | test-only |
+| `ContractRecord` | final case class (contractId, json, violatedClause) | `org.sinemenda.probatio.migration` | test-only |
+| `ConformanceResult` | final case class (contractJudgment, validatorJudgment — isConformant, isFalsePositive, isFalseNegative) | `org.sinemenda.probatio.migration` | test-only |
+| `SeamConfiguration` | final case class (portedTools: Set[ToolId] — withPredecessor, withPorted) | `org.sinemenda.probatio.migration` | test-only |
+| `OracleOutcome` | final case class (passed, failed, skipped) | `org.sinemenda.probatio.migration` | test-only |
+| `MigrationState` | final case class (portedTools: Set[ToolId] — predecessorTools, isComplete) | `org.sinemenda.probatio.migration` | test-only |
+| `ShimTarget` | final case class (tool, resolvedTarget, candidateTargets — isExactlyOne, isMissing, isDual) | `org.sinemenda.probatio.migration` | test-only |
+| `ShimResolution` | final case class (targets: List[ShimTarget] — allExactlyOne, missing, dual) | `org.sinemenda.probatio.migration` | test-only |
+| `SkillDocReference` | final case class (skillDocPath, referencedPath, line — isPredecessorReference, isPortedReference) | `org.sinemenda.probatio.migration` | test-only |
+| `SkillDocLintResult` | final case class (brokenReferences, forwardReferences — isClean) | `org.sinemenda.probatio.migration` | test-only |
+| `ToolId` (migration) | enum (SpecLint, ChainState, DangerScan, Reconcile, Gate — swapOrder, overrideEnvVar) | `org.sinemenda.probatio.migration` | test-only |
