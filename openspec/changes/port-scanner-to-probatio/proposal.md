@@ -87,6 +87,15 @@ The requirements doc §5 defines seven capabilities, mapped 1:1 to spec files:
   schema changes beyond the R-V2 rename; the allowed-dependency set for
   probatio-core/cli (R-X1…R-X3). This spec is the feature-freeze contract that
   keeps R-M1 interpretable.
+- `specs/provenance-validation/spec.md` — closes a gap discovered during the
+  port: the ported `Validator` checks only the 12 required-field clauses of
+  the ledger record contract, but the jq contract has 15 enforcement clauses.
+  The 3 omitted clauses are: optional-field type checks (sha256, digest,
+  wallTime), observer provenance (source must be "ambient"), and session
+  provenance (adversarial-review ring rows MUST carry session). This spec
+  extends the validator to 15 clauses, lifts the `ContractViolation` cap from
+  12 to 15, and requires the CLI `ledger append` entrypoint to validate before
+  writing and `Ledger.read` to validate every row on read (R-PV1…R-PV4).
 
 ### Out of Scope (and preservations — the porting invariants)
 
@@ -240,7 +249,8 @@ keeps two separate human gates (typed-contract and test-oracle); none combine.
   The plugin is forbidden (R-S1) from linking `probatio-core`; the same
   discipline applies in reverse.
 - [x] Ring 3: Property-based tests — MANDATORY. R-M2 conformance is a property
-  test (validator ⊨ `.jq` contract over the fixture corpus, both directions);
+  test (validator ⊨ `.jq` contract over the fixture corpus, both directions —
+  extended to 15 clauses by R-PV1);
   R-C5 is a property test over `ChainStateReport`/`SpecLintReport` equality
   before/after; R-C5b is a golden-fixture conformance suite over the banner
   contract. **Detected framework is Hedgehog 0.13.1 (NOT ScalaCheck)** per
@@ -267,8 +277,8 @@ keeps two separate human gates (typed-contract and test-oracle); none combine.
 - [x] Ring 6: Formal verification — **applies via the verified-mirror
   pattern.** Pure kernels exist: chain-state verdict logic
   (`(SpecLintReport, Ledger, Requirements, Baseline) →
-  Either[Undetermined, ChainStateReport]`, R-C3), the 12-clause ledger
-  contract validator (R-C1), and the banner/drift engine (R-C5b — pure
+  Either[Undetermined, ChainStateReport]`, R-C3), the 15-clause ledger
+  contract validator (R-C1 for clauses 0–11, R-PV1 for clauses 12–14), and the banner/drift engine (R-C5b — pure
   rendering). These are decision/fold kernels expressible in PureScala at an
   abstraction. Caveats to resolve in design: (a) R-X3 excludes cats from
   probatio, and the `verified` leaf module is pinned to Scala 3.7.2 while
@@ -327,6 +337,7 @@ keeps two separate human gates (typed-contract and test-oracle); none combine.
 | `specs/migration-protocol/spec.md` | Full | The `*_OVERRIDE` seam contract, shim swap order, exactly-one-implementation invariant, conformance property-test contract — messaging/persistence wiring. |
 | `specs/schema-policy/spec.md` | Full | Schema rename + v14 bump, `generatedBy` stamp rename, env-var (`VERIFIED_SCALA3_HOOKS`→`PROBATIO_HOOKS`) + cache-dir migration with deprecated aliases — persistence/wire + public API change. |
 | `specs/non-goals-guard/spec.md` | Full | The allowed-dependency set (R-X3) and feature-freeze contract (R-X1) are enforceable invariants — encoded as a typed contract the dependency-lint rule and the oracle both consume. |
+| `specs/provenance-validation/spec.md` | Full | Extends `ContractViolation` from 12 to 15 variants (error algebra change), introduces `ProvenanceFields` and `ValidatedRecord` types, requires write-time and read-time validation enforcement — public API signature change + persistence/wire. |
 
 ## Existing Concepts to Reuse
 
@@ -337,7 +348,7 @@ truth:
 
 | Concept | Kind | Location | Notes |
 |---------|------|----------|-------|
-| `ledger-record-contract.jq` | jq contract (12 clauses) | `openspec/schemas/verified-scala3/scanner/` | Single statement of the ledger record format; ported to a Scala validator (R-C1) and retained as a conformance fixture (R-M2). |
+| `ledger-record-contract.jq` | jq contract (15 clauses: 12 required-field + 3 provenance) | `openspec/schemas/verified-scala3/scanner/` | Single statement of the ledger record format; ported to a Scala validator (R-C1 for clauses 0–11, R-PV1 for clauses 12–14) and retained as a conformance fixture (R-M2). |
 | `chain-state-report-contract.jq` | jq contract | `openspec/schemas/verified-scala3/scanner/` | Chain-state report format; ported to a validator, retained as fixture. |
 | `gate-hookjson-contract.jq` | jq contract | `openspec/schemas/verified-scala3/scanner/` | Hook payload shape; ported to a validator, retained as fixture. |
 | bats oracle (18 files, ~6,364 lines) | test suite | `openspec/schemas/verified-scala3/tests/*.bats` | The porting acceptance suite (R-M1); passes unmodified at every step. |
@@ -357,13 +368,15 @@ domain types and probatio is a leaf-by-construction. The
 | `Outcome[A]` | sealed enum (`Ran[A]`, `Finding`, `Undetermined`) | The three-way exit protocol as data (§4.1); maps to exit 0/1/2 at the CLI boundary. |
 | `LedgerRecord` | immutable case class + `Ring` enum (R0–R9, manual) | The ported ledger record ADT; 12 contract clauses validated by a total function returning `Either[ContractViolation, LedgerRecord]` (R-C1). |
 | `Ledger` | module (`read`, `append`, `validate` only) | Append-only at the type level — no `update`/`delete`/`rewrite` (R-C2). |
-| `ContractViolation` | sealed trait | Disjoint sum of the 12 clause failures. |
+| `ContractViolation` | sealed trait | Disjoint sum of the 15 clause failures (12 required-field + 3 provenance: optional-field type, observer provenance, session provenance). |
 | `ChainStateReport` | case class | Bound/resolved/discharged verdict (R-C3); computed by a pure function over `(SpecLintReport, Ledger, Requirements, Baseline)`. |
 | `SpecLintReport` / `LintReport` | typed AST | Per-requirement verdict attribution (R-C4); replaces `chain-state.sh`'s table-structure re-parsing. Consumed by chain-state as uPickle JSON. |
 | `GatePayload` | case class | The hook JSON payload (ex-`gate-hookjson-contract.jq`); byte-stable (§4.6). |
 | `BannerEngine` | pure function | `(schemaVersion, skillInstallScan, registry/inventory/profile presence, detectedTestKit, activeChanges) → banner text` (R-C5b); byte-identical output for identical inputs. |
 | `DriftScan` | pure function | Compares `schema.yaml` version against `generatedBy: probatio-schema/<N>` stamps across six install roots (§4.4a). |
 | `MetalsClient` | LSP JSON-RPC client | Content-Length framing over partial reads, init handshake, lifecycle; logs to stderr (R-C6). Replaces `metals-start.sh`/`metals-call.sh`. |
+| `ProvenanceFields` | immutable case class | The optional provenance fields from the jq contract (sha256, digest, wallTime, source, session) carried alongside `LedgerRecord` as a companion value (R-PV1). |
+| `ValidatedRecord` | immutable case class | A `LedgerRecord` paired with its `ProvenanceFields`, produced by the extended validator when all 15 clauses pass (R-PV1). |
 | `probatio` multicall binary | native-image launcher | Dispatches on `argv(1)` or `argv(0)` (R-P6); one subcommand per predecessor script (R-P1). |
 | `sbt-probatio` AutoPlugin | sbt 1.x plugin (Scala 2.12) | `probatioInstall`, `probatioSpecLint`, `probatioChainState`, `probatioCheckpoint`, `probatioLedgerAppend`, `probatioGateShim`, `probatioUninstall` (R-S1…R-S6). Links no `probatio-core` code. |
 | dependency-lint rule | build-level check | Fails if any `workflow/*` project's classpath reaches an adk4s module (R-ARCH1). |

@@ -476,25 +476,35 @@ if [ "$EVENT" = "tool-call" ]; then
           spec_list="$(printf '%s' "$spec_list" | tr ' ' '\n' | sort | tr '\n' ' ')"
         fi
 
-        # If target_spec is set (from a spec-dir path) and that spec is
-        # already past the oracle phase (implementation or verified), the
-        # Step-0 has already been done — no grant is needed. The grant lock
-        # prevents STARTING a new spec without human approval, not fixing
-        # or revising an already-started spec. Grants are session-scoped,
-        # so without this check a completed spec's spec-dir would be
-        # uneditable in every new session (the prior session's grant is
-        # gone, but the spec is already done).
+        # If target_spec is set (from a spec-dir path):
+        # - If the spec has NO phase file at all, the gate has never tracked
+        #   it — it's a brand-new spec being authored. Editing its spec.md
+        #   is planning work (writing requirements, scenarios), not starting
+        #   implementation. Allow without grant.
+        # - If the spec is past the oracle phase (implementation or verified),
+        #   the Step-0 has already been done — no grant is needed. The grant
+        #   lock prevents STARTING a new spec without human approval, not
+        #   fixing or revising an already-started spec. Grants are session-
+        #   scoped, so without this check a completed spec's spec-dir would
+        #   be uneditable in every new session.
+        # - If the spec has a phase file in oracle phase, the grant lock
+        #   applies — the spec has been tracked and the agent needs human
+        #   approval to proceed.
         if [ -n "$target_spec" ]; then
           target_phase_file="$STATE_DIR/phase-$grant_change-$target_spec"
-          target_phase="oracle"
-          [ -f "$target_phase_file" ] && target_phase="$(cat "$target_phase_file" 2>/dev/null || echo oracle)"
-          case "$target_phase" in
-            oracle | implementation | verified) ;;
-            *) target_phase="oracle" ;;
-          esac
-          if [ "$target_phase" != "oracle" ]; then
-            trace "tool-call: target spec $target_spec is $target_phase (past oracle), no grant needed"
+          if [ ! -f "$target_phase_file" ]; then
+            trace "tool-call: target spec $target_spec has no phase file (new/untracked), allow spec-dir edit"
             is_step0_signature=0
+          else
+            target_phase="$(cat "$target_phase_file" 2>/dev/null || echo oracle)"
+            case "$target_phase" in
+              oracle | implementation | verified) ;;
+              *) target_phase="oracle" ;;
+            esac
+            if [ "$target_phase" != "oracle" ]; then
+              trace "tool-call: target spec $target_spec is $target_phase (past oracle), no grant needed"
+              is_step0_signature=0
+            fi
           fi
         fi
 
@@ -561,7 +571,11 @@ if [ "$EVENT" = "tool-call" ]; then
             trace "tool-call: grant satisfied for $required_grant_spec"
             required_grant_spec=""
           else
-            # No grant from any session — check if the prior spec is past oracle
+            # No grant from any session — check if the prior spec is verified
+            # (fully done: RED→GREEN progression proven, checkpoint approved).
+            # Only `verified` waives — `implementation` means the spec is
+            # still in progress (no checkpoint presented yet, no human
+            # approval to carry forward).
             grant_spec_phase="oracle"
             grant_spec_phase_file="$STATE_DIR/phase-$grant_change-$required_grant_spec"
             [ -f "$grant_spec_phase_file" ] && grant_spec_phase="$(cat "$grant_spec_phase_file" 2>/dev/null || echo oracle)"
@@ -569,8 +583,8 @@ if [ "$EVENT" = "tool-call" ]; then
               oracle | implementation | verified) ;;
               *) grant_spec_phase="oracle" ;;
             esac
-            if [ "$grant_spec_phase" != "oracle" ]; then
-              trace "tool-call: required-grant spec $required_grant_spec is $grant_spec_phase (past oracle), waive grant"
+            if [ "$grant_spec_phase" = "verified" ]; then
+              trace "tool-call: required-grant spec $required_grant_spec is verified (approved in a prior session), waive grant"
               required_grant_spec=""
             fi
           fi

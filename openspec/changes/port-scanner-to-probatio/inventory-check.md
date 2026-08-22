@@ -115,7 +115,8 @@ none outstanding.
 **New candidate concepts from this change**: none yet — the
 `org.sinemenda.probatio` concepts (`Outcome`, `LedgerRecord`, `Ledger`,
 `ContractViolation`, `ChainStateReport`, `LintReport`, `GatePayload`,
-`BannerEngine`, `DriftScan`, `MetalsClient`) are previewed in the proposal's
+`BannerEngine`, `DriftScan`, `MetalsClient`, `ProvenanceFields`,
+`ValidatedRecord`) are previewed in the proposal's
 "New Concepts to Introduce" table and will be registered as behavioral
 concepts (if they carry purpose/state/actions/operational-principle) at the
 `specs` and apply phases. The porting source-of-truth concepts (the three
@@ -139,13 +140,15 @@ project inventory at apply Step 12 with provenance
 | `Outcome[A]` | sealed enum (`Ran[A]`, `Finding`, `Undetermined`) | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
 | `LedgerRecord` | case class + `Ring` enum (R0–R9) | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
 | `Ledger` | module (`read`/`append`/`validate` only) | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
-| `ContractViolation` | sealed trait (12 clause failures) | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
+| `ContractViolation` | sealed trait (15 clause failures: 12 required-field + 3 provenance) | `org.sinemenda.probatio` | introduce (specs/probatio-core for 12; specs/provenance-validation for +3) |
 | `ChainStateReport` | case class | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
 | `SpecLintReport` / `LintReport` | typed AST | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
 | `GatePayload` | case class | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
 | `BannerEngine` | pure function | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
 | `DriftScan` | pure function | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
 | `MetalsClient` | LSP JSON-RPC client | `org.sinemenda.probatio` | introduce (specs/probatio-core) |
+| `ProvenanceFields` | immutable case class (sha256, digest, wallTime, source, session — all Option) | `org.sinemenda.probatio` | introduce (specs/provenance-validation) |
+| `ValidatedRecord` | immutable case class (LedgerRecord + ProvenanceFields) | `org.sinemenda.probatio` | introduce (specs/provenance-validation) |
 | `probatio` multicall binary | native-image launcher | `org.sinemenda.probatio.cli` | introduce (specs/cli-protocol) |
 | `sbt-probatio` AutoPlugin | sbt 1.x plugin (Scala 2.12) | `org.sinemenda.probatio.plugin` | introduce (specs/sbt-plugin) |
 | `probatioScalacOptions` | build setting (Seq[String]) | (build.sbt) | introduce (specs/probatio-core, R-CS1–R-CS5) |
@@ -156,7 +159,7 @@ inventoried):**
 
 | Contract | Location | Reuse / Introduce |
 |---|---|---|
-| `ledger-record-contract.jq` (12 clauses) | `openspec/schemas/verified-scala3/scanner/` | reuse as conformance fixture (R-M2), port to Scala validator (R-C1) |
+| `ledger-record-contract.jq` (15 clauses: 12 required-field + 3 provenance) | `openspec/schemas/verified-scala3/scanner/` | reuse as conformance fixture (R-M2), port to Scala validator (R-C1 for clauses 0–11, R-PV1 for clauses 12–14) |
 | `chain-state-report-contract.jq` | `openspec/schemas/verified-scala3/scanner/` | reuse as fixture, port to validator |
 | `gate-hookjson-contract.jq` | `openspec/schemas/verified-scala3/scanner/` | reuse as fixture, port to validator |
 | bats oracle (17 files) | `openspec/schemas/verified-scala3/tests/*.bats` | reuse as acceptance suite (R-M1), unmodified |
@@ -171,7 +174,7 @@ inventoried):**
    contracts above (jq/bats/seams), not adk4s type-inventory rows. The
    `concept-inventory` check 6 (reused concepts exist) applies to the
    behavioral contracts, which DO exist (verified this session by `ls`).
-2. **`specs/*` "Concepts Introduced" tables**: the 14 introduce entries above
+2. **`specs/*` "Concepts Introduced" tables**: the 16 introduce entries above
    are the commitments; they are added to `openspec/concept-inventory.md` at
    apply Step 12 with `spec:port-scanner-to-probatio/<spec>` provenance.
 3. **The +19 missing adk4s rows are NOT this change's problem**: they are

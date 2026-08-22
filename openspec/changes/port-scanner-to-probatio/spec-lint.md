@@ -8,10 +8,11 @@ byte-compatible with the contract files" normative statement restructured so
 SHALL appears in the opening sentence; the original had SHALL on the second
 line and the validator checks the first line).
 
-**spec-lint.sh**: `7 spec file(s), 0 FAIL, 38 WARN` — all 38 warnings are W3
-(advisory: "requirement is negative — confirm at least one scenario input is
-forbidden by it"). No F1–F10 failures, no W1/W2/W4/W5/W6/W7 warnings. The
-W3 warnings are advisory reminders, not failures; every negative requirement
+**spec-lint.sh**: `8 spec file(s), 0 FAIL, 51 WARN` — warnings are W1 (vague
+word in scenario headings — domain vocabulary), W3 (advisory: "requirement is
+negative — confirm at least one scenario input is forbidden by it"), and W7
+(type inventory identifiers used as domain vocabulary). No F1–F10 failures.
+The W3 warnings are advisory reminders, not failures; every negative requirement
 has at least one adversarial scenario (verified in the judgment checks
 below, check 15).
 
@@ -237,6 +238,33 @@ Each spec is checked against the 18 checks from the spec-lint instruction.
 
 **Verdict: PASS**
 
+### Spec: specs/provenance-validation/spec.md
+
+|| # | Check | Status | Detail |
+||---|-------|--------|--------|
+|| 1 | Given/When/Then concrete | ✅ | 4 requirements, 21 scenarios — all have concrete Given/When/Then |
+|| 1b | SHALL/MUST normative opener | ✅ | All 4 requirements open with SHALL/MUST |
+|| 1c | Per-variant behavior-preservation scenarios | ✅ | N/A — no enum/dispatch behavior-preservation requirements |
+|| 2 | Then observable | ✅ | Every Then is an observable validation result, ContractViolation, append outcome, or read result |
+|| 3 | Scenarios testable | ✅ | All scenarios testable with Hedgehog + compile-negative + munit |
+|| 4 | Error paths specified | ✅ | ContractViolation (15 clauses), undetermined on malformed read, Finding on append rejection all specified |
+|| 5 | New concepts declared | ✅ | 2 concepts introduced: ProvenanceFields, ValidatedRecord |
+|| 6 | Reused concepts resolved | ✅ | Concepts Used (behavioral) lists LedgerRecord, ContractViolation, Validator, Ring (all from probatio-core); Concepts Used (from inventory) is empty (R-ARCH1) |
+|| 7 | Generator strategies | ✅ | 3 properties, each with declared generator strategy (genLedgerRecordJsonWithProvenance, enumerated clause-violating generators, genSessionForR8) |
+|| 8 | Temporal trigger/response | ✅ | N/A — no temporal properties |
+|| 9 | No vague words | ✅ | W1 warnings are advisory (scenario headings containing "valid" — domain vocabulary, not vague claims) |
+|| 10 | Unreachable claims proven | ✅ | "A 16th variant is unconstructible" enforced by sealed trait + compile-negative; "no force flag exists" enforced by flag-set enumeration test |
+|| 11 | Enum extension / type-widening behavior | ✅ | ContractViolation extension from 12 to 15 variants is specified with compile-negative for a 16th; the extension is the subject of this spec |
+|| 12 | Proof obligations complete | ✅ | 35 obligation rows; F7 reachability verified (0 FAIL); F6 Source format uses "Requirement: <exact title>" |
+|| 13 | Consumer-facing surface asserted | ✅ | Validator.validateFull and LedgerCmd.append are the consumer-facing surface; scenarios assert their behavior |
+|| 14 | Error variants type-feasible | ✅ | ContractViolation is a sealed trait returned by Either[ContractViolation, ValidatedRecord]; Finding and Undetermined are existing Outcome cases — type-feasible |
+|| 15 | Adversarial scenarios for negatives | ✅ | 2 negative requirements, both with adversarial scenarios (W3 confirms; verified: "adversarial-review ring row missing session rejected", "non-ambient source rejected", "non-string sha256 rejected", "16th variant unconstructible", "no force flag exists", "malformed read rejected as undetermined") |
+|| 16 | MUST-CONFIRM marks present | ✅ | N/A — 15 contract clauses sourced from ledger-record-contract.jq (in-repo) |
+|| 17 | Altitude respected | ✅ | F10 passes (Concepts Used (behavioral) section present); W7 advisory on LedgerRecord/ContractViolation (domain vocabulary here, not code identifiers — they are the types being extended, referenced by name not by code path) |
+|| 18 | Concurrency deterministic | ✅ | N/A — no concurrent-behavior requirements |
+
+**Verdict: PASS**
+
 ## Summary
 
 | Spec | Verdict | Blocking Issues |
@@ -248,14 +276,15 @@ Each spec is checked against the 18 checks from the spec-lint instruction.
 | specs/migration-protocol/spec.md | PASS | 0 — 5 requirements, 16 scenarios, 3 properties, 64 proof obligations |
 | specs/schema-policy/spec.md | PASS | 0 — 6 requirements, 20 scenarios, 3 properties, 56 proof obligations |
 | specs/non-goals-guard/spec.md | PASS | 0 — 3 requirements, 12 scenarios, 3 properties, 51 proof obligations |
+| specs/provenance-validation/spec.md | PASS | 0 — 4 requirements, 21 scenarios, 3 properties, 35 proof obligations |
 
-**Overall: 7/7 specs PASS. 0 FAIL, 38 WARN (all W3 advisory).** Implementation-order may proceed.
+**Overall: 8/8 specs PASS. 0 FAIL, 51 WARN (all W1/W3/W7 advisory).** Implementation-order may proceed.
 
 ### W3 advisory warnings — confirmation
 
-All 38 W3 warnings are advisory reminders to "confirm at least one scenario
+All W3 warnings are advisory reminders to "confirm at least one scenario
 input is forbidden by it" for negative requirements. Every negative
-requirement across all 7 specs has at least one adversarial scenario whose
+requirement across all 8 specs has at least one adversarial scenario whose
 input the requirement forbids (verified in check 15 above). The W3 warnings
 are not failures and do not block implementation. The adversarial scenarios
 are marked "(adversarial)" in their scenario headings where the subagents

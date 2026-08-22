@@ -16,13 +16,15 @@ introduces a concept must come before any spec that uses that concept.
 | 5 | `specs/migration-protocol/spec.md` | migration protocol concept, conformance property test contract, `*_OVERRIDE` seam swap order, exactly-one-implementation invariant | All ported subcommands (from cli-protocol + probatio-core); bats oracle; `.jq` contracts | medium |
 | 6 | `specs/schema-policy/spec.md` | schema rename (v14), `generatedBy` stamp rename, env-var migration, cache-dir migration, hooks/README rewrite | (none — schema.yaml policy changes; no probatio code dependency) | simple |
 | 7 | `specs/non-goals-guard/spec.md` | feature-freeze contract, allowed-dependency set, `dependency-lint rule` (R-ARCH1) | All probatio subprojects (the dependency-lint rule checks all workflow/* classpaths); probatio-core (F1–F10 verdict stability cross-reference) | medium |
+| 8 | `specs/provenance-validation/spec.md` | `ProvenanceFields`, `ValidatedRecord`, extended `ContractViolation` (15 variants), `Validator.validateFull` (15 clauses), write-time + read-time validation enforcement | `LedgerRecord`, `ContractViolation`, `Ring`, `Validator`, `Ledger` (from probatio-core #1); `LedgerCmd` (from cli-protocol #2) | medium |
 
 ### Dependency graph
 
 ```
 probatio-core (1) ──┬──> cli-protocol (2) ──┬──> sbt-plugin (3)
                     │                        ├──> native-packaging (4)
-                    │                        └──> migration-protocol (5)
+                    │                        ├──> migration-protocol (5)
+                    │                        └──> provenance-validation (8)
                     │
                     └──> non-goals-guard (7) [dependency-lint rule checks all workflow/*]
 
@@ -38,8 +40,14 @@ capability-check.md consequence #2), but the full non-goals-guard spec
 (oracle immutability, verdict stability) is verified AFTER the port is
 complete. So non-goals-guard is split: the dependency-lint rule is a
 Phase 0 setup task (in tasks.md), and the spec's verification is last.
+Spec 8 (provenance-validation) depends on probatio-core (1) and
+cli-protocol (2) being complete — it extends `ContractViolation` from 12
+to 15 variants and modifies `Validator` and `LedgerCmd`. It is scheduled
+after migration-protocol (5) so the 12-clause port is fully oracle-verified
+before the extension, and before non-goals-guard (7) and schema-policy (6)
+so the feature-freeze and schema bump see the final 15-clause validator.
 
-**Resolved order**: 1 → 2 → 3 → 4 → 5 → 7 → 6
+**Resolved order**: 1 → 2 → 3 → 4 → 5 → 8 → 7 → 6
 
 ## Ring Applicability
 
@@ -52,15 +60,16 @@ Phase 0 setup task (in tasks.md), and the spec's verification is last.
 | 5 | migration-protocol | ✅ | ✅ | ✅ | ✅ | ✅ | — | — | — | ✅ | — | full |
 | 6 | schema-policy | ✅ | — | — | ✅ | ✅ | — | — | — | ✅ | — | full |
 | 7 | non-goals-guard | ✅ | ✅ | ✅ | ✅ | — | — | — | — | ✅ | — | full |
+| 8 | provenance-validation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | — | full |
 
 **Notes**:
 - R0 (compile): all specs involve new code or config; `probatioScalacOptions` (R-CS1–R-CS5) on core/cli; Scala 2.12 on plugin; `bash -n` on shims.
 - R1 (lint): Scalafix + WartRemover + scalafmt on Scala subprojects; shellcheck + shfmt on shims. Schema-policy (#6) is yaml/markdown — no Scala lint.
-- R2 (architecture): dependency-lint rule (R-ARCH1) applies to all specs with workflow/* code (1, 2, 3, 7). Specs 4, 5, 6 touch CI/schema, not classpaths.
+- R2 (architecture): dependency-lint rule (R-ARCH1) applies to all specs with workflow/* code (1, 2, 3, 7, 8). Specs 4, 5, 6 touch CI/schema, not classpaths.
 - R3 (property): MANDATORY for all code-changing specs. Hedgehog 0.13.1 (NOT ScalaCheck).
-- R4 (wire/persistence): applies to specs touching persisted/wire data — core (ledger, reports, payloads), cli (stdout payloads), migration (conformance), schema-policy (schema.yaml, env vars), native-packaging (release artifacts).
+- R4 (wire/persistence): applies to specs touching persisted/wire data — core (ledger, reports, payloads), cli (stdout payloads), migration (conformance), schema-policy (schema.yaml, env vars), native-packaging (release artifacts), provenance-validation (ledger provenance fields, read/write validation).
 - R5 (mutation): Stryker4s on changed production logic. Not applicable to sbt-plugin (Scala 2.12, sbt test framework — Stryker4s targets Scala 3), native-packaging (CI pipeline, not production code), migration-protocol (test protocol, not production code), schema-policy (config, not code), non-goals-guard (build rule + test, not production logic).
-- R6 (formal): only probatio-core (3 verified-mirror kernels: LedgerValidatorKernel, ChainStateKernel, BannerEngineKernel).
+- R6 (formal): probatio-core (3 verified-mirror kernels: LedgerValidatorKernel, ChainStateKernel, BannerEngineKernel) and provenance-validation (extends LedgerValidatorKernel from 12 to 15 clauses).
 - R7 (model checking): ❌ no TLA+/Apalache. Skip for all specs.
 - R8 (adversarial review): MANDATORY for all specs. Fresh-context reviewer.
 - R9 (telemetry): ❌ no otel4s/Daut. Skip for all specs.
@@ -76,6 +85,7 @@ Phase 0 setup task (in tasks.md), and the spec's verification is last.
 | 5 | migration-protocol | `openspec/schemas/verified-scala3/tests/*.bats` (oracle — NOT modified, but run); `openspec/schemas/verified-scala3/scanner/*_OVERRIDE` seams; hook shim files |
 | 6 | schema-policy | `openspec/schemas/verified-scala3/schema.yaml` (v14 rename); `openspec/schemas/verified-scala3/hooks/README.md` (policy rewrite); `openspec/schemas/verified-scala3/hooks/gate.sh` (env-var migration); CI cache config |
 | 7 | non-goals-guard | `build.sbt` (dependency-lint rule); `workflow/core/src/test/scala/.../NonGoalsGuardSpec.scala` (Hedgehog properties); CI workflow (dependency-lint step) |
+| 8 | provenance-validation | `workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala` (extended to 15 clauses); `workflow/core/src/main/scala/org/sinemenda/probatio/core/ContractViolation.scala` (extended to 15 variants); `workflow/core/src/main/scala/org/sinemenda/probatio/core/ProvenanceFields.scala` (new); `workflow/core/src/main/scala/org/sinemenda/probatio/core/ValidatedRecord.scala` (new); `workflow/core/src/main/scala/org/sinemenda/probatio/core/Ledger.scala` (read-time validation); `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/LedgerCmd.scala` (write-time validation); `verified/probatio/src/main/scala/org/sinemenda/probatio/core/LedgerValidatorKernel.scala` (extended to 15 clauses); `workflow/core/src/test/scala/...` (Hedgehog properties + compile-negative); `workflow/cli/src/test/scala/...` (LedgerCmdSpec) |
 
 ## Human Gate Tier
 
@@ -88,6 +98,7 @@ Phase 0 setup task (in tasks.md), and the spec's verification is last.
 | 5 | migration-protocol | separate | complexity=medium (migration protocol); proposal risk=high |
 | 6 | schema-policy | separate | complexity=simple BUT proposal risk=high (consumer-visible inflection) |
 | 7 | non-goals-guard | separate | complexity=medium (build rule + properties); proposal risk=high |
+| 8 | provenance-validation | separate | complexity=medium (extends existing types + new validation clauses); proposal risk=high |
 
 **All specs are `separate` tier.** The proposal's correctness risk is
 **high** (ports correctness-critical tooling; defect class = "a corrupt
@@ -130,6 +141,7 @@ DO NOT skip ahead. DO NOT batch-implement. One spec at a time.
 - [ ] 5. `specs/migration-protocol/spec.md` — bats oracle as acceptance suite, conformance property test, shim swap order, exactly-one implementation, atomic skill updates
 - [ ] 6. `specs/non-goals-guard/spec.md` — feature-freeze contract verification, F1–F10 verdict stability, dependency boundary closed, oracle immutability (dependency-lint rule is a Phase 0 setup task, verified here)
 - [ ] 7. `specs/schema-policy/spec.md` — v14 rename (verified-scala3 → probatio), generatedBy stamp rename, env-var + cache-dir migration with deprecated aliases, hooks/README rewrite
+- [ ] 8. `specs/provenance-validation/spec.md` — extend validator from 12 to 15 contract clauses, lift ContractViolation cap from 12 to 15, enforce write-time validation in LedgerCmd.append, enforce read-time validation in Ledger.read, extend LedgerValidatorKernel to 15 clauses
 
 ### Phase 0 setup tasks (BEFORE spec 1)
 

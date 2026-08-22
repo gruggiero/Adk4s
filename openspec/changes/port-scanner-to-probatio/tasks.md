@@ -32,18 +32,18 @@ apply phase also tracks detailed state in implementation-progress.md.
 
 ## 2. cli-protocol
 
-- [ ] Prerequisite: scaffold workflow/cli sbt subproject (Scala 3.8.4, mainargs + os-lib + uPickle, probatioScalacOptions, depends on probatio-core)
-- [ ] Step 1 — typed contract: Subcommand sealed enum (one case per predecessor script), ProbatioMain multicall dispatch, 9 @main entrypoint signatures (SpecLintCmd, ChainStateCmd, GateCmd, LedgerCmd, DangerScanCmd, CheckpointCmd, ConceptScanCmd, GraphCmd, HelpCmd), ParseError sealed trait (compiles, human gate 1/2)
-- [ ] Step 2 — test oracle: 30 scenarios + 6 Hedgehog properties (exit-code-mapping-is-total-and-disjoint, undetermined-never-collapses, stdout-conformance-with-jq-contracts, arg-parse-error-attribution, help-lists-every-flag, multicall-dispatch-equivalence) (human gate 2/2)
-- [ ] Step 3 — implementation: multicall dispatch (argv(1) then argv(0) basename), mainargs arg parsing with named errors, Outcome[Int] → System.exit mapping, uPickle stdout encoding byte-compatible with .jq contracts
-- [ ] R0: compile under probatioScalacOptions — zero warnings
-- [ ] R1: Scalafix + WartRemover + scalafmt
-- [ ] R2: dependency-lint rule passes
-- [ ] R3: 6 Hedgehog properties green
-- [ ] R4: byte-compatible stdout vs 3 .jq contracts (ledger-record, chain-state-report, gate-hookjson)
-- [ ] R5: Stryker4s on workflow/cli production logic (threshold 80–90% adapters)
-- [ ] R8: adversarial review — look for exit-2 collapsed into exit-1, payload deviation, silent arg-parse failures
-- [ ] Concept-delta check + inventory update + checkpoint
+- [x] Prerequisite: scaffold workflow/cli sbt subproject (Scala 3.8.4, mainargs + os-lib + uPickle, probatioScalacOptions, depends on probatio-core)
+- [x] Step 1 — typed contract: Subcommand sealed enum (one case per predecessor script), ProbatioMain multicall dispatch, 9 @main entrypoint signatures (SpecLintCmd, ChainStateCmd, GateCmd, LedgerCmd, DangerScanCmd, CheckpointCmd, ConceptScanCmd, GraphCmd, HelpCmd), ParseError sealed trait (compiles, human gate 1/2)
+- [x] Step 2 — test oracle: 30 scenarios + 6 Hedgehog properties (exit-code-mapping-is-total-and-disjoint, undetermined-never-collapses, stdout-conformance-with-jq-contracts, arg-parse-error-attribution, help-lists-every-flag, multicall-dispatch-equivalence) (human gate 2/2)
+- [x] Step 3 — implementation: multicall dispatch (argv(1) then argv(0) basename), mainargs arg parsing with named errors, Outcome[Int] → System.exit mapping, uPickle stdout encoding byte-compatible with .jq contracts
+- [x] R0: compile under probatioScalacOptions — zero warnings
+- [x] R1: Scalafix + WartRemover + scalafmt
+- [x] R2: dependency-lint rule passes
+- [x] R3: 6 Hedgehog properties green
+- [x] R4: byte-compatible stdout vs 3 .jq contracts (ledger-record, chain-state-report, gate-hookjson)
+- [x] R5: Stryker4s on workflow/cli production logic (threshold 80–90% adapters)
+- [x] R8: adversarial review — look for exit-2 collapsed into exit-1, payload deviation, silent arg-parse failures
+- [x] Concept-delta check + inventory update + checkpoint
 
 ## 3. sbt-plugin
 
@@ -110,4 +110,20 @@ apply phase also tracks detailed state in implementation-progress.md.
 - [ ] R3: 3 Hedgehog properties green (deprecated alias, cache migration, stamp rename)
 - [ ] R4: schema.yaml backward compatibility (old fixture → new schema → expected behavior); env-var alias accepted for one major
 - [ ] R8: adversarial review — look for retired prerequisites still in table, legacy env var read after one major, schema template changes, sbt 2.x migration
+- [ ] Concept-delta check + inventory update + checkpoint
+
+## 8. provenance-validation
+
+- [ ] Prerequisite: specs 1 (probatio-core) and 2 (cli-protocol) are COMPLETE — this spec extends their types
+- [ ] Step 1 — typed contract: ProvenanceFields case class, ValidatedRecord case class, extended ContractViolation sealed trait (15 variants: 12 existing + OptionalFieldTypeInvalid, ObserverProvenanceInvalid, SessionProvenanceInvalid), Validator.validateFull signature (15 clauses → Either[ContractViolation, ValidatedRecord]) (compiles, human gate 1/2)
+- [ ] Step 2 — test oracle: 21 scenarios + 3 Hedgehog properties (validator-conforms-to-jq-contract-15-clauses, ContractViolation-totality-15-clauses, adversarial-review-ring-session-presence) + compile-negative stubs (no 16th ContractViolation variant, no session field on LedgerRecord core type, no force flag on ledger append, no read path that skips validation) (human gate 2/2)
+- [ ] Step 3 — implementation: extend Validator from 12 to 15 clauses (add optional-field type checks, observer provenance, session provenance), lift ContractViolation cap from 12 to 15, add ProvenanceFields + ValidatedRecord, enforce write-time validation in LedgerCmd.append (reject with Finding on validation failure), enforce read-time validation in Ledger.read (reject as undetermined on any malformed row)
+- [ ] R0: compile under probatioScalacOptions — zero warnings
+- [ ] R1: Scalafix + WartRemover + scalafmt
+- [ ] R2: dependency-lint rule passes
+- [ ] R3: 3 Hedgehog properties green (Hedgehog 0.13.1)
+- [ ] R4: ledger round-trip with provenance fields + 15-clause contract conformance
+- [ ] R5: Stryker4s on changed Validator + LedgerCmd + Ledger.read logic (threshold 90–95% pure domain)
+- [ ] R6: extend LedgerValidatorKernel from 12 to 15 clauses in verified/probatio + bridge property tests; `sbt ring6` green
+- [ ] R8: adversarial review (fresh context) — look for silent acceptance of R8 rows missing session, case _ defaults in provenance clause matching, force/bypass flags, read paths that skip malformed rows
 - [ ] Concept-delta check + inventory update + checkpoint

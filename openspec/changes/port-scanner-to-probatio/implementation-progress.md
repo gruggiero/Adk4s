@@ -33,15 +33,16 @@ validation before next spec.
 - 0e/V3: verify pi TS adapter shim replacement end-to-end under `pi -e`.
 - 0f/V4: decide download host (GitHub Releases vs Maven zip) + checksum story.
 
-## Spec sequence (implementation-order.md resolved order: 1→2→3→4→5→7→6)
+## Spec sequence (implementation-order.md resolved order: 1→2→3→4→5→8→7→6)
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
 | 1 | probatio-core | COMPLETE | R0–R8 discharged; human validated |
-| 2 | cli-protocol | IN PROGRESS | R0–R5, R8 discharged; awaiting human validation |
+| 2 | cli-protocol | COMPLETE | R0–R5, R8 discharged; committed (4659f71); awaiting human validation |
 | 3 | sbt-plugin | COMPLETE | R0–R8 discharged; human validated; committed |
 | 4 | native-packaging | COMPLETE | R0–R3, R8 discharged; human validated; committed |
 | 5 | migration-protocol | COMPLETE | R0–R4, R8 discharged; human validated; committed (a13b418) |
+| 8 | provenance-validation | NOT STARTED | extends validator 12→15 clauses; depends on specs 1+2 complete |
 | 7 | non-goals-guard | COMPLETE | R0–R3, R8 discharged; awaiting human validation |
 | 6 | schema-policy | NOT STARTED | independent, scheduled last |
 

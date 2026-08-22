@@ -1,5 +1,7 @@
 # ADK4S — Agent Development Kit for Scala 3
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/gruggiero/Adk4s)
+
 ADK4S is a functional, type-safe agent toolkit for Scala 3. It builds on [LLM4S](https://github.com/llm4s/llm4s) (the Scala LLM client) and [workflows4s](https://github.com/business4s/workflows4s) (the workflow engine) to provide a complete stack for building durable LLM-powered agents, from structured outputs to multi-agent orchestration.
 
 **Core idea**: compose LLM calls, tools, and workflows as pure functions using Cats Effect and fs2 — with built-in observability, interrupt/resume, and type-safe structured outputs.

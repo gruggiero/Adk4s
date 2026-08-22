@@ -27,7 +27,7 @@ allowed-dependency set.
 | `org.sinemenda.probatio.core.graph` | Domain (pure) | Transitive traceability/fact extraction (ported from openspec-graph.py) |
 | `org.sinemenda.probatio.cli` | CLI (effect boundary) | mainargs @main entrypoints, one per predecessor script; multicall dispatch; Outcome[Int] → exit 0/1/2 |
 | `org.sinemenda.probatio.plugin` | Plugin (sbt, Scala 2.12) | AutoPlugin, 7 tasks, install resolution, gate shim generation |
-| `org.sinemenda.probatio.verified` | Mirror (Ring 6) | PureScala models of chain-state verdict logic, 12-clause validator, banner engine |
+| `org.sinemenda.probatio.verified` | Mirror (Ring 6) | PureScala models of chain-state verdict logic, 15-clause validator (12 required-field + 3 provenance), banner engine |
 
 ### Build wiring
 
@@ -66,7 +66,7 @@ The metals client does blocking LSP request/response (not parallel streams).
 
 | Module / Function | Purpose | Ring 6? |
 |-------------------|---------|---------|
-| `core.LedgerRecord.validate` | 12-clause total validator → Either[ContractViolation, LedgerRecord] | **Yes** — `LedgerValidatorKernel` mirror. Decision/fold at the centre (12 Boolean clauses → one violation or valid). Inputs reducible to BigInt identities + Booleans. Law: totality (every input maps to exactly one outcome). |
+| `core.LedgerRecord.validate` | 12-clause total validator → Either[ContractViolation, LedgerRecord] (extended to 15 clauses by provenance-validation spec: `Validator.validateFull` → Either[ContractViolation, ValidatedRecord]) | **Yes** — `LedgerValidatorKernel` mirror. Decision/fold at the centre (12 Boolean clauses → one violation or valid; extended to 15 clauses for provenance). Inputs reducible to BigInt identities + Booleans. Law: totality (every input maps to exactly one outcome). |
 | `core.ChainState.compute` | (SpecLintReport, Ledger, Requirements, Baseline) → Either[Undetermined, ChainStateReport] | **Yes** — `ChainStateKernel` mirror. Decision kernel: bound/resolved/discharged verdict over a finite state machine. Inputs reducible to BigInt state identities + Booleans. Law: undetermined-never-collapses (the defect class the whole schema averts). |
 | `core.BannerEngine.render` | (schemaVersion, skillInstallScan, registry/inventory/profile presence, detectedTestKit, activeChanges) → banner text | **Yes** — `BannerEngineKernel` mirror. Pure rendering function; byte-identical output for identical inputs. Inputs reducible to BigInt identities + Booleans. Law: idempotence (same inputs → same output). |
 | `core.DriftScan.scan` | (schemaVersion, installRoots) → drift warnings | **Yes** — covered by `BannerEngineKernel` mirror (drift scan is a sub-function of the banner assembly). Law: every install root is checked (no silent omission). |
@@ -104,7 +104,7 @@ tool — a recorded one-line deviation cited in R-X3.
 | Three-way exit protocol (0/1/2) | **Best** | `Outcome[A]` sealed enum with exactly 3 cases (`Ran[A]`, `Finding`, `Undetermined`); no fourth case is expressible; exhaustive match enforced by `-Wconf:name=PatternMatchExhaustivity:e` + compile-negative (no `case _`) | The defect class the whole schema averts ("undetermined collapsed into finding") is impossible to express |
 | Append-only ledger (no update/delete/rewrite) | **Best** | `Ledger` module exposes only `read`, `append`, `validate` — no `update`/`delete`/`rewrite` constructor exists; compile-negative test proves absence | The forbidden operations are unconstructible, not denylisted |
 | Ring outside R0–R9 | **Best** | `Ring` sealed enum with exactly 10 cases (R0–R9, manual); a ring outside this set is unrepresentable at the type level | Invalid ring is impossible to express |
-| 13th ContractViolation | **Best** | `ContractViolation` sealed trait with exactly 12 cases (one per clause); compile-negative test proves no 13th case | Invalid violation is impossible to express |
+| 13th ContractViolation (pre-provenance-validation) | **Best** | `ContractViolation` sealed trait with exactly 12 cases (one per required-field clause); compile-negative test proves no 13th case. **Extended by provenance-validation spec to 15 cases** (12 required-field + 3 provenance: OptionalFieldTypeInvalid, ObserverProvenanceInvalid, SessionProvenanceInvalid); compile-negative test proves no 16th case. | Invalid violation is impossible to express |
 | Subcommand outside predecessor set | **Best** | `Subcommand` sealed enum with exactly one case per predecessor script; no extra case is expressible; CLI surface snapshot test verifies 1:1 | Extra subcommand is impossible to express |
 | LedgerRecord with invalid clause combination | **Good** | Smart constructor `LedgerRecord.from(...): Either[ContractViolation, LedgerRecord]` — validates all 12 clauses; raw constructor is private | Invalid record is rejected at construction, not at use |
 | ChainStateReport with collapsed undetermined | **Best** | `ChainStateReport` is produced only by `ChainState.compute`, which returns `Either[Undetermined, ChainStateReport]` — the type enforces the split | Undetermined is a separate type from the report, not a field |
@@ -171,7 +171,7 @@ and retained as conformance fixtures (R-M2 property test).
 | Error Enum | Variants | Used By |
 |------------|----------|---------|
 | `Outcome[A]` | `Ran[A](value)`, `Finding(report)`, `Undetermined(reason)` | All CLI entrypoints; maps to exit 0/1/2 |
-| `ContractViolation` | 12 cases (one per ledger record clause) | `LedgerRecord.validate` |
+| `ContractViolation` | 15 cases (12 required-field clauses + 3 provenance: OptionalFieldTypeInvalid, ObserverProvenanceInvalid, SessionProvenanceInvalid) | `LedgerRecord.validate` (clauses 0–11) / `Validator.validateFull` (clauses 0–14, provenance-validation spec) |
 | `ParseError` | `MissingFlag(name)`, `InvalidValue(flag, value, expected)`, `UnknownSubcommand(name)` | mainargs arg parsing (R-P4) |
 | `DriftWarning` | `VersionMismatch(root, expected, actual)`, `NoSkillInstalled(root)` | `DriftScan.scan` |
 | `MetalsError` | `FramingError(detail)`, `HandshakeFailed(detail)`, `Timeout` | `MetalsClient` |
@@ -201,7 +201,7 @@ types) is enforced by source lint + WartRemover.
 
 | Data | Format | Compatibility Mechanism | Test |
 |------|--------|------------------------|------|
-| Ledger records | JSON (uPickle) | Old-fixture decoding + round-trip; 12-clause validator ⊨ `ledger-record-contract.jq` | `LedgerCompatSpec` (Hedgehog: old fixture → decode → expected domain value; new value → encode → decode → same value) |
+| Ledger records | JSON (uPickle) | Old-fixture decoding + round-trip; 15-clause validator ⊨ `ledger-record-contract.jq` (12 required-field + 3 provenance; provenance clauses added by provenance-validation spec) | `LedgerCompatSpec` (Hedgehog: old fixture → decode → expected domain value; new value → encode → decode → same value) + `ProvenanceConformanceSpec` (Hedgehog: 15-clause conformance, both directions) |
 | Chain-state reports | JSON (uPickle) | Round-trip + `chain-state-report-contract.jq` conformance | `ChainStateCompatSpec` (Hedgehog: round-trip + contract conformance) |
 | Gate hook payloads | JSON (uPickle) | Byte-stability vs `gate-hookjson-contract.jq`; `hookSpecificOutput.additionalContext` shape unchanged | `GatePayloadCompatSpec` (Hedgehog: byte-stability + contract conformance) |
 | spec-lint output | JSON (uPickle, new LintReport AST) | Per-requirement verdict attribution (R-C4); consumed by chain-state as uPickle JSON | `LintReportCompatSpec` (Hedgehog: round-trip + F1–F10 verdict stability) |
@@ -218,7 +218,7 @@ suite (R-M1).
 
 | Module / Function | Purpose | Ring 6? |
 |-------------------|---------|---------|
-| `core.LedgerRecord.validate` | 12-clause total validator | **Yes** — `LedgerValidatorKernel` mirror. Decision/fold: 12 Boolean clauses → one violation or valid. Inputs: BigInt clause identities + Booleans. Law: totality (every input → exactly one outcome). |
+| `core.LedgerRecord.validate` | 12-clause total validator (extended to 15 clauses by provenance-validation spec) | **Yes** — `LedgerValidatorKernel` mirror. Decision/fold: 12 Boolean clauses → one violation or valid (extended to 15 for provenance). Inputs: BigInt clause identities + Booleans. Law: totality (every input → exactly one outcome). |
 | `core.ChainState.compute` | verdict logic (bound/resolved/discharged/undetermined) | **Yes** — `ChainStateKernel` mirror. Decision kernel: finite state machine over (lintReport, ledger, requirements, baseline). Inputs: BigInt state identities + Booleans. Law: undetermined-never-collapses. |
 | `core.BannerEngine.render` | banner/drift assembly | **Yes** — `BannerEngineKernel` mirror. Pure rendering: (version, installs, presence, testkit, changes) → text. Inputs: BigInt identities + Booleans. Law: idempotence (same inputs → same output). |
 | `core.scanner.SpecLint.run` | F1–F10 checks | **No** — mechanical greps over file contents (effectful input collection); the *decision* is pure but inputs are not reducible without modeling the file system. F1–F10 verdict stability enforced by Ring 3 property test over fixture corpus. |
@@ -259,8 +259,10 @@ The bridge tests live in `workflow/core` test sources and depend on
 
 **`LedgerValidatorKernel`** — proves: totality (every input → exactly one
 outcome); clause independence (each clause's failure is distinguishable).
-Delegates to Ring 3: the 12-clause conformance property test
-(`validator ⊨ ledger-record-contract.jq` over fixture corpus).
+Extended by provenance-validation spec from 12 to 15 clauses (adds
+optional-field type checks, observer provenance, session provenance).
+Delegates to Ring 3: the 15-clause conformance property test
+(`validator ⊨ ledger-record-contract.jq` over fixture corpus, both directions).
 
 **`ChainStateKernel`** — proves: undetermined-never-collapses (the
 defect class the whole schema averts); verdict totality (every input →
