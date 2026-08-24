@@ -1,6 +1,6 @@
 package org.sinemenda.probatio.packaging
 
-import upickle.default._
+import upickle.default.*
 
 /**
  * SPDX JSON SBOM model (R-N3).
@@ -14,23 +14,23 @@ import upickle.default._
  * spec: native-packaging — Scenario: SBOM is present and parseable as SPDX JSON
  */
 case class Sbom(
-    spdxVersion: String,
-    spdxId: String,
-    name: String,
-    version: String,
-    downloadLocation: String,
-    filesAnalyzed: Boolean,
-    packageVerificationCode: String,
-    licenseConcluded: String,
-    licenseDeclared: String,
-    copyrightText: String,
-    dependencies: List[SbomPackage]
+  spdxVersion: String,
+  spdxId: String,
+  name: String,
+  version: String,
+  downloadLocation: String,
+  filesAnalyzed: Boolean,
+  packageVerificationCode: String,
+  licenseConcluded: String,
+  licenseDeclared: String,
+  copyrightText: String,
+  dependencies: List[SbomPackage]
 ) derives ReadWriter
 
 case class SbomPackage(
-    name: String,
-    version: String,
-    downloadLocation: String
+  name: String,
+  version: String,
+  downloadLocation: String
 ) derives ReadWriter
 
 object Sbom:
@@ -52,10 +52,8 @@ object Sbom:
    * Returns Left(error) if the JSON is malformed or missing required fields.
    */
   def parseJson(json: String): Either[String, Sbom] =
-    try
-      Right(read[Sbom](json))
-    catch
-      case e: Exception => Left(e.getMessage)
+    try Right(read[Sbom](json))
+    catch case e: Exception => Left(e.getMessage)
 
   /**
    * Validates that an Sbom is well-formed per R-N3:
@@ -87,8 +85,8 @@ object Sbom:
    * dependency list. Convenience factory for CI pipeline use.
    */
   def forRelease(
-      releaseVersion: String,
-      dependencies: List[SbomPackage]
+    releaseVersion: String,
+    dependencies: List[SbomPackage]
   ): Sbom =
     Sbom(
       spdxVersion = spdxVersionValue,

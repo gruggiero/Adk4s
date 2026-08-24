@@ -3,6 +3,7 @@ package org.sinemenda.probatio.migration
 import hedgehog.*
 import org.sinemenda.probatio.core.*
 import org.sinemenda.probatio.core.ProbatioSuite
+
 import scala.sys.process.*
 
 /** Conformance property test — validator iff contract over a generated corpus (R-M2).

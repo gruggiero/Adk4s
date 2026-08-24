@@ -25,8 +25,8 @@ object ReleaseValidator:
    */
   def validateCompleteness(manifest: ReleaseManifest): List[String] =
     val artifactSet: Set[ReleaseArtifact] = manifest.artifacts.toSet
-    val expected: List[ReleaseArtifact] = ReleaseManifest.expectedArtifacts
-    val missing: List[ReleaseArtifact] = expected.filterNot(artifactSet.contains)
+    val expected: List[ReleaseArtifact]   = ReleaseManifest.expectedArtifacts
+    val missing: List[ReleaseArtifact]    = expected.filterNot(artifactSet.contains)
     missing.map(a => s"missing required artifact: ${a.fileName}")
 
   /**
@@ -38,16 +38,12 @@ object ReleaseValidator:
    * spec: native-packaging — Scenario: windows-x86_64 release has no native binary, documented (adversarial)
    */
   def validatePlatformCoverage(manifest: ReleaseManifest): List[String] =
-    val nativeBinaries: List[Platform] = manifest.artifacts.collect {
-      case ReleaseArtifact.NativeBinary(p) => p
-    }
-    val nativeSet: Set[Platform] = nativeBinaries.toSet
+    val nativeBinaries: List[Platform]  = manifest.artifacts.collect { case ReleaseArtifact.NativeBinary(p) => p }
+    val nativeSet: Set[Platform]        = nativeBinaries.toSet
     val missingPlatforms: Set[Platform] = Platform.committedNativePlatforms.diff(nativeSet)
-    val extraPlatforms: Set[Platform] = nativeSet.diff(Platform.committedNativePlatforms)
+    val extraPlatforms: Set[Platform]   = nativeSet.diff(Platform.committedNativePlatforms)
     val missingIssues: List[String] =
-      missingPlatforms.toList.map(p =>
-        s"missing native binary for committed platform: ${p.artifactSuffix}"
-      )
+      missingPlatforms.toList.map(p => s"missing native binary for committed platform: ${p.artifactSuffix}")
     val extraIssues: List[String] =
       extraPlatforms.toList.map(p =>
         s"unexpected native binary for non-committed platform: ${p.artifactSuffix} (JAR-fallback-only)"
@@ -80,9 +76,9 @@ object ReleaseValidator:
     val checksumArtifacts: List[ReleaseArtifact.Checksum] = manifest.artifacts.collect {
       case c: ReleaseArtifact.Checksum => c
     }
-    val checksumNames: Set[String] = checksumArtifacts.map(_.artifactName).toSet
+    val checksumNames: Set[String]              = checksumArtifacts.map(_.artifactName).toSet
     val contentArtifacts: List[ReleaseArtifact] = manifest.artifacts.filterNot(_.isChecksum)
-    val contentNames: Set[String] = contentArtifacts.map(_.fileName).toSet
+    val contentNames: Set[String]               = contentArtifacts.map(_.fileName).toSet
     val missingChecksums: List[String] = contentNames
       .filterNot(name => name == ReleaseArtifact.Sbom.fileName)
       .filterNot(checksumNames.contains)

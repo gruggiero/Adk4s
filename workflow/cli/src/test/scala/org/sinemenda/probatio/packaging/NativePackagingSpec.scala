@@ -1,8 +1,8 @@
 package org.sinemenda.probatio.packaging
 
-import org.sinemenda.probatio.cli.ProbatioCliSuite
 import hedgehog.*
 import hedgehog.Range
+import org.sinemenda.probatio.cli.ProbatioCliSuite
 
 /**
  * Ring 3 property tests for native-packaging (R-N1…R-N5).

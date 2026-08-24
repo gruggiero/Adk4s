@@ -114,16 +114,31 @@ apply phase also tracks detailed state in implementation-progress.md.
 
 ## 8. provenance-validation
 
-- [ ] Prerequisite: specs 1 (probatio-core) and 2 (cli-protocol) are COMPLETE — this spec extends their types
-- [ ] Step 1 — typed contract: ProvenanceFields case class, ValidatedRecord case class, extended ContractViolation sealed trait (15 variants: 12 existing + OptionalFieldTypeInvalid, ObserverProvenanceInvalid, SessionProvenanceInvalid), Validator.validateFull signature (15 clauses → Either[ContractViolation, ValidatedRecord]) (compiles, human gate 1/2)
-- [ ] Step 2 — test oracle: 21 scenarios + 3 Hedgehog properties (validator-conforms-to-jq-contract-15-clauses, ContractViolation-totality-15-clauses, adversarial-review-ring-session-presence) + compile-negative stubs (no 16th ContractViolation variant, no session field on LedgerRecord core type, no force flag on ledger append, no read path that skips validation) (human gate 2/2)
-- [ ] Step 3 — implementation: extend Validator from 12 to 15 clauses (add optional-field type checks, observer provenance, session provenance), lift ContractViolation cap from 12 to 15, add ProvenanceFields + ValidatedRecord, enforce write-time validation in LedgerCmd.append (reject with Finding on validation failure), enforce read-time validation in Ledger.read (reject as undetermined on any malformed row)
+- [x] Prerequisite: specs 1 (probatio-core) and 2 (cli-protocol) are COMPLETE — this spec extends their types
+- [x] Step 1 — typed contract: ProvenanceFields case class, ValidatedRecord case class, extended ContractViolation sealed trait (15 variants: 12 existing + OptionalFieldTypeInvalid, ObserverProvenanceInvalid, SessionProvenanceInvalid), Validator.validateFull signature (15 clauses → Either[ContractViolation, ValidatedRecord]) (compiles, human gate 1/2)
+- [x] Step 2 — test oracle: 21 scenarios + 3 Hedgehog properties (validator-conforms-to-jq-contract-15-clauses, ContractViolation-totality-15-clauses, adversarial-review-ring-session-presence) + compile-negative stubs (no 16th ContractViolation variant, no session field on LedgerRecord core type, no force flag on ledger append, no read path that skips validation) (human gate 2/2)
+- [x] Step 3 — implementation: extend Validator from 12 to 15 clauses (add optional-field type checks, observer provenance, session provenance), lift ContractViolation cap from 12 to 15, add ProvenanceFields + ValidatedRecord, enforce write-time validation in LedgerCmd.append (reject with Finding on validation failure), enforce read-time validation in Ledger.read (reject as undetermined on any malformed row)
+- [x] R0: compile under probatioScalacOptions — zero warnings
+- [x] R1: Scalafix + WartRemover + scalafmt
+- [x] R2: dependency-lint rule passes
+- [x] R3: 3 Hedgehog properties green (Hedgehog 0.13.1)
+- [x] R4: ledger round-trip with provenance fields + 15-clause contract conformance
+- [x] R5: Stryker4s on changed Validator + LedgerCmd + Ledger.read logic (threshold 90–95% pure domain)
+- [x] R6: extend LedgerValidatorKernel from 12 to 15 clauses in verified/probatio + bridge property tests; `sbt ring6` green
+- [x] R8: adversarial review (fresh context) — look for silent acceptance of R8 rows missing session, case _ defaults in provenance clause matching, force/bypass flags, read paths that skip malformed rows
+- [x] Concept-delta check + inventory update + checkpoint
+
+## 9. gate-checkpoint-lock
+
+- [ ] Prerequisite: specs 1 (probatio-core) and 2 (cli-protocol) are COMPLETE — this spec reuses `Outcome[A]` and `LedgerRecord` and the `GateCmd` CLI entrypoint
+- [ ] Step 1 — typed contract: `GateEvent` sealed enum, `GateDecision` sealed enum (Allow/Block), `SpecPhase` sealed enum (Oracle/Implementation/Verified), `BlockReason` sealed trait (PredecessorNotVerified, PredecessorNotCheckpointed, OracleOrderingViolation, GrantRequired), `PredecessorCheck` pure function signature, `GrantWaiver` pure function signature, `PresentationMarker` value type (compiles, human gate 1/2)
+- [ ] Step 2 — test oracle: 12 scenarios + 3 Hedgehog properties (predecessor-check-requires-presentation, grant-waiver-requires-presentation, block-reason-distinguishes-not-checkpointed) + compile-negative stubs (no fifth GateEvent, no fifth BlockReason variant, no file I/O in PredecessorCheck/GrantWaiver, no case _ in GateDecision match) (human gate 2/2)
+- [ ] Step 3 — implementation: port gate decision logic from gate.sh to pure Scala functions in probatio-core, wire GateCmd CLI entrypoint to read state files and call the pure functions, map GateDecision to Outcome[Int] at the CLI boundary
 - [ ] R0: compile under probatioScalacOptions — zero warnings
 - [ ] R1: Scalafix + WartRemover + scalafmt
-- [ ] R2: dependency-lint rule passes
-- [ ] R3: 3 Hedgehog properties green (Hedgehog 0.13.1)
-- [ ] R4: ledger round-trip with provenance fields + 15-clause contract conformance
-- [ ] R5: Stryker4s on changed Validator + LedgerCmd + Ledger.read logic (threshold 90–95% pure domain)
-- [ ] R6: extend LedgerValidatorKernel from 12 to 15 clauses in verified/probatio + bridge property tests; `sbt ring6` green
-- [ ] R8: adversarial review (fresh context) — look for silent acceptance of R8 rows missing session, case _ defaults in provenance clause matching, force/bypass flags, read paths that skip malformed rows
+- [ ] R2: dependency-lint rule passes (no adk4s/cats/cats-effect/fs2 on classpath)
+- [ ] R3: 3 Hedgehog properties green (Hedgehog 0.13.1, NOT ScalaCheck)
+- [ ] R5: Stryker4s on PredecessorCheck + GrantWaiver + BlockReason.render (threshold 90–95% pure domain)
+- [ ] R6: GateDecisionKernel in verified/probatio (models the predecessor check and grant waiver decisions) + bridge property tests; `sbt ring6` green
+- [ ] R8: adversarial review (fresh context) — look for presentation check bypassed when state dir is empty, grant waived on Verified without presentation, block reason conflating not-checkpointed with not-verified, escape hatch not bypassing both checks, case _ defaults in GateDecision match
 - [ ] Concept-delta check + inventory update + checkpoint

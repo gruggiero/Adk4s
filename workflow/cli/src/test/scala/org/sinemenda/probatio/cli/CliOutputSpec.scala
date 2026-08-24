@@ -1,6 +1,9 @@
 package org.sinemenda.probatio.cli
 
-import org.sinemenda.probatio.core.{ ChainStateUndetermined, GatePayload, HookSpecificOutput, Outcome }
+import org.sinemenda.probatio.core.ChainStateUndetermined
+import org.sinemenda.probatio.core.GatePayload
+import org.sinemenda.probatio.core.HookSpecificOutput
+import org.sinemenda.probatio.core.Outcome
 import upickle.default.*
 
 /**

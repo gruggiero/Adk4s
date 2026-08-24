@@ -1,12 +1,13 @@
 package org.sinemenda.probatio.core
 
-/** Inputs to the banner/drift engine (R-C5b).
-  *
-  * All file I/O is performed by the CLI layer and passed as values. The
-  * banner engine is a pure function over these declared inputs.
-  *
-  * spec: probatio-core — Requirement: The drift, context, and banner engine is a pure function
-  */
+/**
+ * Inputs to the banner/drift engine (R-C5b).
+ *
+ * All file I/O is performed by the CLI layer and passed as values. The
+ * banner engine is a pure function over these declared inputs.
+ *
+ * spec: probatio-core — Requirement: The drift, context, and banner engine is a pure function
+ */
 final case class BannerInputs(
   schemaVersion: Int,
   skillInstallScan: List[InstallRootScan],
@@ -33,32 +34,34 @@ final case class BannerOutput(
   payload: String
 )
 
-/** The banner/drift engine as a pure function (R-C5b).
-  *
-  * `(schemaVersion, skillInstallScan, registry/inventory/profile presence,
-  * detectedTestKit, activeChanges) → banner text`. Byte-identical output
-  * for identical inputs. Reads no files, consults no environment variables,
-  * queries no wall-clock time.
-  *
-  * spec: probatio-core — Requirement: The drift, context, and banner engine is a pure function
-  * spec: probatio-core — Requirement: The banner is assembled from live reads, not remembered state
-  * spec: probatio-core — Property: Banner engine produces byte-identical output for identical inputs
-  */
+/**
+ * The banner/drift engine as a pure function (R-C5b).
+ *
+ * `(schemaVersion, skillInstallScan, registry/inventory/profile presence,
+ * detectedTestKit, activeChanges) → banner text`. Byte-identical output
+ * for identical inputs. Reads no files, consults no environment variables,
+ * queries no wall-clock time.
+ *
+ * spec: probatio-core — Requirement: The drift, context, and banner engine is a pure function
+ * spec: probatio-core — Requirement: The banner is assembled from live reads, not remembered state
+ * spec: probatio-core — Property: Banner engine produces byte-identical output for identical inputs
+ */
 object BannerEngine:
 
-  /** Render the banner from declared inputs.
-    *
-    * spec: probatio-core — Scenario: identical inputs produce byte-identical output
-    * spec: probatio-core — Scenario: different inputs produce different output
-    * spec: probatio-core — Scenario: the invariant block is verbatim-match text
-    * spec: probatio-core — Scenario: the session-context block reflects live chain state
-    * spec: probatio-core — Scenario: the trailer states facts are read from disk (adversarial)
-    */
+  /**
+   * Render the banner from declared inputs.
+   *
+   * spec: probatio-core — Scenario: identical inputs produce byte-identical output
+   * spec: probatio-core — Scenario: different inputs produce different output
+   * spec: probatio-core — Scenario: the invariant block is verbatim-match text
+   * spec: probatio-core — Scenario: the session-context block reflects live chain state
+   * spec: probatio-core — Scenario: the trailer states facts are read from disk (adversarial)
+   */
   def render(inputs: BannerInputs): BannerOutput =
-    val invariant: String = invariantText(inputs.schemaVersion)
-    val contextLines: List[String] = buildContextLines(inputs)
+    val invariant: String             = invariantText(inputs.schemaVersion)
+    val contextLines: List[String]    = buildContextLines(inputs)
     val chainStateLines: List[String] = buildChainStateLines(inputs)
-    val driftLines: List[String] = buildDriftLines(inputs)
+    val driftLines: List[String]      = buildDriftLines(inputs)
     val allLines: List[String] =
       List(invariant) ++
         contextLines ++
@@ -89,28 +92,22 @@ object BannerEngine:
       s"  schema                openspec/schemas/verified-scala3  v${inputs.schemaVersion}"
 
     val driftWarningLines: List[String] =
-      if driftResult.noSkillInstalled then
-        List("  no skill installed across any of the searched roots")
-      else
-        driftResult.warnings.map(w => s"  !! INSTRUCTION DRIFT: ${w.message}")
+      if driftResult.noSkillInstalled then List("  no skill installed across any of the searched roots")
+      else driftResult.warnings.map(w => s"  !! INSTRUCTION DRIFT: ${w.message}")
 
     val registryLine: String =
       if inputs.registryPresent then
         s"  behavioural registry  openspec/concepts/             PRESENT (${inputs.registryConceptCount} concepts)"
-      else
-        "  behavioural registry  openspec/concepts/             ABSENT"
+      else "  behavioural registry  openspec/concepts/             ABSENT"
 
     val inventoryLine: String =
       if inputs.inventoryPresent then
         s"  type inventory        openspec/concept-inventory.md  PRESENT (${inputs.inventoryTypeCount} typed rows)"
-      else
-        "  type inventory        openspec/concept-inventory.md  ABSENT"
+      else "  type inventory        openspec/concept-inventory.md  ABSENT"
 
     val profileLine: String =
-      if inputs.profilePresent then
-        s"  capability profile    openspec/capability-profile.md PRESENT"
-      else
-        "  capability profile    openspec/capability-profile.md ABSENT"
+      if inputs.profilePresent then s"  capability profile    openspec/capability-profile.md PRESENT"
+      else "  capability profile    openspec/capability-profile.md ABSENT"
 
     val testKitLine: String = inputs.detectedTestKit match
       case Some(kit) => s"       deterministic test kit detected: $kit"
@@ -151,9 +148,6 @@ object BannerEngine:
   private def buildDriftLines(inputs: BannerInputs): List[String] =
     val driftResult: DriftScanResult =
       DriftScan.scan(inputs.schemaVersion, inputs.skillInstallScan)
-    if driftResult.noSkillInstalled then
-      List("  no skill installed — re-install to enable drift checking")
-    else if driftResult.warnings.nonEmpty then
-      driftResult.warnings.map(w => s"  ${w.message}")
-    else
-      List.empty
+    if driftResult.noSkillInstalled then List("  no skill installed — re-install to enable drift checking")
+    else if driftResult.warnings.nonEmpty then driftResult.warnings.map(w => s"  ${w.message}")
+    else List.empty

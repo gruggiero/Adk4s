@@ -5,13 +5,13 @@ import stainless.collection._
 import stainless.annotation._
 
 /**
- * Ring 6 — PureScala model of the `Validator` 12-clause total contract.
+ * Ring 6 — PureScala model of the `Validator` 15-clause total contract.
  *
  * This model mirrors the totality law of the ledger-record validator in
  * `org.sinemenda.probatio.core.Validator`. The shipped validator operates on
  * `ujson.Value` with string regex checks and `Ring.fromString` parsing; those
  * constructs are beyond the Stainless frontend (pinned to Scala 3.7.2 while
- * the build is 3.8.4). The *algorithm* — a 12-clause sequential guard that
+ * the build is 3.8.4). The *algorithm* — a 15-clause sequential guard that
  * always returns exactly one outcome — survives reduction to observable
  * effect.
  *
@@ -24,6 +24,8 @@ import stainless.annotation._
  *     clause.
  *   - `Ring` → sealed abstract class with case objects R0–R8 and Manual.
  *   - `Option[Ring]` models the parse result (`None()` = outside domain).
+ *   - Provenance fields (clauses 13–15): optional-field type validity,
+ *     observer provenance, session provenance.
  *
  * The bridge spec (`LedgerValidatorBridgeSpec` in probatio-core) runs the real
  * `Validator.validate` and this model on the SAME generated field values and
@@ -35,6 +37,8 @@ import stainless.annotation._
  *
  * spec: probatio-core — Requirement: LedgerRecord is an immutable product type with total clause validation
  * spec: probatio-core — Property: ContractViolation totality — every clause is reachable
+ * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
+ * spec: provenance-validation — Property: ContractViolation-totality-15-clauses
  */
 object LedgerValidatorKernel:
 
@@ -54,11 +58,11 @@ object LedgerValidatorKernel:
     case object R8     extends Ring
     case object Manual extends Ring
 
-  // ── Violation ADT — one variant per clause (1–12) ─────────────────────────
+  // ── Violation ADT — one variant per clause (1–15) ─────────────────────────
 
-  /** Disjoint sum of the 12 clause failures. One case object per clause. */
+  /** Disjoint sum of the 15 clause failures. One case object per clause. */
   sealed abstract class Violation:
-    /** 1-based index of the failing clause (1–12). */
+    /** 1-based index of the failing clause (1–15). */
     def clauseIndex: BigInt
 
   object Violation:
@@ -110,9 +114,32 @@ object LedgerValidatorKernel:
     case object TimestampPathSeparator extends Violation:
       def clauseIndex: BigInt = 12
 
+    /** Clause 13: optional field type invalid (sha256/digest not string,
+      * wallTime not integer).
+      *
+      * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
+      */
+    case object OptionalFieldTypeInvalid extends Violation:
+      def clauseIndex: BigInt = 13
+
+    /** Clause 14: observer provenance — source present but not "ambient".
+      *
+      * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
+      */
+    case object ObserverProvenanceInvalid extends Violation:
+      def clauseIndex: BigInt = 14
+
+    /** Clause 15: session provenance — R8 rows missing session, or any row
+      * with session that is not a non-empty string.
+      *
+      * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
+      */
+    case object SessionProvenanceInvalid extends Violation:
+      def clauseIndex: BigInt = 15
+
   // ── Valid record — the Right outcome ──────────────────────────────────────
 
-  /** A record that has passed all 12 clauses. */
+  /** A record that has passed all 15 clauses. */
   case class ValidRecord(
     v: BigInt,
     ts: BigInt,
@@ -142,13 +169,13 @@ object LedgerValidatorKernel:
     case Some(_) => true
     case None()  => false
 
-  // ── The 12-clause total validator ─────────────────────────────────────────
+  // ── The 15-clause total validator ─────────────────────────────────────────
 
   /**
-   * Validate all 12 clauses in order, returning either the first
+   * Validate all 15 clauses in order, returning either the first
    * `Violation` or a `ValidRecord`.
    *
-   * Parameters (12 clauses):
+   * Parameters (15 clauses):
    *   1. `v` — version integer (must be positive)
    *   2. `ts` + `tsValidIso` — timestamp string (non-empty + valid ISO-8601)
    *   3. `change` — change string (non-empty)
@@ -161,8 +188,15 @@ object LedgerValidatorKernel:
    *   10. `baseline` + `baselineValidHex` — baseline string (non-empty + valid hex)
    *   11. `artifactNoSep` — artifact must not contain path separators
    *   12. `tsNoSep` — ts must not contain path separators
+   *   13. `optFieldsValidType` — optional fields (sha256, digest, wallTime)
+   *       have valid types when present
+   *   14. `observerProvenanceValid` — source is "ambient" when present
+   *   15. `sessionProvenanceValid` — session is present and non-empty for
+   *       R8 rows; non-empty string when present for other rings
    *
    * Totality postcondition: the result is always either `Left` or `Right`.
+   *
+   * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
    */
   @pure
   def validate(
@@ -180,7 +214,10 @@ object LedgerValidatorKernel:
     exit: BigInt,
     exitIsInteger: Boolean,
     baseline: BigInt,
-    baselineValidHex: Boolean
+    baselineValidHex: Boolean,
+    optFieldsValidType: Boolean,
+    observerProvenanceValid: Boolean,
+    sessionProvenanceValid: Boolean
   ): Either[Violation, ValidRecord] = {
     // Clause 1: v must be a positive integer
     if !isPositive(v) then
@@ -218,7 +255,17 @@ object LedgerValidatorKernel:
     // Clause 12: ts must not contain path separators
     else if !tsNoSep then
       Left(Violation.TimestampPathSeparator)
-    // All 12 clauses passed — extract the Ring and construct the record
+    // Clause 13: optional fields must have valid types when present
+    else if !optFieldsValidType then
+      Left(Violation.OptionalFieldTypeInvalid)
+    // Clause 14: observer provenance — source must be "ambient" when present
+    else if !observerProvenanceValid then
+      Left(Violation.ObserverProvenanceInvalid)
+    // Clause 15: session provenance — R8 requires session, all rows require
+    // non-empty string when present
+    else if !sessionProvenanceValid then
+      Left(Violation.SessionProvenanceInvalid)
+    // All 15 clauses passed — extract the Ring and construct the record
     else
       ring match
         case Some(r) =>
@@ -257,12 +304,16 @@ object LedgerValidatorKernel:
     exit: BigInt,
     exitIsInteger: Boolean,
     baseline: BigInt,
-    baselineValidHex: Boolean
+    baselineValidHex: Boolean,
+    optFieldsValidType: Boolean,
+    observerProvenanceValid: Boolean,
+    sessionProvenanceValid: Boolean
   ): Boolean = {
     val result: Either[Violation, ValidRecord] = validate(
       v, ts, tsValidIso, tsNoSep, change, spec, ring,
       obligation, artifact, artifactNoSep, command, exit, exitIsInteger,
-      baseline, baselineValidHex
+      baseline, baselineValidHex, optFieldsValidType, observerProvenanceValid,
+      sessionProvenanceValid
     )
     result.isLeft || result.isRight
   }.ensuring(_ == true)
@@ -277,7 +328,7 @@ object LedgerValidatorKernel:
   }.ensuring(_ == true)
 
   /**
-   * Law: If all 12 clauses pass, `validate` returns `Right` with a
+   * Law: If all 15 clauses pass, `validate` returns `Right` with a
    * `ValidRecord` carrying the input values.
    */
   @pure
@@ -296,7 +347,10 @@ object LedgerValidatorKernel:
     exit: BigInt,
     exitIsInteger: Boolean,
     baseline: BigInt,
-    baselineValidHex: Boolean
+    baselineValidHex: Boolean,
+    optFieldsValidType: Boolean,
+    observerProvenanceValid: Boolean,
+    sessionProvenanceValid: Boolean
   ): Boolean = {
     require(
       v > 0 &&
@@ -308,12 +362,14 @@ object LedgerValidatorKernel:
         artifact != 0 && artifactNoSep &&
         command != 0 &&
         exitIsInteger &&
-        baseline != 0 && baselineValidHex
+        baseline != 0 && baselineValidHex &&
+        optFieldsValidType && observerProvenanceValid && sessionProvenanceValid
     )
     validate(
       v, ts, tsValidIso, tsNoSep, change, spec, ring,
       obligation, artifact, artifactNoSep, command, exit, exitIsInteger,
-      baseline, baselineValidHex
+      baseline, baselineValidHex, optFieldsValidType, observerProvenanceValid,
+      sessionProvenanceValid
     ) match
       case Right(rec) =>
         rec.v == v && rec.ts == ts && rec.change == change && rec.spec == spec &&
@@ -331,10 +387,10 @@ object LedgerValidatorKernel:
     require(v <= 0)
     validate(
       v, BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true
+      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.VersionInvalid) => true
-      case _                              => false
+      case _                              => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -346,10 +402,10 @@ object LedgerValidatorKernel:
     require(ts == 0 || !tsValidIso)
     validate(
       BigInt(1), ts, tsValidIso, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true
+      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.TimestampInvalid) => true
-      case _                                 => false
+      case _                                 => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -361,10 +417,10 @@ object LedgerValidatorKernel:
     require(change == 0)
     validate(
       BigInt(1), BigInt(1), true, true, change, BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true
+      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.ChangeInvalid) => true
-      case _                             => false
+      case _                             => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -375,10 +431,10 @@ object LedgerValidatorKernel:
     require(spec == 0)
     validate(
       BigInt(1), BigInt(1), true, true, BigInt(1), spec, Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true
+      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.SpecInvalid) => true
-      case _                           => false
+      case _                           => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -390,10 +446,10 @@ object LedgerValidatorKernel:
     require(ring.isEmpty)
     validate(
       BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), ring,
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true
+      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.RingOutsideDomain) => true
-      case _                                 => false
+      case _                                 => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -405,10 +461,10 @@ object LedgerValidatorKernel:
     require(obligation == 0)
     validate(
       BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      obligation, BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true
+      obligation, BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.ObligationEmpty) => true
-      case _                               => false
+      case _                               => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -420,10 +476,10 @@ object LedgerValidatorKernel:
     require(artifact == 0)
     validate(
       BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), artifact, true, BigInt(1), BigInt(0), true, BigInt(1), true
+      BigInt(1), artifact, true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.ArtifactEmpty) => true
-      case _                             => false
+      case _                             => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -435,10 +491,10 @@ object LedgerValidatorKernel:
     require(command == 0)
     validate(
       BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, command, BigInt(0), true, BigInt(1), true
+      BigInt(1), BigInt(1), true, command, BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.CommandEmpty) => true
-      case _                            => false
+      case _                            => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -450,10 +506,10 @@ object LedgerValidatorKernel:
     require(!exitIsInteger)
     validate(
       BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), exitIsInteger, BigInt(1), true
+      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), exitIsInteger, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.ExitNotInteger) => true
-      case _                              => false
+      case _                              => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -465,10 +521,10 @@ object LedgerValidatorKernel:
     require(baseline == 0 || !baselineValidHex)
     validate(
       BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, baseline, baselineValidHex
+      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, baseline, baselineValidHex, true, true, true
     ) match
       case Left(Violation.BaselineInvalid) => true
-      case _                               => false
+      case _                               => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -480,10 +536,10 @@ object LedgerValidatorKernel:
     require(!artifactNoSep)
     validate(
       BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), artifactNoSep, BigInt(1), BigInt(0), true, BigInt(1), true
+      BigInt(1), BigInt(1), artifactNoSep, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.ArtifactPathSeparator) => true
-      case _                                     => false
+      case _                                     => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -495,24 +551,28 @@ object LedgerValidatorKernel:
     require(!tsNoSep)
     validate(
       BigInt(1), BigInt(1), true, tsNoSep, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true
+      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
     ) match
       case Left(Violation.TimestampPathSeparator) => true
-      case _                                      => false
+      case _                                      => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
    * Law: Clause index totality — every `Violation` has a clause index in
-   * the range 1–12.
+   * the range 1–15.
+   *
+   * spec: provenance-validation — Property: ContractViolation-totality-15-clauses
    */
   @pure
   def violationClauseIndexInRange(v: Violation): Boolean = {
-    v.clauseIndex >= 1 && v.clauseIndex <= 12
+    v.clauseIndex >= 1 && v.clauseIndex <= 15
   }.ensuring(_ == true)
 
   /**
    * Law: Clause index distinctness — each violation variant has a unique
    * clause index.
+   *
+   * spec: provenance-validation — Property: ContractViolation-totality-15-clauses
    */
   @pure
   def clauseIndexDistinctness: Boolean = {
@@ -528,7 +588,10 @@ object LedgerValidatorKernel:
       Violation.ExitNotInteger.clauseIndex,
       Violation.BaselineInvalid.clauseIndex,
       Violation.ArtifactPathSeparator.clauseIndex,
-      Violation.TimestampPathSeparator.clauseIndex
+      Violation.TimestampPathSeparator.clauseIndex,
+      Violation.OptionalFieldTypeInvalid.clauseIndex,
+      Violation.ObserverProvenanceInvalid.clauseIndex,
+      Violation.SessionProvenanceInvalid.clauseIndex
     )
-    indices.length == 12 && indices.forall(i => i >= 1 && i <= 12)
+    indices.length == 15 && indices.forall(i => i >= 1 && i <= 15)
   }.ensuring(_ == true)

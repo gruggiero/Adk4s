@@ -23,7 +23,7 @@ object ChecksumVerifier:
    * Edge cases: empty array → SHA-256 of empty input (a valid hash).
    */
   def computeSha256(bytes: Array[Byte]): String =
-    val md: MessageDigest = MessageDigest.getInstance("SHA-256")
+    val md: MessageDigest   = MessageDigest.getInstance("SHA-256")
     val digest: Array[Byte] = md.digest(bytes)
     digest.map(b => f"$b%02x").mkString
 
@@ -45,15 +45,13 @@ object ChecksumVerifier:
    * spec: native-packaging — Scenario: checksum mismatch blocks first execution (adversarial)
    */
   def verifyForExecution(
-      bytes: Array[Byte],
-      expected: String,
-      artifactName: String
+    bytes: Array[Byte],
+    expected: String,
+    artifactName: String
   ): ChecksumResult =
     val actual: String = computeSha256(bytes)
-    if actual == expected.trim then
-      ChecksumResult.Proceed
-    else
-      ChecksumResult.Mismatch(artifactName, expected, actual)
+    if actual == expected.trim then ChecksumResult.Proceed
+    else ChecksumResult.Mismatch(artifactName, expected, actual)
 
 /**
  * Result of a checksum verification for execution gating.

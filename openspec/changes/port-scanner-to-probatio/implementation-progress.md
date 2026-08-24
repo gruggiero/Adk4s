@@ -38,12 +38,12 @@ validation before next spec.
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
 | 1 | probatio-core | COMPLETE | R0–R8 discharged; human validated |
-| 2 | cli-protocol | COMPLETE | R0–R5, R8 discharged; committed (4659f71); awaiting human validation |
+| 2 | cli-protocol | COMPLETE | R0–R5, R8 discharged; committed (4659f71); human validated (2026-08-24) — 8/9 reqs PASS, Req7 PARTIAL (help exhaustiveness not compiler-checked, acceptable per R8 review) |
 | 3 | sbt-plugin | COMPLETE | R0–R8 discharged; human validated; committed |
 | 4 | native-packaging | COMPLETE | R0–R3, R8 discharged; human validated; committed |
 | 5 | migration-protocol | COMPLETE | R0–R4, R8 discharged; human validated; committed (a13b418) |
-| 8 | provenance-validation | NOT STARTED | extends validator 12→15 clauses; depends on specs 1+2 complete |
-| 7 | non-goals-guard | COMPLETE | R0–R3, R8 discharged; awaiting human validation |
+| 8 | provenance-validation | COMPLETE | R0–R8 discharged; 15-clause validator + ProvenanceFields + ValidatedRecord + LedgerReadError + LedgerValidatorKernel 12→15; 316 tests green; Stryker4s 92% total / 98.57% covered; human validated (2026-08-24) — 2/4 reqs PASS, Req3 PARTIAL (write delegated to os-lib, acceptable), Req4 PARTIAL (spec allows CLI-layer validation via "or" clause, acceptable) |
+| 7 | non-goals-guard | COMPLETE | R0–R3, R8 discharged; human validated (2026-08-24) — 3/3 reqs PASS, R8 fix (checkClasspath non-trivial) verified in code |
 | 6 | schema-policy | NOT STARTED | independent, scheduled last |
 
 ## Decision log
@@ -77,6 +77,16 @@ validation before next spec.
       recursion in Stainless)
   (5) Fixed implementation-order.md to list exact kernel filenames instead
       of glob (*.scala) which the gate AWK script interpreted literally
+- 2026-08-24: Human validation of specs 2, 7, 8. Three parallel subagent
+  reviews compared every requirement, scenario, property, compile-negative
+  obligation, and proof obligation against the implementation code and tests.
+  Spec 2 (cli-protocol): VALIDATED WITH NOTES — 8/9 reqs PASS, Req7 PARTIAL
+  (help exhaustiveness not compiler-checked, acceptable per R8 review).
+  Spec 7 (non-goals-guard): VALIDATED — 3/3 reqs PASS, R8 fix (checkClasspath
+  non-trivial) verified in code. Spec 8 (provenance-validation): VALIDATED
+  WITH NOTES — 2/4 reqs PASS, Req3 PARTIAL (write delegated to os-lib,
+  acceptable), Req4 PARTIAL (spec allows CLI-layer validation via "or"
+  clause, acceptable). No spec violations found in any of the three.
 
 ## Phase 0 GATE: VERIFIED
 
@@ -98,6 +108,9 @@ All six Phase 0 tasks are done with evidence:
 6. STOP for human validation before next spec
 
 ## Spec 1 (probatio-core) — Checkpoint 2026-08-18
+
+### Baseline
+SHA `6b83766` (clean tree after change creation).
 
 ### Step 1a — Typed contract (DONE)
 13 contract files created in `workflow/core/src/test/scala/org/sinemenda/probatio/core/`:
@@ -173,10 +186,16 @@ which haven't been implemented yet).
 
 ## Spec 2 (cli-protocol) — Checkpoint 2026-08-19
 
+### Baseline
+SHA `6b83766` (clean tree after change creation; specs 1+2 implemented together).
+
 Spec 2 completed and verified. All rings discharged. See evidence-ledger.jsonl
 for the cli-protocol RED/GREEN runs and ring discharge rows.
 
 ## Spec 3 (sbt-plugin) — Checkpoint 2026-08-20
+
+### Baseline
+SHA `4659f71` (clean tree after spec 1+2 commit).
 
 ### Step 1 — Typed contract + Implementation (DONE)
 
@@ -550,3 +569,13 @@ DependencyBoundaryResult, HookPayload, PayloadStabilityResult,
 OracleImmutabilityResult.
 
 ### STOP — awaiting human validation before Spec 6 (schema-policy)
+
+## Spec 8 (provenance-validation) — COMPLETE
+
+### Baseline
+SHA `e45c7fd` (clean tree after spec addition commit).
+
+R0–R8 discharged; 15-clause validator + ProvenanceFields + ValidatedRecord +
+LedgerReadError + LedgerValidatorKernel 12→15; 316 tests green; Stryker4s
+92% total / 98.57% covered. See evidence-ledger.jsonl for the
+provenance-validation RED/GREEN runs and ring discharge rows.

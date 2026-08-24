@@ -670,3 +670,19 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `HookPayload` | final case class (decision, hookSpecificOutput) | `org.sinemenda.probatio.guard` | test-only |
 | `PayloadStabilityResult` | enum (Stable, Unstable(field, before, after)) | `org.sinemenda.probatio.guard` | test-only |
 | `OracleImmutabilityResult` | enum (Immutable(commit), Modified(commit, file)) | `org.sinemenda.probatio.guard` | test-only |
+
+### port-scanner-to-probatio change — provenance-validation spec concepts
+
+The following concepts were introduced by `spec:port-scanner-to-probatio/provenance-validation`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ProvenanceFields` | final case class (sha256, digest, wallTime, source, session — Option types) | `org.sinemenda.probatio.core` | shipped |
+| `ValidatedRecord` | final case class (wraps LedgerRecord + ProvenanceFields after 15-clause validation) | `org.sinemenda.probatio.core` | shipped |
+| `ContractViolation.OptionalFieldTypeInvalid` | case object (clause 13 — optional field type invalid) | `org.sinemenda.probatio.core` | shipped |
+| `ContractViolation.ObserverProvenanceInvalid` | case object (clause 14 — observer provenance invalid) | `org.sinemenda.probatio.core` | shipped |
+| `ContractViolation.SessionProvenanceInvalid` | case object (clause 15 — session provenance invalid) | `org.sinemenda.probatio.core` | shipped |
+| `Ledger.LedgerReadError` | sealed trait (MalformedRow(rowIndex, violation), NotAnArray(other)) | `org.sinemenda.probatio.core` | shipped |
+| `LedgerValidatorKernel.Violation.OptionalFieldTypeInvalid` | case object (clause 13 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |
+| `LedgerValidatorKernel.Violation.ObserverProvenanceInvalid` | case object (clause 14 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |
+| `LedgerValidatorKernel.Violation.SessionProvenanceInvalid` | case object (clause 15 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |

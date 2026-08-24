@@ -3,7 +3,7 @@ package org.sinemenda.probatio.core
 import hedgehog.core.PropertyConfig
 import hedgehog.core.Seed
 import hedgehog.core.Status
-import hedgehog.{runner => hr}
+import hedgehog.runner as hr
 import munit.FunSuite
 import munit.Location
 

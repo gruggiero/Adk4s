@@ -1,8 +1,8 @@
 package org.sinemenda.probatio.core
 
-import org.sinemenda.probatio.verified.LedgerValidatorKernel
-import org.sinemenda.probatio.verified.ChainStateKernel
 import org.sinemenda.probatio.verified.BannerEngineKernel
+import org.sinemenda.probatio.verified.ChainStateKernel
+import org.sinemenda.probatio.verified.LedgerValidatorKernel
 
 import scala.collection.immutable.List as ScalaList
 
@@ -74,7 +74,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     )
 
   /** Call the model's validate with all-valid BigInt inputs (non-zero =
-    * non-empty) and a valid Ring. */
+    * non-empty) and a valid Ring. All 15 clauses pass. */
   private def modelValidateValid
       : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
     LedgerValidatorKernel.validate(
@@ -92,7 +92,10 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       exit = BigInt(0),
       exitIsInteger = true,
       baseline = BigInt(1),
-      baselineValidHex = true
+      baselineValidHex = true,
+      optFieldsValidType = true,
+      observerProvenanceValid = true,
+      sessionProvenanceValid = true
     )
 
   /** Call the model's validate with an empty `change` (BigInt(0) = empty
@@ -114,7 +117,10 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       exit = BigInt(0),
       exitIsInteger = true,
       baseline = BigInt(1),
-      baselineValidHex = true
+      baselineValidHex = true,
+      optFieldsValidType = true,
+      observerProvenanceValid = true,
+      sessionProvenanceValid = true
     )
 
   // ── totality: both production and model return exactly one outcome ──────

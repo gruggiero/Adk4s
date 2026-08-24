@@ -322,6 +322,23 @@
   and isn't enforced depends on knowing this asymmetry.
 </p>
 
+<p>
+  The <code>tool_call</code> gate enforces two locks. The <strong>oracle-
+  ordering lock</strong> refuses a production-source edit while the active
+  spec's phase is still <code>oracle</code> (no RED run recorded). The
+  <strong>predecessor check</strong> refuses a production edit if any prior
+  spec in implementation order is not both <code>verified</code> (RED+GREEN
+  ledger rows exist) <em>and</em> checkpointed (a presentation marker from
+  <code>checkpoint.sh</code> exists). The checkpoint requirement was added
+  after a real bypass: three specs advanced to <code>verified</code> phase
+  and the next spec started, but <code>checkpoint.sh</code> was never run —
+  so the chain-state discharge check never fired, and ledger rows with the
+  wrong obligation text went undetected. <code>verified</code> means "tests
+  ran"; only a presentation marker means "the chain-state check ran." The
+  gate now requires both. The <code>VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK=1</code>
+  escape hatch remains for fixing a completed spec out of order.
+</p>
+
 <div class="table-wrap">
 <table>
   <thead><tr><th>Harness</th><th>Pre-execution (<code>tool_call</code>/<code>PreToolUse</code>)</th><th>Completion (<code>Stop</code>)</th></tr></thead>
@@ -556,6 +573,7 @@
     <li>Say why the hook <em>script</em> transfers across agents while the hook <em>config</em> does not — and design so only the script matters.</li>
     <li>Justify shipping context injection before blocking gates, in terms of the two failure modes.</li>
     <li>Distinguish the pre-execution <code>tool_call</code> gate (universal, schema v13) from the completion <code>Stop</code> gate (2/3-harness backstop), and say which one exists on pi.</li>
+    <li>Explain why the predecessor check requires a checkpoint presentation marker in addition to <code>verified</code> phase, and what defect class the checkpoint requirement closes.</li>
     <li>Verify a hook at all three levels, and explain why an empty trace log would be ambiguous if silent runs were not logged.</li>
     <li>Name three things that should <em>not</em> be hooks, and why.</li>
   </ul>

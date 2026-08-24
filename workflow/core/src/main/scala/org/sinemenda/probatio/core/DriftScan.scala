@@ -1,12 +1,13 @@
 package org.sinemenda.probatio.core
 
-/** A skill install scan result for one of the six install roots.
-  *
-  * `stampVersion` is the schema version found in the `generatedBy` stamp,
-  * or None if no skill is installed at that root.
-  *
-  * spec: probatio-core — Requirement: Instruction drift is detected across all install roots
-  */
+/**
+ * A skill install scan result for one of the six install roots.
+ *
+ * `stampVersion` is the schema version found in the `generatedBy` stamp,
+ * or None if no skill is installed at that root.
+ *
+ * spec: probatio-core — Requirement: Instruction drift is detected across all install roots
+ */
 final case class InstallRootScan(
   rootPath: String,
   stampVersion: Option[Int],
@@ -43,36 +44,35 @@ final case class DriftScanResult(
   noSkillInstalled: Boolean
 )
 
-/** The drift scan as a pure function (R-C5b component).
-  *
-  * Compares the schema version against `generatedBy` stamps across the six
-  * install roots. Returns drift warnings + re-install instruction, or an
-  * explicit "no skill installed" line when no root matches.
-  *
-  * spec: probatio-core — Requirement: Instruction drift is detected across all install roots
-  * spec: probatio-core — Scenario: silence about drift is never emitted (adversarial)
-  * spec: probatio-core — Scenario: silence about checking is never emitted (adversarial)
-  */
+/**
+ * The drift scan as a pure function (R-C5b component).
+ *
+ * Compares the schema version against `generatedBy` stamps across the six
+ * install roots. Returns drift warnings + re-install instruction, or an
+ * explicit "no skill installed" line when no root matches.
+ *
+ * spec: probatio-core — Requirement: Instruction drift is detected across all install roots
+ * spec: probatio-core — Scenario: silence about drift is never emitted (adversarial)
+ * spec: probatio-core — Scenario: silence about checking is never emitted (adversarial)
+ */
 object DriftScan:
 
-  /** Scan the install roots for drift against the schema version.
-    *
-    * spec: probatio-core — Scenario: a root with a matching stamp produces no drift warning
-    * spec: probatio-core — Scenario: a root with a mismatched stamp produces a drift warning
-    * spec: probatio-core — Scenario: no installed skills produces an explicit line
-    * spec: probatio-core — Scenario: a pre-rename stamp is treated as drift with a migration message
-    */
+  /**
+   * Scan the install roots for drift against the schema version.
+   *
+   * spec: probatio-core — Scenario: a root with a matching stamp produces no drift warning
+   * spec: probatio-core — Scenario: a root with a mismatched stamp produces a drift warning
+   * spec: probatio-core — Scenario: no installed skills produces an explicit line
+   * spec: probatio-core — Scenario: a pre-rename stamp is treated as drift with a migration message
+   */
   def scan(schemaVersion: Int, roots: List[InstallRootScan]): DriftScanResult =
     val warnings: List[DriftWarning] = roots.flatMap { root =>
       root.stampVersion match
         case None => None
         case Some(found) =>
-          if root.isPreRename then
-            Some(DriftWarning.PreRenameStamp(root.rootPath, schemaVersion, found))
-          else if found != schemaVersion then
-            Some(DriftWarning.VersionMismatch(root.rootPath, schemaVersion, found))
-          else
-            None
+          if root.isPreRename then Some(DriftWarning.PreRenameStamp(root.rootPath, schemaVersion, found))
+          else if found != schemaVersion then Some(DriftWarning.VersionMismatch(root.rootPath, schemaVersion, found))
+          else None
     }
     val anyInstalled: Boolean = roots.exists(_.stampVersion.isDefined)
     DriftScanResult(warnings = warnings, noSkillInstalled = !anyInstalled)

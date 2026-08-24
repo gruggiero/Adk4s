@@ -41,14 +41,13 @@ object BinaryResolution:
    * spec: native-packaging — Scenario: once-per-ring tool on JAR fallback emits exactly one warning (adversarial)
    */
   def resolve(
-      subcommand: String,
-      platform: Platform,
-      nativeBinaryAvailable: Boolean,
-      jarPath: String
+    subcommand: String,
+    platform: Platform,
+    nativeBinaryAvailable: Boolean,
+    jarPath: String
   ): ResolutionResult =
     if platform.hasNativeBinary then
-      if nativeBinaryAvailable then
-        ResolutionResult.NativeBinary(s"probatio-${platform.artifactSuffix}")
+      if nativeBinaryAvailable then ResolutionResult.NativeBinary(s"probatio-${platform.artifactSuffix}")
       else if perTurnSubcommands.contains(subcommand) then
         ResolutionResult.Blocked(
           s"gate requires a native binary on ${platform.artifactSuffix} — " +

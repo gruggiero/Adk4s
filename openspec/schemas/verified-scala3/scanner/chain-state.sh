@@ -116,6 +116,9 @@ done
 [ -n "$BASELINE" ] || die_finding "--baseline is required"
 LEDGER_FILE="${LEDGER_FILE:-$CHANGE_DIR/evidence-ledger.jsonl}"
 
+# Derive REPO root for git rev-parse (resolving short SHAs to full SHAs).
+REPO="$(cd "$CHANGE_DIR" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "")"
+
 # D2 FIX (fix-verified-scala3-substratum-review): use per-spec baseline from
 # implementation-progress.md instead of the gate's --baseline (which is HEAD).
 # After spec N commits, HEAD advances and every prior spec's ledger rows read
@@ -126,16 +129,51 @@ LEDGER_FILE="${LEDGER_FILE:-$CHANGE_DIR/evidence-ledger.jsonl}"
 # (the gate's HEAD) and trace the fallback.
 PROGRESS_FILE="$CHANGE_DIR/implementation-progress.md"
 EFFECTIVE_BASELINE="$BASELINE"
+
+# WORK directory is created early because the per-spec baseline map needs it.
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# Build a per-spec baseline map from implementation-progress.md. The file
+# has sections like:
+#   ## Spec N (spec-name) — ...
+#   ### Baseline
+#   SHA `<sha>` (clean tree after ...)
+# We parse each section's spec name and SHA into a flat file:
+#   <spec-name>\t<sha>
+# This lets us read the ledger per-spec with the correct baseline, instead
+# of using one baseline for the entire change (which fails when specs have
+# different baselines — the D2 fix's single-baseline approach was a
+# stopgap that breaks on multi-spec changes).
+SPEC_BASELINE_MAP="$WORK/spec-baseline-map.tsv"
+: >"$SPEC_BASELINE_MAP"
 if [ -f "$PROGRESS_FILE" ]; then
-  # Extract the first BASELINE SHA from the progress file. The format is:
-  #   - **BASELINE SHA**: `<sha>`
-  # There may be multiple specs with different baselines; we use the first
-  # one found. A more sophisticated version would map each spec to its own
-  # baseline, but the common case is one baseline per change.
-  PROGRESS_BASELINE="$(grep -oE '\*\*BASELINE SHA\*\*: `?[a-f0-9]{7,40}`?' "$PROGRESS_FILE" | head -1 | grep -oE '[a-f0-9]{7,40}')"
+  awk '
+    /^## Spec [0-9]/ {
+      # Extract spec name from header: "## Spec N (spec-name) — ..." or "## Spec N: spec-name — ..."
+      match($0, /[0-9]+[: ]+\(?([a-zA-Z0-9_-]+)/, arr)
+      if (arr[1] != "") current_spec = arr[1]
+    }
+    /^### Baseline/ { in_baseline = 1; next }
+    in_baseline && /SHA `/ {
+      if (match($0, /`([a-f0-9]{7,40})`/, sha_arr)) {
+        if (sha_arr[1] != "" && current_spec != "") {
+          print current_spec "\t" sha_arr[1]
+        }
+      }
+      in_baseline = 0
+    }
+    in_baseline && /^$/ { in_baseline = 0 }
+    /^## / && !/^## Spec/ { in_baseline = 0 }
+  ' "$PROGRESS_FILE" >"$SPEC_BASELINE_MAP"
+fi
+
+if [ -f "$PROGRESS_FILE" ]; then
+  # Fallback: if no per-spec baselines were parsed, use the first SHA
+  # found (the old single-baseline approach).
+  PROGRESS_BASELINE="$(grep -oE '(\*\*BASELINE SHA\*\*: `?|SHA `)[a-f0-9]{7,40}`?' "$PROGRESS_FILE" | head -1 | grep -oE '[a-f0-9]{7,40}')"
   if [ -n "$PROGRESS_BASELINE" ]; then
     EFFECTIVE_BASELINE="$PROGRESS_BASELINE"
-    # Trace the fallback so the gate's output shows which baseline was used
     printf 'chain-state: using per-spec baseline %s from implementation-progress.md (gate baseline: %s)\n' \
       "$EFFECTIVE_BASELINE" "$BASELINE" >&2
   else
@@ -250,14 +288,54 @@ fi
 # D2 FIX: pass --forgive-unchanged to ledger.sh so that rows whose artifacts
 # haven't changed since their baseline are forgiven even when HEAD has
 # advanced. This is the discipline the gate and checkpoint share.
-ledger_out="$("$LEDGER" read --file "$LEDGER_FILE" --change "$CHANGE" --baseline "$EFFECTIVE_BASELINE" --forgive-unchanged 2>&1)"
-ledger_exit=$?
-if [ "$ledger_exit" -ne 0 ]; then
-  die_undetermined "ledger read exited $ledger_exit; cannot determine discharged ($ledger_out)"
+#
+# PER-SPEC LEDGER READ: when a per-spec baseline map exists, read the ledger
+# once per spec with that spec's own baseline, combining the results. This
+# fixes the multi-spec baseline mismatch: a single-baseline read marks every
+# other spec's rows as stale (different baseline) and the forgive-unchanged
+# check fails because artifacts changed during that spec's own implementation
+# (the baseline is pre-implementation). With per-spec baselines, each spec's
+# rows are read against its own baseline, and forgive-unchanged correctly
+# forgives rows whose artifacts haven't changed since that spec's baseline.
+if [ -s "$SPEC_BASELINE_MAP" ]; then
+  ledger_out=""
+  while IFS=$'\t' read -r map_spec map_baseline; do
+    [ -n "$map_spec" ] && [ -n "$map_baseline" ] || continue
+    # Resolve short SHA to full SHA — ledger rows store the full 40-char
+    # SHA, but implementation-progress.md may have a short SHA. The ledger
+    # read does exact string matching, so without resolution every short
+    # SHA would mismatch and every row would be stale.
+    full_baseline="$(cd "$REPO" && git rev-parse "$map_baseline" 2>/dev/null || echo "$map_baseline")"
+    spec_ledger="$("$LEDGER" read --file "$LEDGER_FILE" --change "$CHANGE" --spec "$map_spec" --baseline "$full_baseline" --forgive-unchanged 2>&1)"
+    spec_exit=$?
+    if [ "$spec_exit" -ne 0 ]; then
+      # A per-spec read failure is not fatal — trace and continue. The
+      # spec's requirements will show as undischarged, which is the
+      # safe default when evidence can't be read.
+      printf 'chain-state: ledger read for spec %s (baseline %s) exited %s, skipping\n' \
+        "$map_spec" "$map_baseline" "$spec_exit" >&2
+      continue
+    fi
+    ledger_out="${ledger_out}${spec_ledger}"
+  done <"$SPEC_BASELINE_MAP"
+  # Also read specs NOT in the baseline map (new/untracked specs) with the
+  # fallback baseline, so their rows (if any) are included. Resolve to full
+  # SHA for the same reason as above.
+  full_effective="$(cd "$REPO" && git rev-parse "$EFFECTIVE_BASELINE" 2>/dev/null || echo "$EFFECTIVE_BASELINE")"
+  unmapped_ledger="$("$LEDGER" read --file "$LEDGER_FILE" --change "$CHANGE" --baseline "$full_effective" --forgive-unchanged 2>&1)"
+  unmapped_exit=$?
+  if [ "$unmapped_exit" -eq 0 ]; then
+    ledger_out="${ledger_out}${unmapped_ledger}"
+  fi
+else
+  full_effective="$(cd "$REPO" && git rev-parse "$EFFECTIVE_BASELINE" 2>/dev/null || echo "$EFFECTIVE_BASELINE")"
+  ledger_out="$("$LEDGER" read --file "$LEDGER_FILE" --change "$CHANGE" --baseline "$full_effective" --forgive-unchanged 2>&1)"
+  ledger_exit=$?
+  if [ "$ledger_exit" -ne 0 ]; then
+    die_undetermined "ledger read exited $ledger_exit; cannot determine discharged ($ledger_out)"
+  fi
 fi
 
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
 REQ_STATES="$WORK/req-states.jsonl"
 UNMAPPED="$WORK/unmapped.jsonl"
 : >"$REQ_STATES"

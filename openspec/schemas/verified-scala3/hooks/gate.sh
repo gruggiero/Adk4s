@@ -572,10 +572,18 @@ if [ "$EVENT" = "tool-call" ]; then
             required_grant_spec=""
           else
             # No grant from any session — check if the prior spec is verified
-            # (fully done: RED→GREEN progression proven, checkpoint approved).
-            # Only `verified` waives — `implementation` means the spec is
-            # still in progress (no checkpoint presented yet, no human
-            # approval to carry forward).
+            # (fully done: RED→GREEN progression proven) AND checkpointed
+            # (checkpoint.sh was run, which triggers the chain-state check).
+            # Only `verified` + a presentation marker waives — `verified`
+            # alone means tests ran but the chain-state discharge was never
+            # checked, which is exactly how a ledger text mismatch went
+            # undetected across 3 specs (the phase advanced on RED+GREEN
+            # rows, but the obligation text never matched the spec's
+            # Proof-Obligations table, and the completion gate that would
+            # have caught it never fired because checkpoint.sh was never
+            # run). `implementation` means the spec is still in progress
+            # (no checkpoint presented yet, no human approval to carry
+            # forward).
             grant_spec_phase="oracle"
             grant_spec_phase_file="$STATE_DIR/phase-$grant_change-$required_grant_spec"
             [ -f "$grant_spec_phase_file" ] && grant_spec_phase="$(cat "$grant_spec_phase_file" 2>/dev/null || echo oracle)"
@@ -583,8 +591,10 @@ if [ "$EVENT" = "tool-call" ]; then
               oracle | implementation | verified) ;;
               *) grant_spec_phase="oracle" ;;
             esac
-            if [ "$grant_spec_phase" = "verified" ]; then
-              trace "tool-call: required-grant spec $required_grant_spec is verified (approved in a prior session), waive grant"
+            grant_pres_exists=""
+            [ -n "$STATE_DIR" ] && grant_pres_exists="$(ls "$STATE_DIR"/presentation-"$grant_change"-"$required_grant_spec"-* 2>/dev/null | head -1)"
+            if [ "$grant_spec_phase" = "verified" ] && [ -n "$grant_pres_exists" ]; then
+              trace "tool-call: required-grant spec $required_grant_spec is verified and checkpointed (approved in a prior session), waive grant"
               required_grant_spec=""
             fi
           fi
@@ -900,10 +910,17 @@ if [ "$EVENT" = "tool-call" ]; then
 
   # ── predecessor check ────────────────────────────────────────────────
   # Depth-first discipline: a spec's production code may be edited only if
-  # ALL specs before it in implementation order are `verified`. This prevents
-  # starting spec N+1 while spec N is still in `implementation` (tests pass
-  # but the checkpoint hasn't been presented and approved, or the GREEN run
-  # hasn't been recorded yet).
+  # ALL specs before it in implementation order are `verified` AND
+  # checkpointed (presentation marker exists from some session). This
+  # prevents starting spec N+1 while spec N is still in `implementation`
+  # (tests pass but the checkpoint hasn't been presented and approved, or
+  # the GREEN run hasn't been recorded yet), AND prevents starting spec N+1
+  # when spec N is `verified` but was never checkpointed — which means the
+  # chain-state discharge check never ran, so the ledger's obligation text
+  # was never verified against the spec's Proof-Obligations table. That is
+  # exactly how a ledger text mismatch went undetected across 3 specs: the
+  # phase advanced on RED+GREEN rows, but the completion gate that checks
+  # chain-state only fires when checkpoint.sh is run, and it was never run.
   #
   # Override: set VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK=1 to skip this
   # check (e.g. for fixing a completed spec out of order, or when the
@@ -920,9 +937,15 @@ if [ "$EVENT" = "tool-call" ]; then
         oracle | implementation | verified) ;;
         *) s_phase="oracle" ;;
       esac
-      if [ "$s_phase" != "verified" ]; then
+      s_pres_exists=""
+      [ -n "$STATE_DIR" ] && s_pres_exists="$(ls "$STATE_DIR"/presentation-"$active_change"-"$s"-* 2>/dev/null | head -1)"
+      if [ "$s_phase" != "verified" ] || { [ "$s_phase" = "verified" ] && [ -z "$s_pres_exists" ]; }; then
         unverified_predecessor="$s"
-        unverified_predecessor_phase="$s_phase"
+        if [ "$s_phase" = "verified" ] && [ -z "$s_pres_exists" ]; then
+          unverified_predecessor_phase="verified (not checkpointed)"
+        else
+          unverified_predecessor_phase="$s_phase"
+        fi
         break
       fi
     done
@@ -931,8 +954,8 @@ if [ "$EVENT" = "tool-call" ]; then
         trace "tool-call: failed to write refusal marker, failing open to avoid deadlock"
         exit 0
       fi
-      reason="$active_spec blocked — predecessor spec $unverified_predecessor is $unverified_predecessor_phase (not verified). All prior specs must be verified before editing this spec's production code. Set VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK=1 to override."
-      trace "tool-call: refuse (predecessor $unverified_predecessor not verified, $active_change/$active_spec)"
+      reason="$active_spec blocked — predecessor spec $unverified_predecessor is $unverified_predecessor_phase. All prior specs must be verified AND checkpointed (run checkpoint.sh) before editing this spec's production code. Set VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK=1 to override."
+      trace "tool-call: refuse (predecessor $unverified_predecessor $unverified_predecessor_phase, $active_change/$active_spec)"
       if [ "$FORMAT" = "text" ]; then
         printf '%s\n' "$reason" >&2
         exit 2

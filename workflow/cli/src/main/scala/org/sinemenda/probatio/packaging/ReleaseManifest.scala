@@ -1,6 +1,6 @@
 package org.sinemenda.probatio.packaging
 
-import upickle.default._
+import upickle.default.*
 
 /**
  * A complete release manifest — the set of artifacts published for a
@@ -17,11 +17,11 @@ import upickle.default._
  * spec: native-packaging — Property: Platform coverage is complete for committed platforms
  */
 case class ReleaseManifest(
-    version: String,
-    artifacts: List[ReleaseArtifact],
-    checksums: Map[String, String],
-    sbom: Option[Sbom],
-    builtFromCI: Boolean
+  version: String,
+  artifacts: List[ReleaseArtifact],
+  checksums: Map[String, String],
+  sbom: Option[Sbom],
+  builtFromCI: Boolean
 ) derives ReadWriter
 
 object ReleaseManifest:
@@ -42,9 +42,7 @@ object ReleaseManifest:
     val contentArtifacts: List[ReleaseArtifact] =
       binaries ++ List(ReleaseArtifact.AssemblyJar, ReleaseArtifact.SourcesJar, ReleaseArtifact.Sbom)
     val checksumArtifacts: List[ReleaseArtifact] =
-      contentArtifacts.filterNot(_ == ReleaseArtifact.Sbom).map { a =>
-        ReleaseArtifact.Checksum(a.fileName)
-      }
+      contentArtifacts.filterNot(_ == ReleaseArtifact.Sbom).map(a => ReleaseArtifact.Checksum(a.fileName))
     contentArtifacts ++ checksumArtifacts
 
   /**

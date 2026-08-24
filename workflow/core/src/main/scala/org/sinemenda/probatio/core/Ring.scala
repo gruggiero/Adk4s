@@ -1,22 +1,24 @@
 package org.sinemenda.probatio.core
 
-/** The closed ring domain (R0–R9, manual).
-  *
-  * A ring outside this set is unrepresentable at the type level.
-  *
-  * spec: probatio-core — Requirement: LedgerRecord is an immutable product type with total clause validation
-  * spec: probatio-core — Compile-Negative: Ring with a value outside the closed domain
-  */
+/**
+ * The closed ring domain (R0–R9, manual).
+ *
+ * A ring outside this set is unrepresentable at the type level.
+ *
+ * spec: probatio-core — Requirement: LedgerRecord is an immutable product type with total clause validation
+ * spec: probatio-core — Compile-Negative: Ring with a value outside the closed domain
+ */
 enum Ring:
   case R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, Manual
 
 object Ring:
 
-  /** Parses a ring name from a string, returning Option to model the
-    * closed domain — a ring outside the set yields None, not an exception.
-    *
-    * spec: probatio-core — Scenario: a record with a ring outside the closed domain is rejected
-    */
+  /**
+   * Parses a ring name from a string, returning Option to model the
+   * closed domain — a ring outside the set yields None, not an exception.
+   *
+   * spec: probatio-core — Scenario: a record with a ring outside the closed domain is rejected
+   */
   def fromString(s: String): Option[Ring] = s match
     case "R0"     => Some(R0)
     case "R1"     => Some(R1)
@@ -29,7 +31,7 @@ object Ring:
     case "R8"     => Some(R8)
     case "R9"     => Some(R9)
     case "manual" => Some(Manual)
-    case _        => None
+    case _        => None // danger-scan:allow type-rejection — invalid ring maps to None, never a valid value
 
   /** The string representation used in the ledger record. */
   def asString(r: Ring): String = r match

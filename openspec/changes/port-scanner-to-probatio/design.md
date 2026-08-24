@@ -396,3 +396,47 @@ property.
 `probatio-spec-lint …` (symlink/hardlink). The `cli.ProbatioMain` entrypoint
 checks argv(1) first, then argv(0) basename. One native-image build
 configuration covers all subcommands.
+
+### Decision: Gate predecessor check requires checkpoint presentation marker
+
+**Context**: During the port's own chain-state audit, three specs advanced
+to `verified` phase (RED+GREEN ledger rows existed) and the next spec
+started, but `checkpoint.sh` was never run. The chain-state discharge check
+that would have caught ledger rows with wrong obligation text never fired
+because nothing triggered it. `verified` means "tests ran"; only a
+presentation marker (written by `checkpoint.sh`) means "the chain-state
+check ran." The bash `gate.sh` was fixed in place; the Scala port must not
+regress to the old, weaker gate.
+
+**Options considered**:
+1. Port the bash `gate.sh` logic verbatim, including the fix, as a
+   thin wrapper that delegates to shell scripts.
+2. Introduce the gate's decision logic as pure Scala functions in
+   `probatio-core` (`PredecessorCheck`, `GrantWaiver`, `GateDecision`,
+   `BlockReason`), with the CLI layer reading state files and passing
+   them as values — matching the R-C3 discipline (pure kernel, no file
+   I/O inside the computation).
+3. Keep the gate as bash and do not port it to Scala at all.
+
+**Decision**: Option 2. Option 1 defeats the port's purpose (the gate is
+the correctness-critical tooling the port exists to type-check). Option 3
+leaves the gate as the sole unported piece, creating a permanent
+bash/Scala seam at the highest-risk boundary. Option 2 extracts the
+decision logic as pure functions — the same discipline as chain-state
+(R-C3) and the banner engine (R-C5b): the CLI layer reads phase files
+and presentation markers, passes them as values to `PredecessorCheck`
+and `GrantWaiver`, and maps the `GateDecision` to `Outcome[Int]` at the
+exit boundary. The Ring 6 mirror (`GateDecisionKernel`) models the
+predecessor check and grant waiver decisions in PureScala.
+
+**Consequences**: Seven new types in `probatio-core`:
+`GateEvent` (sealed enum, 5 cases), `GateDecision` (sealed enum, 2
+cases), `SpecPhase` (sealed enum, 3 cases), `BlockReason` (sealed trait,
+4 variants), `PresentationMarker` (value type), `PredecessorCheck` (pure
+function), `GrantWaiver` (pure function). The `GateCmd` CLI entrypoint
+reads state files (phase files, presentation markers, grant tokens) and
+passes them as values. The Ring 6 mirror lives in `verified/probatio`
+as `GateDecisionKernel.scala`. The bash `gate.sh` fix (already in place)
+remains the authoritative implementation until the Scala port's oracle
+clears at the migration-protocol seam; this spec binds the Scala port to
+the same behavior.

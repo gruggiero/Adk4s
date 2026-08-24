@@ -17,6 +17,7 @@ introduces a concept must come before any spec that uses that concept.
 | 6 | `specs/schema-policy/spec.md` | schema rename (v14), `generatedBy` stamp rename, env-var migration, cache-dir migration, hooks/README rewrite | (none — schema.yaml policy changes; no probatio code dependency) | simple |
 | 7 | `specs/non-goals-guard/spec.md` | feature-freeze contract, allowed-dependency set, `dependency-lint rule` (R-ARCH1) | All probatio subprojects (the dependency-lint rule checks all workflow/* classpaths); probatio-core (F1–F10 verdict stability cross-reference) | medium |
 | 8 | `specs/provenance-validation/spec.md` | `ProvenanceFields`, `ValidatedRecord`, extended `ContractViolation` (15 variants), `Validator.validateFull` (15 clauses), write-time + read-time validation enforcement | `LedgerRecord`, `ContractViolation`, `Ring`, `Validator`, `Ledger` (from probatio-core #1); `LedgerCmd` (from cli-protocol #2) | medium |
+| 9 | `specs/gate-checkpoint-lock/spec.md` | `GateEvent`, `GateDecision`, `SpecPhase`, `PredecessorCheck`, `GrantWaiver`, `BlockReason`, `PresentationMarker` | `Outcome[A]`, `LedgerRecord` (from probatio-core #1) | medium |
 
 ### Dependency graph
 
@@ -24,7 +25,8 @@ introduces a concept must come before any spec that uses that concept.
 probatio-core (1) ──┬──> cli-protocol (2) ──┬──> sbt-plugin (3)
                     │                        ├──> native-packaging (4)
                     │                        ├──> migration-protocol (5)
-                    │                        └──> provenance-validation (8)
+                    │                        ├──> provenance-validation (8)
+                    │                        └──> gate-checkpoint-lock (9)
                     │
                     └──> non-goals-guard (7) [dependency-lint rule checks all workflow/*]
 
@@ -46,8 +48,16 @@ to 15 variants and modifies `Validator` and `LedgerCmd`. It is scheduled
 after migration-protocol (5) so the 12-clause port is fully oracle-verified
 before the extension, and before non-goals-guard (7) and schema-policy (6)
 so the feature-freeze and schema bump see the final 15-clause validator.
+Spec 9 (gate-checkpoint-lock) depends on probatio-core (1) — it reuses
+`Outcome[A]` and `LedgerRecord` and introduces the gate's decision logic
+as pure Scala functions. It is scheduled after cli-protocol (2) because
+the `GateCmd` CLI entrypoint consumes the decision types. It is scheduled
+after provenance-validation (8) so the gate's predecessor check sees the
+final 15-clause validator, and before non-goals-guard (7) and
+schema-policy (6) so the feature-freeze and schema bump see the final
+gate logic.
 
-**Resolved order**: 1 → 2 → 3 → 4 → 5 → 8 → 7 → 6
+**Resolved order**: 1 → 2 → 3 → 4 → 5 → 8 → 9 → 7 → 6
 
 ## Ring Applicability
 
@@ -61,6 +71,7 @@ so the feature-freeze and schema bump see the final 15-clause validator.
 | 6 | schema-policy | ✅ | — | — | ✅ | ✅ | — | — | — | ✅ | — | full |
 | 7 | non-goals-guard | ✅ | ✅ | ✅ | ✅ | — | — | — | — | ✅ | — | full |
 | 8 | provenance-validation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | — | full |
+| 9 | gate-checkpoint-lock | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ | — | ✅ | — | full |
 
 **Notes**:
 - R0 (compile): all specs involve new code or config; `probatioScalacOptions` (R-CS1–R-CS5) on core/cli; Scala 2.12 on plugin; `bash -n` on shims.
@@ -86,6 +97,7 @@ so the feature-freeze and schema bump see the final 15-clause validator.
 | 6 | schema-policy | `openspec/schemas/verified-scala3/schema.yaml` (v14 rename); `openspec/schemas/verified-scala3/hooks/README.md` (policy rewrite); `openspec/schemas/verified-scala3/hooks/gate.sh` (env-var migration); CI cache config |
 | 7 | non-goals-guard | `build.sbt` (dependency-lint rule); `workflow/core/src/test/scala/.../NonGoalsGuardSpec.scala` (Hedgehog properties); CI workflow (dependency-lint step) |
 | 8 | provenance-validation | `workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala` (extended to 15 clauses); `workflow/core/src/main/scala/org/sinemenda/probatio/core/ContractViolation.scala` (extended to 15 variants); `workflow/core/src/main/scala/org/sinemenda/probatio/core/ProvenanceFields.scala` (new); `workflow/core/src/main/scala/org/sinemenda/probatio/core/ValidatedRecord.scala` (new); `workflow/core/src/main/scala/org/sinemenda/probatio/core/Ledger.scala` (read-time validation); `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/LedgerCmd.scala` (write-time validation); `verified/probatio/src/main/scala/org/sinemenda/probatio/core/LedgerValidatorKernel.scala` (extended to 15 clauses); `workflow/core/src/test/scala/...` (Hedgehog properties + compile-negative); `workflow/cli/src/test/scala/...` (LedgerCmdSpec) |
+| 9 | gate-checkpoint-lock | `workflow/core/src/main/scala/org/sinemenda/probatio/core/GateEvent.scala`, `GateDecision.scala`, `SpecPhase.scala`, `BlockReason.scala`, `PredecessorCheck.scala`, `GrantWaiver.scala`, `PresentationMarker.scala`; `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/GateCmd.scala` (decision logic wiring); `verified/probatio/src/main/scala/org/sinemenda/probatio/core/GateDecisionKernel.scala` (Ring 6 mirror); `workflow/core/src/test/scala/org/sinemenda/probatio/core/GateDecisionSpec.scala` (Hedgehog properties) |
 
 ## Human Gate Tier
 
@@ -99,6 +111,7 @@ so the feature-freeze and schema bump see the final 15-clause validator.
 | 6 | schema-policy | separate | complexity=simple BUT proposal risk=high (consumer-visible inflection) |
 | 7 | non-goals-guard | separate | complexity=medium (build rule + properties); proposal risk=high |
 | 8 | provenance-validation | separate | complexity=medium (extends existing types + new validation clauses); proposal risk=high |
+| 9 | gate-checkpoint-lock | separate | complexity=medium (new ADTs + pure decision logic + Ring 6 mirror); proposal risk=high (ports the gate's enforcement logic — the tool that decides whether a spec may proceed) |
 
 **All specs are `separate` tier.** The proposal's correctness risk is
 **high** (ports correctness-critical tooling; defect class = "a corrupt
@@ -142,6 +155,7 @@ DO NOT skip ahead. DO NOT batch-implement. One spec at a time.
 - [ ] 6. `specs/non-goals-guard/spec.md` — feature-freeze contract verification, F1–F10 verdict stability, dependency boundary closed, oracle immutability (dependency-lint rule is a Phase 0 setup task, verified here)
 - [ ] 7. `specs/schema-policy/spec.md` — v14 rename (verified-scala3 → probatio), generatedBy stamp rename, env-var + cache-dir migration with deprecated aliases, hooks/README rewrite
 - [ ] 8. `specs/provenance-validation/spec.md` — extend validator from 12 to 15 contract clauses, lift ContractViolation cap from 12 to 15, enforce write-time validation in LedgerCmd.append, enforce read-time validation in Ledger.read, extend LedgerValidatorKernel to 15 clauses
+- [ ] 9. `specs/gate-checkpoint-lock/spec.md` — gate decision logic as pure Scala functions (GateEvent, GateDecision, SpecPhase, PredecessorCheck, GrantWaiver, BlockReason), predecessor check requires checkpoint presentation marker in addition to Verified phase, grant waiver requires same marker, block reason distinguishes not-checkpointed from not-verified, Ring 6 mirror (GateDecisionKernel)
 
 ### Phase 0 setup tasks (BEFORE spec 1)
 

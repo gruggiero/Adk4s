@@ -96,6 +96,21 @@ The requirements doc §5 defines seven capabilities, mapped 1:1 to spec files:
   extends the validator to 15 clauses, lifts the `ContractViolation` cap from
   12 to 15, and requires the CLI `ledger append` entrypoint to validate before
   writing and `Ledger.read` to validate every row on read (R-PV1…R-PV4).
+- `specs/gate-checkpoint-lock/spec.md` — closes a gap discovered during the
+  port's own chain-state audit: the predecessor `gate.sh` treated `verified`
+  phase as sufficient for proceeding to the next spec, but `verified` only
+  means tests ran (RED+GREEN ledger rows exist). Three specs advanced to
+  `verified` and the next spec started without `checkpoint.sh` ever being
+  run, so the chain-state discharge check never fired and ledger rows with
+  the wrong obligation text went undetected. The bash `gate.sh` was fixed in
+  place; this spec binds the Scala port to the same behavior so the ported
+  `gate` subcommand does not regress to the old, weaker gate. It introduces
+  the gate's decision logic as pure Scala functions (`GateEvent`,
+  `GateDecision`, `SpecPhase`, `PredecessorCheck`, `GrantWaiver`,
+  `BlockReason`) and requires a checkpoint presentation marker in addition
+  to `Verified` phase for both the predecessor check and the grant waiver,
+  with distinct block reasons for "not checkpointed" vs "not verified"
+  (R-GK1…R-GK3).
 
 ### Out of Scope (and preservations — the porting invariants)
 
@@ -141,10 +156,16 @@ changed the schema, not ported it:**
      facts + workflow position + live chain-state section) + `gate checks`
      tool list + "READ FROM DISK … facts, not recollection" trailer.
 5. The gate's blocking asymmetry — `session-start`/`prompt-submit`/`post-edit`
-   exit 0 unconditionally; `tool-call` carries exactly two locks
-   (oracle-ordering + human-grant); `completion` refuses at most once per turn
-   and exists only where the harness has a blocking completion event (on pi it
-   does not — pre-execution tier is the only enforcement surface).
+   exit 0 unconditionally; `tool-call` carries three locks
+   (oracle-ordering + predecessor-check-with-checkpoint + human-grant);
+   `completion` refuses at most once per turn and exists only where the
+   harness has a blocking completion event (on pi it does not —
+   pre-execution tier is the only enforcement surface). The predecessor
+   check requires a checkpoint presentation marker in addition to
+   `verified` phase (R-GK1); the grant waiver requires the same marker
+   (R-GK2). This is a behavioral change to the gate (the bash `gate.sh`
+   was fixed in place; the Scala port binds to the same behavior via
+   `specs/gate-checkpoint-lock/spec.md`), not a preservation.
 6. Hook payload shapes — `hookSpecificOutput.additionalContext`, decision/
    payload JSON consumed by the three adapters — byte-stable.
 7. Baseline/baseline-SHA semantics, opened-on-change scoping, W1–W7
@@ -338,6 +359,7 @@ keeps two separate human gates (typed-contract and test-oracle); none combine.
 | `specs/schema-policy/spec.md` | Full | Schema rename + v14 bump, `generatedBy` stamp rename, env-var (`VERIFIED_SCALA3_HOOKS`→`PROBATIO_HOOKS`) + cache-dir migration with deprecated aliases — persistence/wire + public API change. |
 | `specs/non-goals-guard/spec.md` | Full | The allowed-dependency set (R-X3) and feature-freeze contract (R-X1) are enforceable invariants — encoded as a typed contract the dependency-lint rule and the oracle both consume. |
 | `specs/provenance-validation/spec.md` | Full | Extends `ContractViolation` from 12 to 15 variants (error algebra change), introduces `ProvenanceFields` and `ValidatedRecord` types, requires write-time and read-time validation enforcement — public API signature change + persistence/wire. |
+| `specs/gate-checkpoint-lock/spec.md` | Full | New ADTs (`GateEvent`, `GateDecision`, `SpecPhase`, `BlockReason`, `PresentationMarker`) and pure functions (`PredecessorCheck`, `GrantWaiver`) for the ported `gate` subcommand's decision logic — domain types + evaluator logic. |
 
 ## Existing Concepts to Reuse
 
@@ -377,6 +399,12 @@ domain types and probatio is a leaf-by-construction. The
 | `MetalsClient` | LSP JSON-RPC client | Content-Length framing over partial reads, init handshake, lifecycle; logs to stderr (R-C6). Replaces `metals-start.sh`/`metals-call.sh`. |
 | `ProvenanceFields` | immutable case class | The optional provenance fields from the jq contract (sha256, digest, wallTime, source, session) carried alongside `LedgerRecord` as a companion value (R-PV1). |
 | `ValidatedRecord` | immutable case class | A `LedgerRecord` paired with its `ProvenanceFields`, produced by the extended validator when all 15 clauses pass (R-PV1). |
+| `GateEvent` | sealed enum | The hook events the gate handles: `SessionStart`, `PromptSubmit`, `PostEdit`, `ToolCall`, `Completion`; each has a distinct blocking policy (§4.5). |
+| `GateDecision` | sealed enum | The gate's decision: `Allow` or `Block(reason)`; a pure function of (event, changed files, prior spec states, grant tokens, oracle state); maps to `Outcome[Int]` at the CLI boundary. |
+| `SpecPhase` | sealed enum | The phase of a spec in implementation order: `Oracle`, `Implementation`, `Verified`; derived from ledger rows by the CLI layer. |
+| `PredecessorCheck` | pure function | `(prior specs, escapeHatch) → Either[BlockReason, Unit]`; blocks if any prior spec is not `Verified` OR is `Verified` without a presentation marker (R-GK1). |
+| `GrantWaiver` | pure function | `(prior specs, escapeHatch) → Either[BlockReason, Unit]`; waives the human-grant lock if every prior spec is `Verified` AND has a presentation marker (R-GK2). |
+| `BlockReason` | sealed trait | `PredecessorNotVerified(spec, phase)`, `PredecessorNotCheckpointed(spec)`, `OracleOrderingViolation`, `GrantRequired(spec)`; each renders to a distinct payload string (R-GK3). |
 | `probatio` multicall binary | native-image launcher | Dispatches on `argv(1)` or `argv(0)` (R-P6); one subcommand per predecessor script (R-P1). |
 | `sbt-probatio` AutoPlugin | sbt 1.x plugin (Scala 2.12) | `probatioInstall`, `probatioSpecLint`, `probatioChainState`, `probatioCheckpoint`, `probatioLedgerAppend`, `probatioGateShim`, `probatioUninstall` (R-S1…R-S6). Links no `probatio-core` code. |
 | dependency-lint rule | build-level check | Fails if any `workflow/*` project's classpath reaches an adk4s module (R-ARCH1). |

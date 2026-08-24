@@ -23,9 +23,9 @@ enum Platform:
    */
   def hasNativeBinary: Boolean =
     this match
-      case Platform.LinuxX86_64  => true
-      case Platform.MacosAarch64 => true
-      case Platform.MacosX86_64  => true
+      case Platform.LinuxX86_64   => true
+      case Platform.MacosAarch64  => true
+      case Platform.MacosX86_64   => true
       case Platform.WindowsX86_64 => false
 
   /**
@@ -36,9 +36,9 @@ enum Platform:
    */
   def artifactSuffix: String =
     this match
-      case Platform.LinuxX86_64  => "linux-x86_64"
-      case Platform.MacosAarch64 => "macos-aarch64"
-      case Platform.MacosX86_64  => "macos-x86_64"
+      case Platform.LinuxX86_64   => "linux-x86_64"
+      case Platform.MacosAarch64  => "macos-aarch64"
+      case Platform.MacosX86_64   => "macos-x86_64"
       case Platform.WindowsX86_64 => "windows-x86_64"
 
   /**
@@ -49,9 +49,9 @@ enum Platform:
    */
   def runnerLabel: String =
     this match
-      case Platform.LinuxX86_64  => "ubuntu-latest"
-      case Platform.MacosAarch64 => "macos-14"
-      case Platform.MacosX86_64  => "macos-13"
+      case Platform.LinuxX86_64   => "ubuntu-latest"
+      case Platform.MacosAarch64  => "macos-14"
+      case Platform.MacosX86_64   => "macos-13"
       case Platform.WindowsX86_64 => "windows-latest"
 
 object Platform:

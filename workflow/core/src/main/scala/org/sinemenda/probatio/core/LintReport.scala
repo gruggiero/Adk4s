@@ -2,10 +2,11 @@ package org.sinemenda.probatio.core
 
 import upickle.default.*
 
-/** The per-requirement verdict (R-C4).
-  *
-  * spec: probatio-core — Requirement: spec-lint output carries per-requirement verdict attribution
-  */
+/**
+ * The per-requirement verdict (R-C4).
+ *
+ * spec: probatio-core — Requirement: spec-lint output carries per-requirement verdict attribution
+ */
 enum Verdict:
   case Bound, Resolved, Unbound
 
@@ -21,7 +22,7 @@ object Verdict:
       case ujson.Str("bound")    => Verdict.Bound
       case ujson.Str("resolved") => Verdict.Resolved
       case ujson.Str("unbound")  => Verdict.Unbound
-      case other                 => sys.error(s"invalid verdict: $other")
+      case other                 => sys.error(s"invalid verdict: $other") // danger-scan:allow type-rejection — invalid verdict crashes, never maps to valid value
     }
   )
 
@@ -55,7 +56,7 @@ object CheckId:
       case ujson.Str("F8")  => CheckId.F8
       case ujson.Str("F9")  => CheckId.F9
       case ujson.Str("F10") => CheckId.F10
-      case other            => sys.error(s"invalid check id: $other")
+      case other            => sys.error(s"invalid check id: $other") // danger-scan:allow type-rejection — invalid check id crashes, never maps to valid value
     }
   )
 
@@ -73,15 +74,16 @@ final case class LintWarning(
   message: String
 ) derives ReadWriter
 
-/** A typed lint report carrying per-requirement verdict attribution (R-C4).
-  *
-  * Replaces the table-structure re-parsing that today's chain-state script
-  * does. Consumed by chain-state as structured input. Serializable as
-  * uPickle JSON and round-trips losslessly.
-  *
-  * spec: probatio-core — Requirement: spec-lint output carries per-requirement verdict attribution
-  * spec: probatio-core — Property: LintReport round-trips through uPickle JSON
-  */
+/**
+ * A typed lint report carrying per-requirement verdict attribution (R-C4).
+ *
+ * Replaces the table-structure re-parsing that today's chain-state script
+ * does. Consumed by chain-state as structured input. Serializable as
+ * uPickle JSON and round-trips losslessly.
+ *
+ * spec: probatio-core — Requirement: spec-lint output carries per-requirement verdict attribution
+ * spec: probatio-core — Property: LintReport round-trips through uPickle JSON
+ */
 final case class LintReport(
   verdicts: List[RequirementVerdict],
   warnings: List[LintWarning],

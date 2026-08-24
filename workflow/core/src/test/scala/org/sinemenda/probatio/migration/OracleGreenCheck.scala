@@ -2,8 +2,10 @@ package org.sinemenda.probatio.migration
 
 import hedgehog.*
 import org.sinemenda.probatio.core.ProbatioSuite
+
+import java.lang.Process
+import java.lang.ProcessBuilder
 import scala.sys.process.*
-import java.lang.{Process, ProcessBuilder}
 
 /** Oracle-green regression property (R-M1).
   *
