@@ -237,7 +237,8 @@ fi
 STATE_DIR=""
 
 # ── heartbeat: "did the gate run", without operator setup ────────────────
-# The OLD verification path (VERIFIED_SCALA3_HOOKS_TRACE, kept below for
+# The OLD verification path (VERIFIED_SCALA3_HOOKS_TRACE, now PROBATIO_HOOKS_TRACE,
+# kept below for
 # backward compatibility) is INERT unless an operator exports it first, and a
 # three-level manual procedure exists BECAUSE nothing automated reads it.
 # This heartbeat is written AFTER the relevance guard, so only openspec
@@ -271,7 +272,7 @@ if [ "$CHECK_INSTALLED" -eq 1 ]; then
 fi
 
 # ── trace: proof that the HARNESS invoked this, not just that it works ───
-# Set VERIFIED_SCALA3_HOOKS_TRACE=/path/to/file to append one line per
+# Set PROBATIO_HOOKS_TRACE=/path/to/file to append one line per
 # invocation. It records EVERY call, including the ones that emit nothing —
 # because "fired and stayed silent" and "never fired" are indistinguishable
 # from outside, and telling them apart is the whole point of verifying an
@@ -279,11 +280,12 @@ fi
 # above: this is opt-in and human-readable for manual debugging; the
 # heartbeat is unconditional and machine-readable for automated checks —
 # different audiences, not a duplicate mechanism.
+# VERIFIED_SCALA3_HOOKS_TRACE is read as a deprecated alias (one major version).
 trace() {
-  [ -n "${VERIFIED_SCALA3_HOOKS_TRACE:-}" ] || return 0
+  [ -n "${PROBATIO_HOOKS_TRACE:-${VERIFIED_SCALA3_HOOKS_TRACE:-}}" ] || return 0
   printf '%s  event=%-14s format=%-9s repo=%-42s %s\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$EVENT" "$FORMAT" "$REPO" "$1" \
-    >>"$VERIFIED_SCALA3_HOOKS_TRACE" 2>/dev/null || true
+    >>"${PROBATIO_HOOKS_TRACE:-$VERIFIED_SCALA3_HOOKS_TRACE}" 2>/dev/null || true
 }
 
 # ── relevance guard ──────────────────────────────────────────────────────
@@ -294,8 +296,40 @@ if [ ! -d "$REPO/openspec" ]; then
   trace "skip: no openspec/ here"
   exit 0
 fi
-if [ "${VERIFIED_SCALA3_HOOKS:-on}" = "off" ]; then
-  trace "skip: VERIFIED_SCALA3_HOOKS=off"
+# ── env var migration (schema v14: VERIFIED_SCALA3_HOOKS → PROBATIO_HOOKS) ─
+# The hook control env var was renamed at v14. The old name is read as a
+# deprecated alias for one major version: when the old name is set and the
+# new name is not, the old value is honoured and a deprecation warning is
+# emitted on stderr (not stdout, to avoid polluting the hook payload).
+# When both are set, the new name takes precedence (no warning).
+# After one major version (v16+), the legacy name is no longer read.
+# The schema version is read from schema.yaml to determine whether the
+# alias window is still active.
+SCHEMA_VERSION=""
+schema_yaml="$REPO/openspec/schemas/verified-scala3/schema.yaml"
+if [ -f "$schema_yaml" ]; then
+  SCHEMA_VERSION="$(grep -E '^version:' "$schema_yaml" 2>/dev/null | head -1 | sed 's/^version:[[:space:]]*//' || echo "")"
+fi
+# ALIAS_EXPIRED: true when schema version > 15 (rename version 14 + 1 major window)
+ALIAS_EXPIRED=0
+case "$SCHEMA_VERSION" in
+  ''|*[!0-9]*) ALIAS_EXPIRED=0 ;; # unknown version — honor alias (fail safe)
+  *)
+    if [ "$SCHEMA_VERSION" -gt 15 ]; then
+      ALIAS_EXPIRED=1
+    fi
+    ;;
+esac
+if [ -n "${PROBATIO_HOOKS:-}" ]; then
+  HOOKS_VALUE="$PROBATIO_HOOKS"
+elif [ -n "${VERIFIED_SCALA3_HOOKS:-}" ] && [ "$ALIAS_EXPIRED" -eq 0 ]; then
+  HOOKS_VALUE="$VERIFIED_SCALA3_HOOKS"
+  printf 'probatio: VERIFIED_SCALA3_HOOKS is deprecated — renamed to PROBATIO_HOOKS at schema v14. The old name is read as an alias for one major version. Update your shell config to use PROBATIO_HOOKS.\n' >&2
+else
+  HOOKS_VALUE="on"
+fi
+if [ "$HOOKS_VALUE" = "off" ]; then
+  trace "skip: hook control env var=off"
   exit 0
 fi
 

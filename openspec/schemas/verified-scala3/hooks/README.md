@@ -185,7 +185,7 @@ latest), set a trace file instead. Every invocation appends one line,
 fired" are indistinguishable from outside, and this is what separates them:
 
 ```bash
-export VERIFIED_SCALA3_HOOKS_TRACE=/tmp/vs3-hooks.log
+export PROBATIO_HOOKS_TRACE=/tmp/probatio-hooks.log
 ```
 
 Then start the agent, and read the log:
@@ -220,7 +220,8 @@ now answer one *without* looking.
 ## Disable / uninstall
 
 ```bash
-export VERIFIED_SCALA3_HOOKS=off      # honoured by gate.sh, no uninstall needed
+export PROBATIO_HOOKS=off      # honoured by gate.sh, no uninstall needed
+# VERIFIED_SCALA3_HOOKS=off also works as a deprecated alias (one major version)
 ```
 
 Or remove `.pi/extensions/verified-scala3-gate.ts`, `.devin/hooks.v1.json`, and
@@ -239,15 +240,37 @@ testing that had to be hand-rolled were where the defects lived.
 |---|---|
 | `bash` | every check and every hook — the interpreter they are written in |
 | `git` | every check — diff, ls-files, and the per-spec baseline |
-| `jq` | `gate.sh` and the scanners, for JSON parse and emit |
-| `python3` | `openspec-graph.py` — the fact extractor for chain-state (D5) |
-| `shellcheck` | Ring 1 — shell lint, run in CI and at apply Step 4 |
 | `bats` | Ring 3 — the shell test suites in `../tests/`, run in CI and at apply Step 6 |
-| `shfmt` | Ring 1 — shell formatting check, run in CI and at apply Step 4 |
 | `openspec` | Ring 3 — the reachability tests render artifact instructions through the CLI, so the suite cannot run without it |
+| curl-equivalent HTTP | binary download via coursier/Java HTTP stack (install-time only, not at hook runtime) |
+| native-image toolkit | required only to build from source; prebuilt binaries otherwise (optional) |
+| Java runtime (JAR fallback) | required where the JAR fallback is active — not required under the default binary install |
+| Java runtime (native-binary happy path) | **not required** at runtime under the default binary install |
 
-Still excluded for any gate check: **JVM** and **network**.
+Retired at v14 (post-port): `jq`, `python3`, `shellcheck`, `shfmt` — their
+last consumer migrates to the ported native-binary tooling and they are no
+longer required at runtime.
+
+## Excluded resources (v14 rewrite)
+
+The prior statement — which excluded the JVM and network categorically from
+any gate check — is replaced with a statement that distinguishes runtime
+from install-time requirements:
+
+- **JVM**: not required at hook runtime under the default binary install;
+  required for build-from-source and JAR-fallback.
+- **Network**: not required at hook runtime; required once per version per
+  project for binary install.
 
 Superseded (schema v12): the rule was previously *"bash + git only — no JVM,
 no network, no JSON processor"*, and `gate.sh` hand-rolled its JSON escaping
 in `sed`/`awk` to honour it. That escaping is no longer required.
+
+Superseded (schema v14): the v12–v13 "Still excluded: JVM and network"
+statement was absolute because the prior tooling was bash/jq/python3 with
+no JVM and no network at runtime. The port moves the tooling to a native
+binary (no JVM at runtime in the happy path) but introduces a JAR fallback
+(JVM required there) and a binary download (network required once per
+version per project at install time, not at hook runtime). An unchanged
+statement would be a false claim; this rewrite keeps the documentation
+honest about what is and isn't required when.

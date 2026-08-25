@@ -686,3 +686,21 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/provena
 | `LedgerValidatorKernel.Violation.OptionalFieldTypeInvalid` | case object (clause 13 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |
 | `LedgerValidatorKernel.Violation.ObserverProvenanceInvalid` | case object (clause 14 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |
 | `LedgerValidatorKernel.Violation.SessionProvenanceInvalid` | case object (clause 15 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |
+
+### port-scanner-to-probatio change — schema-policy spec concepts
+
+The following concepts were introduced by `spec:port-scanner-to-probatio/schema-policy`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `StampFormat` | enum (Legacy, New) — pre-rename vs post-rename generatedBy stamp format | `org.sinemenda.probatio.core` | shipped |
+| `StampClassification` | enum (Matching, DriftWarning(expected, found), PreRename(found), NoSkill) — drift detector classification | `org.sinemenda.probatio.core` | shipped |
+| `RootStamp` | final case class (rootPath, stamp: Option[(StampFormat, Int)]) — stamp at one install root | `org.sinemenda.probatio.core` | shipped |
+| `StampScan` | final case class (roots: List[RootStamp]) — scan across install roots | `org.sinemenda.probatio.core` | shipped |
+| `DriftLine` | enum (NoSkillLine, MigrationMessage(rootPath, found), DriftWarningLine(rootPath, expected, found)) — drift scan output line | `org.sinemenda.probatio.core` | shipped |
+| `ResolvedValue` | enum (Default, Value(v)) — resolved hook control env var value | `org.sinemenda.probatio.core` | shipped |
+| `DeprecationWarning` | final case class (oldName, newName, majorWindow) — env var deprecation warning | `org.sinemenda.probatio.core` | shipped |
+| `EnvVarSetting` | enum (Neither, LegacyOnly(value), NewOnly(value), Both(newVal, legacyVal)) — four env var states | `org.sinemenda.probatio.core` | shipped |
+| `EnvResolution` | final case class (resolved: ResolvedValue, warnings: Warnings) — env var resolution result | `org.sinemenda.probatio.core` | shipped |
+| `CacheState` | final case class (legacyExists, newExists, legacyContents, newDirContents) — cache dir migration state | `org.sinemenda.probatio.core` | shipped |
+| `SchemaPolicy` | object (resolveHookEnv, migrateCache, classifyStamp, classifyDrift — pure migration functions) | `org.sinemenda.probatio.core` | shipped |
