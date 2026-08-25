@@ -44,7 +44,7 @@ validation before next spec.
 | 5 | migration-protocol | COMPLETE | R0–R4, R8 discharged; human validated; committed (a13b418) |
 | 8 | provenance-validation | COMPLETE | R0–R8 discharged; 15-clause validator + ProvenanceFields + ValidatedRecord + LedgerReadError + LedgerValidatorKernel 12→15; 316 tests green; Stryker4s 92% total / 98.57% covered; human validated (2026-08-24) — 2/4 reqs PASS, Req3 PARTIAL (write delegated to os-lib, acceptable), Req4 PARTIAL (spec allows CLI-layer validation via "or" clause, acceptable) |
 | 7 | non-goals-guard | COMPLETE | R0–R3, R8 discharged; human validated (2026-08-24) — 3/3 reqs PASS, R8 fix (checkClasspath non-trivial) verified in code |
-| 6 | schema-policy | IN PROGRESS | R3 RED→GREEN discharged (30 tests); R8 review found 1 FAIL (alias window not enforced), fixed; schema.yaml v14 rename, CHANGELOG, hooks/README.md policy rewrite, gate.sh env-var migration done; awaiting human validation |
+| 6 | schema-policy | COMPLETE | R3 RED→GREEN discharged (30 tests); R8 review found 1 FAIL (alias window not enforced), fixed; committed (383c53f); human validated (2026-08-25) |
 
 ## Decision log
 
@@ -568,9 +568,9 @@ DependencyModule, AllowedDependencySet, WorkflowSubproject,
 DependencyBoundaryResult, HookPayload, PayloadStabilityResult,
 OracleImmutabilityResult.
 
-### STOP — awaiting human validation for Spec 6 (schema-policy)
+### Spec 6 (schema-policy) — validated and committed (383c53f)
 
-## Spec 6 (schema-policy) — IN PROGRESS
+## Spec 6 (schema-policy) — COMPLETE
 
 ### Baseline
 SHA `f984ccd` (clean tree at start of spec 6 implementation).
