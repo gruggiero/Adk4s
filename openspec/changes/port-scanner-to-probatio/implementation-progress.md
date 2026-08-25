@@ -45,6 +45,7 @@ validation before next spec.
 | 8 | provenance-validation | COMPLETE | R0–R8 discharged; 15-clause validator + ProvenanceFields + ValidatedRecord + LedgerReadError + LedgerValidatorKernel 12→15; 316 tests green; Stryker4s 92% total / 98.57% covered; human validated (2026-08-24) — 2/4 reqs PASS, Req3 PARTIAL (write delegated to os-lib, acceptable), Req4 PARTIAL (spec allows CLI-layer validation via "or" clause, acceptable) |
 | 7 | non-goals-guard | COMPLETE | R0–R3, R8 discharged; human validated (2026-08-24) — 3/3 reqs PASS, R8 fix (checkClasspath non-trivial) verified in code |
 | 6 | schema-policy | COMPLETE | R3 RED→GREEN discharged (30 tests); R8 review found 1 FAIL (alias window not enforced), fixed; committed (383c53f); human validated (2026-08-25) |
+| 9 | gate-checkpoint-lock | IN PROGRESS | R3 RED→GREEN discharged (23 tests); R8 review found 1 PARTIAL (first-failing-spec not tested), fixed; GateEvent, SpecPhase, BlockReason, GateDecision, PresentationMarker, PredecessorCheck, GrantWaiver implemented; awaiting human validation |
 
 ## Decision log
 
@@ -612,3 +613,43 @@ R0–R8 discharged; 15-clause validator + ProvenanceFields + ValidatedRecord +
 LedgerReadError + LedgerValidatorKernel 12→15; 316 tests green; Stryker4s
 92% total / 98.57% covered. See evidence-ledger.jsonl for the
 provenance-validation RED/GREEN runs and ring discharge rows.
+
+### STOP — awaiting human validation for Spec 9 (gate-checkpoint-lock)
+
+## Spec 9 (gate-checkpoint-lock) — IN PROGRESS
+
+### Baseline
+SHA `c36c0db` (clean tree after spec 6 completion commit).
+
+### Implementation
+- `workflow/core/src/main/scala/org/sinemenda/probatio/core/GateEvent.scala`:
+  sealed enum with 5 cases (SessionStart, PromptSubmit, PostEdit, ToolCall, Completion).
+- `workflow/core/src/main/scala/org/sinemenda/probatio/core/SpecPhase.scala`:
+  sealed enum with 3 cases (Oracle, Implementation, Verified).
+- `workflow/core/src/main/scala/org/sinemenda/probatio/core/BlockReason.scala`:
+  sealed trait with 4 variants (PredecessorNotVerified, PredecessorNotCheckpointed,
+  OracleOrderingViolation, GrantRequired), each with a `render` method producing
+  the payload string. All renders contain the escape hatch variable name.
+- `workflow/core/src/main/scala/org/sinemenda/probatio/core/GateDecision.scala`:
+  sealed enum (Allow, Block(reason: BlockReason)).
+- `workflow/core/src/main/scala/org/sinemenda/probatio/core/PresentationMarker.scala`:
+  value type (specName, exists: Boolean).
+- `workflow/core/src/main/scala/org/sinemenda/probatio/core/PredecessorCheck.scala`:
+  pure function: (List[(name, phase, hasPresentation)], escapeHatch) → Either[BlockReason, Unit].
+  Blocks on first failing spec: PredecessorNotCheckpointed for Verified-without-presentation,
+  PredecessorNotVerified for non-Verified. Escape hatch bypasses both. Empty list fails open.
+- `workflow/core/src/main/scala/org/sinemenda/probatio/core/GrantWaiver.scala`:
+  pure function: (List[(name, phase, hasPresentation, hasGrant)], escapeHatch) → Either[BlockReason, Unit].
+  Waives if Verified AND hasPresentation, or if hasGrant. Blocks with GrantRequired on first
+  failing spec. Escape hatch bypasses both.
+
+### R3 (test oracle)
+RED run: 17 failures + 4 green-by-design (compile-negative) — recorded.
+GREEN run: 21 tests pass — recorded.
+Post-R8-fix GREEN run: 23 tests pass (21 original + 2 R8-fix) — recorded.
+
+### R8 (adversarial review)
+Fresh-context subagent found 1 PARTIAL: multi-spec list test did not verify that
+the BlockReason corresponds to the FIRST failing spec (only checked isLeft/isRight).
+Fixed by adding two property tests that verify the exact BlockReason matches the
+first failing spec's name and phase. Post-fix GREEN run: 23/23 pass.

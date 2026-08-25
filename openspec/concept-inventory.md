@@ -704,3 +704,17 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/schema-
 | `EnvResolution` | final case class (resolved: ResolvedValue, warnings: Warnings) — env var resolution result | `org.sinemenda.probatio.core` | shipped |
 | `CacheState` | final case class (legacyExists, newExists, legacyContents, newDirContents) — cache dir migration state | `org.sinemenda.probatio.core` | shipped |
 | `SchemaPolicy` | object (resolveHookEnv, migrateCache, classifyStamp, classifyDrift — pure migration functions) | `org.sinemenda.probatio.core` | shipped |
+
+### port-scanner-to-probatio change — gate-checkpoint-lock spec concepts
+
+The following concepts were introduced by `spec:port-scanner-to-probatio/gate-checkpoint-lock`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `GateEvent` | enum (SessionStart, PromptSubmit, PostEdit, ToolCall, Completion) — five hook events | `org.sinemenda.probatio.core` | shipped |
+| `GateDecision` | enum (Allow, Block(reason: BlockReason)) — gate decision | `org.sinemenda.probatio.core` | shipped |
+| `SpecPhase` | enum (Oracle, Implementation, Verified) — spec phase in implementation order | `org.sinemenda.probatio.core` | shipped |
+| `BlockReason` | sealed trait (PredecessorNotVerified(spec, phase), PredecessorNotCheckpointed(spec), OracleOrderingViolation, GrantRequired(spec)) — block reason with render | `org.sinemenda.probatio.core` | shipped |
+| `PredecessorCheck` | object (apply: pure function over List[(name, phase, hasPresentation)] + escapeHatch → Either[BlockReason, Unit]) | `org.sinemenda.probatio.core` | shipped |
+| `GrantWaiver` | object (apply: pure function over List[(name, phase, hasPresentation, hasGrant)] + escapeHatch → Either[BlockReason, Unit]) | `org.sinemenda.probatio.core` | shipped |
+| `PresentationMarker` | final case class (specName, exists: Boolean) — checkpoint presentation evidence | `org.sinemenda.probatio.core` | shipped |
