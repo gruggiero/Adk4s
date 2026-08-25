@@ -45,7 +45,7 @@ validation before next spec.
 | 8 | provenance-validation | COMPLETE | R0–R8 discharged; 15-clause validator + ProvenanceFields + ValidatedRecord + LedgerReadError + LedgerValidatorKernel 12→15; 316 tests green; Stryker4s 92% total / 98.57% covered; human validated (2026-08-24) — 2/4 reqs PASS, Req3 PARTIAL (write delegated to os-lib, acceptable), Req4 PARTIAL (spec allows CLI-layer validation via "or" clause, acceptable) |
 | 7 | non-goals-guard | COMPLETE | R0–R3, R8 discharged; human validated (2026-08-24) — 3/3 reqs PASS, R8 fix (checkClasspath non-trivial) verified in code |
 | 6 | schema-policy | COMPLETE | R3 RED→GREEN discharged (30 tests); R8 review found 1 FAIL (alias window not enforced), fixed; committed (383c53f); human validated (2026-08-25) |
-| 9 | gate-checkpoint-lock | IN PROGRESS | R3 RED→GREEN discharged (23 tests); R8 review found 1 PARTIAL (first-failing-spec not tested), fixed; GateEvent, SpecPhase, BlockReason, GateDecision, PresentationMarker, PredecessorCheck, GrantWaiver implemented; awaiting human validation |
+| 9 | gate-checkpoint-lock | COMPLETE | R3 RED→GREEN discharged (23 tests); R8 review found 1 PARTIAL (first-failing-spec not tested), fixed; committed (f23d1a3); human validated (2026-08-25) |
 
 ## Decision log
 
@@ -614,9 +614,9 @@ LedgerReadError + LedgerValidatorKernel 12→15; 316 tests green; Stryker4s
 92% total / 98.57% covered. See evidence-ledger.jsonl for the
 provenance-validation RED/GREEN runs and ring discharge rows.
 
-### STOP — awaiting human validation for Spec 9 (gate-checkpoint-lock)
+### Spec 9 (gate-checkpoint-lock) — validated and committed (f23d1a3)
 
-## Spec 9 (gate-checkpoint-lock) — IN PROGRESS
+## Spec 9 (gate-checkpoint-lock) — COMPLETE
 
 ### Baseline
 SHA `c36c0db` (clean tree after spec 6 completion commit).
