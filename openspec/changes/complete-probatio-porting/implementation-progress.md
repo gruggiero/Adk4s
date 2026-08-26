@@ -106,8 +106,36 @@ No existing concepts modified. No concepts removed.
 | R3 (property tests) | PASS | 163 tests green (43 Hedgehog properties + 120 scenario/unit tests). Bats oracle baseline: evidence-ledger.bats 23/23 green with ported binary |
 | R4 (.jq contracts) | PASS | ledger-record-contract.jq, chain-state-report-contract.jq, gate-hookjson-contract.jq all conform with ported binary output |
 | R8 (adversarial review) | PASS (with findings) | See R8 findings below. 1 critical fix applied (checkpoint chain-state). Remaining stubs are known incremental porting gaps. |
+| R5 (mutation testing) | BELOW THRESHOLD (expected) | 612 mutants: 100 killed, 365 NoCoverage (stubs), 145 Survived. Score 16.39% total / 40.82% covered. Low score due to 8 stub subcommands with no test coverage. |
 
 ### R8 Adversarial Review Findings
+
+### R5 Mutation Testing Results
+
+Stryker4s retargeted to `SubcommandEntrypoints.scala`, `CliContext.scala`, `StdoutRenderer.scala`, `SubcommandWiring.scala` with cli-wiring test filter.
+
+| Metric | Value |
+|--------|-------|
+| Total mutants | 612 |
+| Killed | 100 |
+| Survived | 145 |
+| NoCoverage | 365 |
+| TimedOut | 0 |
+| Mutation score (total) | 16.39% |
+| Mutation score (covered) | 40.82% |
+| Threshold (low) | 80% |
+
+**Why the score is low:**
+- 365 of 612 mutants (60%) are NoCoverage — in stub subcommands that no test exercises (RegistryCheck, Reconcile, Scan, RemovalAudit, ImpactScan, ConceptScanner, Graph, Metals stop/call, gate PostEdit/ToolCall/Completion).
+- 145 Survived mutants are mostly in error-message string literals and conditional branches in partially-wired subcommands (chain-state, checkpoint, gate).
+
+**Survived mutants of concern (in covered code):**
+- `StdoutRenderer.scala:71` — `undetermined: true` → `false`: the ChainStateUndetermined renderer's `undetermined` field mutation survived, meaning no test checks this field's value in the JSON output.
+- `SubcommandWiring.scala:67-72` — file existence/readability checks mutated to `false`: survived, meaning tests don't exercise the unreadable-ledger path through the wiring layer.
+- `SubcommandEntrypoints.scala:440` — `missing.nonEmpty` → `false`: survived, meaning the missing-field check in ledger append isn't tested through the entrypoint.
+
+**Action plan:**
+The survived mutants in covered code will be addressed by strengthening the test oracle — adding assertions for the `undetermined` field, testing the unreadable-ledger path through the CLI entrypoint, and testing the missing-field rejection path. The NoCoverage mutants will be addressed by the hook-cutover spec which will wire the stub subcommands to their core logic.
 
 **Fresh context: yes** (background subagent, no implementation conversation)
 

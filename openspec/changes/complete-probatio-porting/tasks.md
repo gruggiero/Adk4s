@@ -38,7 +38,7 @@
 - [x] R2: `dependencyLint` task — R-ARCH1 (no cats/cats-effect/fs2/llm4s/workflows4s/adk4s in `workflow/*`)
 - [x] R3: 4 Hedgehog properties pass + bats oracle green at all `*_OVERRIDE` seams (evidence-ledger.bats, chain-state.bats, hook-tiers.bats, etc.)
 - [x] R4: `.jq` contract round-trip (ledger records, chain-state reports, gate payloads) + old fixture decoding + byte-compatibility property (gate banner)
-- [ ] R5: Stryker4s mutation testing retargeted to `SubcommandEntrypoints.scala` + new wiring files (git diff against Step 0 baseline SHA)
+- [x] R5: Stryker4s mutation testing retargeted to `SubcommandEntrypoints.scala` + new wiring files (git diff against Step 0 baseline SHA)
 - [x] R8: adversarial review (fresh context) — check for stdout-shape divergences, silent fallbacks, `case _` defaults, exit-code collapses
 - [x] Concept-delta check (scanner diff) + update `openspec/concept-inventory.md` + checkpoint
 
