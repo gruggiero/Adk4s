@@ -727,3 +727,13 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/gate-ch
 | `PredecessorCheck` | object (apply: pure function over List[(name, phase, hasPresentation)] + escapeHatch → Either[BlockReason, Unit]) | `org.sinemenda.probatio.core` | shipped |
 | `GrantWaiver` | object (apply: pure function over List[(name, phase, hasPresentation, hasGrant)] + escapeHatch → Either[BlockReason, Unit]) | `org.sinemenda.probatio.core` | shipped |
 | `PresentationMarker` | final case class (specName, exists: Boolean) — checkpoint presentation evidence | `org.sinemenda.probatio.core` | shipped |
+
+### complete-probatio-porting change — cli-wiring spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-porting/cli-wiring`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `CliContext` | final case class (repoRoot, changeDir, ledgerFile, gitDir: String; escapeHatch: Boolean) — resolved paths + env-var overrides read once at entrypoint start | `org.sinemenda.probatio.cli` | shipped |
+| `StdoutRenderer[A]` | trait (render(value: A): String) — typeclass for byte-compatible stdout rendering; given instances for ChainStateReport, ChainStateUndetermined, LintReport, GatePayload, BannerOutput | `org.sinemenda.probatio.cli` | shipped |
+| `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int] | `org.sinemenda.probatio.cli` | shipped |

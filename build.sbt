@@ -542,6 +542,7 @@ lazy val `probatio-cli` = (project in file("workflow/cli"))
     // named "probatio" (alias "prob"). Native-image is mandatory for the
     // gate subcommand; other subcommands MAY use the assembly JAR fallback.
     Compile / mainClass := Some("org.sinemenda.probatio.cli.ProbatioMain"),
+    assembly / mainClass := Some("org.sinemenda.probatio.cli.ProbatioMain"),
     nativeImageOptions ++= Seq("--no-fallback", "-O1"),
     nativeImageOutput := target.value / "native-image" / "probatio",
     dependencyLint := {

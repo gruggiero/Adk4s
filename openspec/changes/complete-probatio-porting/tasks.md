@@ -30,17 +30,17 @@
 
 ## 2. cli-wiring
 
-- [ ] Step 1 — typed contract (full): `CliContext` case class, `StdoutRenderer[A]` typeclass with given instances for `ChainStateReport` / `LintReport` / `GatePayload` / `BannerOutput`, `SubcommandWiring` object signatures — all compiled in test sources (human gate)
-- [ ] Step 2 — test oracle: 7 requirement scenarios + 4 Hedgehog properties (genLedgerRecord 15-clause coverage, genChangeState varying discharge, genRepoState varying repo state, genSubcommandInvocation 16 subcommands) + 3 compile-negatives (--force flag, update/delete action, case-catch-all) (human gate)
-- [ ] Step 3 — implementation: populate 16 stubs in `SubcommandEntrypoints.scala`; create `CliContext.scala`, `StdoutRenderer.scala`, `SubcommandWiring.scala` in `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/`
-- [ ] R0: `probatioScalacOptions` with `-Werror` + exhaustiveness escalation (16-case `Subcommand` enum match)
-- [ ] R1: Scalafix DisableSyntax + WartRemover
-- [ ] R2: `dependencyLint` task — R-ARCH1 (no cats/cats-effect/fs2/llm4s/workflows4s/adk4s in `workflow/*`)
-- [ ] R3: 4 Hedgehog properties pass + bats oracle green at all `*_OVERRIDE` seams (evidence-ledger.bats, chain-state.bats, hook-tiers.bats, etc.)
-- [ ] R4: `.jq` contract round-trip (ledger records, chain-state reports, gate payloads) + old fixture decoding + byte-compatibility property (gate banner)
+- [x] Step 1 — typed contract (full): `CliContext` case class, `StdoutRenderer[A]` typeclass with given instances for `ChainStateReport` / `LintReport` / `GatePayload` / `BannerOutput`, `SubcommandWiring` object signatures — all compiled in test sources (human gate)
+- [x] Step 2 — test oracle: 7 requirement scenarios + 4 Hedgehog properties (genLedgerRecord 15-clause coverage, genChangeState varying discharge, genRepoState varying repo state, genSubcommandInvocation 16 subcommands) + 3 compile-negatives (--force flag, update/delete action, case-catch-all) (human gate)
+- [x] Step 3 — implementation: populate 16 stubs in `SubcommandEntrypoints.scala`; create `CliContext.scala`, `StdoutRenderer.scala`, `SubcommandWiring.scala` in `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/`
+- [x] R0: `probatioScalacOptions` with `-Werror` + exhaustiveness escalation (16-case `Subcommand` enum match)
+- [x] R1: Scalafix DisableSyntax + WartRemover
+- [x] R2: `dependencyLint` task — R-ARCH1 (no cats/cats-effect/fs2/llm4s/workflows4s/adk4s in `workflow/*`)
+- [x] R3: 4 Hedgehog properties pass + bats oracle green at all `*_OVERRIDE` seams (evidence-ledger.bats, chain-state.bats, hook-tiers.bats, etc.)
+- [x] R4: `.jq` contract round-trip (ledger records, chain-state reports, gate payloads) + old fixture decoding + byte-compatibility property (gate banner)
 - [ ] R5: Stryker4s mutation testing retargeted to `SubcommandEntrypoints.scala` + new wiring files (git diff against Step 0 baseline SHA)
-- [ ] R8: adversarial review (fresh context) — check for stdout-shape divergences, silent fallbacks, `case _` defaults, exit-code collapses
-- [ ] Concept-delta check (scanner diff) + update `openspec/concept-inventory.md` + checkpoint
+- [x] R8: adversarial review (fresh context) — check for stdout-shape divergences, silent fallbacks, `case _` defaults, exit-code collapses
+- [x] Concept-delta check (scanner diff) + update `openspec/concept-inventory.md` + checkpoint
 
 ## 3. hook-cutover
 

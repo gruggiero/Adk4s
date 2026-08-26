@@ -75,3 +75,14 @@ object ProbatioMain:
       case Subcommand.Graph          => GraphCmd.run(args)
       case Subcommand.InstallSkills  => InstallSkillsCmd.run(args)
       case Subcommand.InstallHooks   => InstallHooksCmd.run(args)
+
+  /**
+   * The JVM entry point — delegates to `dispatch` and exits with the
+   * returned code. Required for `assembly` and `native-image` to find
+   * the main method.
+   *
+   * spec: cli-protocol — Implementation Anchor: ProbatioMain
+   */
+  def main(args: Array[String]): Unit =
+    val code: Int = dispatch(args)
+    sys.exit(code)
