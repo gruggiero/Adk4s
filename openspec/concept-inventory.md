@@ -562,7 +562,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 |------|------|---------|--------|
 | `Outcome[+A]` | enum (Ran, Finding, Undetermined) | `org.sinemenda.probatio.core` | shipped |
 | `Ring` | enum (R0–R9, Manual) | `org.sinemenda.probatio.core` | shipped |
-| `ContractViolation` | sealed trait (12 clause variants) | `org.sinemenda.probatio.core` | shipped |
+| `ContractViolation` | sealed trait (15 clause variants — 12 original + 3 provenance clauses added by spec:port-scanner-to-probatio/provenance-validation) | `org.sinemenda.probatio.core` | shipped |
 | `LedgerRecord` | final case class (private[core] constructor) | `org.sinemenda.probatio.core` | shipped |
 | `LedgerRecordOptional` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `Ledger.LedgerData` | final case class (immutable, append-only) | `org.sinemenda.probatio.core` | shipped |
@@ -583,6 +583,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `DriftWarning` | sealed trait (VersionMismatch, PreRenameStamp) | `org.sinemenda.probatio.core` | shipped |
 | `DriftScanResult` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `BannerInputs` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `BannerEngine` | object (assembleBanner — pure function over BannerInputs → BannerOutput) | `org.sinemenda.probatio.core` | shipped |
 | `ActiveChangeWithChainState` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `BannerOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `MetalsClient.LspMessage` | final case class | `org.sinemenda.probatio.core` | shipped |
@@ -654,6 +655,14 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `SkillDocReference` | final case class (skillDocPath, referencedPath, line — isPredecessorReference, isPortedReference) | `org.sinemenda.probatio.migration` | test-only |
 | `SkillDocLintResult` | final case class (brokenReferences, forwardReferences — isClean) | `org.sinemenda.probatio.migration` | test-only |
 | `ToolId` (migration) | enum (SpecLint, ChainState, DangerScan, Reconcile, Gate — swapOrder, overrideEnvVar) | `org.sinemenda.probatio.migration` | test-only |
+| `OracleGreenCheck` | object (runOracle: SeamConfiguration → OracleOutcome — runs the bats oracle under a seam configuration) | `org.sinemenda.probatio.migration` | test-only |
+
+### complete-probatio-porting change — migration-protocol spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `OracleGreenGate` | object (apply: (Stage, SeamConfiguration) → Boolean — gates stage transitions on bats oracle green; delegates to OracleGreenCheck.runOracle) | `org.sinemenda.probatio.migration` | test-only |
+| `Stage` | enum (Wiring, Cutover — migration stages for oracle-green gating) | `org.sinemenda.probatio.migration` | test-only |
 
 ### port-scanner-to-probatio change — non-goals-guard spec concepts
 

@@ -21,7 +21,7 @@
 | Scala version | 3.8.4 (main modules); 3.7.2 (`verified` module — Stainless frontend pin) | build.sbt, project/Versions.scala |
 | sbt version | 1.12.12 | project/build.properties |
 | JDK | 26 (Homebrew OpenJDK) | runtime |
-| Modules | 13: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-harness-api`, `adk4s-harness-testkit`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `adk4s-record`, `verified` (leaf, not aggregated) | build.sbt |
+| Modules | 17: `structured-llm`, `structured-llm-test-models`, `adk4s-core`, `adk4s-harness-api`, `adk4s-harness-testkit`, `adk4s-memory-api`, `adk4s-memory-testkit`, `adk4s-optimize`, `adk4s-orchestration`, `adk4s-eval`, `adk4s-examples`, `adk4s-record`, `verified` (leaf, not aggregated), `probatio-core`, `probatio-cli`, `sbt-probatio`, `probatio-verified` (leaf, not aggregated). Plus `probatio-spike` (throwaway V1/V2 spike, not aggregated, excluded from dependency-lint). The 4 probatio modules live under `workflow/` (`workflow/core`, `workflow/cli`, `workflow/plugin`) and `verified/probatio`; they are isolated from all adk4s code by R-ARCH1 (no cats/cats-effect/fs2/llm4s/workflows4s/adk4s deps). Re-verified 2026-08-25 by `complete-probatio-porting` capability-check. | build.sbt |
 | Fatal warnings | `-Werror` NOT active, BUT exhaustiveness escalation IS: `-Wconf:name=PatternMatchExhaustivity:e,name=MatchCaseUnreachable:e` in `scala3Options` — inexhaustive matches over sealed types FAIL Ring 0 (schema consequence rule). Any change extending a sealed ADT (e.g. `AgentEvent`, `AdkError`) MUST handle the new variant in every existing match or Ring 0 fails. | build.sbt scala3Options |
 | scalacOptions | `-deprecation`, `-feature`, `-unchecked`, `-Xkind-projector:underscores`, exhaustiveness `-Wconf` escalations (shared via `scala3Options` val) | build.sbt |
 | Dependency management | Centralized: `project/Versions.scala` (all versions), `project/Dependencies.scala` (all ModuleIDs), `build.sbt` imports `Dependencies._` | project/*.scala |
@@ -45,6 +45,11 @@ adk4s-core → structured-llm, llm4s/core
 structured-llm → llm4s/core, workflows4s-core, smithy4s (core+json)
 structured-llm-test-models → structured-llm (compile->compile, smithy codegen)
 verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
+probatio-core → probatio-verified % Test (Scala 3.8.4, pure, R-ARCH1 isolated)
+probatio-cli → probatio-core (Scala 3.8.4, mainargs + os-lib + uPickle, NativeImagePlugin)
+sbt-probatio → (Scala 2.12.20, sbt 1.x AutoPlugin, links NO probatio-core code — R-S1)
+probatio-verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
+probatio-spike → (throwaway V1/V2 spike, not aggregated, not production)
 ```
 
 ## Libraries
@@ -71,6 +76,9 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Evaluation | adk4s-eval (project-local) | 0.1.0-SNAPSHOT | `Evaluate`, `Dataset`, `Example`, `Metric`/`Metrics`, `Judges`, `EvalConfig`, `Trace`/`TraceEntry`, `EvalOutcome`/`EvalError`. LLM-based evaluation harness. Shipped by archived `add-eval-core` change. |
 | Configuration | typesafe-config | 1.4.9 | structured-llm, test-models. PureConfig NOT a dependency. |
 | Logging | logback-classic | 1.5.34 | examples only; slf4j transitive via llm4s |
+| CLI arg parsing (probatio) | mainargs | 0.7.8 | `probatio-cli` only (com.lihaoyi). NOT used by adk4s modules. |
+| Filesystem (probatio) | os-lib | 0.11.8 | `probatio-core`, `probatio-cli`, `probatio-spike` only (com.lihaoyi). NOT used by adk4s modules. R-ARCH1: allowed for probatio; forbidden for adk4s. |
+| Native image (probatio) | sbt-native-image | 0.4.0 | `probatio-cli` only (org.scalameta). GraalVM CE 21.0.2, `--no-fallback -O1`. |
 
 ## Testing
 
@@ -80,8 +88,8 @@ verified → (leaf, Scala 3.7.2, Stainless, not aggregated)
 | Property testing | Hedgehog 0.13.1 (hedgehog-munit % Test) | Properties extend `hedgehog.munit.HedgehogSuite` with `property("…") { for x <- gen.forAll yield <Result> }`. Integrated shrinking, NO `Arbitrary` typeclass, explicit `Range` sizing. NOT ScalaCheck/munit-scalacheck. Coverage ASSERTIONS via Hedgehog `cover` (fails when a label's percentage is unmet); seed-fixing via Hedgehog fixed `Seed`. |
 | Deterministic concurrency test kit | cats-effect `TestControl` (`cats.effect.unsafe.TestControl`) | Available transitively via cats-effect 3.7.0 (no extra dep needed). Any change touching concurrency/timeouts/cancellation/interruption MUST use `TestControl` to drive `IO` deterministically — never wall-clock sleeps. munit-cats-effect provides `munit.CatsEffectSuite` for IO assertions. |
 | Actor test kits | N/A | No actor framework detected |
-| Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list (currently 4 `adk4s-record` files: `RecordedChatModel.scala`, `RecordedEmbedder.scala`, `RecordingToolMiddleware.scala`, `Redaction.scala` — re-verified 2026-08-17 by `port-scanner-to-probatio` capability-check) — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. Ring 5 covers **Scala only**: there is no mutation tooling for the workflow's bash scripts. |
-| Formal verification | Stainless (bundled jar + local Maven repo) | **Frontend Scala version**: 3.7.2 (the `verified` leaf module is pinned to it; the rest of the build stays on 3.8.4 — a version mismatch is NOT "Ring 6 unavailable", it is why the mirror is a separately-pinned leaf). **Mirror module**: `verified/` exists (StainlessPlugin, `stainlessEnabled := false` by default, not aggregated); alias `sbt -J-Xmx6g ring6`. **Contents**: `PredictorKernel` (predictor-enumeration mirror, landed by archived `2026-08-01-add-optimizable-surface`). `adk4s-optimize dependsOn(verified % Test)` is wired; `PredictorModelBridgeSpec` bridge test runs in `adk4s-optimize/test`. Stainless 0.9.9.3 with smt-z3 fallback (Z3 4.13.4). Candidate kernels for future changes: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation. |
+| Mutation tool | sbt-stryker4s 0.21.0 + stryker4s.conf | Ring 5 available. stryker4s.conf has a fixed `mutate` list (currently 4 probatio files: `probatio/core/Validator.scala`, `probatio/core/ProvenanceFields.scala`, `probatio/core/Ledger.scala`, `probatio/cli/SubcommandEntrypoints.scala` — re-verified 2026-08-25 by `complete-probatio-porting` capability-check, supersedes the prior 4 `adk4s-record` files list) — MUST retarget to each spec's changed files before running. Thresholds: break=90, low=91, high=95. Ring 5 covers **Scala only**: there is no mutation tooling for the workflow's bash scripts. |
+| Formal verification | Stainless (bundled jar + local Maven repo) | **Frontend Scala version**: 3.7.2 (the `verified` and `probatio-verified` leaf modules are pinned to it; the rest of the build stays on 3.8.4 — a version mismatch is NOT "Ring 6 unavailable", it is why the mirror is a separately-pinned leaf). **Mirror modules**: `verified/` (StainlessPlugin, `stainlessEnabled := false` by default, not aggregated) and `verified/probatio/` (`probatio-verified`, same setup). Alias `sbt -J-Xmx6g ring6` enables BOTH mirrors. **Contents**: `verified/` has `PredictorKernel` (predictor-enumeration mirror, landed by archived `2026-08-01-add-optimizable-surface`); `probatio-verified/` has `ConformanceModel` (ledger-record/chain-state/gate-hookjson contract conformance mirror, landed by archived `2026-08-25-port-scanner-to-probatio`). `adk4s-optimize dependsOn(verified % Test)` and `probatio-core dependsOn(probatio-verified % Test)` are wired; bridge tests run in the owning modules' ordinary `test`. Stainless 0.9.9.3 with smt-z3 fallback (Z3 4.13.4). Candidate kernels for future changes: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation. |
 | Model checking | none | No TLA+/Apalache. Ring 7 skip. |
 | Memory test double | `InMemoryAgentMemory` (adk4s-memory-api, main scope) | Used as the `AgentMemory[IO]` implementation in hook tests — no LLM, no network. |
 
@@ -184,10 +192,10 @@ danger-scan row is recorded N/A with this reason.
 | Purpose | Command |
 |---------|---------|
 | Main compile (all) | `sbt compile` |
-| Main compile (per module) | `sbt structured-llm/compile`, `sbt adk4s-core/compile`, `sbt adk4s-harness-api/compile`, `sbt adk4s-harness-testkit/compile`, `sbt adk4s-memory-api/compile`, `sbt adk4s-memory-testkit/compile`, `sbt adk4s-optimize/compile`, `sbt adk4s-orchestration/compile`, `sbt adk4s-eval/compile`, `sbt adk4s-examples/compile`, `sbt structured-llm-test-models/compile` |
+| Main compile (per module) | `sbt structured-llm/compile`, `sbt adk4s-core/compile`, `sbt adk4s-harness-api/compile`, `sbt adk4s-harness-testkit/compile`, `sbt adk4s-memory-api/compile`, `sbt adk4s-memory-testkit/compile`, `sbt adk4s-optimize/compile`, `sbt adk4s-orchestration/compile`, `sbt adk4s-eval/compile`, `sbt adk4s-examples/compile`, `sbt structured-llm-test-models/compile`, `sbt probatio-core/compile`, `sbt probatio-cli/compile`, `sbt sbt-probatio/compile`, `sbt probatio-verified/compile` |
 | Test compile (typed contracts) | `sbt <module>/Test/compile` |
 | Run tests (all) | `sbt test` |
-| Run tests (per module) | `sbt adk4s-core/test`, `sbt adk4s-orchestration/test`, `sbt adk4s-harness-api/test`, `sbt adk4s-harness-testkit/test`, `sbt adk4s-memory-api/test`, `sbt adk4s-memory-testkit/test`, `sbt adk4s-optimize/test`, `sbt adk4s-eval/test`, `sbt structured-llm/test` |
+| Run tests (per module) | `sbt adk4s-core/test`, `sbt adk4s-orchestration/test`, `sbt adk4s-harness-api/test`, `sbt adk4s-harness-testkit/test`, `sbt adk4s-memory-api/test`, `sbt adk4s-memory-testkit/test`, `sbt adk4s-optimize/test`, `sbt adk4s-eval/test`, `sbt structured-llm/test`, `sbt probatio-core/test`, `sbt probatio-cli/test`, `sbt sbt-probatio/test` |
 | Single test | `sbt "testOnly <fully.qualified.Spec>"` |
 | Lint (scalafix check) | `sbt scalafixAll --check` |
 | Lint (scalafix apply) | `sbt scalafixAll` |
@@ -197,6 +205,8 @@ danger-scan row is recorded N/A with this reason.
 | Formal verification (Ring 6) | `sbt -J-Xmx6g ring6` — verifies the `verified` leaf module's PureScala mirrors. Bridge tests that bind shipped code to a mirror run in the owning module's ordinary `test` (model compiled, not re-verified). |
 | Coverage | `sbt coverage test coverageReport` |
 | Fat JAR | `sbt assembly` |
+| Native binary (probatio) | `sbt probatio-cli/nativeImage` → `workflow/cli/target/native-image/probatio` (GraalVM CE 21.0.2, `--no-fallback -O1`) |
+| Dependency lint (probatio) | `sbt probatioDependencyLint` — R-ARCH1: no adk4s/cats/cats-effect/fs2/llm4s/workflows4s/scalacheck in `workflow/*`; no `org.sinemenda.probatio` cross-dep in sbt-probatio |
 
 ## Typed Contract Placement
 
@@ -224,6 +234,10 @@ danger-scan row is recorded N/A with this reason.
 | `org.adk4s.orchestration.*` (workflow layer) | logback, http | cats-effect, fs2, workflows4s, adk4s-core, structured-llm |
 | `org.adk4s.examples.*` (application edge) | — | everything (examples are edge code) |
 | `org.adk4s.verified` (Ring 6 model) | everything project-local (leaf module) | stdlib, Stainless library only |
+| `org.sinemenda.probatio.core` (ported logic) | cats, cats-effect, fs2, llm4s, workflows4s, adk4s, scalacheck | stdlib, os-lib, ujson (upickle), `probatio-verified % Test` |
+| `org.sinemenda.probatio.cli` (CLI entrypoints) | cats, cats-effect, fs2, llm4s, workflows4s, adk4s, scalacheck | stdlib, os-lib, ujson (upickle), mainargs, `probatio-core` |
+| `org.sinemenda.probatio.plugin` (sbt AutoPlugin) | cats, cats-effect, fs2, llm4s, workflows4s, adk4s, scalacheck, `probatio-core` (R-S1: links NO probatio-core code) | stdlib, sbt APIs (Scala 2.12) |
+| `org.sinemenda.probatio.verified` (Ring 6 model) | everything project-local (leaf module) | stdlib, Stainless library only |
 | Generated smithy4s code | excluded from checks | — |
 
 The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend on `adk4s-orchestration.agent` (decorates `AgentRunner`), `adk4s-core.interrupt` (emits `AgentEvent`), and `adk4s-memory-api` (calls `AgentMemory`). It MUST NOT reach into `workflows4s`, the llm4s LLM client, or `adk4s-core.tools`. llm4s `Message` types are allowed only for context-injection message construction (the hook prepends/appends a `UserMessage`).
@@ -232,13 +246,13 @@ The `org.adk4s.orchestration.memory` package is a Ring 2 boundary: it MAY depend
 
 | Ring | Available? | If unavailable: impact / setup task |
 |------|-----------|--------------------------------------|
-| 0 Compile | ✅ | `sbt compile` — all 12 modules (10 aggregated + `verified` + `adk4s-eval`). Exhaustiveness escalation active — any new sealed-ADT variant forces all matches to handle it. |
+| 0 Compile | ✅ | `sbt compile` — all 17 modules (13 adk4s + 4 probatio). Exhaustiveness escalation active — any new sealed-ADT variant forces all matches to handle it. The probatio modules use `probatioScalacOptions` (stricter: `-Werror`, `-Wconf:cat=deprecation:e`, `-Wconf:cat=feature:e`, `-Wvalue:discard`, `-Ysafe-init`) in addition to `scala3Options`. |
 | 1 Lint | ✅ | Scalafix (DisableSyntax + RemoveUnused + OrganizeImports) + WartRemover (relaxed set) + scalafmt |
 | 2 Architecture | ⚠️ Advisory only | No custom scalafix arch rules installed. The layer rules above are manual (enforced by code review + import audit). |
 | 3 Property tests | ✅ | Hedgehog 0.13.1 via hedgehog-munit. Properties extend `HedgehogSuite`. Concurrency scenarios use `TestControl`. |
 | 4 Compatibility | ⚠️ Manual | No fixture-based compatibility framework. Applies only to changes touching serialization/wire data. |
 | 5 Mutation | ✅ | sbt-stryker4s 0.21.0 + stryker4s.conf. Retarget `mutate` list to each spec's changed files before running. |
-| 6 Formal | ✅ available — applicability by ALGORITHMIC purity (schema v10) | Stainless via the `verified` leaf module. Ring 6 is NOT limited to code that is itself PureScala: where the shipped code uses `Mirror`/`inline`/`ujson`/Iron/cats/`IO`, the VERIFIED-MIRROR pattern applies — a PureScala model of the algorithm reduced to observable effect, plus a mandatory bridge property test binding shipped code to the model (templates/verified-mirror.md). **Status**: `verified/` contains `PredictorKernel` (predictor-enumeration mirror, landed by archived `2026-08-01-add-optimizable-surface`). `adk4s-optimize dependsOn(verified % Test)` is wired; `PredictorModelBridgeSpec` bridge test runs in `adk4s-optimize/test`. Stainless 0.9.9.3 with smt-z3 fallback (Z3 4.13.4). Candidate kernels for future changes: SAP coercion/parse decisions, `ToolSchema` derivation, WIOGraph topological ordering/validation. |
+| 6 Formal | ✅ available — applicability by ALGORITHMIC purity (schema v10) | Stainless via the `verified` and `probatio-verified` leaf modules. Ring 6 is NOT limited to code that is itself PureScala: where the shipped code uses `Mirror`/`inline`/`ujson`/Iron/cats/`IO`, the VERIFIED-MIRROR pattern applies — a PureScala model of the algorithm reduced to observable effect, plus a mandatory bridge property test binding shipped code to the model (templates/verified-mirror.md). **Status**: `verified/` contains `PredictorKernel` (predictor-enumeration mirror, landed by archived `2026-08-01-add-optimizable-surface`); `probatio-verified/` contains `ConformanceModel` (contract conformance mirror, landed by archived `2026-08-25-port-scanner-to-probatio`). `adk4s-optimize dependsOn(verified % Test)` and `probatio-core dependsOn(probatio-verified % Test)` are wired. Stainless 0.9.9.3 with smt-z3 fallback (Z3 4.13.4). |
 | 7 Model checking | ❌ | No TLA+/Apalache. Skip with stated correctness impact. |
 | 8 Adversarial review | ✅ (manual — always available) | Runs BEFORE Rings 5/6/7 in the apply sequence (fresh-context reviewer). |
 | 9 Telemetry | ❌ | No otel4s/Daut. Skip with stated impact. |
