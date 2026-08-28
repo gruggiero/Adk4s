@@ -80,7 +80,7 @@ No existing concepts modified. No concepts removed.
 
 ## Spec 2: cli-wiring
 
-### Status: COMPLETE (pending human validation)
+### Status: COMPLETE (validated)
 
 ### Baseline
 - SHA: `64e6b2ea40`
