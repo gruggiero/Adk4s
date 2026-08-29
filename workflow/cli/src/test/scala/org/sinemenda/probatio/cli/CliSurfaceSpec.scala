@@ -9,35 +9,31 @@ package org.sinemenda.probatio.cli
  */
 final class CliSurfaceSpec extends ProbatioCliSuite:
 
-  // The predecessor script set — exactly one subcommand per predecessor.
-  private val predecessorSet: Set[String] = Set(
+  // The exposed tool set — only tools that perform their described work.
+  // Six unported tools removed (registry-check, scan, removal-audit,
+  // impact-scan, concept-scanner, graph).
+  private val exposedToolSet: Set[String] = Set(
     "gate",
     "spec-lint",
     "chain-state",
     "ledger",
     "checkpoint",
-    "registry-check",
     "reconcile",
-    "scan",
-    "removal-audit",
     "danger-scan",
-    "impact-scan",
     "metals",
-    "concept-scanner",
-    "graph",
     "install-skills",
     "install-hooks"
   )
 
-  // ── Scenario: Every predecessor script has a corresponding subcommand
-  // spec: cli-protocol — Scenario: Every predecessor script has a corresponding subcommand
-  test("every predecessor script has a corresponding subcommand"):
+  // ── Scenario: Every exposed tool has a corresponding subcommand
+  // spec: cli-entrypoint-contract — Requirement: A tool that has no implementation is not nameable on the tool surface
+  test("every exposed tool has a corresponding subcommand"):
     val subcommandNames: Set[String] = Subcommand.values.map(Subcommand.cliName).toSet
-    assertEquals(subcommandNames, predecessorSet)
+    assertEquals(subcommandNames, exposedToolSet)
 
-  // ── Scenario: the subcommand count is exactly 16
-  test("the subcommand count is exactly 16 (one per predecessor script)"):
-    assertEquals(Subcommand.values.length, 16)
+  // ── Scenario: the subcommand count is exactly 10
+  test("the subcommand count is exactly 10 (ported tools only)"):
+    assertEquals(Subcommand.values.length, 10)
 
   // ── Scenario: Unknown subcommand is rejected
   // spec: cli-protocol — Scenario: Unknown subcommand is rejected
@@ -79,11 +75,11 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
     assert(!actions.contains("Rewrite"))
     assert(!actions.contains("Edit"))
 
-  // ── Scenario: metals exposes start, stop, and call sub-subcommands
-  // spec: cli-protocol — Scenario: Every predecessor script has a corresponding subcommand
-  test("metals exposes start, stop, and call sub-subcommands"):
+  // ── Scenario: metals exposes only the start sub-action (stop/call removed)
+  // spec: cli-entrypoint-contract — Scenario: Edge case — the retained sub-action of a partially-ported tool still resolves
+  test("metals exposes only the Start sub-action (stop and call removed)"):
     val subActions: Set[String] = MetalsCmd.SubAction.values.map(_.toString).toSet
-    assertEquals(subActions, Set("Start", "Stop", "Call"))
+    assertEquals(subActions, Set("Start"))
 
   // ── Scenario: each subcommand name round-trips through cliName + fromString
   test("each subcommand name round-trips through cliName + fromString"):

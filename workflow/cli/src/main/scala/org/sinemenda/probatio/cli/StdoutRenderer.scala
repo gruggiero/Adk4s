@@ -47,13 +47,13 @@ object StdoutRenderer:
       // uses camelCase, which produces "unmappedObligations" — the
       // contract requires "unmapped_obligations").
       val obj: ujson.Obj = ujson.Obj(
-        "change" -> ujson.Str(report.change),
-        "baseline" -> ujson.Str(report.baseline),
-        "total" -> ujson.Num(report.total),
-        "bound" -> ujson.Num(report.bound),
-        "resolved" -> ujson.Num(report.resolved),
-        "discharged" -> ujson.Num(report.discharged),
-        "unresolved" -> ujson.Arr(report.unresolved.map(e => ujson.read(write(e)))*),
+        "change"               -> ujson.Str(report.change),
+        "baseline"             -> ujson.Str(report.baseline),
+        "total"                -> ujson.Num(report.total),
+        "bound"                -> ujson.Num(report.bound),
+        "resolved"             -> ujson.Num(report.resolved),
+        "discharged"           -> ujson.Num(report.discharged),
+        "unresolved"           -> ujson.Arr(report.unresolved.map(e => ujson.read(write(e)))*),
         "unmapped_obligations" -> ujson.Arr(report.unmappedObligations.map(e => ujson.read(write(e)))*)
       )
       ujson.write(obj)
@@ -66,15 +66,15 @@ object StdoutRenderer:
   given StdoutRenderer[org.sinemenda.probatio.core.ChainStateUndetermined] with
     def render(undetermined: org.sinemenda.probatio.core.ChainStateUndetermined): String =
       val obj: ujson.Obj = ujson.Obj(
-        "change" -> ujson.Str(undetermined.change),
-        "baseline" -> ujson.Str(undetermined.baseline),
-        "undetermined" -> ujson.Bool(true),
-        "reason" -> ujson.Str(undetermined.reason),
-        "total" -> ujson.Null,
-        "bound" -> ujson.Null,
-        "resolved" -> ujson.Null,
-        "discharged" -> ujson.Null,
-        "unresolved" -> ujson.Arr(),
+        "change"               -> ujson.Str(undetermined.change),
+        "baseline"             -> ujson.Str(undetermined.baseline),
+        "undetermined"         -> ujson.Bool(true),
+        "reason"               -> ujson.Str(undetermined.reason),
+        "total"                -> ujson.Null,
+        "bound"                -> ujson.Null,
+        "resolved"             -> ujson.Null,
+        "discharged"           -> ujson.Null,
+        "unresolved"           -> ujson.Arr(),
         "unmapped_obligations" -> ujson.Arr()
       )
       ujson.write(obj)
@@ -90,9 +90,7 @@ object StdoutRenderer:
       val verdictLines: List[String] = report.verdicts.map { v =>
         s"${CheckId.asString(v.check)}: ${Verdict.asString(v.verdict)} — ${v.requirement}"
       }
-      val warningLines: List[String] = report.warnings.map { w =>
-        s"WARN ${w.code} line ${w.line}: ${w.message}"
-      }
+      val warningLines: List[String] = report.warnings.map(w => s"WARN ${w.code} line ${w.line}: ${w.message}")
       (verdictLines ++ warningLines).mkString("\n")
 
   /**

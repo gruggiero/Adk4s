@@ -3,50 +3,56 @@ package org.sinemenda.probatio.cli
 import org.sinemenda.probatio.core.Outcome
 
 /**
- * The multicall entry point (R-P6).
+ * The multicall entry point.
  *
- * Reads argv(0) and argv(1), dispatches to the appropriate entrypoint.
- * The multicall binary is invoked either as
- * `probatio <subcommand> <args>` (argv(1) dispatch) or as a symlink
- * `<subcommand> <args>` (argv(0) dispatch). Both paths resolve to the
- * same `Subcommand` and produce identical behavior.
+ * Obtains the invocation name from the runtime and the arguments as
+ * `ProgramArgs` (program name excluded), dispatches to the appropriate
+ * entrypoint. The multicall binary is invoked either as
+ * `probatio <subcommand> <args>` (generic-name dispatch) or as a symlink
+ * `<subcommand> <args>` (invocation-name dispatch). Both paths resolve to
+ * the same `Subcommand` and produce identical behavior.
  *
- * spec: cli-protocol — Requirement: Multicall dispatch by argv(1) and argv(0)
- * spec: cli-protocol — Implementation Anchor: ProbatioMain
+ * spec: cli-entrypoint-contract — Requirement: The tool surface resolves its command from the invocation name and the first user argument, never by consuming two user arguments
+ * spec: cli-entrypoint-contract — Implementation Anchor: ProbatioMain
  */
 object ProbatioMain:
 
   /**
    * Dispatches to the subcommand and returns the exit code.
    *
-   * Resolves the subcommand from argv, delegates to the subcommand's
+   * Resolves the subcommand from the invocation name and the argument list
+   * via `MulticallDispatch.resolveAndSplit`, delegates to the subcommand's
    * entrypoint, and maps the `Outcome` to an exit code via `ExitCode.from`.
    * Parse errors emit a single-line error on stderr naming the offending
    * token and return a non-zero exit code.
    *
    * If `--help` is present in the remaining args, the subcommand's help
-   * output is printed on stdout and exit 0 is returned (R-P5).
+   * output is printed on stdout and exit 0 is returned.
    *
+   * spec: cli-entrypoint-contract — Requirement: The tool surface resolves its command from the invocation name and the first user argument, never by consuming two user arguments
    * spec: cli-protocol — Requirement: Three-way exit protocol for every subcommand
    * spec: cli-protocol — Requirement: Arg parsing errors name the missing or invalid flag
    * spec: cli-protocol — Requirement: Help lists every flag with its default
    */
-  def dispatch(args: Array[String]): Int =
-    val argv0: String         = if args.nonEmpty then args(0) else MulticallDispatch.binaryName
-    val argv1: Option[String] = if args.length >= 2 then Some(args(1)) else None
-    val rest: Array[String]   = if args.length >= 2 then args.drop(2) else Array.empty
-
-    MulticallDispatch.resolve(argv0, argv1) match
-      case Left(err) =>
-        System.err.println(CliErrorRender.render(err))
-        1
-      case Right(sub) =>
-        if rest.contains("--help") then
-          System.out.println(HelpRegistry.helpFor(sub).render)
-          0
-        else
-          val outcome: Outcome[Int] = runSubcommand(sub, rest)
-          ExitCode.toInt(ExitCode.from(outcome))
+  def dispatch(name: InvocationName, args: ProgramArgs): Int =
+    // Top-level `--help` under the generic name: show usage, exit 0.
+    if MulticallDispatch.genericNames.contains(name.basename)
+      && args.headOption.contains("--help")
+    then
+      System.out.println(HelpRegistry.topLevelUsage)
+      0
+    else
+      MulticallDispatch.resolveAndSplit(name, args) match
+        case Left(err) =>
+          System.err.println(CliErrorRender.render(err))
+          1
+        case Right((sub, rest)) =>
+          if rest.contains("--help") then
+            System.out.println(HelpRegistry.helpFor(sub).render)
+            0
+          else
+            val outcome: Outcome[Int] = runSubcommand(sub, rest)
+            ExitCode.toInt(ExitCode.from(outcome))
 
   /**
    * Dispatches to the subcommand's entrypoint, returning an `Outcome[Int]`.
@@ -57,32 +63,66 @@ object ProbatioMain:
    *
    * spec: cli-protocol — Ring 6 Cross-Reference (formal contracts live in probatio-core)
    */
-  private def runSubcommand(sub: Subcommand, args: Array[String]): Outcome[Int] =
+  private def runSubcommand(sub: Subcommand, args: ProgramArgs): Outcome[Int] =
+    val rest: Array[String] = args.toArray
     sub match
-      case Subcommand.Gate           => GateCmd.run(args)
-      case Subcommand.SpecLint       => SpecLintCmd.run(args)
-      case Subcommand.ChainState     => ChainStateCmd.run(args)
-      case Subcommand.Ledger         => LedgerCmd.run(args)
-      case Subcommand.Checkpoint     => CheckpointCmd.run(args)
-      case Subcommand.RegistryCheck  => RegistryCheckCmd.run(args)
-      case Subcommand.Reconcile      => ReconcileCmd.run(args)
-      case Subcommand.Scan           => ScanCmd.run(args)
-      case Subcommand.RemovalAudit   => RemovalAuditCmd.run(args)
-      case Subcommand.DangerScan     => DangerScanCmd.run(args)
-      case Subcommand.ImpactScan     => ImpactScanCmd.run(args)
-      case Subcommand.Metals         => MetalsCmd.run(args)
-      case Subcommand.ConceptScanner => ConceptScannerCmd.run(args)
-      case Subcommand.Graph          => GraphCmd.run(args)
-      case Subcommand.InstallSkills  => InstallSkillsCmd.run(args)
-      case Subcommand.InstallHooks   => InstallHooksCmd.run(args)
+      case Subcommand.Gate          => GateCmd.run(rest)
+      case Subcommand.SpecLint      => SpecLintCmd.run(rest)
+      case Subcommand.ChainState    => ChainStateCmd.run(rest)
+      case Subcommand.Ledger        => LedgerCmd.run(rest)
+      case Subcommand.Checkpoint    => CheckpointCmd.run(rest)
+      case Subcommand.Reconcile     => ReconcileCmd.run(rest)
+      case Subcommand.DangerScan    => DangerScanCmd.run(rest)
+      case Subcommand.Metals        => MetalsCmd.run(rest)
+      case Subcommand.InstallSkills => InstallSkillsCmd.run(rest)
+      case Subcommand.InstallHooks  => InstallHooksCmd.run(rest)
 
   /**
-   * The JVM entry point — delegates to `dispatch` and exits with the
-   * returned code. Required for `assembly` and `native-image` to find
-   * the main method.
+   * The JVM entry point — obtains the invocation name from the runtime,
+   * wraps `args` as `ProgramArgs` unchanged, delegates to `dispatch`, and
+   * exits with the returned code.
    *
-   * spec: cli-protocol — Implementation Anchor: ProbatioMain
+   * The invocation name is extracted from `sun.java.command` (JVM) or
+   * `ProcessHandle.current().info().command()` (native-image). The JVM
+   * delivers `args` without the program name (JVM convention), so `args`
+   * is wrapped as `ProgramArgs` unchanged.
+   *
+   * spec: cli-entrypoint-contract — Implementation Anchor: ProbatioMain
+   * spec: cli-entrypoint-contract — Scenario: Happy path — a runtime entry point produces the argument value
    */
   def main(args: Array[String]): Unit =
-    val code: Int = dispatch(args)
-    sys.exit(code)
+    val programArgs: ProgramArgs = ProgramArgs.fromRuntime(args)
+    val rawName: String          = extractInvocationName
+    InvocationName.fromRuntime(rawName) match
+      case Left(err) =>
+        System.err.println(err)
+        sys.exit(1)
+      case Right(inv) =>
+        val code: Int = dispatch(inv, programArgs)
+        sys.exit(code)
+
+  /**
+   * Extracts the invocation name from the runtime.
+   *
+   * On the JVM, `sun.java.command` is the full command line; the first
+   * token is the program name (class or JAR path). On native-image,
+   * `ProcessHandle.current().info().command()` gives the executable path.
+   * Falls back to the generic name `probatio` if neither is available
+   * (e.g. when running under a test harness).
+   */
+  private def extractInvocationName: String =
+    // Try sun.java.command (JVM)
+    val fromCommand: Option[String] =
+      try
+        Option(System.getProperty("sun.java.command")).flatMap { cmd =>
+          val first: String = cmd.takeWhile(c => c != ' ')
+          if first.nonEmpty then Some(first) else None
+        }
+      catch case _: SecurityException => None
+    // Try ProcessHandle.current().info().command() (JVM 16+ / native-image)
+    val fromProcess: Option[String] =
+      try
+        val cmd: java.util.Optional[String] = ProcessHandle.current().info().command()
+        if cmd.isPresent then Some(cmd.get) else None
+      catch case _: Throwable => None
+    fromCommand.orElse(fromProcess).getOrElse("probatio")

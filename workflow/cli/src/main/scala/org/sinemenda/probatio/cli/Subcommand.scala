@@ -1,27 +1,28 @@
 package org.sinemenda.probatio.cli
 
 /**
- * The exhaustive set of subcommand names, one per predecessor script (R-P1).
+ * The exhaustive set of subcommand names — only the tools that perform their
+ * described work.
  *
- * The port is 1:1 with the predecessor scripts — a port, not a redesign.
- * A subcommand that does not correspond to a predecessor script is a new
- * feature, which the feature freeze (R-X1) forbids. The `metals`
- * subcommand consolidates the two-script `metals-start.sh` /
- * `metals-call.sh` split into sub-subcommands; this is a structural
- * consolidation, not a new capability.
+ * A subcommand whose behaviour has not been ported is NOT in this enum — it
+ * is unparseable rather than recognised-and-silent. The seven removed names
+ * (`registry-check`, `scan`, `removal-audit`, `impact-scan`,
+ * `concept-scanner`, `graph`, plus the mutation commands `update`/`delete`/
+ * `rewrite`/`edit`) all produce `UnknownSubcommand` when supplied as a
+ * token. Their predecessor implementations remain live and are invoked
+ * directly.
  *
  * No mutation subcommand (`update`, `delete`, `rewrite`, `edit`) exists in
  * this enum — the append-only ledger invariant (§4.2) is enforced by the
  * mutation subcommand not existing (unparseable vs. denylisted — strictly
  * stronger).
  *
- * spec: cli-protocol — Requirement: One subcommand per predecessor script
+ * spec: cli-entrypoint-contract — Requirement: A tool that has no implementation is not nameable on the tool surface
  * spec: cli-protocol — Requirement: Append-only ledger surface — no mutation subcommands
  */
 enum Subcommand:
-  case Gate, SpecLint, ChainState, Ledger, Checkpoint, RegistryCheck,
-    Reconcile, Scan, RemovalAudit, DangerScan, ImpactScan, Metals,
-    ConceptScanner, Graph, InstallSkills, InstallHooks
+  case Gate, SpecLint, ChainState, Ledger, Checkpoint, Reconcile,
+    DangerScan, Metals, InstallSkills, InstallHooks
 
 object Subcommand:
 
@@ -44,19 +45,13 @@ object Subcommand:
 
   /** The string form used on the command line (kebab-case). */
   def cliName(sub: Subcommand): String = sub match
-    case Gate           => "gate"
-    case SpecLint       => "spec-lint"
-    case ChainState     => "chain-state"
-    case Ledger         => "ledger"
-    case Checkpoint     => "checkpoint"
-    case RegistryCheck  => "registry-check"
-    case Reconcile      => "reconcile"
-    case Scan           => "scan"
-    case RemovalAudit   => "removal-audit"
-    case DangerScan     => "danger-scan"
-    case ImpactScan     => "impact-scan"
-    case Metals         => "metals"
-    case ConceptScanner => "concept-scanner"
-    case Graph          => "graph"
-    case InstallSkills  => "install-skills"
-    case InstallHooks   => "install-hooks"
+    case Gate          => "gate"
+    case SpecLint      => "spec-lint"
+    case ChainState    => "chain-state"
+    case Ledger        => "ledger"
+    case Checkpoint    => "checkpoint"
+    case Reconcile     => "reconcile"
+    case DangerScan    => "danger-scan"
+    case Metals        => "metals"
+    case InstallSkills => "install-skills"
+    case InstallHooks  => "install-hooks"

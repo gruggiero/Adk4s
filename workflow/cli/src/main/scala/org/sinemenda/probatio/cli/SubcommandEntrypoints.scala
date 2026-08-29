@@ -2,7 +2,9 @@ package org.sinemenda.probatio.cli
 
 import org.sinemenda.probatio.core.*
 
-import java.nio.file.{Files, Paths, StandardCopyOption}
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 
 /**
  * Subcommand entrypoints (R-P1).
@@ -39,30 +41,49 @@ object GateCmd:
    * spec: cli-wiring — Scenario: The escape hatch bypasses the tool-call lock
    */
   def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--event", "--change", "--spec", "--baseline", "--format", "--ledger-file", "--change-dir", "--session", "--file", "--tool", "--repo", "--turn-text", "--stop-hook-active")
+    val flags: Set[String] = Set(
+      "--event",
+      "--change",
+      "--spec",
+      "--baseline",
+      "--format",
+      "--ledger-file",
+      "--change-dir",
+      "--session",
+      "--file",
+      "--tool",
+      "--repo",
+      "--turn-text",
+      "--stop-hook-active"
+    )
     SubcommandWiring.parseArgs(args, flags) match
       case Left(err) =>
         SubcommandWiring.emitStderr(s"gate: ${err.offendingToken}\n")
         Outcome.Finding(s"arg parse error: ${err.offendingToken}")
       case Right(parsed) =>
-        val eventStr: String = parsed.getOrElse("--event", "session-start")
-        val change: String = parsed.getOrElse("--change", "")
+        val change: String       = parsed.getOrElse("--change", "")
         val escapeHatch: Boolean = CliContext.readEscapeHatch
-        parseEvent(eventStr) match
-          case Some(event) =>
-            runEvent(event, change, escapeHatch, parsed)
+        parsed.get("--event") match
           case None =>
-            SubcommandWiring.emitStderr(s"gate: unknown event '$eventStr'\n")
-            Outcome.Finding(s"unknown event: $eventStr")
+            SubcommandWiring.emitStderr("gate: --event is required\n")
+            Outcome.Finding("--event is required")
+          case Some(eventStr) =>
+            parseEvent(eventStr) match
+              case Some(event) =>
+                runEvent(event, change, escapeHatch, parsed)
+              case None =>
+                SubcommandWiring.emitStderr(s"gate: unknown event '$eventStr'\n")
+                Outcome.Finding(s"unknown event: $eventStr")
 
   /** Parse the event name from the --event flag value. */
   private def parseEvent(s: String): Option[Event] = s match
-    case "session-start"  => Some(Event.SessionStart)
-    case "prompt-submit"  => Some(Event.PromptSubmit)
-    case "tool-call"      => Some(Event.ToolCall)
-    case "post-edit"      => Some(Event.PostEdit)
-    case "completion"     => Some(Event.Completion)
-    case _                => None // danger-scan:allow string-rejection — unrecognized event name maps to None (error), never a valid Event
+    case "session-start" => Some(Event.SessionStart)
+    case "prompt-submit" => Some(Event.PromptSubmit)
+    case "tool-call"     => Some(Event.ToolCall)
+    case "post-edit"     => Some(Event.PostEdit)
+    case "completion"    => Some(Event.Completion)
+    case _ =>
+      None // danger-scan:allow string-rejection — unrecognized event name maps to None (error), never a valid Event
 
   /**
    * Run the gate for a specific event. The blocking tiers:
@@ -102,13 +123,12 @@ object GateCmd:
           val eventName: String = event.toString
           val envelope: ujson.Obj = ujson.Obj(
             "hookSpecificOutput" -> ujson.Obj(
-              "hookEventName" -> ujson.Str(eventName),
+              "hookEventName"     -> ujson.Str(eventName),
               "additionalContext" -> ujson.Str(banner.payload)
             )
           )
           SubcommandWiring.emitStdout(ujson.write(envelope) + "\n")
-        else
-          SubcommandWiring.emitStdout(banner.payload + "\n")
+        else SubcommandWiring.emitStdout(banner.payload + "\n")
         Outcome.Ran(0)
 
       case Event.PostEdit =>
@@ -119,8 +139,7 @@ object GateCmd:
       case Event.ToolCall =>
         // Tier A — blocking, check predecessors and grants
         // The escape hatch bypasses both checks
-        if escapeHatch then
-          Outcome.Ran(0)
+        if escapeHatch then Outcome.Ran(0)
         else
           // Without state files, the predecessor check cannot be performed —
           // this is Undetermined, not clean. Missing state must not silently
@@ -130,15 +149,16 @@ object GateCmd:
       case Event.Completion =>
         // Tier A — blocking, check chain-state
         // If chain-state has unresolved obligations, block (exit 1)
-        if escapeHatch then
-          Outcome.Ran(0)
+        if escapeHatch then Outcome.Ran(0)
         else
           // Read the ledger and compute chain-state
           val ledgerFile: String = parsed.getOrElse("--ledger-file", "")
-          val baseline: String = parsed.getOrElse("--baseline", "")
+          val baseline: String   = parsed.getOrElse("--baseline", "")
           if ledgerFile.isEmpty || change.isEmpty || baseline.isEmpty then
             // Missing required parameters — this is a Finding, not clean.
-            Outcome.Finding("missing required parameters for chain-state computation: --ledger-file, --change, --baseline")
+            Outcome.Finding(
+              "missing required parameters for chain-state computation: --ledger-file, --change, --baseline"
+            )
           else
             SubcommandWiring.readLedgerFile(ledgerFile) match
               case Outcome.Undetermined(reason) =>
@@ -148,31 +168,34 @@ object GateCmd:
               case Outcome.Ran(rows) =>
                 // Validate every row — a corrupt ledger is Undetermined, not
                 // a silently truncated ledger with invalid rows dropped.
-                val validated: Either[String, List[LedgerRecord]] = rows.foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
-                  case (Left(err), _) => Left(err)
-                  case (Right(acc), v) =>
-                    Validator.validate(v) match
-                      case Right(r)  => Right(r :: acc)
-                      case Left(viol) => Left(s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}")
-                }
+                val validated: Either[String, List[LedgerRecord]] =
+                  rows.foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
+                    case (Left(err), _) => Left(err)
+                    case (Right(acc), v) =>
+                      Validator.validate(v) match
+                        case Right(r) => Right(r :: acc)
+                        case Left(viol) =>
+                          Left(s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}")
+                  }
                 validated match
                   case Left(err) =>
                     Outcome.Undetermined(err)
                   case Right(recordsRev) =>
-                    val records: List[LedgerRecord] = recordsRev.reverse
-                    val ledger: Ledger.LedgerData = Ledger.fromRecords(records)
-                    val lint: LintReport = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
+                    val records: List[LedgerRecord]        = recordsRev.reverse
+                    val ledger: Ledger.LedgerData          = Ledger.fromRecords(records)
+                    val lint: LintReport                   = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
                     val reqs: List[ChainState.Requirement] = Nil // no requirements parsed yet
                     ChainState.compute(lint, ledger, reqs, baseline, change) match
                       case Left(u) =>
                         Outcome.Undetermined(u.reason)
                       case Right(report) =>
-                        if report.unresolved.isEmpty then
-                          Outcome.Ran(0)
+                        if report.unresolved.isEmpty then Outcome.Ran(0)
                         else
-                          val reason: String = report.unresolved.map { e =>
-                            s"${e.requirement} (${e.reasons.map(UnresolvedReason.asString).mkString(", ")})"
-                          }.mkString("; ")
+                          val reason: String = report.unresolved
+                            .map { e =>
+                              s"${e.requirement} (${e.reasons.map(UnresolvedReason.asString).mkString(", ")})"
+                            }
+                            .mkString("; ")
                           Outcome.Finding(s"chain-state unresolved: $reason")
 
 /** The `spec-lint` subcommand — spec file linting. */
@@ -190,7 +213,7 @@ object SpecLintCmd:
         Outcome.Finding(s"arg parse error: ${err.offendingToken}")
       case Right(parsed) =>
         val change: String = parsed.getOrElse("--change", "")
-        val spec: String = parsed.getOrElse("--spec", "")
+        val spec: String   = parsed.getOrElse("--spec", "")
         if change.isEmpty then
           SubcommandWiring.emitStderr("spec-lint: --change is required\n")
           Outcome.Finding("--change is required")
@@ -201,7 +224,7 @@ object SpecLintCmd:
           // Run the F1–F10 checks (delegated to core LintReport logic)
           // For now, produce a clean lint report
           val report: LintReport = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
-          val rendered: String = StdoutRenderer[LintReport].render(report)
+          val rendered: String   = StdoutRenderer[LintReport].render(report)
           SubcommandWiring.emitStdout(rendered + "\n")
           Outcome.Ran(0)
 
@@ -222,9 +245,9 @@ object ChainStateCmd:
         SubcommandWiring.emitStderr(s"chain-state: ${err.offendingToken}\n")
         Outcome.Finding(s"arg parse error: ${err.offendingToken}")
       case Right(parsed) =>
-        val changeDir: String = parsed.getOrElse("--change-dir", "")
-        val change: String = parsed.getOrElse("--change", "")
-        val baseline: String = parsed.getOrElse("--baseline", "")
+        val changeDir: String  = parsed.getOrElse("--change-dir", "")
+        val change: String     = parsed.getOrElse("--change", "")
+        val baseline: String   = parsed.getOrElse("--baseline", "")
         val ledgerFile: String = parsed.getOrElse("--ledger-file", s"$changeDir/evidence-ledger.jsonl")
 
         if changeDir.isEmpty then
@@ -242,7 +265,7 @@ object ChainStateCmd:
             case Outcome.Undetermined(reason) =>
               // Emit the undetermined report on stdout
               val undetermined: ChainStateUndetermined = ChainStateUndetermined(change, baseline, reason)
-              val rendered: String = StdoutRenderer[ChainStateUndetermined].render(undetermined)
+              val rendered: String                     = StdoutRenderer[ChainStateUndetermined].render(undetermined)
               SubcommandWiring.emitStdout(rendered + "\n")
               SubcommandWiring.emitStderr(s"chain-state: UNDETERMINED — $reason\n")
               Outcome.Undetermined(reason)
@@ -251,25 +274,27 @@ object ChainStateCmd:
             case Outcome.Ran(rows) =>
               // Validate every row — a corrupt ledger is Undetermined, not
               // a silently truncated ledger with invalid rows dropped.
-              val validated: Either[String, List[LedgerRecord]] = rows.foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
-                case (Left(err), _) => Left(err)
-                case (Right(acc), v) =>
-                  Validator.validate(v) match
-                    case Right(r)  => Right(r :: acc)
-                    case Left(viol) => Left(s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}")
-              }
+              val validated: Either[String, List[LedgerRecord]] =
+                rows.foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
+                  case (Left(err), _) => Left(err)
+                  case (Right(acc), v) =>
+                    Validator.validate(v) match
+                      case Right(r) => Right(r :: acc)
+                      case Left(viol) =>
+                        Left(s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}")
+                }
               validated match
                 case Left(err) =>
                   val undetermined: ChainStateUndetermined = ChainStateUndetermined(change, baseline, err)
-                  val rendered: String = StdoutRenderer[ChainStateUndetermined].render(undetermined)
+                  val rendered: String                     = StdoutRenderer[ChainStateUndetermined].render(undetermined)
                   SubcommandWiring.emitStdout(rendered + "\n")
                   SubcommandWiring.emitStderr(s"chain-state: UNDETERMINED — $err\n")
                   Outcome.Undetermined(err)
                 case Right(recordsRev) =>
                   val records: List[LedgerRecord] = recordsRev.reverse
-                  val ledger: Ledger.LedgerData = Ledger.fromRecords(records)
+                  val ledger: Ledger.LedgerData   = Ledger.fromRecords(records)
                   // Build a clean lint report (the CLI delegates lint to spec-lint)
-                  val lint: LintReport = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
+                  val lint: LintReport                   = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
                   val reqs: List[ChainState.Requirement] = Nil
                   ChainState.compute(lint, ledger, reqs, baseline, change) match
                     case Left(u) =>
@@ -281,10 +306,8 @@ object ChainStateCmd:
                     case Right(report) =>
                       val rendered: String = StdoutRenderer[ChainStateReport].render(report)
                       SubcommandWiring.emitStdout(rendered + "\n")
-                      if report.unresolved.isEmpty then
-                        Outcome.Ran(0)
-                      else
-                        Outcome.Finding(s"chain-state: ${report.unresolved.length} unresolved obligation(s)")
+                      if report.unresolved.isEmpty then Outcome.Ran(0)
+                      else Outcome.Finding(s"chain-state: ${report.unresolved.length} unresolved obligation(s)")
 
 /** The `ledger` subcommand — append-only ledger operations. */
 object LedgerCmd:
@@ -325,7 +348,9 @@ object LedgerCmd:
             case Some(action) =>
               runAction(action, args.drop(1))
             case None =>
-              SubcommandWiring.emitStderr(s"ledger: unknown subcommand: '$actionStr'. Expected: append, run, read, validate.\n")
+              SubcommandWiring.emitStderr(
+                s"ledger: unknown subcommand: '$actionStr'. Expected: append, run, read, validate.\n"
+              )
               Outcome.Finding(s"unknown subcommand: $actionStr")
 
   /** Parse the action name. */
@@ -333,15 +358,26 @@ object LedgerCmd:
     case "append"   => Some(Action.Append)
     case "read"     => Some(Action.Read)
     case "validate" => Some(Action.Validate)
-    case _          => None // danger-scan:allow string-rejection — unrecognized action maps to None (error), never a valid Action
+    case _ =>
+      None // danger-scan:allow string-rejection — unrecognized action maps to None (error), never a valid Action
 
   /**
    * Run the ledger action with the given args.
    */
   private def runAction(action: Action, args: Array[String]): Outcome[Int] =
     val flags: Set[String] = Set(
-      "--file", "--change", "--spec", "--ring", "--obligation", "--artifact",
-      "--command", "--exit", "--baseline", "--session", "--source", "--forgive-unchanged"
+      "--file",
+      "--change",
+      "--spec",
+      "--ring",
+      "--obligation",
+      "--artifact",
+      "--command",
+      "--exit",
+      "--baseline",
+      "--session",
+      "--source",
+      "--forgive-unchanged"
     )
     // Split args at -- (run mode command separator)
     val (flagArgs, runCommand) = splitAtDoubleDash(args.toList)
@@ -367,8 +403,15 @@ object LedgerCmd:
    */
   private def runRunMode(args: Array[String]): Outcome[Int] =
     val flags: Set[String] = Set(
-      "--file", "--change", "--spec", "--ring", "--obligation", "--artifact",
-      "--baseline", "--session", "--source"
+      "--file",
+      "--change",
+      "--spec",
+      "--ring",
+      "--obligation",
+      "--artifact",
+      "--baseline",
+      "--session",
+      "--source"
     )
     val (flagArgs, runCommand) = splitAtDoubleDash(args.toList)
     SubcommandWiring.parseArgs(flagArgs.toArray, flags) match
@@ -381,7 +424,7 @@ object LedgerCmd:
         // Stamp --command and --exit with the observed values
         val stamped: Map[String, String] = parsed ++ Map(
           "--command" -> runCommand,
-          "--exit" -> observedExit.toString
+          "--exit"    -> observedExit.toString
         )
         runAppend(stamped, runCommand)
 
@@ -390,8 +433,7 @@ object LedgerCmd:
    * Returns 0 if the command is empty.
    */
   private def executeCommand(command: String): Int =
-    if command.isEmpty then
-      0
+    if command.isEmpty then 0
     else
       val process: Process = new ProcessBuilder("sh", "-c", command).inheritIO().start()
       process.waitFor()
@@ -442,14 +484,14 @@ object LedgerCmd:
         Outcome.Finding(s"missing required field(s): ${missing.mkString(" ")}")
       else
         // R8 rows require session
-        val ring: String = parsed.getOrElse("--ring", "")
+        val ring: String    = parsed.getOrElse("--ring", "")
         val session: String = parsed.getOrElse("--session", "")
         if ring == "R8" && session.isEmpty then
           SubcommandWiring.emitStderr("ledger: session is required for R8 (adversarial-review) rows\n")
           Outcome.Finding("session is required for R8 rows")
         else
           // Build the record JSON with v and ts stamped here (not accepted from caller)
-          val ts: String = SubcommandWiring.stampTimestamp
+          val ts: String      = SubcommandWiring.stampTimestamp
           val exitStr: String = parsed.getOrElse("--exit", "0")
           exitStr.toIntOption match
             case None =>
@@ -457,16 +499,16 @@ object LedgerCmd:
               Outcome.Finding(s"--exit must be an integer, got '$exitStr'")
             case Some(exitInt) =>
               val record: ujson.Obj = ujson.Obj(
-                "v" -> ujson.Num(SubcommandWiring.supportedVersion),
-                "ts" -> ujson.Str(ts),
-                "change" -> ujson.Str(parsed.getOrElse("--change", "")),
-                "spec" -> ujson.Str(parsed.getOrElse("--spec", "")),
-                "ring" -> ujson.Str(ring),
+                "v"          -> ujson.Num(SubcommandWiring.supportedVersion),
+                "ts"         -> ujson.Str(ts),
+                "change"     -> ujson.Str(parsed.getOrElse("--change", "")),
+                "spec"       -> ujson.Str(parsed.getOrElse("--spec", "")),
+                "ring"       -> ujson.Str(ring),
                 "obligation" -> ujson.Str(parsed.getOrElse("--obligation", "")),
-                "artifact" -> ujson.Str(parsed.getOrElse("--artifact", "")),
-                "command" -> ujson.Str(parsed.getOrElse("--command", "")),
-                "exit" -> ujson.Num(exitInt),
-                "baseline" -> ujson.Str(parsed.getOrElse("--baseline", ""))
+                "artifact"   -> ujson.Str(parsed.getOrElse("--artifact", "")),
+                "command"    -> ujson.Str(parsed.getOrElse("--command", "")),
+                "exit"       -> ujson.Num(exitInt),
+                "baseline"   -> ujson.Str(parsed.getOrElse("--baseline", ""))
               )
               // Add optional fields when present
               if session.nonEmpty then record.value("session") = ujson.Str(session)
@@ -495,7 +537,7 @@ object LedgerCmd:
    * spec: cli-wiring — Scenario: An unreadable ledger file produces undetermined, not clean
    */
   def runRead(parsed: Map[String, String]): Outcome[Int] =
-    val file: String = parsed.getOrElse("--file", "")
+    val file: String   = parsed.getOrElse("--file", "")
     val change: String = parsed.getOrElse("--change", "")
     if file.isEmpty then
       SubcommandWiring.emitStderr("ledger: --file is required\n")
@@ -512,15 +554,15 @@ object LedgerCmd:
           Outcome.Finding(msg)
         case Outcome.Ran(rows) =>
           // Filter by change, spec, baseline
-          val spec: String = parsed.getOrElse("--spec", "")
+          val spec: String     = parsed.getOrElse("--spec", "")
           val baseline: String = parsed.getOrElse("--baseline", "")
           val filtered: List[ujson.Value] = rows.filter { row =>
-            val rowChange: String = row("change").strOpt.getOrElse("")
-            val rowSpec: String = row("spec").strOpt.getOrElse("")
+            val rowChange: String   = row("change").strOpt.getOrElse("")
+            val rowSpec: String     = row("spec").strOpt.getOrElse("")
             val rowBaseline: String = row("baseline").strOpt.getOrElse("")
             rowChange == change &&
-              (spec.isEmpty || rowSpec == spec) &&
-              (baseline.isEmpty || rowBaseline == baseline)
+            (spec.isEmpty || rowSpec == spec) &&
+            (baseline.isEmpty || rowBaseline == baseline)
           }
           // Emit matching records on stdout
           val output: String = filtered.map(ujson.write(_)).mkString("\n")
@@ -589,16 +631,26 @@ object CheckpointCmd:
    * spec: cli-wiring — Requirement: The checkpoint subcommand writes the presentation marker and emits the report
    */
   def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--ledger", "--change", "--spec", "--baseline", "--rings", "--chain-state-json", "--format", "--change-dir", "--session")
+    val flags: Set[String] = Set(
+      "--ledger",
+      "--change",
+      "--spec",
+      "--baseline",
+      "--rings",
+      "--chain-state-json",
+      "--format",
+      "--change-dir",
+      "--session"
+    )
     SubcommandWiring.parseArgs(args, flags) match
       case Left(err) =>
         SubcommandWiring.emitStderr(s"checkpoint: ${err.offendingToken}\n")
         Outcome.Finding(s"arg parse error: ${err.offendingToken}")
       case Right(parsed) =>
-        val change: String = parsed.getOrElse("--change", "")
-        val spec: String = parsed.getOrElse("--spec", "")
+        val change: String  = parsed.getOrElse("--change", "")
+        val spec: String    = parsed.getOrElse("--spec", "")
         val session: String = parsed.getOrElse("--session", "")
-        val gitDir: String = parsed.getOrElse("--change-dir", ".")
+        val gitDir: String  = parsed.getOrElse("--change-dir", ".")
 
         if change.isEmpty then
           SubcommandWiring.emitStderr("checkpoint: --change is required\n")
@@ -615,7 +667,7 @@ object CheckpointCmd:
           // ran — not just that tests ran. An undischarged spec produces a
           // Finding (exit 1), not a marker.
           val ledgerFile: String = parsed.getOrElse("--ledger", "")
-          val baseline: String = parsed.getOrElse("--baseline", "")
+          val baseline: String   = parsed.getOrElse("--baseline", "")
           if ledgerFile.isEmpty then
             SubcommandWiring.emitStderr("checkpoint: --ledger is required\n")
             Outcome.Finding("--ledger is required")
@@ -630,21 +682,23 @@ object CheckpointCmd:
               case Outcome.Finding(msg) =>
                 Outcome.Finding(msg)
               case Outcome.Ran(rows) =>
-                val validated: Either[String, List[LedgerRecord]] = rows.foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
-                  case (Left(err), _) => Left(err)
-                  case (Right(acc), v) =>
-                    Validator.validate(v) match
-                      case Right(r)  => Right(r :: acc)
-                      case Left(viol) => Left(s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}")
-                }
+                val validated: Either[String, List[LedgerRecord]] =
+                  rows.foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
+                    case (Left(err), _) => Left(err)
+                    case (Right(acc), v) =>
+                      Validator.validate(v) match
+                        case Right(r) => Right(r :: acc)
+                        case Left(viol) =>
+                          Left(s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}")
+                  }
                 validated match
                   case Left(err) =>
                     SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — $err\n")
                     Outcome.Undetermined(err)
                   case Right(recordsRev) =>
-                    val records: List[LedgerRecord] = recordsRev.reverse
-                    val ledger: Ledger.LedgerData = Ledger.fromRecords(records)
-                    val lint: LintReport = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
+                    val records: List[LedgerRecord]        = recordsRev.reverse
+                    val ledger: Ledger.LedgerData          = Ledger.fromRecords(records)
+                    val lint: LintReport                   = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
                     val reqs: List[ChainState.Requirement] = Nil
                     ChainState.compute(lint, ledger, reqs, baseline, change) match
                       case Left(u) =>
@@ -653,38 +707,25 @@ object CheckpointCmd:
                       case Right(report) =>
                         if report.unresolved.nonEmpty then
                           val names: String = report.unresolved.map(u => s"${u.spec}/${u.requirement}").mkString(", ")
-                          SubcommandWiring.emitStdout(s"checkpoint: undischarged obligations for $change/$spec: $names\n")
+                          SubcommandWiring.emitStdout(
+                            s"checkpoint: undischarged obligations for $change/$spec: $names\n"
+                          )
                           Outcome.Finding(s"undischarged obligations: $names")
                         else
                           // All discharged — write the presentation marker
-                          val markerDir: java.nio.file.Path = Paths.get(gitDir, ".git", "verified-scala3-gate")
+                          val markerDir: java.nio.file.Path  = Paths.get(gitDir, ".git", "verified-scala3-gate")
                           val markerPath: java.nio.file.Path = markerDir.resolve(s"presentation-$change-$spec-$session")
                           try
                             Files.createDirectories(markerDir)
                             Files.write(markerPath, Array.emptyByteArray)
-                            SubcommandWiring.emitStdout(s"checkpoint: marker written for $change/$spec (session $session)\n")
+                            SubcommandWiring.emitStdout(
+                              s"checkpoint: marker written for $change/$spec (session $session)\n"
+                            )
                             Outcome.Ran(0)
                           catch
                             case e: java.io.IOException =>
                               SubcommandWiring.emitStderr(s"checkpoint: could not write marker: ${e.getMessage}\n")
                               Outcome.Undetermined(s"could not write marker: ${e.getMessage}")
-
-/** The `registry-check` subcommand — behavioural concept registry check. */
-object RegistryCheckCmd:
-  def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--change")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"registry-check: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        val change: String = parsed.getOrElse("--change", "")
-        if change.isEmpty then
-          SubcommandWiring.emitStderr("registry-check: --change is required\n")
-          Outcome.Finding("--change is required")
-        else
-          // Delegate to core registry-check logic (not yet implemented in core)
-          Outcome.Ran(0)
 
 /** The `reconcile` subcommand — obligation reconciliation. */
 object ReconcileCmd:
@@ -699,44 +740,7 @@ object ReconcileCmd:
         if change.isEmpty then
           SubcommandWiring.emitStderr("reconcile: --change is required\n")
           Outcome.Finding("--change is required")
-        else
-          Outcome.Ran(0)
-
-/** The `scan` subcommand — concept scanning. */
-object ScanCmd:
-  def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--module")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"scan: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        val module: String = parsed.getOrElse("--module", "")
-        if module.isEmpty then
-          SubcommandWiring.emitStderr("scan: --module is required\n")
-          Outcome.Finding("--module is required")
-        else
-          Outcome.Ran(0)
-
-/** The `removal-audit` subcommand — removed-code audit. */
-object RemovalAuditCmd:
-  def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--baseline", "--module")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"removal-audit: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        val baseline: String = parsed.getOrElse("--baseline", "")
-        val module: String = parsed.getOrElse("--module", "")
-        if baseline.isEmpty then
-          SubcommandWiring.emitStderr("removal-audit: --baseline is required\n")
-          Outcome.Finding("--baseline is required")
-        else if module.isEmpty then
-          SubcommandWiring.emitStderr("removal-audit: --module is required\n")
-          Outcome.Finding("--module is required")
-        else
-          Outcome.Ran(0)
+        else Outcome.Ran(0)
 
 /** The `danger-scan` subcommand — production code danger scan. */
 object DangerScanCmd:
@@ -761,40 +765,25 @@ object DangerScanCmd:
           // For now, report no hits (clean diff)
           Outcome.Ran(0)
 
-/** The `impact-scan` subcommand — public-type-change impact scan. */
-object ImpactScanCmd:
-  def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--type", "--module")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"impact-scan: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        val typeName: String = parsed.getOrElse("--type", "")
-        val module: String = parsed.getOrElse("--module", "")
-        if typeName.isEmpty then
-          SubcommandWiring.emitStderr("impact-scan: --type is required\n")
-          Outcome.Finding("--type is required")
-        else if module.isEmpty then
-          SubcommandWiring.emitStderr("impact-scan: --module is required\n")
-          Outcome.Finding("--module is required")
-        else
-          Outcome.Ran(0)
-
-/** The `metals` subcommand — LSP metals client (start/stop/call). */
+/** The `metals` subcommand — LSP metals client (start only; stop/call removed). */
 object MetalsCmd:
   enum SubAction:
-    case Start, Stop, Call
+    case Start
 
   /**
    * Wire the metals subcommand to delegate LSP framing to MetalsClient.
    *
+   * Only the `start` sub-action is retained; `stop` and `call` were never
+   * implemented and are now unrecognised sub-actions rather than silently
+   * clean stubs.
+   *
    * spec: cli-wiring — Requirement: The remaining subcommands wire to their core logic and emit byte-compatible stdout
    * spec: cli-wiring — Scenario: metals start launches the LSP server
+   * spec: cli-entrypoint-contract — Scenario: Edge case — the retained sub-action of a partially-ported tool still resolves
    */
   def run(args: Array[String]): Outcome[Int] =
     if args.isEmpty then
-      SubcommandWiring.emitStderr("metals: subaction required (start, stop, call)\n")
+      SubcommandWiring.emitStderr("metals: subaction required (start)\n")
       Outcome.Finding("subaction required")
     else
       args(0) match
@@ -805,62 +794,13 @@ object MetalsCmd:
               if session.initialized then
                 SubcommandWiring.emitStdout("metals: server started\n")
                 Outcome.Ran(0)
-              else
-                Outcome.Undetermined("metals: server not initialized")
+              else Outcome.Undetermined("metals: server not initialized")
             case Left(err) =>
               SubcommandWiring.emitStderr(s"metals: ${err.detail}\n")
               Outcome.Undetermined(err.detail)
-        case "stop" =>
-          SubcommandWiring.emitStdout("metals: server stopped\n")
-          Outcome.Ran(0)
-        case "call" =>
-          val flags: Set[String] = Set("--method", "--params")
-          SubcommandWiring.parseArgs(args.drop(1), flags) match
-            case Left(err) =>
-              SubcommandWiring.emitStderr(s"metals: ${err.offendingToken}\n")
-              Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-            case Right(parsed) =>
-              val method: String = parsed.getOrElse("--method", "")
-              if method.isEmpty then
-                SubcommandWiring.emitStderr("metals: --method is required for call\n")
-                Outcome.Finding("--method is required")
-              else
-                Outcome.Ran(0)
         case other => // danger-scan:allow string-rejection — unrecognized subaction maps to Finding (error), never a valid SubAction
           SubcommandWiring.emitStderr(s"metals: unknown subaction '$other'\n")
           Outcome.Finding(s"unknown subaction: $other")
-
-/** The `concept-scanner` subcommand — scalameta concept extraction. */
-object ConceptScannerCmd:
-  def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--module")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"concept-scanner: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        val module: String = parsed.getOrElse("--module", "")
-        if module.isEmpty then
-          SubcommandWiring.emitStderr("concept-scanner: --module is required\n")
-          Outcome.Finding("--module is required")
-        else
-          Outcome.Ran(0)
-
-/** The `graph` subcommand — graph extraction. */
-object GraphCmd:
-  def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--module", "--format")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"graph: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        val module: String = parsed.getOrElse("--module", "")
-        if module.isEmpty then
-          SubcommandWiring.emitStderr("graph: --module is required\n")
-          Outcome.Finding("--module is required")
-        else
-          Outcome.Ran(0)
 
 /** The `install-skills` subcommand — skill installation. */
 object InstallSkillsCmd:
@@ -883,7 +823,7 @@ object InstallSkillsCmd:
           Outcome.Finding("--dir is required")
         else
           // Copy skill files to agent directories
-          val targets: List[String] = List(".claude/skills", ".pi/skills", ".devin/skills")
+          val targets: List[String]         = List(".claude/skills", ".pi/skills", ".devin/skills")
           val sourceDir: java.nio.file.Path = Paths.get(dir)
           if !Files.isDirectory(sourceDir) then
             SubcommandWiring.emitStderr(s"install-skills: $dir is not a directory\n")

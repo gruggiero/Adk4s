@@ -17,22 +17,23 @@ object HelpRegistry:
   /** Returns the `HelpOutput` for the given subcommand. */
   def helpFor(sub: Subcommand): HelpOutput =
     sub match
-      case Subcommand.Gate           => gateHelp
-      case Subcommand.SpecLint       => specLintHelp
-      case Subcommand.ChainState     => chainStateHelp
-      case Subcommand.Ledger         => ledgerHelp
-      case Subcommand.Checkpoint     => checkpointHelp
-      case Subcommand.RegistryCheck  => registryCheckHelp
-      case Subcommand.Reconcile      => reconcileHelp
-      case Subcommand.Scan           => scanHelp
-      case Subcommand.RemovalAudit   => removalAuditHelp
-      case Subcommand.DangerScan     => dangerScanHelp
-      case Subcommand.ImpactScan     => impactScanHelp
-      case Subcommand.Metals         => metalsHelp
-      case Subcommand.ConceptScanner => conceptScannerHelp
-      case Subcommand.Graph          => graphHelp
-      case Subcommand.InstallSkills  => installSkillsHelp
-      case Subcommand.InstallHooks   => installHooksHelp
+      case Subcommand.Gate          => gateHelp
+      case Subcommand.SpecLint      => specLintHelp
+      case Subcommand.ChainState    => chainStateHelp
+      case Subcommand.Ledger        => ledgerHelp
+      case Subcommand.Checkpoint    => checkpointHelp
+      case Subcommand.Reconcile     => reconcileHelp
+      case Subcommand.DangerScan    => dangerScanHelp
+      case Subcommand.Metals        => metalsHelp
+      case Subcommand.InstallSkills => installSkillsHelp
+      case Subcommand.InstallHooks  => installHooksHelp
+
+  /** Renders top-level usage listing all available subcommands. */
+  def topLevelUsage: String =
+    val subcommands: String = Subcommand.values
+      .map(sub => s"  ${Subcommand.cliName(sub)}")
+      .mkString("\n")
+    s"probatio <subcommand> [options]\n\nSubcommands:\n$subcommands\n\nRun 'probatio <subcommand> --help' for details.\n"
 
   private val gateHelp: HelpOutput = HelpOutput(
     Subcommand.Gate,
@@ -90,35 +91,10 @@ object HelpRegistry:
     HelpOutput.threeWayExit
   )
 
-  private val registryCheckHelp: HelpOutput = HelpOutput(
-    Subcommand.RegistryCheck,
-    List(
-      FlagHelp("--change", "change name", "required")
-    ),
-    HelpOutput.threeWayExit
-  )
-
   private val reconcileHelp: HelpOutput = HelpOutput(
     Subcommand.Reconcile,
     List(
       FlagHelp("--change", "change name", "required")
-    ),
-    HelpOutput.threeWayExit
-  )
-
-  private val scanHelp: HelpOutput = HelpOutput(
-    Subcommand.Scan,
-    List(
-      FlagHelp("--module", "module to scan", "required")
-    ),
-    HelpOutput.threeWayExit
-  )
-
-  private val removalAuditHelp: HelpOutput = HelpOutput(
-    Subcommand.RemovalAudit,
-    List(
-      FlagHelp("--baseline", "baseline SHA", "required"),
-      FlagHelp("--module", "module to audit", "required")
     ),
     HelpOutput.threeWayExit
   )
@@ -132,40 +108,12 @@ object HelpRegistry:
     HelpOutput.threeWayExit
   )
 
-  private val impactScanHelp: HelpOutput = HelpOutput(
-    Subcommand.ImpactScan,
-    List(
-      FlagHelp("--type", "public type name", "required"),
-      FlagHelp("--module", "module to scan", "required")
-    ),
-    HelpOutput.threeWayExit
-  )
-
   private val metalsHelp: HelpOutput = HelpOutput(
     Subcommand.Metals,
     List(
       FlagHelp("start", "start the metals server", "none"),
-      FlagHelp("stop", "stop the metals server", "none"),
-      FlagHelp("call", "call a metals method", "none"),
       FlagHelp("--method", "LSP method name", "none"),
       FlagHelp("--params", "JSON params string", "none")
-    ),
-    HelpOutput.threeWayExit
-  )
-
-  private val conceptScannerHelp: HelpOutput = HelpOutput(
-    Subcommand.ConceptScanner,
-    List(
-      FlagHelp("--module", "module to scan", "required")
-    ),
-    HelpOutput.threeWayExit
-  )
-
-  private val graphHelp: HelpOutput = HelpOutput(
-    Subcommand.Graph,
-    List(
-      FlagHelp("--module", "module to extract graph from", "required"),
-      FlagHelp("--format", "output format (dot, json)", "dot")
     ),
     HelpOutput.threeWayExit
   )

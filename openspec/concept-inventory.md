@@ -589,17 +589,19 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `MetalsClient.LspMessage` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `MetalsClient.MetalsError` | sealed trait (FramingError, HandshakeFailed, Timeout) | `org.sinemenda.probatio.core` | shipped |
 | `MetalsClient.MetalsSession` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `Subcommand` | enum (16 cases: Gate, SpecLint, ChainState, Ledger, Checkpoint, RegistryCheck, Reconcile, Scan, RemovalAudit, DangerScan, ImpactScan, Metals, ConceptScanner, Graph, InstallSkills, InstallHooks) | `org.sinemenda.probatio.cli` | shipped |
+| `Subcommand` | enum (10 cases: Gate, SpecLint, ChainState, Ledger, Checkpoint, Reconcile, DangerScan, Metals, InstallSkills, InstallHooks — shrunk from 16 by removing 6 unported tools: RegistryCheck, Scan, RemovalAudit, ImpactScan, ConceptScanner, Graph) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
 | `ExitCode` | enum (3 cases: Clean, Finding, Undetermined) | `org.sinemenda.probatio.cli` | shipped |
 | `CliError` | sealed abstract class (UnknownSubcommand, MissingValue, InvalidEnum, UnknownFlag) | `org.sinemenda.probatio.cli` | shipped |
-| `MulticallDispatch` | object (resolve: argv0 + argv1 → Either[CliError, Subcommand]) | `org.sinemenda.probatio.cli` | shipped |
+| `MulticallDispatch` | object (resolveAndSplit: InvocationName + ProgramArgs → Either[CliError, (Subcommand, ProgramArgs)] — replaces old resolve(argv0, argv1)) | `org.sinemenda.probatio.cli` | shipped; updated by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
+| `ProgramArgs` | opaque type over List[String] (constructible only via fromRuntime/fromFixture — no public apply) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/cli-entrypoint-contract` |
+| `InvocationName` | opaque type over String (constructible only via fromRuntime: Either[String, InvocationName] — no public apply) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/cli-entrypoint-contract` |
 | `HelpOutput` | final case class (subcommand, flags: List[FlagHelp], exitCodes: List[ExitCodeDoc]) | `org.sinemenda.probatio.cli` | shipped |
 | `HelpRegistry` | object (helpFor: Subcommand → HelpOutput) | `org.sinemenda.probatio.cli` | shipped |
-| `ProbatioMain` | object (`dispatch`: Array[String] → Int — multicall entry point; `main`: Array[String] → Unit — JVM/native entry point, added by spec:complete-probatio-porting/cli-wiring, recorded 2026-08-29) | `org.sinemenda.probatio.cli` | shipped |
+| `ProbatioMain` | object (`dispatch`: (InvocationName, ProgramArgs) → Int — multicall entry point; `main`: Array[String] → Unit — JVM/native entry point, extracts invocation name from runtime) | `org.sinemenda.probatio.cli` | shipped; updated by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
 | `FlagHelp` | final case class (name, description, default) | `org.sinemenda.probatio.cli` | shipped |
 | `ExitCodeDoc` | final case class (code, label, condition) | `org.sinemenda.probatio.cli` | shipped |
 | `CliErrorRender` | object (render: CliError → String) | `org.sinemenda.probatio.cli` | shipped |
-| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `RegistryCheckCmd` / `ReconcileCmd` / `ScanCmd` / `RemovalAuditCmd` / `DangerScanCmd` / `ImpactScanCmd` / `MetalsCmd` / `ConceptScannerCmd` / `GraphCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints) | `org.sinemenda.probatio.cli` | shipped |
+| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `ReconcileCmd` / `DangerScanCmd` / `MetalsCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints; 6 unported entrypoints removed: RegistryCheckCmd, ScanCmd, RemovalAuditCmd, ImpactScanCmd, ConceptScannerCmd, GraphCmd) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
 
 ### port-scanner-to-probatio change — sbt-plugin spec concepts
 

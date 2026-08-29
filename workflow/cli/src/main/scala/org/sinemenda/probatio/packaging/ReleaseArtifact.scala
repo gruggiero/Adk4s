@@ -47,7 +47,7 @@ enum ReleaseArtifact:
   def isChecksum: Boolean =
     this match
       case ReleaseArtifact.Checksum(_) => true
-      case _                           => false // danger-scan:allow type-rejection — non-matching variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — non-matching variant returns false, never a valid value
 
 object ReleaseArtifact:
   given ReadWriter[ReleaseArtifact] = readwriter[String].bimap(
@@ -63,5 +63,8 @@ object ReleaseArtifact:
         case str if str.startsWith("Checksum(") =>
           val name: String = str.stripPrefix("Checksum(").stripSuffix(")")
           ReleaseArtifact.Checksum(name)
-        case other => sys.error(s"unknown artifact: $other") // danger-scan:allow type-rejection — unknown variant crashes, never maps to valid value
+        case other =>
+          sys.error(
+            s"unknown artifact: $other"
+          ) // danger-scan:allow type-rejection — unknown variant crashes, never maps to valid value
   )

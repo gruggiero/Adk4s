@@ -4,7 +4,7 @@ import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.Validator
 
 import java.time.Instant
-import java.nio.file.{Files, Paths, StandardOpenOption}
+import java.nio.file.{ Files, Paths, StandardOpenOption }
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
@@ -64,12 +64,9 @@ object SubcommandWiring:
     path: String
   ): Outcome[List[ujson.Value]] =
     val filePath: java.nio.file.Path = Paths.get(path)
-    if !Files.exists(filePath) then
-      Outcome.Undetermined(s"UNDETERMINED — no ledger at $path")
-    else if !Files.isRegularFile(filePath) then
-      Outcome.Undetermined(s"UNDETERMINED — $path is not a regular file")
-    else if !Files.isReadable(filePath) then
-      Outcome.Undetermined(s"UNDETERMINED — $path is not readable")
+    if !Files.exists(filePath) then Outcome.Undetermined(s"UNDETERMINED — no ledger at $path")
+    else if !Files.isRegularFile(filePath) then Outcome.Undetermined(s"UNDETERMINED — $path is not a regular file")
+    else if !Files.isReadable(filePath) then Outcome.Undetermined(s"UNDETERMINED — $path is not readable")
     else
       Using.resource(Files.lines(filePath)) { lines =>
         val lineList: List[String] = lines.iterator().asScala.toList
@@ -95,15 +92,16 @@ object SubcommandWiring:
     lines match
       case Nil => Right(acc.reverse)
       case line :: rest =>
-        if line.isEmpty then
-          Left(s"line ${index + 1} is empty; a ledger holds one record per line")
+        if line.isEmpty then Left(s"line ${index + 1} is empty; a ledger holds one record per line")
         else
           try
             val json: ujson.Value = ujson.read(line)
             // Validate against the 15-clause contract
             Validator.validateFull(json) match
               case Left(violation) =>
-                Left(s"line ${index + 1} violates the record contract: clause ${violation.clauseIndex} — ${violation.description}")
+                Left(
+                  s"line ${index + 1} violates the record contract: clause ${violation.clauseIndex} — ${violation.description}"
+                )
               case Right(_) =>
                 parseLedgerLinesLoop(rest, index + 1, json :: acc, path)
           catch
@@ -127,8 +125,7 @@ object SubcommandWiring:
       // Ensure file ends with newline before appending
       if Files.exists(filePath) && Files.size(filePath) > 0 then
         val lastByte: Byte = Files.readAllBytes(filePath).last
-        if lastByte != '\n'.toByte then
-          Files.write(filePath, "\n".getBytes, StandardOpenOption.APPEND)
+        if lastByte != '\n'.toByte then Files.write(filePath, "\n".getBytes, StandardOpenOption.APPEND)
       Files.write(filePath, (line + "\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
       Outcome.Ran(())
     catch
