@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# probatio-jar-launcher.sh — JAR fallback launcher for the probatio binary.
+#
+# Resolves the assembly JAR relative to this script's location and invokes
+# it with java -jar. Used when no native-image binary is available.
+#
+# spec: hook-cutover — Requirement: Each bash hook is replaced by a 3-line exec shim pointing to the probatio binary
+
+# Resolve the repo root from this script's location.
+# Script is at openspec/schemas/verified-scala3/bin/probatio
+# Repo root is 4 levels up.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+JAR="$REPO_ROOT/workflow/cli/target/scala-3.8.4/probatio-cli-assembly-0.1.0-SNAPSHOT.jar"
+
+exec java -jar "$JAR" "$@"

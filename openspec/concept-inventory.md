@@ -661,8 +661,15 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
-| `OracleGreenGate` | object (apply: (Stage, SeamConfiguration) → Boolean — gates stage transitions on bats oracle green; delegates to OracleGreenCheck.runOracle) | `org.sinemenda.probatio.migration` | test-only |
+| `OracleGreenGate` | object (apply: (Stage, SeamConfiguration) → Boolean — gates stage transitions on bats oracle green; delegates to OracleGreenCheck.runOracle; also apply: (ToolId, SeamConfiguration) → Boolean for per-swap gating) | `org.sinemenda.probatio.migration` | test-only |
 | `Stage` | enum (Wiring, Cutover — migration stages for oracle-green gating) | `org.sinemenda.probatio.migration` | test-only |
+
+### complete-probatio-porting change — hook-cutover spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ShimSwap` | final case class (tool: ToolId, predecessorPath, shimPath, binaryPath, oracleGreen, timestamp — immutable audit trail entry for one shim swap) | `org.sinemenda.probatio.migration` | test-only |
+| `SwapOrder` | enum (LedgerFirst, ChainState, SpecLint, DangerScan, Reconcile, GateLast — R-M3 dependency order for shim swaps; gate is always last; swapOrder, isLast, indexOf) | `org.sinemenda.probatio.migration` | test-only |
 
 ### port-scanner-to-probatio change — non-goals-guard spec concepts
 

@@ -1,397 +1,191 @@
 # Spec: Migration Protocol
 
-<!-- Delta spec for the port-scanner-to-probatio change. Defines HOW the
-     port is proven safe — the strangler migration protocol. The bats oracle
-     is the acceptance suite; the existing *_OVERRIDE env seams are the
-     swap-points; conformance between Scala validators and the executable
-     .jq contracts is a property test; hook shims swap in dependency order;
-     exactly one implementation is active per tool during migration; skill
-     documents update atomically with each tool swap. Covers R-M1…R-M5. -->
+<!-- Delta spec for the complete-probatio-porting change. Restates R-M1–R-M5
+     as the active acceptance protocol for the strangler migration from bash
+     tooling to the probatio binary. These requirements were originally
+     introduced by the archived port-scanner-to-probatio change; this delta
+     re-establishes them as the active protocol for the remaining work
+     (Stage 2 wiring + Stage 3 cutover) and adds the oracle-green gate as
+     a mandatory checkpoint between stages. -->
 
 ## Concepts Used (behavioral)
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Bats oracle | The porting acceptance suite that SHALL pass unmodified at every step; the regression oracle whose green run at a seam proves a step complete | `openspec/schemas/verified-scala3/tests/*.bats` |
-| `*_OVERRIDE` env seams | The strangler swap-points: environment variables that redirect a tool invocation to an alternate implementation, enabling incremental substitution without touching the oracle | `openspec/schemas/verified-scala3/hooks/gate.sh` (seam declarations) |
-| Executable jq contracts | The single statement of record/report/payload formats; conformance oracles for the ported validators, retained as fixtures until conformance is green for a full release cycle | `openspec/schemas/verified-scala3/scanner/{ledger-record-contract,chain-state-report-contract,gate-hookjson-contract}.jq` |
+| Strangler migration protocol (NEW — created by this spec) | This spec IS the strangler migration protocol — it restates the acceptance criteria (R-M1–R-M5) that govern the incremental port from bash to binary | `openspec/concepts/strangler-migration-protocol.md` |
+| Conformance property-test contract (NEW — created by this spec) | R-M2 (conformance property tests) is the bidirectional equivalence between a ported validator and an executable contract — this spec restates it as an active requirement | `openspec/concepts/conformance-property-test-contract.md` |
 
 This spec does not alter any concept's actions, state, or synchronizations.
-No concept file updates are required. The bats oracle, `*_OVERRIDE` seams,
-and jq contracts are behavioral contracts reused as-is — the migration
-protocol consumes them, it does not modify them.
+The strangler migration protocol and conformance property-test contract are
+behavioral contracts reused as-is. This delta re-establishes their
+acceptance criteria as active requirements for the remaining work.
 
 ## Concepts Used (from inventory)
 
 | Concept | Kind | Package |
 |---------|------|---------|
-| — | — | — |
-
-R-ARCH1 isolates the probatio tooling subprojects from all adk4s code — no
-library module, test utility, or shared source is reused. The migration
-protocol operates entirely on behavioral contracts (the oracle, seams, and
-jq contracts listed above), not on adk4s type-inventory entries. The
-"Concepts Used (from inventory)" table is intentionally empty.
+| `Outcome[+A]` | enum (Ran, Finding, Undetermined) | `org.sinemenda.probatio.core` |
+| `SeamConfiguration` | final case class (test-only) | `org.sinemenda.probatio.migration` |
+| `MigrationState` | final case class (test-only) | `org.sinemenda.probatio.migration` |
+| `ToolId` | enum (SpecLint, ChainState, DangerScan, Reconcile, Gate) | `org.sinemenda.probatio.migration` |
+| `OracleGreenCheck` | object (runOracle) | `org.sinemenda.probatio.migration` |
 
 ## Concepts Introduced (new)
 
 | Concept | Kind | Description |
 |---------|------|-------------|
-| Strangler migration protocol | Behavioral concept | The oracle-driven incremental porting protocol: a step is complete when the acceptance oracle is green with the ported tool substituted at its seam, with all other tools still on the predecessor implementation. Creates the strangler pattern as a first-class behavioral concept for this schema. |
-| Conformance property-test contract | Behavioral concept | The bidirectional equivalence between a ported validator and an executable contract over a generated corpus: the validator accepts a record if and only if the contract accepts it. Not a spot check — a property over satisfying and violating records for every clause. |
-| Exactly-one-implementation invariant | Behavioral concept | During migration, precisely one implementation per tool is active at any commit — no dual bash+scala installations. The install step asserts this via the shim's resolved target. |
-| Atomic skill-doc update | Behavioral concept | Skill documents are updated in the same commit as the tool swap they reference; no commit on main carries a skill that points at a non-existent path. |
+| `OracleGreenGate` | object | The gating function that blocks a stage transition until the bats oracle is green with the ported tools substituted at their seams. `apply(stage, seamConfig): Boolean` — returns true only when every bats test passes under the given seam configuration. This is the mandatory checkpoint between Stage 2 (wiring) and Stage 3 (cutover), and between each swap within Stage 3. |
 
 ## ADDED Requirements
 
-### Requirement: Bats oracle is the porting acceptance suite
+### Requirement: The bats oracle is the porting acceptance suite
 
-The system SHALL designate the existing bats oracle as the porting
-acceptance suite, and it SHALL pass unmodified at every step of the
-incremental port. The existing environment-variable override seams are the
-swap-points: a migration step is complete when the oracle is green with
-the ported tool substituted at its seam and every other tool still running
-on the predecessor implementation. The oracle SHALL NOT be modified to
-accommodate a ported tool — a ported tool that requires an oracle change
-is a behavior delta, not a port, and is rejected by the feature freeze.
+The bats oracle (17 `.bats` files under `openspec/schemas/verified-scala3/tests/`) SHALL be the acceptance suite for the strangler migration. A wiring step or shim swap is complete only when the oracle is green — every bats test passes — with the ported tool substituted at its `*_OVERRIDE` seam. The oracle MUST pass unmodified: no test may be added, removed, or altered to accommodate a porting defect. A test that fails after substitution is a regression, not a test bug.
 
-**Given** the acceptance oracle covering the workflow's correctness
-invariants, and a set of override seams that redirect individual tool
-invocations to alternate implementations
-**When** a ported tool is substituted at its seam and the oracle is
-executed
-**Then** the oracle passes without modification — every test case produces
-the same pass/fail outcome as before the substitution
+**Given** a ported subcommand wired in the CLI entrypoint module and the corresponding `*_OVERRIDE` env var set to invoke the probatio binary
+**When** the bats oracle runs
+**Then** every test in every `.bats` file passes, and no `.bats` file has been modified from its predecessor-tracked version
 
-**Rationale**: The oracle is the only artifact that can detect a silent
-behavior delta in a ported tool. If the oracle is modified to make a port
-pass, the oracle ceases to be an independent witness and the port's
-correctness claim becomes circular. The override seams already exist in
-the predecessor implementation and are used by the oracle itself for test
-isolation — reusing them as swap-points means the porting protocol adds
-zero new test infrastructure.
+**Rationale**: The oracle was written from the specs before the bash implementations existed — it is an independent witness, not a mirror of the implementation. Modifying it to accommodate a porting defect would destroy its independence and make the migration self-certifying. This is R-M1 from the archived `port-scanner-to-probatio` change, re-established as active.
 
-#### Scenario: Ported tool passes oracle at its seam
+#### Scenario: The oracle passes with all tools on the predecessor
 
-**Given** a ported implementation of one tool and the predecessor
-implementation of every other tool
-**When** the ported tool is substituted at its override seam and the full
-oracle is executed
-**Then** every test passes and the oracle's source is byte-identical to
-its pre-port state
+**Given** no `*_OVERRIDE` env vars set (all tools on the predecessor bash scripts)
+**When** the bats oracle runs
+**Then** every test passes (baseline — the oracle is green before the migration begins)
 
-#### Scenario: Oracle modification rejected as a behavior delta
+#### Scenario: The oracle passes with one tool ported
 
-**Given** a ported tool whose output differs from the predecessor on a
-path the oracle exercises
-**When** the ported tool is substituted at its seam and the oracle is
-executed
-**Then** the oracle fails on the differing path, and the failure is
-classified as a behavior delta (rejected by the feature freeze) rather
-than resolved by editing the oracle
+**Given** `CHAIN_STATE_OVERRIDE` set to invoke the probatio binary's `chain-state` subcommand and all other tools on the predecessor
+**When** the bats oracle runs
+**Then** every test passes (the ported chain-state produces the same outcomes as the predecessor)
 
-#### Scenario: Partial migration — mixed predecessor and ported tools
+#### Scenario: A regression is a porting defect, not a test bug
 
-**Given** two tools ported and substituted at their seams, with the
-remaining tools still on the predecessor implementation
-**When** the full oracle is executed
-**Then** the oracle passes, proving the ported and predecessor tools
-interoperate correctly at the protocol boundary
+**Given** `SPEC_LINT_OVERRIDE` set to invoke the probatio binary's `spec-lint` subcommand and one bats test fails
+**When** the regression is investigated
+**Then** the failure is attributed to the ported spec-lint, not to the bats test, and the swap is aborted
 
-### Requirement: Conformance between validators and executable contracts is a property test
+### Requirement: Conformance property tests verify bidirectional equivalence
 
-The system SHALL prove conformance between each ported Scala validator and
-its corresponding executable contract as a property test over a generated
-corpus, not as a spot check. For every clause of every contract, the
-system SHALL generate records that satisfy the clause and records that
-violate it, and SHALL assert that the validator accepts a record if and
-only if the executable contract accepts the same record. The corpus SHALL
-include the existing fixture set plus derived generators covering each
-clause's satisfying and violating boundaries. The executable contract
-files SHALL be retained as conformance fixtures until conformance is green
-in CI for one full release cycle, and SHALL be deleted only after that
-cycle completes.
+Each ported validator (ledger record, chain-state report, gate hook-json payload) SHALL have a conformance property test that proves bidirectional equivalence with the executable `.jq` contract: every input the ported validator accepts, the contract also accepts; every input the ported validator rejects, the contract also rejects. The property test SHALL use a constructive generator covering each clause independently, augmented with the existing fixture corpus. The property test SHALL run as a Hedgehog property in the `probatio-cli` test suite.
 
-**Given** a ported validator for a record format, the corresponding
-executable contract, and a corpus of records satisfying and violating
-each clause of that contract
-**When** each record in the corpus is evaluated by both the validator and
-the executable contract
-**Then** the validator's acceptance of a record is equivalent to the
-contract's acceptance of the same record, for every record in the corpus
-and every clause in the contract
+**Given** a ported ledger validator and the `ledger-record-contract.jq` executable contract
+**When** the conformance property test runs with a generated corpus of records satisfying and violating each of the 15 clauses
+**Then** the ported validator and the contract agree on every record (both accept or both reject)
 
-**Rationale**: A spot check of a few hand-picked records cannot prove
-equivalence — it can only fail to disprove it. A property test over
-generated satisfying and violating records for every clause is the
-minimum evidence that the validator and the contract agree on the
-boundary of every clause. Retaining the executable contracts as fixtures
-for a full release cycle ensures that any regression in the validator is
-caught by the contract before the contract is removed.
+**Rationale**: A ported validator that accepts records the contract rejects (or vice versa) is a silent drift from the approved format. The bidirectional property catches both directions of drift. This is R-M2 from the archived `port-scanner-to-probatio` change, re-established as active.
 
-#### Scenario: Validator accepts exactly what the contract accepts
+#### Scenario: The ledger conformance property passes
 
-**Given** a generated record that satisfies all clauses of the contract
-**When** the record is evaluated by the validator and by the executable
-contract
-**Then** the validator returns a successful result and the executable
-contract exits zero
+**Given** the `LedgerCmdConformanceSpec` Hedgehog property and the `ledger-record-contract.jq` contract
+**When** the property runs with `genLedgerRecord` (constructive, 15-clause coverage)
+**Then** the property holds for all generated records
 
-#### Scenario: Validator rejects exactly what the contract rejects
+#### Scenario: The chain-state conformance property passes
 
-**Given** a generated record that violates one clause of the contract
-**When** the record is evaluated by the validator and by the executable
-contract
-**Then** the validator returns a failure naming the violated clause and
-the executable contract exits non-zero
+**Given** the `ChainStateCmdConformanceSpec` Hedgehog property and the `chain-state-report-contract.jq` contract
+**When** the property runs with `genChangeState` (constructive, varying discharge states)
+**Then** the property holds for all generated change states
 
-#### Scenario: Contract files retained for a full release cycle
+### Requirement: Exactly one implementation is active at each seam
 
-**Given** conformance property tests green in CI across one full release
-cycle
-**When** the release cycle completes
-**Then** the executable contract files are deleted and the validators
-become the sole statement of the record formats
+At each `*_OVERRIDE` seam, exactly one implementation SHALL be active: either the predecessor bash script or the probatio binary. A configuration where both are active (e.g. the shim points to the binary but the predecessor script is still invoked directly) is a dual-implementation defect. The seam configuration SHALL be recorded in `MigrationState` and verified by the `OracleGreenCheck` before each swap.
 
-#### Scenario: Contract files not deleted prematurely
+**Given** a seam configuration where ChainState is ported and SpecLint is on the predecessor
+**When** the migration state is inspected
+**Then** the migration state record shows exactly one implementation per seam, and no seam has both implementations active
 
-**Given** conformance property tests green in CI for less than one full
-release cycle
-**When** a request to delete the executable contract files is evaluated
-**Then** the deletion is refused — the contracts must remain as
-conformance fixtures until the full cycle completes
+**Rationale**: A dual-implementation configuration is a race condition — two tools with different behaviors competing for the same seam. This is R-M4 from the archived `port-scanner-to-probatio` change, re-established as active.
 
-### Requirement: Hook shims are swapped in dependency order after oracle clearance
+#### Scenario: A single-tool ported configuration is well-formed
 
-The system SHALL swap hook shims to the ported implementation only after
-the last subcommand behind each shim has passed the acceptance oracle at
-its seam. The swap order SHALL proceed from the purest, best-covered
-tools to the highest-risk, highest-blast-radius tool: the ledger and
-chain-state tools first; then the checkpoint, registry-check, and
-reconcile tools; then the spec-lint tool (ported together with the typed
-lint-report seam it produces); then the metals client; and the gate tool
-last. A shim SHALL NOT be swapped before every subcommand it dispatches
-has a green oracle run against the ported binary.
+**Given** `SeamConfiguration(Set(ToolId.ChainState))`
+**When** the migration state is inspected
+**Then** ChainState is ported and all other tools are on the predecessor — exactly one implementation per seam
 
-**Given** a hook shim that dispatches to one or more subcommands, and an
-ordered migration sequence
-**When** the last subcommand behind the shim passes the acceptance oracle
-at its seam
-**Then** the shim is swapped to dispatch to the ported binary, and not
-before
+#### Scenario: A dual-implementation configuration is rejected
 
-**Rationale**: A shim is the last integration point — swapping it before
-the subcommands behind it are proven creates a window where the harness
-calls an unproven implementation in production. The dependency order
-minimizes blast radius: the tools with the purest logic and deepest
-oracle coverage migrate first, so by the time the gate (per-turn,
-highest-stranding-risk) migrates, every tool it calls has already been
-proven at its seam.
+**Given** a seam where both the predecessor script and the binary are invoked (e.g. the shim points to the binary but the `*_OVERRIDE` env var also points to the predecessor)
+**When** the migration state is inspected
+**Then** the configuration is rejected as a dual-implementation defect
 
-#### Scenario: Ledger and chain-state shims swap first
+### Requirement: The oracle-green gate is a mandatory checkpoint between stages
 
-**Given** the ledger and chain-state subcommands have passed the
-acceptance oracle at their seams
-**When** the shim swap is evaluated
-**Then** the ledger and chain-state shims are swapped to the ported
-binary, and no other shim is swapped before them
+The migration SHALL NOT proceed from Stage 2 (wiring) to Stage 3 (cutover) until the `OracleGreenGate` returns true — the bats oracle is green with every ported subcommand substituted at its seam. The migration SHALL NOT proceed from one swap to the next within Stage 3 until the `OracleGreenGate` returns true for the current swap. A stage transition without oracle clearance is an unverified change to a blocking hook.
 
-#### Scenario: Gate shim swaps last
+**Given** Stage 2 is complete (all 16 subcommands wired) and the bats oracle is green with every `*_OVERRIDE` set
+**When** the `OracleGreenGate` is evaluated
+**Then** it returns true and Stage 3 (cutover) may begin
 
-**Given** every other subcommand has passed the acceptance oracle at its
-seam and its shim has been swapped
-**When** the gate shim swap is evaluated
-**Then** the gate shim is swapped to the ported binary — it is the final
-shim in the ordered sequence
+**Rationale**: The oracle-green gate is the strangler migration's acceptance criterion. A stage transition without it is an unverified change — the gate could silently allow blocked edits after cutover. This is R-M3 from the archived `port-scanner-to-probatio` change, re-established as active with the added requirement of a mandatory checkpoint between stages.
 
-#### Scenario: Shim swap refused before subcommand clearance
+#### Scenario: Stage 2 to Stage 3 transition is gated
 
-**Given** a shim whose last subcommand has not yet passed the acceptance
-oracle at its seam
-**When** a request to swap the shim is evaluated
-**Then** the swap is refused — the shim remains on the predecessor
-implementation until the subcommand is proven
+**Given** Stage 2 is complete but one bats test fails with `SPEC_LINT_OVERRIDE` set
+**When** the `OracleGreenGate` is evaluated
+**Then** it returns false and Stage 3 does not begin
 
-### Requirement: Exactly one implementation per tool during migration
+#### Scenario: Stage 3 swap-to-swap transition is gated
 
-During migration, the installed schema SHALL have exactly one
-implementation per tool active at any commit. No bash and scala duplicate
-installations SHALL coexist for the same tool. The installation step
-SHALL assert precisely-one by resolving each shim's target and verifying
-that exactly one implementation is reachable — zero implementations is a
-broken install, and two implementations is an ambiguous install. The
-assertion SHALL fail the install in both cases.
+**Given** the ChainState shim has been swapped and the bats oracle is green
+**When** the `OracleGreenGate` is evaluated for the SpecLint swap
+**Then** it returns true and the SpecLint swap may proceed
 
-**Given** an installation step that installs tool shims, and a migration
-state where some tools are on the predecessor implementation and some are
-on the ported implementation
-**When** the installation step resolves each shim's target
-**Then** exactly one implementation is reachable per tool — no tool has
-zero and no tool has two
+### Requirement: A recorded limitation is re-established before it is relied upon
 
-**Rationale**: A dual installation creates an ambiguity about which
-implementation the harness will invoke — the answer depends on PATH
-ordering, symlink resolution, or environment variables, none of which
-are visible to the operator. A missing installation is a silent failure
-where the harness invokes a non-existent path. Both are the "corrupt
-ledger reads as clean" defect class in a different guise: the install
-appears successful but the runtime is not what the operator expects.
+The R-M1–R-M5 requirements were originally established by the archived `port-scanner-to-probatio` change (2026-08-25). This delta re-establishes them as active requirements for the `complete-probatio-porting` change. A later change that relies on the migration protocol MUST re-test these requirements rather than inheriting them — the oracle must be re-run, the conformance properties must be re-verified, and the seam configuration must be re-inspected.
 
-#### Scenario: Single implementation per tool after partial migration
+**Given** the `complete-probatio-porting` change relies on the migration protocol established by the archived `port-scanner-to-probatio` change
+**When** the change is implemented
+**Then** R-M1–R-M5 are re-tested in this session: the oracle is re-run, the conformance properties are re-verified, and the seam configuration is re-inspected
 
-**Given** a partial migration where three tools are on the ported
-implementation and the rest are on the predecessor implementation
-**When** the installation step resolves each shim's target
-**Then** each tool resolves to exactly one implementation — three to the
-ported binary, the rest to the predecessor scripts
+**Rationale**: The schema invariant states "a recorded limitation is re-established before it is relied upon." The migration protocol is a recorded limitation — it carries the date (2026-08-25) and the mechanism (bats oracle + conformance properties) by which it was established. This change re-tests it rather than inheriting it. This is R-M5 from the archived `port-scanner-to-probatio` change, re-established as active.
 
-#### Scenario: Dual installation detected and rejected
+#### Scenario: The oracle is re-run in this session
 
-**Given** an installation state where one tool has both a predecessor
-script and a ported shim installed
-**When** the installation step resolves the shim's target
-**Then** the assertion fails with a message naming the tool and both
-reachable implementations, and the install exits non-zero
+**Given** the `complete-probatio-porting` change is in the apply phase
+**When** the migration protocol is relied upon
+**Then** the bats oracle is re-run with the ported tools substituted and the result is recorded in the implementation-progress artifact
 
-#### Scenario: Missing installation detected and rejected
+#### Scenario: The conformance properties are re-verified in this session
 
-**Given** an installation state where one tool's shim resolves to a
-non-existent path
-**When** the installation step resolves the shim's target
-**Then** the assertion fails with a message naming the tool and the
-missing target, and the install exits non-zero
-
-### Requirement: Skill documents updated atomically with tool swap
-
-The agent-facing skill documents SHALL be updated atomically with the
-tool swap they reference. Hard-coded script paths in skill documents
-SHALL be re-expressed as invocations of the ported tool at the same
-commit that swaps the corresponding shim. No commit on main SHALL carry
-a skill document that references a non-existent path — the skill document
-and the tool swap are one atomic unit. A skill document that references a
-predecessor script path after that script has been removed is a broken
-reference, and a skill document that references a ported tool path before
-that tool is installed is a forward reference; both are prohibited.
-
-**Given** a skill document containing hard-coded references to tool
-invocations, and a tool swap that changes the invocation target
-**When** the tool swap is committed
-**Then** the skill document is updated in the same commit to reference
-the new invocation target, and no commit on main has a skill document
-referencing a path that does not exist at that commit
-
-**Rationale**: A skill document is an agent's instruction for invoking a
-tool. If the document references a path that no longer exists, the agent
-follows the instruction and fails — silently, because the skill document
-is read in a fresh context that has no memory of the path ever existing.
-If the document is updated in a separate commit from the swap, the
-interval between commits is a window where every commit on main has a
-broken reference. Atomic updates close that window.
-
-#### Scenario: Skill document and tool swap in one commit
-
-**Given** a skill document referencing a predecessor script path and a
-ported tool ready to swap at its shim
-**When** the swap is committed
-**Then** the skill document in the same commit references the ported
-tool invocation, and the predecessor script path is not referenced by
-any skill document at that commit
-
-#### Scenario: Broken reference detected at commit time
-
-**Given** a commit that swaps a shim to the ported binary but does not
-update a skill document that referenced the predecessor script
-**When** the skill-document lint check runs in CI
-**Then** the check fails, naming the skill document and the non-existent
-path it references, and the commit is blocked from main
-
-#### Scenario: Forward reference detected at commit time
-
-**Given** a commit that updates a skill document to reference a ported
-tool invocation before the ported tool is installed
-**When** the skill-document lint check runs in CI
-**Then** the check fails, naming the skill document and the not-yet-
-installed tool it references, and the commit is blocked from main
+**Given** the `complete-probatio-porting` change is in the apply phase
+**When** the migration protocol is relied upon
+**Then** the Hedgehog conformance property tests are re-run and the result is recorded in the implementation-progress artifact
 
 ## Properties (Ring 3)
 
-### Property: conformance-validator-contract-equivalence
-
-**Invariant**: For every record in the generated corpus, the ported
-validator accepts the record if and only if the executable contract
-accepts the record. Equivalence is bidirectional: no record is accepted
-by the validator but rejected by the contract, and no record is rejected
-by the validator but accepted by the contract.
-
-**Generator strategy**: `genContractRecord` — constructive over records
-satisfying and violating each clause of each contract. For each clause,
-generates a satisfying record and a violating record that exercises that
-clause's boundary. Edge cases: empty record, all-clauses-satisfied
-record, single-clause-violated records for every clause, multi-clause-
-violated records. Corpus augmented with the existing fixture set under
-`tests/fixtures/`.
-
-```
-property("validator-contract equivalence over corpus") {
-  for {
-    record <- genContractRecord.forAll
-    contractResult = runContract(contractFile, record)
-    validatorResult = validate(record)
-  } yield {
-    val contractAccepts = contractResult == 0
-    val validatorAccepts = validatorResult.isRight
-    Result.diff(contractAccepts, validatorAccepts)(_ == _)
-  }
-}
-```
-
 ### Property: oracle-green-at-every-step
 
-**Invariant**: The acceptance oracle produces the same set of pass/fail
-outcomes before and after a tool substitution at a seam. This is a
-regression property: the oracle is the fixed reference, and the ported
-tool's behavior at the seam must not change any test's outcome.
+**Invariant**: For every prefix of the swap order, the bats oracle is green when the ported tools are substituted at their seams and the remaining tools are on the predecessor. A swap that would cause the oracle to regress is aborted.
 
-**Generator strategy**: not a generated-input property — a regression
-property over the oracle's own test suite. The "generator" is the set of
-override-seam configurations: for each tool, one configuration with the
-predecessor implementation and one with the ported implementation, with
-all other seams on the predecessor.
+**Generator strategy**: `genSeamConfiguration` — constructive over subsets of `ToolId.swapOrder` that are always prefixes (e.g. {ChainState}, {ChainState, SpecLint}, etc.). Edge cases: empty set (all predecessor), full set (all ported), single-tool prefix.
 
 ```
 property("oracle green at every step") {
   for {
-    seamConfig <- genSeamConfiguration.forAll
-    predecessorResult = runOracle(seamConfig.withPredecessor)
-    portedResult = runOracle(seamConfig.withPorted)
+    config <- genSeamConfiguration.forAll
+    oracleResult = OracleGreenCheck.runOracle(config)
   } yield {
-    Result.diff(predecessorResult, portedResult)(_ == _)
+    Result.assert(oracleResult.isGreen || oracleResult.isAborted)
   }
 }
 ```
 
-### Property: exactly-one-implementation-invariant
+### Property: exactly-one-implementation-per-seam
 
-**Invariant**: For every tool in the installation, exactly one
-implementation is reachable via the shim's resolved target. The invariant
-holds at every commit on main during migration, regardless of which tools
-have been ported.
+**Invariant**: For every seam configuration in `MigrationState`, exactly one implementation is active per seam — no seam has both the predecessor and the ported tool active.
 
-**Generator strategy**: `genMigrationState` — constructive over subsets
-of tools that have been ported (the ported set ranges from empty to all
-tools). For each subset, the installation is performed and each shim's
-target is resolved.
+**Generator strategy**: `genSeamConfiguration` — constructive over all valid seam configurations (subsets of `ToolId.swapOrder`). Edge cases: empty set, full set, single-tool.
 
 ```
-property("exactly one implementation per tool") {
+property("exactly one implementation per seam") {
   for {
-    portedSet <- genMigrationState.forAll
-    targets = resolveAllShimTargets(portedSet)
+    config <- genSeamConfiguration.forAll
+    state = MigrationState.fromConfig(config)
   } yield {
-    Result.assert(
-      targets.forall(_.resolvedTarget.isDefined) &&
-      targets.forall(t => t.candidateTargets.size == 1)
-    )
+    Result.assert(state.seams.forall(_.implementationCount == 1))
   }
 }
 ```
@@ -400,115 +194,37 @@ property("exactly one implementation per tool") {
 
 | Forbidden Construction | Why | Test |
 |------------------------|-----|------|
-| Oracle source modified to accommodate a ported tool | A modified oracle is not an independent witness; the port's correctness claim becomes circular | `git diff` of oracle files is empty at every migration step; enforced by CI check |
-| Two implementations installed for the same tool | Dual installation creates an ambiguous runtime — PATH ordering, not operator intent, decides which runs | Install step asserts `candidateTargets.size == 1` per tool and fails otherwise |
-| Zero implementations reachable for a tool | A missing installation is a silent failure where the harness invokes a non-existent path | Install step asserts `resolvedTarget.isDefined` per tool and fails otherwise |
-| Skill document referencing a predecessor script after removal | A broken reference causes the agent to follow a non-existent path in a fresh context | Skill-document lint check in CI greps for removed paths and fails if any skill references one |
-| Skill document referencing a ported tool before installation | A forward reference causes the agent to invoke a tool that is not yet available | Skill-document lint check verifies referenced paths exist at the commit |
-| Executable contract files deleted before one full release cycle of green conformance | Premature deletion removes the conformance oracle before the validator is proven over time | CI gate on the deletion step checks release-cycle duration |
-| Shim swapped before its last subcommand passes the oracle | An unproven subcommand in production is the defect class the port exists to avert | Swap-order check in CI verifies oracle-green status before allowing a shim swap |
+| A `MigrationState` with a seam having `implementationCount > 1` | A dual-implementation seam is a race condition | `assertDoesNotCompile("MigrationState(seams = Seam(both = true))")` — the type has no `both` field |
 
 ## Formal Contracts (Ring 6)
 
-### Contract: Conformance relation — validator iff contract
-
-The conformance relation between a ported validator and its executable
-contract is a pure kernel expressible as a verified-mirror model. The
-model states the bidirectional equivalence as a postcondition: for every
-record in the model's domain, the validator's judgment equals the
-contract's judgment.
-
-**Precondition** (`require`): record is in the model's domain (a
-finite representation of the record format's clause space)
-**Postcondition** (`ensuring`): `validatorAccepts(record) ==
-contractAccepts(record)`
-
-```scala
-def conformance(record: RecordModel): Boolean = {
-  // model of the validator's clause checks over a finite record domain
-  val validatorJudgment = modelValidate(record)
-  // model of the contract's clause checks over the same domain
-  val contractJudgment = modelContract(record)
-  validatorJudgment == contractJudgment
-}.ensuring(result => result == (modelValidate(record) == modelContract(record)))
-```
-
-### Contract: Conformance symmetry — no false positives and no false negatives
-
-The conformance relation is symmetric: the validator produces no false
-positives (accepts a record the contract rejects) and no false negatives
-(rejects a record the contract accepts). Both directions are stated as
-separate postconditions so a partial conformance cannot satisfy the
-contract by passing only one direction.
-
-**Precondition** (`require`): record is in the model's domain
-**Postcondition** (`ensuring`): `!validatorAccepts(record) ||
-contractAccepts(record)` (no false positive) AND
-`!contractAccepts(record) || validatorAccepts(record)` (no false
-negative)
-
-```scala
-def conformanceNoFalsePositive(record: RecordModel): Boolean = {
-  !modelValidate(record) || modelContract(record)
-}.ensuring(result => result == (!modelValidate(record) || modelContract(record)))
-
-def conformanceNoFalseNegative(record: RecordModel): Boolean = {
-  !modelContract(record) || modelValidate(record)
-}.ensuring(result => result == (!modelContract(record) || modelValidate(record)))
-```
-
-> **Delegated to Ring 3**: the full corpus-based conformance property
-> (validator ⟺ contract over the fixture corpus plus derived generators
-> for all 12 ledger clauses and the two report/payload contracts) runs as
-> a Hedgehog property test — the model's finite domain cannot represent
-> the full generator space. The Ring 6 model covers the *decision*
-> (clause satisfaction equivalence), not the jq execution layer or the
-> ujson/uPickle wire layer. A bridge property test binds the shipped
-> validators to the model on the same generated inputs.
+No formal contracts. The migration protocol is an operational procedure (oracle-gated stage transitions), not an algorithm. The `OracleGreenCheck.runOracle` function is a test harness, not a pure kernel.
 
 ## Proof Obligations
 
 | Obligation | Source | Enforcement | Artifact |
 |------------|--------|-------------|----------|
-| Oracle is the acceptance suite and passes unmodified | Requirement: Bats oracle is the porting acceptance suite | regression property (oracle-green-at-every-step) + CI git-diff check on oracle sources | existing bats oracle (unmodified) |
-| Oracle modification rejected as behavior delta | Requirement: Bats oracle is the porting acceptance suite | compile-negative obligation (oracle source diff is empty) + adversarial review (Ring 8) | CI git-diff gate on existing bats oracle |
-| Conformance is a property test over generated corpus | Requirement: Conformance between validators and executable contracts is a property test | property test (conformance-validator-contract-equivalence) | Hedgehog conformance property test (to be created in probatio-core test sources) |
-| Conformance bidirectional — no false positives or false negatives | Requirement: Conformance between validators and executable contracts is a property test | formal contract (Ring 6 conformance symmetry) + bridge property test | PureScala conformance model in verified leaf + bridge property test (to be created) |
-| Contract files retained for one full release cycle | Requirement: Conformance between validators and executable contracts is a property test | CI gate on deletion step (release-cycle duration check) | tasks.md Phase 6 gate |
-| Contract files not deleted prematurely | Requirement: Conformance between validators and executable contracts is a property test | compile-negative obligation (deletion refused before full cycle) | CI gate |
-| Shims swapped in dependency order | Requirement: Hook shims are swapped in dependency order after oracle clearance | CI swap-order check (verifies oracle-green before shim swap) | tasks.md Phase 4/5 ordering |
-| Gate shim swaps last | Requirement: Hook shims are swapped in dependency order after oracle clearance | CI swap-order check (gate is final in sequence) | tasks.md Phase 5 |
-| Shim swap refused before subcommand clearance | Requirement: Hook shims are swapped in dependency order after oracle clearance | compile-negative obligation (swap refused before oracle green) | CI gate |
-| Exactly one implementation per tool | Requirement: Exactly one implementation per tool during migration | property test (exactly-one-implementation-invariant) + install assertion | install assertion in install-skills step + Hedgehog property test (to be created) |
-| Dual installation detected and rejected | Requirement: Exactly one implementation per tool during migration | compile-negative obligation (candidateTargets.size == 1) | install assertion in install-skills step |
-| Missing installation detected and rejected | Requirement: Exactly one implementation per tool during migration | compile-negative obligation (resolvedTarget.isDefined) | install assertion in install-skills step |
-| Skill documents updated atomically with tool swap | Requirement: Skill documents updated atomically with tool swap | CI skill-document lint check (referenced paths exist at commit) | CI skill-document lint check (to be created) |
-| Broken reference detected at commit time | Requirement: Skill documents updated atomically with tool swap | compile-negative obligation (no skill references a non-existent path) + adversarial review (Ring 8) | CI skill-document lint check |
-| Forward reference detected at commit time | Requirement: Skill documents updated atomically with tool swap | compile-negative obligation (no skill references a not-yet-installed tool) | CI skill-document lint check |
+| The oracle passes with all tools on the predecessor | Requirement: The bats oracle is the porting acceptance suite + Scenario: The oracle passes with all tools on the predecessor | bats oracle (baseline run, all `*_OVERRIDE` unset) | `correctness-invariant.bats` |
+| The oracle passes with one tool ported | Requirement: The bats oracle is the porting acceptance suite + Scenario: The oracle passes with one tool ported | bats oracle with `*_OVERRIDE` set per tool | `chain-state.bats` |
+| A regression is a porting defect | Requirement: The bats oracle is the porting acceptance suite + Scenario: A regression is a porting defect, not a test bug | manual review (regression attribution) | `correctness-invariant.bats` |
+| Ledger conformance property passes | Requirement: Conformance property tests verify bidirectional equivalence + Scenario: The ledger conformance property passes | Hedgehog property test (LedgerCmdConformanceSpec, to be written in apply phase) | `evidence-ledger.bats` |
+| Chain-state conformance property passes | Requirement: Conformance property tests verify bidirectional equivalence + Scenario: The chain-state conformance property passes | Hedgehog property test (ChainStateCmdConformanceSpec, to be written in apply phase) | `chain-state.bats` |
+| A single-tool ported configuration is well-formed | Requirement: Exactly one implementation is active at each seam + Scenario: A single-tool ported configuration is well-formed | Hedgehog exactly-one-implementation-per-seam property (MigrationStateSpec, to be written in apply phase) | `chain-state.bats` |
+| A dual-implementation configuration is rejected | Requirement: Exactly one implementation is active at each seam + Scenario: A dual-implementation configuration is rejected | Hedgehog exactly-one-implementation-per-seam property + compile-negative | `chain-state.bats` |
+| Stage 2 to Stage 3 transition is gated | Requirement: The oracle-green gate is a mandatory checkpoint between stages + Scenario: Stage 2 to Stage 3 transition is gated | Hedgehog oracle-green-at-every-step property (OracleGreenSpec, to be written in apply phase) | `correctness-invariant.bats` |
+| Stage 3 swap-to-swap transition is gated | Requirement: The oracle-green gate is a mandatory checkpoint between stages + Scenario: Stage 3 swap-to-swap transition is gated | Hedgehog oracle-green-at-every-step property | `correctness-invariant.bats` |
+| The oracle is re-run in this session | Requirement: A recorded limitation is re-established before it is relied upon + Scenario: The oracle is re-run in this session | manual review (implementation-progress artifact records the re-run) | `correctness-invariant.bats` |
+| The conformance properties are re-verified in this session | Requirement: A recorded limitation is re-established before it is relied upon + Scenario: The conformance properties are re-verified in this session | manual review (implementation-progress artifact records the re-verification) | `evidence-ledger.bats` |
+| oracle-green-at-every-step | Property: oracle-green-at-every-step | Hedgehog property test (OracleGreenSpec, to be written in apply phase) | `correctness-invariant.bats` |
+| exactly-one-implementation-per-seam | Property: exactly-one-implementation-per-seam | Hedgehog property test (MigrationStateSpec, to be written in apply phase) | `chain-state.bats` |
+| No MigrationState with dual-implementation seam | Compile-Negative: MigrationState with a seam having implementationCount > 1 | compile-negative test (assertDoesNotCompile) | `chain-state.bats` |
 
 ## Implementation Anchors
 
 | Anchor | Kind | Where | Note |
 |--------|------|-------|------|
-| `tests/*.bats` (17 files) | bats oracle | `openspec/schemas/verified-scala3/tests/` | The acceptance suite; passes unmodified at every step. CI `git diff` gate asserts byte-identity. |
-| `SPEC_LINT_OVERRIDE` | env seam | `openspec/schemas/verified-scala3/scanner/chain-state.sh`, `hooks/gate.sh` | Redirects spec-lint invocation to an alternate implementation; swap-point for the spec-lint port. |
-| `CHAIN_STATE_OVERRIDE` | env seam | `openspec/schemas/verified-scala3/hooks/gate.sh` line 126 | Redirects chain-state invocation; swap-point for the chain-state port. |
-| `DANGER_SCAN_OVERRIDE` | env seam | `openspec/schemas/verified-scala3/hooks/gate.sh` line 129 | Redirects danger-scan invocation in the post-edit tier; swap-point for the danger-scan port. |
-| `RECONCILE_OVERRIDE` | env seam | `openspec/schemas/verified-scala3/hooks/gate.sh` line 127 | Redirects reconcile invocation; swap-point for the reconcile port. |
-| `GATE_command` / gate shim-ability | seam | `openspec/schemas/verified-scala3/hooks/gate.sh` | The gate itself is shim-able: the hook adapters invoke `gate.sh` by path, so swapping `gate.sh` to a 3-line `exec` shim is the gate swap-point. Swapped last per R-M3. |
-| `ledger-record-contract.jq` | jq contract (12 clauses) | `openspec/schemas/verified-scala3/scanner/` | Conformance fixture for the ledger validator; 12 clauses: object type, required fields, version integer, timestamp format, change/spec non-empty no-separator, ring closed domain, obligation non-empty, artifact non-empty, command non-empty, exit integer, baseline hex revision, optional-field shape. Retained until one full release cycle of green conformance. |
-| `chain-state-report-contract.jq` | jq contract | `openspec/schemas/verified-scala3/scanner/` | Conformance fixture for the chain-state report validator. |
-| `gate-hookjson-contract.jq` | jq contract | `openspec/schemas/verified-scala3/scanner/` | Conformance fixture for the gate payload validator. |
-| `tests/fixtures/` | fixture corpus | `openspec/schemas/verified-scala3/tests/fixtures/` | Existing records augmenting the derived generators in the conformance property test. |
-| `ConformanceSpec.scala` | Hedgehog property test | `probatio-core/src/test` | `property("validator-contract equivalence over corpus")` with `genContractRecord` over all 12 ledger clauses + 2 report/payload contracts. |
-| `ConformanceModel.scala` | PureScala model (Ring 6) | `verified/` leaf (Scala 3.7.2) | Models the conformance *decision* (clause satisfaction equivalence), not the jq execution or ujson wire layer. |
-| `ConformanceBridgeSpec.scala` | bridge property test | `probatio-core/src/test` | Binds shipped validators to `ConformanceModel` on the same generated inputs. |
-| `OracleGreenCheck.scala` | regression property | `probatio-core/src/test` | `property("oracle green at every step")` — runs the oracle with predecessor vs ported at each seam configuration and asserts equal outcomes. |
-| `InstallPreciselyOneSpec.scala` | property test + install assertion | `probatio-cli/src/test` | `property("exactly one implementation per tool")` with `genMigrationState`; install step asserts `candidateTargets.size == 1` and `resolvedTarget.isDefined`. |
-| `SkillDocLintCheck.scala` | CI lint check | `openspec/schemas/verified-scala3/tests/` or CI workflow | Greps skill documents for references to `scanner/*.sh` paths and verifies referenced paths exist at the commit; blocks main on broken or forward references. |
-| `install-skills.sh` / `install-hooks.sh` | install scripts | `openspec/schemas/verified-scala3/scanner/` | The install step that asserts precisely-one implementation per tool via shim target resolution. |
-| `.pi/skills/openspec-scan-concepts/SKILL.md` | skill document | `.pi/skills/openspec-scan-concepts/` | References `scanner/scan.sh`, `scanner/concept-scanner.scala`, `scanner/registry-check.sh`; re-expressed as `probatio <tool>` invocations atomically with the shim swap. |
-| `.pi/skills/openspec-code-intel/SKILL.md` | skill document | `.pi/skills/openspec-code-intel/` | References `scanner/metals-start.sh`, `scanner/metals-call.sh`, `scanner/impact-scan.sh`; re-expressed as `probatio metals`, `probatio impact-scan` atomically with the shim swap. |
-| `.pi/skills/openspec-property-tests/SKILL.md` | skill document | `.pi/skills/openspec-property-tests/` | References scanner script paths for property-test recipes; re-expressed atomically with the shim swap. |
-| `tasks.md` Phase 2–5 | migration ordering | `openspec/changes/port-scanner-to-probatio/tasks.md` | Encodes the R-M3 swap order: ledger + chain-state (Phase 2); checkpoint, registry-check, reconcile (Phase 4); spec-lint with `LintReport` seam (Phase 4); metals (Phase 4); gate (Phase 5). |
-| `tasks.md` Phase 6 | contract retirement | `openspec/changes/port-scanner-to-probatio/tasks.md` | `.jq` files deleted after one full release cycle of green conformance in CI. |
+| `OracleGreenCheck.scala` | object | `workflow/core/src/test/scala/org/sinemenda/probatio/migration/` | Already shipped — runs the bats oracle under a seam configuration |
+| `SeamTypes.scala` | object (ToolId, SeamConfiguration, MigrationState) | `workflow/core/src/test/scala/org/sinemenda/probatio/migration/` | Already shipped — defines the swap order and seam state |
+| `OracleGreenGate` | object (new) | `workflow/core/src/test/scala/org/sinemenda/probatio/migration/` | New — the stage-transition gate function |
+| bats oracle | test suite (17 files) | `openspec/schemas/verified-scala3/tests/` | The acceptance suite — MUST pass unmodified |
+| `.jq` contracts | executable contracts | `openspec/schemas/verified-scala3/scanner/` | `ledger-record-contract.jq`, `chain-state-report-contract.jq`, `gate-hookjson-contract.jq` — the bidirectional equivalence oracles |

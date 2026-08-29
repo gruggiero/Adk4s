@@ -94,5 +94,5 @@
      DO NOT skip ahead. DO NOT batch-implement. One spec at a time. -->
 
 - [x] 1. `specs/migration-protocol/spec.md` — Restate R-M1–R-M5 as the active porting protocol; introduce `OracleGreenGate` (test-only) that gates stage transitions on bats oracle green. Establishes the gate contract that `hook-cutover` depends on.
-- [ ] 2. `specs/cli-wiring/spec.md` — Wire all 16 subcommand entrypoints in `SubcommandEntrypoints.scala` from stubs to real implementations; introduce `CliContext`, `StdoutRenderer[A]`, `SubcommandWiring`; verify byte-compatibility with bash originals via bats oracle at `*_OVERRIDE` seams.
-- [ ] 3. `specs/hook-cutover/spec.md` — Replace 5 bash hook shims with 3-line `exec` shims pointing to the probatio binary, in dependency order (gate last), with oracle-green gating each swap; introduce `ShimSwap`, `SwapOrder`; update skill docs atomically with each swap.
+- [x] 2. `specs/cli-wiring/spec.md` — Wire all 16 subcommand entrypoints in `SubcommandEntrypoints.scala` from stubs to real implementations; introduce `CliContext`, `StdoutRenderer[A]`, `SubcommandWiring`; verify byte-compatibility with bash originals via bats oracle at `*_OVERRIDE` seams.
+- [x] 3. `specs/hook-cutover/spec.md` — Replace 5 bash hook shims with 3-line `exec` shims pointing to the probatio binary, in dependency order (gate last), with oracle-green gating each swap; introduce `ShimSwap`, `SwapOrder`; update skill docs atomically with each swap.

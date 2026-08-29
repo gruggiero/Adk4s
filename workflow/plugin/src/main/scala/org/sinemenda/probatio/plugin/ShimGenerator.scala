@@ -22,7 +22,8 @@ package org.sinemenda.probatio.plugin
 object ShimGenerator {
 
   /**
-   * Generates the 3-line shim content for the given resolved binary path.
+   * Generates the 3-line shim content for the given resolved binary path,
+   * using the `gate` subcommand.
    *
    * The output is always:
    *   `#!/usr/bin/env bash\nexec "<path>" gate "$@"\n`
@@ -34,7 +35,26 @@ object ShimGenerator {
    * @return the shim file content (shebang + exec + trailing newline)
    */
   def generateShim(resolvedPath: String): String =
+    generateShim(resolvedPath, "gate")
+
+  /**
+   * Generates the 3-line shim content for the given resolved binary path
+   * and subcommand.
+   *
+   * The output is always:
+   *   `#!/usr/bin/env bash\nexec "<path>" <subcommand> "$@"\n`
+   *
+   * This is a pure function — same inputs always produce same output.
+   * The trailing newline ensures the file ends cleanly.
+   *
+   * @param resolvedPath the absolute path to the resolved probatio binary
+   * @param subcommand   the probatio subcommand to invoke (e.g. "gate",
+   *                     "spec-lint", "chain-state", "danger-scan",
+   *                     "reconcile")
+   * @return the shim file content (shebang + exec + trailing newline)
+   */
+  def generateShim(resolvedPath: String, subcommand: String): String =
     s"""#!/usr/bin/env bash
-       |exec "$resolvedPath" gate "$$@"
+       |exec "$resolvedPath" $subcommand "$$@"
        |""".stripMargin
 }

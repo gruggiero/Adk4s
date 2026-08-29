@@ -95,9 +95,8 @@ final class OracleGreenCheck extends ProbatioSuite:
   // Runs the bats oracle under the given seam configuration. For the
   // predecessor configuration (no tools ported), no override env vars
   // are set — the bats files run against the original scanner scripts.
-  // For a ported configuration, the override env vars would point to
-  // the probatio binary; but since no tools are actually ported yet,
-  // we only test the predecessor configuration.
+  // For a ported configuration, the override env vars point to the
+  // probatio binary (the resolved launcher at bin/probatio).
   def runOracle(config: SeamConfiguration): OracleOutcome =
     val oracleDir: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3" / "tests"
     if !os.exists(oracleDir) then
@@ -106,18 +105,17 @@ final class OracleGreenCheck extends ProbatioSuite:
       fail(s"oracle directory not found: $oracleDir")
     else
       // For predecessor configuration, no env vars are set.
-      // For ported configurations, env vars would point to the probatio
-      // binary. Since no tools are ported yet, we only run predecessor.
+      // For ported configurations, env vars point to the probatio binary.
       val env: Map[String, String] = if config.portedTools.isEmpty then
         Map.empty[String, String]
       else
         // Ported tools: set override to the probatio binary path.
-        // This will be populated during the actual migration (Step 4).
-        // For now, use the predecessor path so the oracle stays green.
+        // The binary is the JAR launcher at bin/probatio, which dispatches
+        // to the correct subcommand based on argv.
         config.portedTools.flatMap { tool =>
           val envVar: String = ToolId.overrideEnvVar(tool)
-          val predecessorPath: String = predecessorPathFor(tool)
-          Some(envVar -> predecessorPath)
+          val binaryPath: String = portedBinaryPath
+          Some(envVar -> binaryPath)
         }.toMap
 
       val batsFiles: IndexedSeq[os.Path] = os.list(oracleDir).filter(_.ext == "bats")
@@ -128,13 +126,12 @@ final class OracleGreenCheck extends ProbatioSuite:
 
       OracleOutcome(passed, failed, skipped)
 
-  // ── Helper: predecessor script path for a tool
-  private def predecessorPathFor(tool: SeamTypes.ToolId): String = tool match
-    case SeamTypes.ToolId.SpecLint   => "openspec/schemas/verified-scala3/scanner/spec-lint.sh"
-    case SeamTypes.ToolId.ChainState => "openspec/schemas/verified-scala3/scanner/chain-state.sh"
-    case SeamTypes.ToolId.DangerScan => "openspec/schemas/verified-scala3/scanner/danger-scan.sh"
-    case SeamTypes.ToolId.Reconcile  => "openspec/schemas/verified-scala3/scanner/reconcile.sh"
-    case SeamTypes.ToolId.Gate       => "openspec/schemas/verified-scala3/hooks/gate.sh"
+  // ── Helper: the resolved probatio binary path (JAR launcher)
+  // The binary is the launcher script at bin/probatio, which invokes
+  // the assembly JAR. When a native-image binary is available, this
+  // path will point to the native binary instead.
+  private def portedBinaryPath: String =
+    (os.pwd / "openspec" / "schemas" / "verified-scala3" / "bin" / "probatio").toString
 
   // ── Helper: run a single bats file and parse the outcome
   private def runSingleBatsFile(batsFile: os.Path, env: Map[String, String]): OracleOutcome =

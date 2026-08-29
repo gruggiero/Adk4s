@@ -27,17 +27,6 @@ enum Stage:
   * this is a process requirement enforced by the caller, not by the gate
   * function itself.
   *
-  * '''Known limitation''': `OracleGreenCheck.runOracle` (the delegate) was
-  * shipped by the archived `port-scanner-to-probatio` change with a
-  * predecessor-path fallback for ported tools — when `portedTools` is
-  * non-empty, the override env vars point to the predecessor script path,
-  * not the probatio binary path (because no binary existed at ship time).
-  * This means the gate currently tests the predecessor, not the ported
-  * tool. This fallback will be resolved by the `cli-wiring` spec (which
-  * creates the binary) and the `hook-cutover` spec (which swaps the
-  * shims). Until then, the gate's `true` result means "the oracle is green
-  * with the predecessor tools," not "with the ported tools."
-  *
   * spec: migration-protocol — Requirement: The oracle-green gate is a mandatory checkpoint between stages
   * spec: migration-protocol — Property: oracle-green-at-every-step
   */
@@ -62,3 +51,24 @@ object OracleGreenGate:
     // compile rather than silently falling through.
     stage match
       case Stage.Wiring | Stage.Cutover => outcome.failed == 0
+
+  /** Per-swap gating: returns true iff the bats oracle is green when the
+    * given tool is substituted at its seam, on top of the already-ported
+    * tools in the seam configuration.
+    *
+    * This is the per-swap checkpoint within Stage 3 (cutover). A swap
+    * proceeds only when this returns true. If the oracle regresses, the
+    * swap is aborted and the tool remains on the predecessor.
+    *
+    * The tool is added to the ported set before running the oracle, so
+    * the oracle sees the tool substituted at its `*_OVERRIDE` seam.
+    *
+    * spec: hook-cutover — Requirement: Shims are swapped in dependency order — gate last
+    * spec: hook-cutover — Scenario: A regressing swap is aborted
+    */
+  def apply(tool: SeamTypes.ToolId, seamConfig: SeamConfiguration): Boolean =
+    val configWithTool: SeamConfiguration =
+      SeamConfiguration(seamConfig.portedTools + tool)
+    val check: OracleGreenCheck = new OracleGreenCheck()
+    val outcome: OracleOutcome = check.runOracle(configWithTool)
+    outcome.failed == 0

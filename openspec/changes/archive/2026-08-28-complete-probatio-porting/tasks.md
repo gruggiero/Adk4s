@@ -44,13 +44,13 @@
 
 ## 3. hook-cutover
 
-- [ ] Step 1 — typed contract (full): `ShimSwap` case class, `SwapOrder` enum (6 cases), `OracleGreenGate` per-swap gating signature — compiled in test sources (human gate)
-- [ ] Step 2 — test oracle: 3 requirement scenarios + 3 Hedgehog properties (genBinaryPath, genSeamConfiguration prefix subsets, genSwapSequence valid prefixes) + 2 compile-negatives (shim with logic, SwapOrder.GateFirst) (human gate)
-- [ ] Step 3 — implementation: replace 5 bash hooks (`hooks/spec-lint`, `hooks/chain-state`, `hooks/danger-scan`, `hooks/reconcile`, `hooks/gate`) with 3-line exec shims; update skill docs atomically; create `ShimSwap.scala`, `SwapOrder.scala` in `workflow/core/src/test/scala/org/sinemenda/probatio/migration/`
-- [ ] R0: `probatioScalacOptions` with `-Werror` + exhaustiveness escalation (6-case `SwapOrder` enum match)
-- [ ] R1: Scalafix DisableSyntax + WartRemover
-- [ ] R2: `dependencyLint` task — R-ARCH1
-- [ ] R3: 3 Hedgehog properties pass + bats oracle green after each shim swap (harness-install-verification.bats)
-- [ ] R5: Stryker4s mutation testing retargeted to changed shim-generation code (git diff against Step 0 baseline SHA)
-- [ ] R8: adversarial review (fresh context) — check for shim content divergences, non-atomic skill-doc updates, swap-order violations, oracle-gate bypasses
-- [ ] Concept-delta check (scanner diff) + update `openspec/concept-inventory.md` + create `openspec/concepts/strangler-migration-protocol.md` + `openspec/concepts/conformance-property-test-contract.md` (apply Step 12) + checkpoint
+- [x] Step 1 — typed contract (full): `ShimSwap` case class, `SwapOrder` enum (6 cases), `OracleGreenGate` per-swap gating signature — compiled in test sources (human gate)
+- [x] Step 2 — test oracle: 3 requirement scenarios + 3 Hedgehog properties (genBinaryPath, genSeamConfiguration prefix subsets, genSwapSequence valid prefixes) + 2 compile-negatives (shim with logic, SwapOrder.GateFirst) (human gate)
+- [x] Step 3 — implementation: replace 5 bash hooks (`hooks/spec-lint`, `hooks/chain-state`, `hooks/danger-scan`, `hooks/reconcile`, `hooks/gate`) with 3-line exec shims; update skill docs atomically; create `ShimSwap.scala`, `SwapOrder.scala` in `workflow/core/src/test/scala/org/sinemenda/probatio/migration/`
+- [x] R0: `probatioScalacOptions` with `-Werror` + exhaustiveness escalation (6-case `SwapOrder` enum match)
+- [x] R1: Scalafix DisableSyntax + WartRemover
+- [x] R2: `dependencyLint` task — R-ARCH1
+- [x] R3: 3 Hedgehog properties pass + bats oracle green after each shim swap (harness-install-verification.bats)
+- [x] R5: Stryker4s mutation testing retargeted to changed shim-generation code (git diff against Step 0 baseline SHA)
+- [x] R8: adversarial review (fresh context) — check for shim content divergences, non-atomic skill-doc updates, swap-order violations, oracle-gate bypasses
+- [x] Concept-delta check (scanner diff) + update `openspec/concept-inventory.md` + create `openspec/concepts/strangler-migration-protocol.md` + `openspec/concepts/conformance-property-test-contract.md` (apply Step 12) + checkpoint
