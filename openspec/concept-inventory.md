@@ -583,7 +583,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `DriftWarning` | sealed trait (VersionMismatch, PreRenameStamp) | `org.sinemenda.probatio.core` | shipped |
 | `DriftScanResult` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `BannerInputs` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `BannerEngine` | object (assembleBanner — pure function over BannerInputs → BannerOutput) | `org.sinemenda.probatio.core` | shipped |
+| `BannerEngine` | object (`render`: BannerInputs → BannerOutput — pure function; method name corrected from `assembleBanner` 2026-08-29 by spec:complete-probatio-cutover/inventory-check) | `org.sinemenda.probatio.core` | shipped |
 | `ActiveChangeWithChainState` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `BannerOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `MetalsClient.LspMessage` | final case class | `org.sinemenda.probatio.core` | shipped |
@@ -595,7 +595,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `MulticallDispatch` | object (resolve: argv0 + argv1 → Either[CliError, Subcommand]) | `org.sinemenda.probatio.cli` | shipped |
 | `HelpOutput` | final case class (subcommand, flags: List[FlagHelp], exitCodes: List[ExitCodeDoc]) | `org.sinemenda.probatio.cli` | shipped |
 | `HelpRegistry` | object (helpFor: Subcommand → HelpOutput) | `org.sinemenda.probatio.cli` | shipped |
-| `ProbatioMain` | object (dispatch: Array[String] → Int — multicall entry point) | `org.sinemenda.probatio.cli` | shipped |
+| `ProbatioMain` | object (`dispatch`: Array[String] → Int — multicall entry point; `main`: Array[String] → Unit — JVM/native entry point, added by spec:complete-probatio-porting/cli-wiring, recorded 2026-08-29) | `org.sinemenda.probatio.cli` | shipped |
 | `FlagHelp` | final case class (name, description, default) | `org.sinemenda.probatio.cli` | shipped |
 | `ExitCodeDoc` | final case class (code, label, condition) | `org.sinemenda.probatio.cli` | shipped |
 | `CliErrorRender` | object (render: CliError → String) | `org.sinemenda.probatio.cli` | shipped |
