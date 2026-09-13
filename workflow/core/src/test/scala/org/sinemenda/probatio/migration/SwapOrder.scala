@@ -1,26 +1,27 @@
 package org.sinemenda.probatio.migration
 
-/** The R-M3 dependency order for shim swaps.
-  *
-  * The cutover replaces each predecessor bash hook with a 3-line exec shim
-  * pointing to the probatio binary. Swaps proceed in dependency order —
-  * the gate is always last — and each swap is gated by the oracle-green
-  * check.
-  *
-  * `LedgerFirst` is the first swap: the ledger is the purest, best-covered
-  * tool. `GateLast` is the final swap: the gate depends on every other
-  * subcommand being verified. The gate is the only blocking hook — swapping
-  * it before its dependencies are verified would leave the gate running on
-  * unverified subcommands, creating a window where the gate could silently
-  * allow blocked edits.
-  *
-  * The enum has no `GateFirst` case — a swap order with the gate first is
-  * a defect, and the compile-negative test proves it is unconstructible.
-  *
-  * spec: hook-cutover — Requirement: Shims are swapped in dependency order — gate last
-  * spec: hook-cutover — Property: swap-order-respects-dependencies
-  * spec: hook-cutover — Compile-Negative: SwapOrder variant with Gate not last
-  */
+/**
+ * The R-M3 dependency order for shim swaps.
+ *
+ * The cutover replaces each predecessor bash hook with a 3-line exec shim
+ * pointing to the probatio binary. Swaps proceed in dependency order —
+ * the gate is always last — and each swap is gated by the oracle-green
+ * check.
+ *
+ * `LedgerFirst` is the first swap: the ledger is the purest, best-covered
+ * tool. `GateLast` is the final swap: the gate depends on every other
+ * subcommand being verified. The gate is the only blocking hook — swapping
+ * it before its dependencies are verified would leave the gate running on
+ * unverified subcommands, creating a window where the gate could silently
+ * allow blocked edits.
+ *
+ * The enum has no `GateFirst` case — a swap order with the gate first is
+ * a defect, and the compile-negative test proves it is unconstructible.
+ *
+ * spec: hook-cutover — Requirement: Shims are swapped in dependency order — gate last
+ * spec: hook-cutover — Property: swap-order-respects-dependencies
+ * spec: hook-cutover — Compile-Negative: SwapOrder variant with Gate not last
+ */
 enum SwapOrder:
   case LedgerFirst
   case ChainState

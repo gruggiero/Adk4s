@@ -5,18 +5,19 @@ import org.sinemenda.probatio.core.*
 import org.sinemenda.probatio.core.ProbatioSuite
 import org.sinemenda.probatio.verified.ConformanceModel
 
-/** Bridge property test — binds the shipped validators to the Ring 6
-  * `ConformanceModel` on the same generated inputs (R-M2, Ring 6 delegation).
-  *
-  * The Ring 6 model covers the conformance *decision* (clause satisfaction
-  * equivalence), not the jq execution layer or the ujson/uPickle wire layer.
-  * This bridge runs the shipped `Validator.validate` and the
-  * `ConformanceModel` on the same generated records and asserts they agree
-  * on the decision.
-  *
-  * spec: migration-protocol — Formal Contract: Conformance relation — validator iff contract
-  * spec: migration-protocol — Formal Contract: Conformance symmetry — no false positives and no false negatives
-  */
+/**
+ * Bridge property test — binds the shipped validators to the Ring 6
+ * `ConformanceModel` on the same generated inputs (R-M2, Ring 6 delegation).
+ *
+ * The Ring 6 model covers the conformance *decision* (clause satisfaction
+ * equivalence), not the jq execution layer or the ujson/uPickle wire layer.
+ * This bridge runs the shipped `Validator.validate` and the
+ * `ConformanceModel` on the same generated records and asserts they agree
+ * on the decision.
+ *
+ * spec: migration-protocol — Formal Contract: Conformance relation — validator iff contract
+ * spec: migration-protocol — Formal Contract: Conformance symmetry — no false positives and no false negatives
+ */
 final class ConformanceBridgeSpec extends ProbatioSuite:
 
   import ConformanceTypes.*
@@ -24,38 +25,43 @@ final class ConformanceBridgeSpec extends ProbatioSuite:
   // ── Scenario: Bridge — shipped validator agrees with model on a valid record
   // spec: migration-protocol — Formal Contract: Conformance relation — validator iff contract
   test("bridge: shipped validator agrees with ConformanceModel on a valid record"):
-    val record: ContractRecord = satisfyingLedgerRecordForBridge
+    val record: ContractRecord  = satisfyingLedgerRecordForBridge
     val shippedAccepts: Boolean = shippedValidatorAccepts(record)
-    val modelAccepts: Boolean = modelValidatorAccepts(record)
-    assert(shippedAccepts == modelAccepts,
-      s"disagreement on valid record: shipped=$shippedAccepts, model=$modelAccepts")
+    val modelAccepts: Boolean   = modelValidatorAccepts(record)
+    assert(
+      shippedAccepts == modelAccepts,
+      s"disagreement on valid record: shipped=$shippedAccepts, model=$modelAccepts"
+    )
 
   // ── Scenario: Bridge — shipped validator agrees with model on an invalid record
   // spec: migration-protocol — Formal Contract: Conformance relation — validator iff contract
   test("bridge: shipped validator agrees with ConformanceModel on an invalid record"):
-    val record: ContractRecord = violatingLedgerRecordForBridge("v-must-be-integer-gte-1")
+    val record: ContractRecord  = violatingLedgerRecordForBridge("v-must-be-integer-gte-1")
     val shippedAccepts: Boolean = shippedValidatorAccepts(record)
-    val modelAccepts: Boolean = modelValidatorAccepts(record)
-    assert(shippedAccepts == modelAccepts,
-      s"disagreement on invalid record: shipped=$shippedAccepts, model=$modelAccepts")
+    val modelAccepts: Boolean   = modelValidatorAccepts(record)
+    assert(
+      shippedAccepts == modelAccepts,
+      s"disagreement on invalid record: shipped=$shippedAccepts, model=$modelAccepts"
+    )
     assert(!shippedAccepts, "both should reject an invalid record")
 
   // ── Property: bridge-validator-model-agreement
   // The shipped validator and the Ring 6 model agree on the accept/reject
   // decision for every generated record.
   property("bridge: shipped validator agrees with ConformanceModel over corpus"):
-    for
-      record <- genContractRecord.forAll
+    for record <- genContractRecord.forAll
     yield
       val shippedAccepts: Boolean = shippedValidatorAccepts(record)
-      val modelAccepts: Boolean = modelValidatorAccepts(record)
+      val modelAccepts: Boolean   = modelValidatorAccepts(record)
       Result.diff(shippedAccepts, modelAccepts)(_ == _)
 
   // ── Generator (delegates to ConformanceSpec's generator pattern)
   def genContractRecord: Gen[ContractRecord] =
     Gen.choice1(
       Gen.constant(satisfyingLedgerRecordForBridge),
-      Gen.element(ConformanceTypes.ledgerClauses(0), ConformanceTypes.ledgerClauses.drop(1)).map(violatingLedgerRecordForBridge)
+      Gen
+        .element(ConformanceTypes.ledgerClauses(0), ConformanceTypes.ledgerClauses.drop(1))
+        .map(violatingLedgerRecordForBridge)
     )
 
   // ── Helper: run the shipped validator
@@ -118,35 +124,35 @@ final class ConformanceBridgeSpec extends ProbatioSuite:
 
   private def isValidV(v: ujson.Value): Boolean = v match
     case n: ujson.Num if n.value == n.value.floor && n.value.isValidInt && n.value.toInt >= 1 => true
-    case _ => false
+    case _                                                                                    => false
 
   private def isValidTs(v: ujson.Value): Boolean = v match
     case s: ujson.Str if s.value.matches("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$""") => true
-    case _ => false
+    case _                                                                                     => false
 
   private def isValidChange(v: ujson.Value): Boolean = v match
     case s: ujson.Str if s.value.nonEmpty && !s.value.contains('/') && !s.value.contains('\\') => true
-    case _ => false
+    case _                                                                                     => false
 
   private def isValidSpec(v: ujson.Value): Boolean = v match
     case s: ujson.Str if s.value.nonEmpty && !s.value.contains('/') && !s.value.contains('\\') => true
-    case _ => false
+    case _                                                                                     => false
 
   private def isValidRing(v: ujson.Value): Boolean = v match
     case s: ujson.Str => Ring.fromString(s.value).isDefined
-    case _ => false
+    case _            => false
 
   private def isNonEmptyStr(v: ujson.Value): Boolean = v match
     case s: ujson.Str if s.value.nonEmpty => true
-    case _ => false
+    case _                                => false
 
   private def isIntegerValue(v: ujson.Value): Boolean = v match
     case n: ujson.Num if n.value == n.value.floor && n.value.isValidInt => true
-    case _ => false
+    case _                                                              => false
 
   private def isValidBaseline(v: ujson.Value): Boolean = v match
     case s: ujson.Str if s.value.matches("""^[0-9a-f]{7,40}$""") => true
-    case _ => false
+    case _                                                       => false
 
   // ── Fixtures ──────────────────────────────────────────────────────────────
 

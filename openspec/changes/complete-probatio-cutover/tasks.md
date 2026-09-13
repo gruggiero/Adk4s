@@ -4,35 +4,35 @@
      single source of truth for progress; this file is regenerated from it at
      each checkpoint and is never hand-maintained in parallel. -->
 
-## 1. cli-entrypoint-contract
+## 1. cli-entrypoint-contract — COMPLETE
 
-- [ ] Prerequisite — rebuild `probatio-cli/assembly` and record the pre-change oracle baseline via the predecessor scripts (control) and the current shims (port), so spec 2's harness has a recorded starting point
-- [ ] Step 1 — typed contract: `ProgramArgs` (opaque over `List[String]`), `InvocationName` (opaque over `String`), `MulticallDispatch.resolveAndSplit(InvocationName, ProgramArgs): Either[CliError, (Subcommand, ProgramArgs)]`, `ProbatioMain.dispatch(InvocationName, ProgramArgs): Int`, `Subcommand` shrunk to 9 cases (compiles under `-Werror`, human gate)
-- [ ] Step 2 — test oracle: 14 scenarios + 4 properties (`argument-preservation`, `dispatch-equivalence-across-signals`, `no-silent-selection`, `subprocess-agrees-with-in-process`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate)
-- [ ] Step 3 — implementation: obtain the invocation name from the runtime in `main`; remove the six unported `Subcommand` cases and their entrypoint objects; remove `MetalsCmd`'s `stop`/`call` arms; update `HelpRegistry` and every match; migrate `CliWiringContractSpec`, `MulticallDispatchSpec`, `ProbatioDispatchSpec`, `CliSurfaceSpec` off hand-built argv0-prefixed arrays
-- [ ] Ring 0 — `sbt "probatio-cli/compile"` clean under `-Werror` + exhaustiveness escalation (the shrunk enum must surface every unhandled match)
-- [ ] Ring 1 — WartRemover + Scalafix clean; dangerous-pattern scan via `scanner/danger-scan.sh.predecessor.bak` (the shim is a stub until spec 6), invocation recorded
-- [ ] Ring 2 — `probatio-cli/dependencyLint` clean
-- [ ] Ring 3 — property + scenario suites green; `SubprocessConformanceSpec` starts every exposed tool from the assembly the shims resolve; **re-measure the full bats oracle and record the new per-file failure counts**
-- [ ] Ring 8 — fresh-context adversarial review, verifying against the built artifact invoked as a subprocess
-- [ ] Ring 5 — retarget `stryker4s.conf` `mutate` + `test-filter` to `ProbatioMain.scala`, `MulticallDispatch.scala`, `Subcommand.scala`, `ProgramArgs.scala`; threshold 80%; **read and record the reported score** (`break = 0` never fails the build)
-- [ ] Ring 6 — `DispatchKernel` mirror + `EntrypointBridgeSpec`; add `probatio-verified % Test` to `probatio-cli`; `sbt -J-Xmx6g ring6`
-- [ ] Concept-delta check + update `openspec/concept-inventory.md` (2 added, 6 `Subcommand` cases + 6 entrypoint objects removed) + checkpoint
+- [x] Prerequisite — rebuild `probatio-cli/assembly` and record the pre-change oracle baseline via the predecessor scripts (control) and the current shims (port), so spec 2's harness has a recorded starting point
+- [x] Step 1 — typed contract: `ProgramArgs` (opaque over `List[String]`), `InvocationName` (opaque over `String`), `MulticallDispatch.resolveAndSplit(InvocationName, ProgramArgs): Either[CliError, (Subcommand, ProgramArgs)]`, `ProbatioMain.dispatch(InvocationName, ProgramArgs): Int`, `Subcommand` shrunk to 9 cases (compiles under `-Werror`, human gate)
+- [x] Step 2 — test oracle: 14 scenarios + 4 properties (`argument-preservation`, `dispatch-equivalence-across-signals`, `no-silent-selection`, `subprocess-agrees-with-in-process`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate)
+- [x] Step 3 — implementation: obtain the invocation name from the runtime in `main`; remove the six unported `Subcommand` cases and their entrypoint objects; remove `MetalsCmd`'s `stop`/`call` arms; update `HelpRegistry` and every match; migrate `CliWiringContractSpec`, `MulticallDispatchSpec`, `ProbatioDispatchSpec`, `CliSurfaceSpec` off hand-built argv0-prefixed arrays
+- [x] Ring 0 — `sbt "probatio-cli/compile"` clean under `-Werror` + exhaustiveness escalation (the shrunk enum must surface every unhandled match)
+- [x] Ring 1 — WartRemover + Scalafix clean; dangerous-pattern scan via `scanner/danger-scan.sh.predecessor.bak` (the shim is a stub until spec 6), invocation recorded
+- [x] Ring 2 — `probatio-cli/dependencyLint` clean
+- [x] Ring 3 — property + scenario suites green; `SubprocessConformanceSpec` starts every exposed tool from the assembly the shims resolve; **re-measure the full bats oracle and record the new per-file failure counts**
+- [x] Ring 8 — fresh-context adversarial review, verifying against the built artifact invoked as a subprocess
+- [x] Ring 5 — retarget `stryker4s.conf` `mutate` + `test-filter` to `ProbatioMain.scala`, `MulticallDispatch.scala`, `Subcommand.scala`, `ProgramArgs.scala`, `InvocationName.scala`, `HelpRegistry.scala`; threshold 80%; **read and record the reported score** (`break = 0` never fails the build) — 100% covered-code
+- [x] Ring 6 — `DispatchKernel` mirror + `EntrypointBridgeSpec`; add `probatio-verified % Test` to `probatio-cli`; `sbt -J-Xmx6g ring6` — 197/197 VCs valid
+- [x] Concept-delta check + update `openspec/concept-inventory.md` (2 added, 6 `Subcommand` cases + 6 entrypoint objects removed) + checkpoint
 
-## 2. cutover-gate
+## 2. cutover-gate — COMPLETE
 
-- [ ] Prerequisite — add the `probatioOracleDiff` sbt task to `build.sbt`
-- [ ] Step 1 — typed contract: `DifferentialResult`, `CutoverVerdict` (`Proceed` | `Revert(DifferentialResult)`), `CutoverGate.decide`, `SeamConfiguration` smart constructor taking only the ported set (compiles, human gate)
-- [ ] Step 2 — test oracle: 14 scenarios + 5 properties (`proceed-iff-no-file-worse`, `total-improvement-does-not-excuse-a-regression`, `incomplete-comparison-never-proceeds`, `seam-resolves-to-exactly-one`, `revert-restores-every-swapped-seam`) + 4 compile-negative stubs; ORACLE POLARITY run (human gate)
-- [ ] Step 3 — implementation: `DifferentialHarness` materialises two seam-configured scanner trees inside the repository, verifies suite-file digests against the repository's, runs the suite twice, parses both TAP outputs; `OracleGreenCheck` and `OracleGreenGate` delegate to `CutoverGate`; the revert path restores every swapped seam
-- [ ] Step 3b — update `openspec/concepts/conformance-property-test-contract.md` (green becomes parity, not `failed == 0`) and `openspec/concepts/strangler-migration-protocol.md` (the Abort action gains its executable form)
-- [ ] Ring 0 — `sbt "probatio-core/Test/compile"` clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan via the predecessor script, recorded
-- [ ] Ring 2 — `probatio-core/dependencyLint` clean
-- [ ] Ring 3 — property + scenario suites green; the harness reproduces the recorded 2026-08-29 comparison (predecessor 20 failures, port 122) and the gate refuses it
-- [ ] Ring 8 — fresh-context adversarial review
-- [ ] Ring 6 — `CutoverKernel` mirror + `CutoverBridgeSpec`; `sbt -J-Xmx6g ring6`
-- [ ] Concept-delta check + inventory update (2 added, `SeamConfiguration` modified) + checkpoint
+- [x] Prerequisite — add the `probatioOracleDiff` sbt task to `build.sbt`
+- [x] Step 1 — typed contract: `DifferentialResult`, `CutoverVerdict` (`Proceed` | `Revert(DifferentialResult)`), `CutoverGate.decide`, `SeamConfiguration` smart constructor taking only the ported set (compiles, human gate)
+- [x] Step 2 — test oracle: 14 scenarios + 5 properties (`proceed-iff-no-file-worse`, `total-improvement-does-not-excuse-a-regression`, `incomplete-comparison-never-proceeds`, `seam-resolves-to-exactly-one`, `revert-restores-every-swapped-seam`) + 4 compile-negative stubs; ORACLE POLARITY run (human gate)
+- [x] Step 3 — implementation: `DifferentialHarness` materialises two seam-configured scanner trees inside the repository, verifies suite-file digests against the repository's, runs the suite twice, parses both TAP outputs; `OracleGreenCheck` and `OracleGreenGate` delegate to `CutoverGate`; the revert path restores every swapped seam
+- [x] Step 3b — update `openspec/concepts/conformance-property-test-contract.md` (green becomes parity, not `failed == 0`) and `openspec/concepts/strangler-migration-protocol.md` (the Abort action gains its executable form)
+- [x] Ring 0 — `sbt "probatio-core/Test/compile"` clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan via the predecessor script, recorded
+- [x] Ring 2 — `probatio-core/dependencyLint` clean
+- [x] Ring 3 — property + scenario suites green; the harness reproduces the recorded 2026-08-29 comparison (predecessor 20 failures, port 122) and the gate refuses it
+- [x] Ring 8 — fresh-context adversarial review
+- [x] Ring 6 — `CutoverKernel` mirror + `CutoverBridgeSpec`; `sbt -J-Xmx6g ring6`
+- [x] Concept-delta check + inventory update (2 added, `SeamConfiguration` modified) + checkpoint
 
 ## 3. live-fact-banner
 

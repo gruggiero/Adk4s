@@ -56,7 +56,9 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
 
   // ── Scenario: Named-tool invocation reaches the tool with all its arguments
   // spec: cli-entrypoint-contract — Scenario: Named-tool invocation reaches the tool with all its arguments
-  test("Named-tool invocation: probatio gate --event session-start --format hook-json → Gate receives [--event, session-start, --format, hook-json]"):
+  test(
+    "Named-tool invocation: probatio gate --event session-start --format hook-json → Gate receives [--event, session-start, --format, hook-json]"
+  ):
     val result: Either[CliError, (Subcommand, ProgramArgs)] =
       MulticallDispatch.resolveAndSplit(
         inv("probatio"),
@@ -66,13 +68,18 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
 
   // ── Scenario: Symlink invocation reaches the tool with all its arguments
   // spec: cli-entrypoint-contract — Scenario: Symlink invocation reaches the tool with all its arguments
-  test("Symlink invocation: chain-state --change-dir d --change c --baseline abc1234 → ChainState receives all args unchanged"):
+  test(
+    "Symlink invocation: chain-state --change-dir d --change c --baseline abc1234 → ChainState receives all args unchanged"
+  ):
     val result: Either[CliError, (Subcommand, ProgramArgs)] =
       MulticallDispatch.resolveAndSplit(
         inv("chain-state"),
         args("--change-dir", "d", "--change", "c", "--baseline", "abc1234")
       )
-    assertEquals(result, Right((Subcommand.ChainState, args("--change-dir", "d", "--change", "c", "--baseline", "abc1234"))))
+    assertEquals(
+      result,
+      Right((Subcommand.ChainState, args("--change-dir", "d", "--change", "c", "--baseline", "abc1234")))
+    )
 
   // ── Scenario: Error path — the first argument names nothing and the invocation name names nothing
   // spec: cli-entrypoint-contract — Scenario: Error path — the first argument names nothing and the invocation name names nothing
@@ -93,13 +100,18 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
 
   // ── Scenario: Adversarial — a flag value that happens to spell a tool name is not treated as a tool name
   // spec: cli-entrypoint-contract — Scenario: Adversarial — a flag value that happens to spell a tool name is not treated as a tool name
-  test("Adversarial: chain-state --change gate --baseline abc1234 --change-dir d → ChainState (not Gate), args unchanged"):
+  test(
+    "Adversarial: chain-state --change gate --baseline abc1234 --change-dir d → ChainState (not Gate), args unchanged"
+  ):
     val result: Either[CliError, (Subcommand, ProgramArgs)] =
       MulticallDispatch.resolveAndSplit(
         inv("chain-state"),
         args("--change", "gate", "--baseline", "abc1234", "--change-dir", "d")
       )
-    assertEquals(result, Right((Subcommand.ChainState, args("--change", "gate", "--baseline", "abc1234", "--change-dir", "d"))))
+    assertEquals(
+      result,
+      Right((Subcommand.ChainState, args("--change", "gate", "--baseline", "abc1234", "--change-dir", "d")))
+    )
 
   // ── Requirement: An argument list that includes the program name is not
   //    constructible at the entry point
@@ -110,7 +122,7 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
   // spec: cli-entrypoint-contract — Scenario: Happy path — a runtime entry point produces the argument value
   test("ProgramArgs.fromRuntime wraps the runtime array without the program name"):
     val runtimeArgs: Array[String] = Array("gate", "--event", "session-start")
-    val wrapped: ProgramArgs = ProgramArgs.fromRuntime(runtimeArgs)
+    val wrapped: ProgramArgs       = ProgramArgs.fromRuntime(runtimeArgs)
     assertEquals(wrapped.toList, List("gate", "--event", "session-start"))
 
   test("InvocationName.fromRuntime obtains the name separately from the runtime"):
@@ -172,16 +184,14 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
         case "tool-name" =>
           val sub: Subcommand = Subcommand.values(toolIdx)
           inv(s"/usr/local/bin/${Subcommand.cliName(sub)}")
-        case "generic"   => inv("probatio")
-        case "non-tool"  => inv("/usr/local/bin/frobnicate")
+        case "generic"  => inv("probatio")
+        case "non-tool" => inv("/usr/local/bin/frobnicate")
       val inputArgs: ProgramArgs = ProgramArgs.fromFixture(argList)
       MulticallDispatch.resolveAndSplit(name, inputArgs) match
         case Right((_, rest)) =>
           val expected: ProgramArgs =
-            if nameKind == "generic" && inputArgs.headOption.exists(exposedToolNames.contains) then
-              inputArgs.tail
-            else
-              inputArgs
+            if nameKind == "generic" && inputArgs.headOption.exists(exposedToolNames.contains) then inputArgs.tail
+            else inputArgs
           Result.assert(rest.toList == expected.toList)
         case Left(_) => Result.success
 
@@ -189,10 +199,10 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
   // spec: cli-entrypoint-contract — Property: dispatch-equivalence-across-signals
   property("dispatch-equivalence-across-signals"):
     for
-      sub      <- Gen.element(Subcommand.Gate, Subcommand.values.toList.drop(1)).forAll
-      argList  <- genArgListNoToolFirst.forAll
+      sub     <- Gen.element(Subcommand.Gate, Subcommand.values.toList.drop(1)).forAll
+      argList <- genArgListNoToolFirst.forAll
     yield
-      val cliName: String = Subcommand.cliName(sub)
+      val cliName: String      = Subcommand.cliName(sub)
       val fixture: ProgramArgs = ProgramArgs.fromFixture(argList)
       // generic-name dispatch: probatio <sub> <args> — consumes the tool token
       val byGeneric: Either[CliError, (Subcommand, ProgramArgs)] =
@@ -221,8 +231,7 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
         case "mutation"     => mutationToolNames(tokenKind.hashCode().abs % mutationToolNames.length)
         case "random"       => randomTok
       // Only test if the token is NOT an exposed tool name (rejection filter)
-      if exposedToolNames.contains(token) then
-        Result.success
+      if exposedToolNames.contains(token) then Result.success
       else
         val result: Either[CliError, (Subcommand, ProgramArgs)] =
           MulticallDispatch.resolveAndSplit(name, ProgramArgs.fromFixture(List(token)))
@@ -302,13 +311,70 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
       MulticallDispatch.resolveAndSplit(inv("probatio"), args("--"))
     assertEquals(result, Left(CliError.UnknownSubcommand("(none)")))
 
+  // ── Ring 5 mutation coverage ────────────────────────────────────────────
+  // These tests pin observable behaviour that mutants otherwise survive:
+  // the subcommand --help path, the absence of help output on a normal run,
+  // the InvocationName error message, and the top-level usage listing.
+  //
+  // spec: cli-entrypoint-contract — Requirement: Top-level --help shows usage
+  // spec: cli-protocol — Requirement: Help lists every flag with its default
+
+  /** Runs `dispatch` with stdout redirected, returning (exit code, stdout). */
+  private def captureStdout(name: InvocationName, pa: ProgramArgs): (Int, String) =
+    val baos: java.io.ByteArrayOutputStream = new java.io.ByteArrayOutputStream()
+    val ps: java.io.PrintStream             = new java.io.PrintStream(baos, true, "UTF-8")
+    val old: java.io.PrintStream            = System.out
+    System.setOut(ps)
+    try
+      val code: Int = ProbatioMain.dispatch(name, pa)
+      ps.flush()
+      (code, baos.toString("UTF-8"))
+    finally System.setOut(old)
+
+  test("subcommand --help prints that subcommand's help on stdout and exits 0"):
+    val (code, out): (Int, String) = captureStdout(inv("probatio"), args("gate", "--help"))
+    assertEquals(code, 0)
+    assert(out.contains("probatio gate"), s"gate help missing header, got: $out")
+    assert(out.contains("--event"), s"gate help missing --event flag, got: $out")
+
+  test("subcommand without --help runs normally — no help on stdout"):
+    val (code, out): (Int, String) = captureStdout(inv("probatio"), args("gate"))
+    assertEquals(code, 1)
+    assert(!out.contains("Options:"), s"help output leaked onto stdout, got: $out")
+
+  test("InvocationName.fromRuntime error message names the violation"):
+    InvocationName.fromRuntime("") match
+      case Left(msg)   => assert(msg.contains("non-empty"), s"error message must describe the violation, got: '$msg'")
+      case Right(name) => fail(s"empty invocation name must be rejected, got $name")
+
+  test("topLevelUsage lists every subcommand name on its own line"):
+    val usage: String      = HelpRegistry.topLevelUsage
+    val lines: Set[String] = usage.split("\n").map(_.trim).toSet
+    assert(usage.contains("Subcommands:"), s"usage missing Subcommands header, got: $usage")
+    Subcommand.values.foreach { sub =>
+      val name: String = Subcommand.cliName(sub)
+      assert(lines.contains(name), s"usage missing subcommand line for '$name', got: $usage")
+    }
+
+  test("helpFor render names the subcommand and lists its flags"):
+    Subcommand.values.foreach { sub =>
+      val rendered: String = HelpRegistry.helpFor(sub).render
+      assert(
+        rendered.contains(s"probatio ${Subcommand.cliName(sub)}"),
+        s"help for ${Subcommand.cliName(sub)} missing header, got: $rendered"
+      )
+    }
+
   // ── Generators ──────────────────────────────────────────────────────────
 
-  /** Generates an argument list from a pool of flag tokens, value tokens, and
-   * tool-name-shaped value tokens; sizes 0–12. */
+  /**
+   * Generates an argument list from a pool of flag tokens, value tokens, and
+   * tool-name-shaped value tokens; sizes 0–12.
+   */
   private def genArgList: Gen[List[String]] =
-    val flagTokens: Gen[String] = Gen.element1("--event", "--change", "--baseline", "--format", "--file", "--dir", "--help")
-    val valueTokens: Gen[String] = Gen.element1("session-start", "abc1234", "my-change", "hook-json", "d", "c")
+    val flagTokens: Gen[String] =
+      Gen.element1("--event", "--change", "--baseline", "--format", "--file", "--dir", "--help")
+    val valueTokens: Gen[String]    = Gen.element1("session-start", "abc1234", "my-change", "hook-json", "d", "c")
     val toolNameTokens: Gen[String] = Gen.element1("gate", "ledger", "chain-state", "metals", "scan", "registry-check")
     val tokenPool: Gen[String] = Gen.frequency1(
       3 -> flagTokens,
@@ -322,7 +388,8 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
 
   /** Generates an argument list whose first element is NOT a tool name. */
   private def genArgListNoToolFirst: Gen[List[String]] =
-    val nonToolFirst: Gen[String] = Gen.element1("--event", "--change", "--baseline", "--help", "session-start", "abc1234")
+    val nonToolFirst: Gen[String] =
+      Gen.element1("--event", "--change", "--baseline", "--help", "session-start", "abc1234")
     for
       head <- nonToolFirst
       tail <- genArgList

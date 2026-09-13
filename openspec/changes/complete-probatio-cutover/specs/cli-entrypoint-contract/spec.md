@@ -308,8 +308,11 @@ classifications (0 = not a tool name, n = tool index n).
 totality is itself the obligation.
 
 **Postcondition** (`ensuring`): when a tool is selected, the returned remainder is
-a suffix of the input whose dropped prefix has length 0 or 1, and has length 1 if
-and only if the dropped element classified as the selected tool.
+a suffix of the input whose dropped prefix has length 0, 1, or 2 — length 0 under
+name dispatch, length 1 iff the dropped element classified as the selected tool,
+and length 2 iff the dropped prefix was a POSIX `--` separator followed by the
+selected tool (DEFECT-3: the separator is consumed before subcommand resolution
+under a generic name; token classification `-1` encodes the separator).
 
 ```scala
 def resolveAndSplit(nameTool: Option[BigInt], tokens: List[BigInt]):
@@ -318,8 +321,9 @@ def resolveAndSplit(nameTool: Option[BigInt], tokens: List[BigInt]):
 }.ensuring { res => res match
   case None => true
   case Some((tool, rest)) =>
-    (rest == tokens || (tokens.nonEmpty && rest == tokens.tail && tokens.head == tool)) &&
-    rest.length >= tokens.length - 1
+    rest == tokens ||
+    tokens == Cons(tool, rest) ||
+    tokens == Cons(Sep, Cons(tool, rest))   // Sep = -1: POSIX `--`
 }
 ```
 
@@ -338,16 +342,16 @@ reasonable time.
 | Obligation | Source | Enforcement | Artifact |
 |------------|--------|-------------|----------|
 | At most one argument is consumed as a tool name | Requirement: The tool surface resolves its command from the invocation name and the first user argument, never by consuming two user arguments + Property: argument-preservation | property test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
-| Both invocation signals select the same tool with the same remainder | Property: dispatch-equivalence-across-signals | property test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
-| A value that spells a tool name is not read as a tool name | Scenario: Adversarial — a flag value that happens to spell a tool name is not treated as a tool name | scenario test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
+| Both invocation signals select the same tool with the same remainder | Requirement 1 + Property: dispatch-equivalence-across-signals | property test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
+| A value that spells a tool name is not read as a tool name | Requirement 1 + Scenario: Adversarial — a flag value that happens to spell a tool name is not treated as a tool name | scenario test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
 | A program-name-prefixed list cannot be supplied as runtime arguments | Requirement: An argument list that includes the program name is not constructible at the entry point + Compile-Negative: ProgramArgs from a program-name-prefixed list | opaque type + compile-negative test | `ProgramArgs` in `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/ProgramArgs.scala`; `EntrypointContractSpec` |
-| The two-argument-consuming resolve shape cannot be reintroduced | Compile-Negative: MulticallDispatch.resolve taking the tool token from a second argument position | compile-negative test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
+| The two-argument-consuming resolve shape cannot be reintroduced | Requirement 1 + Compile-Negative: MulticallDispatch.resolve taking the tool token from a second argument position | compile-negative test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
 | Every exposed tool starts as a separate process and reports a documented status | Requirement: Every tool is exercised through the built artifact, not only through in-process calls + Property: subprocess-agrees-with-in-process | property test over a fixture corpus, executing the built artifact | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/SubprocessConformanceSpec.scala` |
-| A missing tool entry point fails the conformance check rather than being skipped | Scenario: Error path — a tool that cannot be started is a failure, not a skip | scenario test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/SubprocessConformanceSpec.scala` |
-| The checked artifact is the artifact the shims resolve | Scenario: Edge case — the artifact under check is the one the shims resolve | scenario test reading the shim resolution path | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/SubprocessConformanceSpec.scala` |
+| A missing tool entry point fails the conformance check rather than being skipped | Requirement 3 + Scenario: Error path — a tool that cannot be started is a failure, not a skip | scenario test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/SubprocessConformanceSpec.scala` |
+| The checked artifact is the artifact the shims resolve | Requirement 3 + Scenario: Edge case — the artifact under check is the one the shims resolve | scenario test reading the shim resolution path | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/SubprocessConformanceSpec.scala` |
 | An unported tool is unnameable | Requirement: A tool that has no implementation is not nameable on the tool surface + Compile-Negative: Subcommand.RegistryCheck | type system (enum case absent) + compile-negative test | `Subcommand` in `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/Subcommand.scala`; `EntrypointContractSpec` |
-| An unported tool name exits with the finding status, never clean | Scenario: Adversarial — an unported tool name is rejected, not silently accepted | scenario test executing the built artifact | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/SubprocessConformanceSpec.scala` |
-| Selection never succeeds for a non-tool token | Property: no-silent-selection | property test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
+| An unported tool name exits with the finding status, never clean | Requirement 4 + Scenario: Adversarial — an unported tool name is rejected, not silently accepted | scenario test executing the built artifact | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/SubprocessConformanceSpec.scala` |
+| Selection never succeeds for a non-tool token | Requirement 1 + Property: no-silent-selection | property test | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointContractSpec.scala` |
 | The selection-and-split function is total and its remainder is a bounded suffix | Requirement: The tool surface resolves its command from the invocation name and the first user argument, never by consuming two user arguments + Property: argument-preservation + Contract: resolveAndSplit | formal contract (Ring 6) + bridge property test | `verified/probatio/src/main/scala/org/sinemenda/probatio/core/DispatchKernel.scala`; `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/EntrypointBridgeSpec.scala` |
 | No requirement of this spec is satisfied by a test that encodes the implementation's argument shape | Requirement: Every tool is exercised through the built artifact, not only through in-process calls | adversarial review (Ring 8), fresh context, verifying against the built artifact | Ring 8 review record in `implementation-progress.md` |
 

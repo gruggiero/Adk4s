@@ -7,17 +7,25 @@ import java.lang.Process
 import java.lang.ProcessBuilder
 import scala.sys.process.*
 
-/** Oracle-green regression property (R-M1).
-  *
-  * The acceptance oracle (the 17 bats files under
-  * `openspec/schemas/verified-scala3/tests/`) produces the same set of
-  * pass/fail outcomes before and after a tool substitution at a seam. This
-  * is a regression property: the oracle is the fixed reference, and the
-  * ported tool's behavior at the seam must not change any test's outcome.
-  *
-  * spec: migration-protocol — Requirement: Bats oracle is the porting acceptance suite
-  * spec: migration-protocol — Property: oracle-green-at-every-step
-  */
+/**
+ * Oracle-green regression property (R-M1).
+ *
+ * The acceptance oracle (the 17 bats files under
+ * `openspec/schemas/verified-scala3/tests/`) produces the same set of
+ * pass/fail outcomes before and after a tool substitution at a seam. This
+ * is a regression property: the oracle is the fixed reference, and the
+ * ported tool's behavior at the seam must not change any test's outcome.
+ *
+ * The single-run predicate (failed == 0) has been replaced by the
+ * comparison-based gate: the oracle is green when no file fails more
+ * tests under the ported implementation than under the predecessor,
+ * measured in the same repository under the same suite. See
+ * [[CutoverGate]] and [[DifferentialHarness]].
+ *
+ * spec: migration-protocol — Requirement: Bats oracle is the porting acceptance suite
+ * spec: migration-protocol — Property: oracle-green-at-every-step
+ * spec: cutover-gate — Requirement: The gate's decision is a comparison against the predecessor, not an absolute threshold
+ */
 final class OracleGreenCheck extends ProbatioSuite:
 
   import SeamTypes.*
@@ -27,11 +35,14 @@ final class OracleGreenCheck extends ProbatioSuite:
   // Runs all 17 bats files twice (~60s). Ignored in normal CI; re-enable
   // with `munit.Ignore` removal during the actual migration step.
   test("oracle green: ported tool at its seam produces same outcomes as predecessor".ignore):
-    val config: SeamConfiguration = SeamConfiguration(Set(ToolId.ChainState))
+    val config: SeamConfiguration        = SeamConfiguration.fromPorted(Set(ToolId.ChainState))
     val predecessorResult: OracleOutcome = runOracle(config.withPredecessor)
-    val portedResult: OracleOutcome = runOracle(config.withPorted)
-    assertEquals(predecessorResult, portedResult,
-      s"oracle outcomes differ: predecessor=$predecessorResult, ported=$portedResult")
+    val portedResult: OracleOutcome      = runOracle(config.withPorted)
+    assertEquals(
+      predecessorResult,
+      portedResult,
+      s"oracle outcomes differ: predecessor=$predecessorResult, ported=$portedResult"
+    )
 
   // ── Scenario: Oracle modification rejected as a behavior delta
   // spec: migration-protocol — Scenario: Oracle modification rejected as a behavior delta
@@ -44,18 +55,20 @@ final class OracleGreenCheck extends ProbatioSuite:
     val batsFiles: IndexedSeq[os.Path] = os.list(oracleDir).filter(_.ext == "bats")
     assert(batsFiles.nonEmpty, "no .bats files found in oracle directory")
     // The oracle must have exactly 17 bats files (per spec implementation anchors)
-    assertEquals(batsFiles.length, 17,
-      s"expected 17 bats files, found ${batsFiles.length}")
+    assertEquals(batsFiles.length, 17, s"expected 17 bats files, found ${batsFiles.length}")
 
   // ── Scenario: Partial migration — mixed predecessor and ported tools
   // spec: migration-protocol — Scenario: Partial migration — mixed predecessor and ported tools
   // Runs all 17 bats files twice (~60s). Ignored in normal CI.
   test("oracle green: mixed predecessor and ported tools pass the full oracle".ignore):
-    val config: SeamConfiguration = SeamConfiguration(Set(ToolId.ChainState, ToolId.SpecLint))
+    val config: SeamConfiguration        = SeamConfiguration.fromPorted(Set(ToolId.ChainState, ToolId.SpecLint))
     val predecessorResult: OracleOutcome = runOracle(config.withPredecessor)
-    val portedResult: OracleOutcome = runOracle(config)
-    assertEquals(predecessorResult, portedResult,
-      s"oracle outcomes differ with mixed tools: predecessor=$predecessorResult, mixed=$portedResult")
+    val portedResult: OracleOutcome      = runOracle(config)
+    assertEquals(
+      predecessorResult,
+      portedResult,
+      s"oracle outcomes differ with mixed tools: predecessor=$predecessorResult, mixed=$portedResult"
+    )
 
   // ── Compile-Negative: Oracle source modified to accommodate a ported tool
   // spec: migration-protocol — Compile-Negative: Oracle source modified to accommodate a ported tool
@@ -64,8 +77,11 @@ final class OracleGreenCheck extends ProbatioSuite:
     // `git diff --exit-code openspec/schemas/verified-scala3/tests/`.
     // Here we assert the oracle files are tracked by git (not new/untracked).
     val oracleDir: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3" / "tests"
-    val gitResult: Int = Seq("git", "diff", "--exit-code", "--", oracleDir.toString).!
-    assert(gitResult == 0, "oracle source has uncommitted modifications — a modified oracle is not an independent witness")
+    val gitResult: Int     = Seq("git", "diff", "--exit-code", "--", oracleDir.toString).!
+    assert(
+      gitResult == 0,
+      "oracle source has uncommitted modifications — a modified oracle is not an independent witness"
+    )
 
   // ── Property: oracle-green-at-every-step
   // spec: migration-protocol — Property: oracle-green-at-every-step
@@ -89,7 +105,7 @@ final class OracleGreenCheck extends ProbatioSuite:
   // and one with the ported implementation, with all other seams on the
   // predecessor.
   def genSeamConfiguration: Gen[SeamConfiguration] =
-    Gen.element(ToolId.swapOrder(0), ToolId.swapOrder.drop(1)).map(tool => SeamConfiguration(Set(tool)))
+    Gen.element(ToolId.swapOrder(0), ToolId.swapOrder.drop(1)).map(tool => SeamConfiguration.fromPorted(Set(tool)))
 
   // ── Helper: run the oracle with a given seam configuration
   // Runs the bats oracle under the given seam configuration. For the
@@ -106,25 +122,41 @@ final class OracleGreenCheck extends ProbatioSuite:
     else
       // For predecessor configuration, no env vars are set.
       // For ported configurations, env vars point to the probatio binary.
-      val env: Map[String, String] = if config.portedTools.isEmpty then
-        Map.empty[String, String]
-      else
-        // Ported tools: set override to the probatio binary path.
-        // The binary is the JAR launcher at bin/probatio, which dispatches
-        // to the correct subcommand based on argv.
-        config.portedTools.flatMap { tool =>
-          val envVar: String = ToolId.overrideEnvVar(tool)
-          val binaryPath: String = portedBinaryPath
-          Some(envVar -> binaryPath)
-        }.toMap
+      val env: Map[String, String] =
+        if config.portedTools.isEmpty then Map.empty[String, String]
+        else
+          // Ported tools: set override to the probatio binary path.
+          // The binary is the JAR launcher at bin/probatio, which dispatches
+          // to the correct subcommand based on argv.
+          config.portedTools.flatMap { tool =>
+            val envVar: String     = ToolId.overrideEnvVar(tool)
+            val binaryPath: String = portedBinaryPath
+            Some(envVar -> binaryPath)
+          }.toMap
 
-      val batsFiles: IndexedSeq[os.Path] = os.list(oracleDir).filter(_.ext == "bats")
+      val batsFiles: IndexedSeq[os.Path]      = os.list(oracleDir).filter(_.ext == "bats")
       val outcomes: IndexedSeq[OracleOutcome] = batsFiles.map(runSingleBatsFile(_, env))
-      val passed: Int = outcomes.map(_.passed).sum
-      val failed: Int = outcomes.map(_.failed).sum
-      val skipped: Int = outcomes.map(_.skipped).sum
+      val passed: Int                         = outcomes.map(_.passed).sum
+      val failed: Int                         = outcomes.map(_.failed).sum
+      val skipped: Int                        = outcomes.map(_.skipped).sum
 
       OracleOutcome(passed, failed, skipped)
+
+  // ── Helper: run the differential comparison between two seam configs
+  // Runs the oracle suite under both the predecessor and ported seam
+  // configurations, then computes the differential result. This is the
+  // comparison-based replacement for the single-run predicate.
+  //
+  // spec: cutover-gate — Requirement: The gate's decision is a comparison against the predecessor, not an absolute threshold
+  def runDifferential(portedConfig: SeamConfiguration): DifferentialResult =
+    val oracleDir: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3" / "tests"
+    val binaryPath: String = portedBinaryPath
+    val predecessorRun: DifferentialHarness.SuiteRun =
+      DifferentialHarness.runSuite(portedConfig.withPredecessor, oracleDir, binaryPath)
+    val portedRun: DifferentialHarness.SuiteRun =
+      DifferentialHarness.runSuite(portedConfig, oracleDir, binaryPath)
+    val repository: String = os.pwd.toString
+    DifferentialHarness.diff(predecessorRun, portedRun, repository)
 
   // ── Helper: the resolved probatio binary path (JAR launcher)
   // The binary is the launcher script at bin/probatio, which invokes
@@ -135,17 +167,17 @@ final class OracleGreenCheck extends ProbatioSuite:
 
   // ── Helper: run a single bats file and parse the outcome
   private def runSingleBatsFile(batsFile: os.Path, env: Map[String, String]): OracleOutcome =
-    val cmd: Seq[String] = Seq("bats", batsFile.toString)
+    val cmd: Seq[String]        = Seq("bats", batsFile.toString)
     val builder: ProcessBuilder = new ProcessBuilder(cmd*).redirectErrorStream(true)
     // Set override env vars on the process
     env.foreach { case (k: String, v: String) => builder.environment().put(k, v) }
     val process: Process = builder.start()
-    val output: String = scala.io.Source.fromInputStream(process.getInputStream).mkString
+    val output: String   = scala.io.Source.fromInputStream(process.getInputStream).mkString
     process.waitFor()
     // Parse TAP output: lines starting with "ok" = passed, "not ok" = failed,
     // "skip" = skipped
     val lines: List[String] = output.linesIterator.toList
-    val passed: Int = lines.count(l => l.startsWith("ok ") && !l.contains("# skip"))
-    val skipped: Int = lines.count(l => l.startsWith("ok ") && l.contains("# skip"))
-    val failed: Int = lines.count(_.startsWith("not ok "))
+    val passed: Int         = lines.count(l => l.startsWith("ok ") && !l.contains("# skip"))
+    val skipped: Int        = lines.count(l => l.startsWith("ok ") && l.contains("# skip"))
+    val failed: Int         = lines.count(_.startsWith("not ok "))
     OracleOutcome(passed, failed, skipped)

@@ -3,24 +3,25 @@ package org.sinemenda.probatio.migration
 import hedgehog.*
 import org.sinemenda.probatio.core.ProbatioSuite
 
-/** Test oracle for the hook-cutover spec — dependency order, oracle-green
-  * gating, and the SwapOrder compile-negative.
-  *
-  * These tests are derived from the spec's requirements and properties,
-  * NOT from the implementation. They verify:
-  * - Requirement: Shims are swapped in dependency order — gate last
-  * - Requirement: Skill-doc updates are atomic with the shim swap (stale ref)
-  * - Property: oracle-green-at-every-step
-  * - Property: swap-order-respects-dependencies
-  * - Compile-Negative: SwapOrder.GateFirst
-  *
-  * The shim-idempotency property and the shim-with-logic compile-negative
-  * live in `HookCutoverShimSpec.scala` (plugin test sources) because
-  * `ShimGenerator` is in the sbt-probatio plugin module, which is not
-  * visible to probatio-core tests.
-  *
-  * spec: hook-cutover — all requirements and properties
-  */
+/**
+ * Test oracle for the hook-cutover spec — dependency order, oracle-green
+ * gating, and the SwapOrder compile-negative.
+ *
+ * These tests are derived from the spec's requirements and properties,
+ * NOT from the implementation. They verify:
+ * - Requirement: Shims are swapped in dependency order — gate last
+ * - Requirement: Skill-doc updates are atomic with the shim swap (stale ref)
+ * - Property: oracle-green-at-every-step
+ * - Property: swap-order-respects-dependencies
+ * - Compile-Negative: SwapOrder.GateFirst
+ *
+ * The shim-idempotency property and the shim-with-logic compile-negative
+ * live in `HookCutoverShimSpec.scala` (plugin test sources) because
+ * `ShimGenerator` is in the sbt-probatio plugin module, which is not
+ * visible to probatio-core tests.
+ *
+ * spec: hook-cutover — all requirements and properties
+ */
 final class HookCutoverSpec extends ProbatioSuite:
 
   import SeamTypes.*
@@ -32,9 +33,8 @@ final class HookCutoverSpec extends ProbatioSuite:
     val order: List[SwapOrder] = SwapOrder.swapOrder
     order.headOption match
       case Some(SwapOrder.LedgerFirst) => () // expected
-      case other => fail(s"expected first = LedgerFirst, got $other")
-    assertEquals(order(1), SwapOrder.ChainState,
-      s"expected second = ChainState, got ${order(1)}")
+      case other                       => fail(s"expected first = LedgerFirst, got $other")
+    assertEquals(order(1), SwapOrder.ChainState, s"expected second = ChainState, got ${order(1)}")
 
   // ── Requirement: Shims are swapped in dependency order — gate last
   // spec: hook-cutover — Scenario: The gate is swapped last
@@ -42,9 +42,8 @@ final class HookCutoverSpec extends ProbatioSuite:
     val order: List[SwapOrder] = SwapOrder.swapOrder
     order.lastOption match
       case Some(SwapOrder.GateLast) => () // expected
-      case other => fail(s"expected last = GateLast, got $other")
-    assert(SwapOrder.isLast(SwapOrder.GateLast),
-      "SwapOrder.isLast(GateLast) must return true")
+      case other                    => fail(s"expected last = GateLast, got $other")
+    assert(SwapOrder.isLast(SwapOrder.GateLast), "SwapOrder.isLast(GateLast) must return true")
 
   // ── Requirement: Shims are swapped in dependency order — gate last
   // spec: hook-cutover — Scenario: A regressing swap is aborted
@@ -53,8 +52,8 @@ final class HookCutoverSpec extends ProbatioSuite:
   // normal CI; un-ignore for the ORACLE POLARITY run and the actual
   // migration step.
   test("per-swap gating: OracleGreenGate.apply(tool, seamConfig) returns Boolean".ignore):
-    val config: SeamConfiguration = SeamConfiguration(Set.empty)
-    val gateResult: Boolean = OracleGreenGate.apply(ToolId.ChainState, config)
+    val config: SeamConfiguration = SeamConfiguration.fromPorted(Set.empty)
+    val gateResult: Boolean       = OracleGreenGate.apply(ToolId.ChainState, config)
     // The gate returns a Boolean — true iff the oracle is green.
     gateResult match
       case true  => () // oracle is green
@@ -73,10 +72,8 @@ final class HookCutoverSpec extends ProbatioSuite:
       oracleGreen = false,
       timestamp = "2026-08-28T10:00:00Z"
     )
-    assert(!abortedSwap.oracleGreen,
-      "an aborted swap must have oracleGreen=false — the oracle regressed")
-    assert(abortedSwap.tool == ToolId.SpecLint,
-      "the aborted swap must record which tool was attempted")
+    assert(!abortedSwap.oracleGreen, "an aborted swap must have oracleGreen=false — the oracle regressed")
+    assert(abortedSwap.tool == ToolId.SpecLint, "the aborted swap must record which tool was attempted")
 
   // ── Requirement: Skill-doc updates are atomic with the shim swap
   // spec: hook-cutover — Scenario: A stale skill doc is detected
@@ -101,15 +98,15 @@ final class HookCutoverSpec extends ProbatioSuite:
   // test above. This property verifies the prefix structure that the
   // oracle-green gate depends on.
   property("oracle green at every step (prefix-subset)"):
-    for
-      config <- genSeamConfigurationPrefix.forAll
+    for config <- genSeamConfigurationPrefix.forAll
     yield
       // Verify the ported tools form a prefix of ToolId.swapOrder.
       // A non-prefix configuration would mean a tool was swapped before
       // its dependencies — violating the dependency order.
-      val portedList: List[ToolId] = ToolId.swapOrder.filter(config.portedTools.contains)
+      val portedList: List[ToolId]     = ToolId.swapOrder.filter(config.portedTools.contains)
       val expectedPrefix: List[ToolId] = ToolId.swapOrder.take(portedList.length)
-      Result.assert(portedList == expectedPrefix)
+      Result
+        .assert(portedList == expectedPrefix)
         .log(s"ported tools $portedList must be a prefix of swap order, expected $expectedPrefix")
 
   // ── Property: swap-order-respects-dependencies
@@ -118,30 +115,28 @@ final class HookCutoverSpec extends ProbatioSuite:
   // is the last tool swapped. No tool is swapped before all tools earlier
   // in the swap order are ported and oracle-green.
   property("swap order respects dependencies"):
-    for
-      sequence <- genSwapSequence.forAll
+    for sequence <- genSwapSequence.forAll
     yield
       // The invariant: if GateLast is in the sequence, it must be the
       // last element. A prefix that doesn't include GateLast is valid.
       // GateLast must never appear before the last position.
-      val gateLastIdx: Int = sequence.indexOf(SwapOrder.GateLast)
-      val lastIdx: Int = sequence.length - 1
+      val gateLastIdx: Int            = sequence.indexOf(SwapOrder.GateLast)
+      val lastIdx: Int                = sequence.length - 1
       val gateIsLastOrAbsent: Boolean = gateLastIdx < 0 || gateLastIdx == lastIdx
-      Result.assert(gateIsLastOrAbsent)
+      Result
+        .assert(gateIsLastOrAbsent)
         .log(s"GateLast must be last or absent, got: $sequence (gateLastIdx=$gateLastIdx, lastIdx=$lastIdx)")
 
   // ── Compile-Negative: SwapOrder variant with Gate not last
   // spec: hook-cutover — Compile-Negative: SwapOrder.GateFirst
   test("compile-negative: SwapOrder has no GateFirst case"):
     val err: String = compileErrors("SwapOrder.GateFirst")
-    assert(err.nonEmpty,
-      "SwapOrder must not have a GateFirst case — the gate is always last")
+    assert(err.nonEmpty, "SwapOrder must not have a GateFirst case — the gate is always last")
 
   // ── Compile-Negative: SwapOrder has exactly 6 cases
   test("SwapOrder enum has exactly 6 cases"):
     val cases: Array[SwapOrder] = SwapOrder.values
-    assertEquals(cases.length, 6,
-      s"SwapOrder should have exactly 6 cases, found ${cases.length}")
+    assertEquals(cases.length, 6, s"SwapOrder should have exactly 6 cases, found ${cases.length}")
     assert(cases.contains(SwapOrder.LedgerFirst), "LedgerFirst missing")
     assert(cases.contains(SwapOrder.ChainState), "ChainState missing")
     assert(cases.contains(SwapOrder.SpecLint), "SpecLint missing")
@@ -155,13 +150,13 @@ final class HookCutoverSpec extends ProbatioSuite:
   // Edge cases: empty set (all predecessor), full set (all ported).
   def genSeamConfigurationPrefix: Gen[SeamConfiguration] =
     Gen.frequency(
-      1 -> Gen.constant(SeamConfiguration(Set.empty)),
+      1 -> Gen.constant(SeamConfiguration.fromPorted(Set.empty)),
       List(
-        1 -> Gen.constant(SeamConfiguration(ToolId.swapOrder.take(1).toSet)),
-        1 -> Gen.constant(SeamConfiguration(ToolId.swapOrder.take(2).toSet)),
-        1 -> Gen.constant(SeamConfiguration(ToolId.swapOrder.take(3).toSet)),
-        1 -> Gen.constant(SeamConfiguration(ToolId.swapOrder.take(4).toSet)),
-        1 -> Gen.constant(SeamConfiguration(ToolId.swapOrder.toSet))
+        1 -> Gen.constant(SeamConfiguration.fromPorted(ToolId.swapOrder.take(1).toSet)),
+        1 -> Gen.constant(SeamConfiguration.fromPorted(ToolId.swapOrder.take(2).toSet)),
+        1 -> Gen.constant(SeamConfiguration.fromPorted(ToolId.swapOrder.take(3).toSet)),
+        1 -> Gen.constant(SeamConfiguration.fromPorted(ToolId.swapOrder.take(4).toSet)),
+        1 -> Gen.constant(SeamConfiguration.fromPorted(ToolId.swapOrder.toSet))
       )
     )
 

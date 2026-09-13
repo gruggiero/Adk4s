@@ -526,7 +526,7 @@ lazy val `probatio-core` = (project in file("workflow/core"))
 // Depends on probatio-core (Outcome, LintReport, ChainStateReport, GatePayload,
 // Ledger). NO cats, NO cats-effect, NO fs2 (R-X3). R-ARCH1: no adk4s deps.
 lazy val `probatio-cli` = (project in file("workflow/cli"))
-  .dependsOn(`probatio-core`)
+  .dependsOn(`probatio-core`, `probatio-verified` % Test)
   .enablePlugins(NativeImagePlugin)
   .settings(
     name := "probatio-cli",
@@ -699,6 +699,19 @@ addCommandAlias(
   "; probatio-core/dependencyLint ; probatio-cli/dependencyLint ; sbt-probatio/dependencyLint ; probatio-verified/dependencyLint"
 )
 
+// ── probatioOracleDiff — Ring 3 acceptance task (cutover-gate spec) ────────
+// Materialises two seam-configured copies of the scanner tree inside the
+// repository, runs the suite against each, parses both outputs, and emits
+// a DifferentialResult. The gate decides based on the per-file comparison:
+// proceed iff no file is worse under the ported implementation than under
+// the predecessor.
+//
+// spec: cutover-gate — Implementation Anchors: probatioOracleDiff
+addCommandAlias(
+  "probatioOracleDiff",
+  "probatio-core/testOnly org.sinemenda.probatio.migration.OracleDiffRunner"
+)
+
 // ── V1 spike — throwaway native-image toolchain proof ──────────────────────
 // NOT spec-1 production. This subproject exists only to discharge the V1
 // hard-blocker: prove GraalVM native-image can build a probatio-style CLI
@@ -728,5 +741,9 @@ lazy val `probatio-spike` = (project in file("workflow/spike"))
 // plugin jar before compilation.
 addCommandAlias(
   "ring6",
-  "; set verified / stainlessEnabled := true ; verified / compile ; set probatio-verified / stainlessEnabled := true ; probatio-verified / compile"
+  "; set verified / stainlessEnabled := true ; verified / compile ; set `probatio-verified` / stainlessEnabled := true ; `probatio-verified` / compile"
 )
+// NOTE: The `ring6` alias above does not work in sbt 1.12 because backtick-
+// quoted project IDs are not parsed correctly inside `addCommandAlias`.
+// Use the direct invocation instead (from docs/ring6-stainless-verification-experience.md §10):
+//   sbt -J-Xmx6g 'set `probatio-verified` / stainlessEnabled := true' 'probatio-verified/clean' 'probatio-verified/compile'
