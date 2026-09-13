@@ -34,7 +34,10 @@ object UnresolvedReason:
         fromString(s) match
           case Some(r) => r
           case None    => sys.error(s"invalid unresolved reason: $s")
-      case other => sys.error(s"expected string, got: $other") // danger-scan:allow type-rejection — non-string crashes, never maps to valid value
+      case other =>
+        sys.error(
+          s"expected string, got: $other"
+        ) // danger-scan:allow type-rejection — non-string crashes, never maps to valid value
     }
   )
 

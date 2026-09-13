@@ -45,9 +45,7 @@ object GrantWaiver:
       case Nil => Right(())
       case (name, phase, hasPres, hasGrant) :: rest =>
         val passes: Boolean = (phase == SpecPhase.Verified && hasPres) || hasGrant
-        if passes then
-          checkList(rest)
-        else
-          Left(BlockReason.GrantRequired(name))
+        if passes then checkList(rest)
+        else Left(BlockReason.GrantRequired(name))
 
 end GrantWaiver

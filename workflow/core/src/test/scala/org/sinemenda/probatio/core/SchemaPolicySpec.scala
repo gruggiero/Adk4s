@@ -93,23 +93,23 @@ final class SchemaPolicySpec extends ProbatioSuite:
 
   // spec: schema-policy — Property: env-var-alias-honored-with-warning
   property("env-var-alias-honored-with-warning"):
-    for
-      (setting, expectedResolved, expectWarnings) <- genEnvVarSetting.forAll
+    for (setting, expectedResolved, expectWarnings) <- genEnvVarSetting.forAll
     yield
       val result: EnvResolution = SchemaPolicy.resolveHookEnv(setting, 14)
-      Result.assert(result.resolved == expectedResolved)
+      Result
+        .assert(result.resolved == expectedResolved)
         .and(Result.assert(result.warnings.nonEmpty == expectWarnings))
 
   // ── Property: cache-dir-migration-idempotent ────────────────────────────
 
   // spec: schema-policy — Property: cache-dir-migration-idempotent
   property("cache-dir-migration-idempotent"):
-    for
-      state <- genCacheState.forAll
+    for state <- genCacheState.forAll
     yield
       val afterFirst: CacheState  = SchemaPolicy.migrateCache(state)
       val afterSecond: CacheState = SchemaPolicy.migrateCache(afterFirst)
-      Result.assert(afterFirst.newDirContents == expectedAfterMigration(state))
+      Result
+        .assert(afterFirst.newDirContents == expectedAfterMigration(state))
         .and(Result.assert(afterSecond.newDirContents == afterFirst.newDirContents))
 
   /** Pure model of the expected new-dir contents after migration. */
@@ -122,18 +122,17 @@ final class SchemaPolicySpec extends ProbatioSuite:
 
   // spec: schema-policy — Property: stamp-rename-migration-message
   property("stamp-rename-migration-message"):
-    for
-      scan <- genStampScan.forAll
+    for scan <- genStampScan.forAll
     yield
-      val schemaVersion: Int        = 14
-      val lines: List[DriftLine]    = SchemaPolicy.classifyDrift(scan, schemaVersion)
+      val schemaVersion: Int               = 14
+      val lines: List[DriftLine]           = SchemaPolicy.classifyDrift(scan, schemaVersion)
       val stamps: List[(StampFormat, Int)] = scan.roots.flatMap(_.stamp)
       stamps match
         case Nil =>
           Result.assert(lines == List(DriftLine.NoSkillLine))
         case _ =>
           val migrationCount: Int = stamps.count(_._1 == StampFormat.Legacy)
-          val driftCount: Int = stamps.count(s => s._1 == StampFormat.New && s._2 != schemaVersion)
+          val driftCount: Int     = stamps.count(s => s._1 == StampFormat.New && s._2 != schemaVersion)
           val actualMigrations: Int = lines.count {
             case DriftLine.MigrationMessage(_, _) => true
             case _                                => false
@@ -142,7 +141,8 @@ final class SchemaPolicySpec extends ProbatioSuite:
             case DriftLine.DriftWarningLine(_, _, _) => true
             case _                                   => false
           }
-          Result.assert(lines.count(_ == DriftLine.NoSkillLine) == 0)
+          Result
+            .assert(lines.count(_ == DriftLine.NoSkillLine) == 0)
             .and(Result.assert(actualMigrations == migrationCount))
             .and(Result.assert(actualDrifts == driftCount))
 
@@ -272,60 +272,70 @@ final class SchemaPolicySpec extends ProbatioSuite:
     val result: StampClassification = SchemaPolicy.classifyStamp(StampFormat.Legacy, 14, 14)
     result match
       case StampClassification.PreRename(found) => assertEquals(found, 14)
-      case other => fail(s"Expected PreRename, got $other")
+      case other                                => fail(s"Expected PreRename, got $other")
 
   test("old stamp at mismatched version still produces PreRename, not DriftWarning"):
     val result: StampClassification = SchemaPolicy.classifyStamp(StampFormat.Legacy, 13, 14)
     result match
       case StampClassification.PreRename(found) => assertEquals(found, 13)
-      case other => fail(s"Expected PreRename, got $other")
+      case other                                => fail(s"Expected PreRename, got $other")
 
   // spec: schema-policy — Scenario: no skill installed produces explicit no-skill line
   test("no skill installed produces explicit NoSkillLine"):
-    val scan: StampScan = StampScan(List(
-      RootStamp(".claude/skills", None),
-      RootStamp(".agents/skills", None)
-    ))
+    val scan: StampScan = StampScan(
+      List(
+        RootStamp(".claude/skills", None),
+        RootStamp(".agents/skills", None)
+      )
+    )
     val lines: List[DriftLine] = SchemaPolicy.classifyDrift(scan, 14)
     assertEquals(lines, List(DriftLine.NoSkillLine))
 
   test("all-legacy scan produces migration messages for each root"):
-    val scan: StampScan = StampScan(List(
-      RootStamp(".claude/skills", Some((StampFormat.Legacy, 13))),
-      RootStamp(".agents/skills", Some((StampFormat.Legacy, 12)))
-    ))
+    val scan: StampScan = StampScan(
+      List(
+        RootStamp(".claude/skills", Some((StampFormat.Legacy, 13))),
+        RootStamp(".agents/skills", Some((StampFormat.Legacy, 12)))
+      )
+    )
     val lines: List[DriftLine] = SchemaPolicy.classifyDrift(scan, 14)
     assertEquals(lines.length, 2)
     lines.foreach { line =>
       line match
         case DriftLine.MigrationMessage(_, _) => assert(true)
-        case other => fail(s"Expected MigrationMessage, got $other")
+        case other                            => fail(s"Expected MigrationMessage, got $other")
     }
 
   test("all-new-matching scan produces no lines and no NoSkillLine"):
-    val scan: StampScan = StampScan(List(
-      RootStamp(".claude/skills", Some((StampFormat.New, 14)))
-    ))
+    val scan: StampScan = StampScan(
+      List(
+        RootStamp(".claude/skills", Some((StampFormat.New, 14)))
+      )
+    )
     val lines: List[DriftLine] = SchemaPolicy.classifyDrift(scan, 14)
     assertEquals(lines, List.empty)
 
   test("all-new-mismatched scan produces DriftWarningLine for each root"):
-    val scan: StampScan = StampScan(List(
-      RootStamp(".claude/skills", Some((StampFormat.New, 13))),
-      RootStamp(".agents/skills", Some((StampFormat.New, 12)))
-    ))
+    val scan: StampScan = StampScan(
+      List(
+        RootStamp(".claude/skills", Some((StampFormat.New, 13))),
+        RootStamp(".agents/skills", Some((StampFormat.New, 12)))
+      )
+    )
     val lines: List[DriftLine] = SchemaPolicy.classifyDrift(scan, 14)
     assertEquals(lines.length, 2)
 
   test("mixed scan produces migration + drift lines"):
-    val scan: StampScan = StampScan(List(
-      RootStamp(".claude/skills", Some((StampFormat.Legacy, 13))),
-      RootStamp(".agents/skills", Some((StampFormat.New, 12))),
-      RootStamp(".pi/skills", Some((StampFormat.New, 14)))
-    ))
+    val scan: StampScan = StampScan(
+      List(
+        RootStamp(".claude/skills", Some((StampFormat.Legacy, 13))),
+        RootStamp(".agents/skills", Some((StampFormat.New, 12))),
+        RootStamp(".pi/skills", Some((StampFormat.New, 14)))
+      )
+    )
     val lines: List[DriftLine] = SchemaPolicy.classifyDrift(scan, 14)
-    val migrations: Int = lines.count { case DriftLine.MigrationMessage(_, _) => true; case _ => false }
-    val drifts: Int = lines.count { case DriftLine.DriftWarningLine(_, _, _) => true; case _ => false }
+    val migrations: Int        = lines.count { case DriftLine.MigrationMessage(_, _) => true; case _ => false }
+    val drifts: Int            = lines.count { case DriftLine.DriftWarningLine(_, _, _) => true; case _ => false }
     assertEquals(migrations, 1)
     assertEquals(drifts, 1)
 
@@ -364,8 +374,10 @@ final class SchemaPolicySpec extends ProbatioSuite:
     )
     val result: CacheState = SchemaPolicy.migrateCache(state)
     assertEquals(result.newDirContents, List("existing"))
-    assert(result.newDirContents != state.legacyContents,
-      "must not migrate legacy contents when new dir already exists")
+    assert(
+      result.newDirContents != state.legacyContents,
+      "must not migrate legacy contents when new dir already exists"
+    )
 
   // ── Sealed type checks ──────────────────────────────────────────────────
 

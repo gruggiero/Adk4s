@@ -23,16 +23,16 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
     session: Option[ujson.Value] = None
   ): ujson.Value =
     val base: Map[String, ujson.Value] = Map(
-      "v" -> ujson.Num(1),
-      "ts" -> ujson.Str("2026-08-08T12:34:56Z"),
-      "change" -> ujson.Str("port-scanner-to-probatio"),
-      "spec" -> ujson.Str("probatio-core"),
-      "ring" -> ujson.Str(ring),
+      "v"          -> ujson.Num(1),
+      "ts"         -> ujson.Str("2026-08-08T12:34:56Z"),
+      "change"     -> ujson.Str("port-scanner-to-probatio"),
+      "spec"       -> ujson.Str("probatio-core"),
+      "ring"       -> ujson.Str(ring),
       "obligation" -> ujson.Str("F7 reachability"),
-      "artifact" -> ujson.Str("workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala"),
-      "command" -> ujson.Str("sbt probatio-core/test"),
-      "exit" -> ujson.Num(0),
-      "baseline" -> ujson.Str("abc1234")
+      "artifact"   -> ujson.Str("workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala"),
+      "command"    -> ujson.Str("sbt probatio-core/test"),
+      "exit"       -> ujson.Num(0),
+      "baseline"   -> ujson.Str("abc1234")
     )
     val withSha256: Map[String, ujson.Value] = sha256 match
       case Some(v) => base.updated("sha256", v)
@@ -65,33 +65,37 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
   // ── Scenario: an adversarial-review ring row missing session is rejected (adversarial)
   // spec: provenance-validation — Scenario: an adversarial-review ring row missing session is rejected (adversarial)
   test("R8 row missing session is rejected with SessionProvenanceInvalid"):
-    val json: ujson.Value = validRecordJson(ring = "R8")
+    val json: ujson.Value                                  = validRecordJson(ring = "R8")
     val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
     assert(result.isLeft, s"Expected Left, got $result")
     result match
       case Left(v: ContractViolation.SessionProvenanceInvalid) =>
-        assert(v.description.contains("session is required for R8"),
-          s"Expected description to contain 'session is required for R8', got: ${v.description}")
+        assert(
+          v.description.contains("session is required for R8"),
+          s"Expected description to contain 'session is required for R8', got: ${v.description}"
+        )
         assertEquals(v.clauseIndex, 14)
       case other => fail(s"Expected SessionProvenanceInvalid, got $other")
 
   // ── Scenario: an adversarial-review ring row with an empty session is rejected (adversarial)
   // spec: provenance-validation — Scenario: an adversarial-review ring row with an empty session is rejected (adversarial)
   test("R8 row with empty session is rejected with SessionProvenanceInvalid"):
-    val json: ujson.Value = validRecordJson(ring = "R8", session = Some(ujson.Str("")))
+    val json: ujson.Value                                  = validRecordJson(ring = "R8", session = Some(ujson.Str("")))
     val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
     assert(result.isLeft, s"Expected Left, got $result")
     result match
       case Left(v: ContractViolation.SessionProvenanceInvalid) =>
-        assert(v.description.contains("session must be a non-empty string"),
-          s"Expected description to contain 'session must be a non-empty string', got: ${v.description}")
+        assert(
+          v.description.contains("session must be a non-empty string"),
+          s"Expected description to contain 'session must be a non-empty string', got: ${v.description}"
+        )
         assertEquals(v.clauseIndex, 14)
       case other => fail(s"Expected SessionProvenanceInvalid, got $other")
 
   // ── Scenario: a non-adversarial-review ring row without session is accepted
   // spec: provenance-validation — Scenario: a non-adversarial-review ring row without session is accepted
   test("R3 row without session is accepted with session=None"):
-    val json: ujson.Value = validRecordJson(ring = "R3")
+    val json: ujson.Value                                  = validRecordJson(ring = "R3")
     val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
     assert(result.isRight, s"Expected Right, got $result")
     result match
@@ -118,8 +122,10 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
     assert(result.isLeft, s"Expected Left, got $result")
     result match
       case Left(v: ContractViolation.ObserverProvenanceInvalid) =>
-        assert(v.description.contains("source must be \"ambient\""),
-          s"Expected description to contain 'source must be \"ambient\"', got: ${v.description}")
+        assert(
+          v.description.contains("source must be \"ambient\""),
+          s"Expected description to contain 'source must be \"ambient\"', got: ${v.description}"
+        )
         assertEquals(v.clauseIndex, 13)
       case other => fail(s"Expected ObserverProvenanceInvalid, got $other")
 
@@ -137,26 +143,30 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
   // ── Scenario: a row with a non-string sha256 is rejected (adversarial)
   // spec: provenance-validation — Scenario: a row with a non-string sha256 is rejected (adversarial)
   test("sha256=42 (number) is rejected with OptionalFieldTypeInvalid"):
-    val json: ujson.Value = validRecordJson(ring = "R3", sha256 = Some(ujson.Num(42)))
+    val json: ujson.Value                                  = validRecordJson(ring = "R3", sha256 = Some(ujson.Num(42)))
     val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
     assert(result.isLeft, s"Expected Left, got $result")
     result match
       case Left(v: ContractViolation.OptionalFieldTypeInvalid) =>
-        assert(v.description.contains("sha256 must be a string"),
-          s"Expected description to contain 'sha256 must be a string', got: ${v.description}")
+        assert(
+          v.description.contains("sha256 must be a string"),
+          s"Expected description to contain 'sha256 must be a string', got: ${v.description}"
+        )
         assertEquals(v.clauseIndex, 12)
       case other => fail(s"Expected OptionalFieldTypeInvalid, got $other")
 
   // ── Scenario: a row with a non-string digest is rejected (adversarial)
   // spec: provenance-validation — Scenario: a row with a non-string digest is rejected (adversarial)
   test("digest=42 (number) is rejected with OptionalFieldTypeInvalid"):
-    val json: ujson.Value = validRecordJson(ring = "R3", digest = Some(ujson.Num(42)))
+    val json: ujson.Value                                  = validRecordJson(ring = "R3", digest = Some(ujson.Num(42)))
     val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
     assert(result.isLeft, s"Expected Left, got $result")
     result match
       case Left(v: ContractViolation.OptionalFieldTypeInvalid) =>
-        assert(v.description.contains("digest must be a string"),
-          s"Expected description to contain 'digest must be a string', got: ${v.description}")
+        assert(
+          v.description.contains("digest must be a string"),
+          s"Expected description to contain 'digest must be a string', got: ${v.description}"
+        )
         assertEquals(v.clauseIndex, 12)
       case other => fail(s"Expected OptionalFieldTypeInvalid, got $other")
 
@@ -168,8 +178,10 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
     assert(result.isLeft, s"Expected Left, got $result")
     result match
       case Left(v: ContractViolation.OptionalFieldTypeInvalid) =>
-        assert(v.description.contains("wallTime must be an integer"),
-          s"Expected description to contain 'wallTime must be an integer', got: ${v.description}")
+        assert(
+          v.description.contains("wallTime must be an integer"),
+          s"Expected description to contain 'wallTime must be an integer', got: ${v.description}"
+        )
         assertEquals(v.clauseIndex, 12)
       case other => fail(s"Expected OptionalFieldTypeInvalid, got $other")
 
@@ -202,23 +214,23 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
     assert(result.isLeft, s"Expected Left, got $result")
     result match
       case Left(v: ContractViolation.NotAJsonObject) => assertEquals(v.clauseIndex, 0)
-      case other => fail(s"Expected NotAJsonObject, got $other")
+      case other                                     => fail(s"Expected NotAJsonObject, got $other")
 
   // Helper: build a valid record with one field overridden.
   private def recordWith(field: String, value: ujson.Value): ujson.Value =
     val base: Map[String, ujson.Value] = Map(
-      "v" -> ujson.Num(1),
-      "ts" -> ujson.Str("2026-08-08T12:34:56Z"),
-      "change" -> ujson.Str("port-scanner-to-probatio"),
-      "spec" -> ujson.Str("probatio-core"),
-      "ring" -> ujson.Str("R3"),
+      "v"          -> ujson.Num(1),
+      "ts"         -> ujson.Str("2026-08-08T12:34:56Z"),
+      "change"     -> ujson.Str("port-scanner-to-probatio"),
+      "spec"       -> ujson.Str("probatio-core"),
+      "ring"       -> ujson.Str("R3"),
       "obligation" -> ujson.Str("F7 reachability"),
-      "artifact" -> ujson.Str("workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala"),
-      "command" -> ujson.Str("sbt probatio-core/test"),
-      "exit" -> ujson.Num(0),
-      "baseline" -> ujson.Str("abc1234")
+      "artifact"   -> ujson.Str("workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala"),
+      "command"    -> ujson.Str("sbt probatio-core/test"),
+      "exit"       -> ujson.Num(0),
+      "baseline"   -> ujson.Str("abc1234")
     )
-    ujson.Obj.from((base.updated(field, value)).toList)
+    ujson.Obj.from(base.updated(field, value).toList)
 
   // ── Property: ContractViolation totality — every clause 0-14 is reachable
   // spec: provenance-validation — Property: ContractViolation-totality-15-clauses
@@ -244,7 +256,8 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
       val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
       result match
         case Left(v) =>
-          Result.assert(v.clauseIndex == clauseIdx)
+          Result
+            .assert(v.clauseIndex == clauseIdx)
             .log(s"clause $clauseIdx: expected $clauseIdx got ${v.clauseIndex}")
         case Right(_) =>
           Result.failure.log(s"expected a violation for clause $clauseIdx, got Right")
@@ -252,16 +265,18 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
   // ── Property: adversarial-review ring rows require a non-empty session
   // spec: provenance-validation — Property: adversarial-review-ring-session-presence-is-enforced
   property("adversarial-review ring rows require a non-empty session"):
-    for session <- Gen.choice1(
-        Gen.constant(None),
-        Gen.string(Gen.alphaNum, Range.linear(0, 20)).map(Some(_))
-      ).forAll
+    for session <- Gen
+        .choice1(
+          Gen.constant(None),
+          Gen.string(Gen.alphaNum, Range.linear(0, 20)).map(Some(_))
+        )
+        .forAll
     yield
       val json: ujson.Value = session match
         case Some(s) => validRecordJson(ring = "R8", session = Some(ujson.Str(s)))
         case None    => validRecordJson(ring = "R8")
       val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
-      val isNonEmpty: Boolean = session.exists(s => s.nonEmpty)
+      val isNonEmpty: Boolean                                = session.exists(s => s.nonEmpty)
       (isNonEmpty, result) match
         case (true, Right(_)) =>
           Result.success
@@ -270,7 +285,8 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
         case (false, Right(_)) =>
           Result.failure.log("R8 with absent/empty session should be rejected, got Right")
         case (false, Left(v)) =>
-          Result.assert(v.clauseIndex == 14)
+          Result
+            .assert(v.clauseIndex == 14)
             .log(s"R8 with absent/empty session should be rejected at clause 14, got ${v.clauseIndex}")
 
   // ── Property: validator conforms to jq contract in both directions (15 clauses)
@@ -279,20 +295,22 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
   // spec: provenance-validation — Property: validator-conforms-to-jq-contract-in-both-directions-15-clauses
   property("validator conforms to jq contract — valid records accepted, invalid rejected"):
     for
-      ring    <- Gen.element1("R3", "R8", "R0", "R1", "R2", "R4", "R5", "R6", "R7").forAll
-      session <- Gen.choice1(
-        Gen.constant(None),
-        Gen.string(Gen.alphaNum, Range.linear(1, 20)).map(Some(_))
-      ).forAll
+      ring <- Gen.element1("R3", "R8", "R0", "R1", "R2", "R4", "R5", "R6", "R7").forAll
+      session <- Gen
+        .choice1(
+          Gen.constant(None),
+          Gen.string(Gen.alphaNum, Range.linear(1, 20)).map(Some(_))
+        )
+        .forAll
     yield
       val needsSession: Boolean = ring == "R8"
-      val hasSession: Boolean = session.exists(s => s.nonEmpty)
+      val hasSession: Boolean   = session.exists(s => s.nonEmpty)
       val json: ujson.Value = validRecordJson(
         ring = ring,
         session = session.map(s => ujson.Str(s))
       )
       val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
-      val isValid: Boolean = !needsSession || hasSession
+      val isValid: Boolean                                   = !needsSession || hasSession
       (isValid, result) match
         case (true, Right(_)) =>
           Result.success
@@ -301,5 +319,6 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
         case (false, Right(_)) =>
           Result.failure.log(s"invalid record (R8 without session) accepted, should be rejected")
         case (false, Left(v)) =>
-          Result.assert(v.clauseIndex == 14)
+          Result
+            .assert(v.clauseIndex == 14)
             .log(s"invalid record rejected at wrong clause ${v.clauseIndex}, expected 14")

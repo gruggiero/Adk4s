@@ -82,7 +82,10 @@ object ChainState:
                 case Some(v) if v.verdict == Verdict.Unbound  => List(UnresolvedReason.Unbound)
                 case Some(v) if v.verdict == Verdict.Bound    => List(UnresolvedReason.Unresolved)
                 case Some(v) if v.verdict == Verdict.Resolved => List(UnresolvedReason.Undischarged)
-                case _                                        => List(UnresolvedReason.Failed) // danger-scan:allow type-rejection — unknown reason maps to Failed, never a valid outcome
+                case _ =>
+                  List(
+                    UnresolvedReason.Failed
+                  ) // danger-scan:allow type-rejection — unknown reason maps to Failed, never a valid outcome
           Some(UnresolvedEntry(r.spec, r.requirement, reasons))
       }
 

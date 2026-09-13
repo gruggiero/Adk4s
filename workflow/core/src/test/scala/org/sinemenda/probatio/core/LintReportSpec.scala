@@ -55,7 +55,7 @@ final class LintReportSpec extends ProbatioSuite:
       applicability = Map("check-17" -> "APPLIES"),
       lintSuccess = true
     )
-    val json: String = write(report)
+    val json: String        = write(report)
     val decoded: LintReport = read[LintReport](json)
     assertEquals(decoded, report)
 
@@ -63,28 +63,34 @@ final class LintReportSpec extends ProbatioSuite:
   // spec: port-scanner-to-probatio/probatio-core — Property: LintReport round-trips through uPickle JSON
   property("lint report round-trips through uPickle JSON"):
     for
-      _ <- Gen.int(Range.linear(0, 20)).forAll
+      _         <- Gen.int(Range.linear(0, 20)).forAll
       verdicts  <- Gen.list(genRequirementVerdict, Range.linear(0, 20)).forAll
       nWarnings <- Gen.int(Range.linear(0, 5)).forAll
     yield
       val report: LintReport = LintReport(
         verdicts = verdicts,
-        warnings = (1 to nWarnings).toList.map(i =>
-          LintWarning(s"W$i", i * 10, s"warning $i")
-        ),
+        warnings = (1 to nWarnings).toList.map(i => LintWarning(s"W$i", i * 10, s"warning $i")),
         applicability = Map("check-17" -> "APPLIES", "check-18" -> "N/A"),
         lintSuccess = true
       )
-      val json: String = write(report)
+      val json: String        = write(report)
       val decoded: LintReport = read[LintReport](json)
       Result.assert(decoded == report)
 
   private def genRequirementVerdict: Gen[RequirementVerdict] =
     for
-      req   <- Gen.string(Gen.alphaNum, Range.linear(1, 30))
-      v     <- Gen.element1(Verdict.Bound, Verdict.Resolved, Verdict.Unbound)
+      req <- Gen.string(Gen.alphaNum, Range.linear(1, 30))
+      v   <- Gen.element1(Verdict.Bound, Verdict.Resolved, Verdict.Unbound)
       check <- Gen.element1(
-        CheckId.F1, CheckId.F2, CheckId.F3, CheckId.F4, CheckId.F5,
-        CheckId.F6, CheckId.F7, CheckId.F8, CheckId.F9, CheckId.F10
+        CheckId.F1,
+        CheckId.F2,
+        CheckId.F3,
+        CheckId.F4,
+        CheckId.F5,
+        CheckId.F6,
+        CheckId.F7,
+        CheckId.F8,
+        CheckId.F9,
+        CheckId.F10
       )
     yield RequirementVerdict(req, v, check)

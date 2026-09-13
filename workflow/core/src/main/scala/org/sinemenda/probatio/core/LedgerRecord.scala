@@ -89,6 +89,9 @@ object LedgerRecord:
         Ring.fromString(s) match
           case Some(r) => r
           case None    => sys.error(s"invalid ring: $s")
-      case other => sys.error(s"expected ring string, got: $other") // danger-scan:allow type-rejection — invalid ring crashes, never maps to valid value
+      case other =>
+        sys.error(
+          s"expected ring string, got: $other"
+        ) // danger-scan:allow type-rejection — invalid ring crashes, never maps to valid value
     }
   )

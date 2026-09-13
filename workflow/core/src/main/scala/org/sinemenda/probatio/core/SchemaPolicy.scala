@@ -186,8 +186,7 @@ object SchemaPolicy:
       case EnvVarSetting.Neither =>
         EnvResolution(ResolvedValue.Default, List.empty)
       case EnvVarSetting.LegacyOnly(value) =>
-        if aliasExpired then
-          EnvResolution(ResolvedValue.Default, List.empty)
+        if aliasExpired then EnvResolution(ResolvedValue.Default, List.empty)
         else
           EnvResolution(
             ResolvedValue.Value(value),
@@ -215,12 +214,10 @@ object SchemaPolicy:
    * spec: schema-policy — Scenario: legacy directory absent but new directory present
    */
   def migrateCache(state: CacheState): CacheState =
-    if state.newExists then
-      state
+    if state.newExists then state
     else if state.legacyExists then
       CacheState(legacyExists = true, newExists = true, state.legacyContents, state.legacyContents)
-    else
-      CacheState(legacyExists = false, newExists = true, List.empty, List.empty)
+    else CacheState(legacyExists = false, newExists = true, List.empty, List.empty)
 
   /**
    * Classify a single stamp against the schema version.
@@ -256,8 +253,7 @@ object SchemaPolicy:
     val stamps: List[(RootStamp, StampFormat, Int)] = scan.roots.flatMap { root =>
       root.stamp.map { case (fmt, ver) => (root, fmt, ver) }
     }
-    if stamps.isEmpty then
-      List(DriftLine.NoSkillLine)
+    if stamps.isEmpty then List(DriftLine.NoSkillLine)
     else
       stamps.flatMap { case (root, fmt, ver) =>
         fmt match

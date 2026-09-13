@@ -46,37 +46,39 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
   /** A valid JSON ledger record for the production Validator. */
   private def validRecordJson: ujson.Value =
     ujson.Obj(
-      "v" -> 1,
-      "ts" -> "2026-08-08T12:34:56Z",
-      "change" -> "port-scanner-to-probatio",
-      "spec" -> "probatio-core",
-      "ring" -> "R3",
+      "v"          -> 1,
+      "ts"         -> "2026-08-08T12:34:56Z",
+      "change"     -> "port-scanner-to-probatio",
+      "spec"       -> "probatio-core",
+      "ring"       -> "R3",
       "obligation" -> "F7 reachability",
-      "artifact" -> "workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala",
-      "command" -> "sbt probatio-core/test",
-      "exit" -> 0,
-      "baseline" -> "abc1234"
+      "artifact"   -> "workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala",
+      "command"    -> "sbt probatio-core/test",
+      "exit"       -> 0,
+      "baseline"   -> "abc1234"
     )
 
   /** An invalid JSON ledger record: empty `change` field. */
   private def invalidRecordJson: ujson.Value =
     ujson.Obj(
-      "v" -> 1,
-      "ts" -> "2026-08-08T12:34:56Z",
-      "change" -> "",
-      "spec" -> "probatio-core",
-      "ring" -> "R3",
+      "v"          -> 1,
+      "ts"         -> "2026-08-08T12:34:56Z",
+      "change"     -> "",
+      "spec"       -> "probatio-core",
+      "ring"       -> "R3",
       "obligation" -> "F7 reachability",
-      "artifact" -> "workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala",
-      "command" -> "sbt probatio-core/test",
-      "exit" -> 0,
-      "baseline" -> "abc1234"
+      "artifact"   -> "workflow/core/src/main/scala/org/sinemenda/probatio/core/Validator.scala",
+      "command"    -> "sbt probatio-core/test",
+      "exit"       -> 0,
+      "baseline"   -> "abc1234"
     )
 
-  /** Call the model's validate with all-valid BigInt inputs (non-zero =
-    * non-empty) and a valid Ring. All 15 clauses pass. */
+  /**
+   * Call the model's validate with all-valid BigInt inputs (non-zero =
+   * non-empty) and a valid Ring. All 15 clauses pass.
+   */
   private def modelValidateValid
-      : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
+    : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
     LedgerValidatorKernel.validate(
       v = BigInt(1),
       ts = BigInt(1),
@@ -98,10 +100,12 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       sessionProvenanceValid = true
     )
 
-  /** Call the model's validate with an empty `change` (BigInt(0) = empty
-    * string in the abstraction). All other fields are valid. */
+  /**
+   * Call the model's validate with an empty `change` (BigInt(0) = empty
+   * string in the abstraction). All other fields are valid.
+   */
   private def modelValidateInvalidChange
-      : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
+    : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
     LedgerValidatorKernel.validate(
       v = BigInt(1),
       ts = BigInt(1),
@@ -143,8 +147,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     )
 
     // Model: valid input
-    val modelValid
-        : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
+    val modelValid: stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
       modelValidateValid
     assert(
       modelValid.isLeft || modelValid.isRight,
@@ -152,8 +155,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     )
 
     // Model: invalid input (change = 0 = empty)
-    val modelInvalid
-        : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
+    val modelInvalid: stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
       modelValidateInvalidChange
     assert(
       modelInvalid.isLeft || modelInvalid.isRight,
@@ -167,8 +169,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       Validator.validate(validRecordJson)
     assert(prodResult.isRight, s"production must return Right for valid input, got $prodResult")
 
-    val modelResult
-        : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
+    val modelResult: stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
       modelValidateValid
     assert(modelResult.isRight, s"model must return Right for valid input, got $modelResult")
 
@@ -179,8 +180,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       Validator.validate(invalidRecordJson)
     assert(prodResult.isLeft, s"production must return Left for empty change, got $prodResult")
 
-    val modelResult
-        : stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
+    val modelResult: stainless.lang.Either[LedgerValidatorKernel.Violation, LedgerValidatorKernel.ValidRecord] =
       modelValidateInvalidChange
     assert(
       modelResult.isLeft,
@@ -209,10 +209,12 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
 
   private def noReqs: List[ChainState.Requirement] = List.empty
 
-  /** Call the model's compute with the given lintSuccess flag and empty
-    * collections (no verdicts, no ledger records, no requirements). */
+  /**
+   * Call the model's compute with the given lintSuccess flag and empty
+   * collections (no verdicts, no ledger records, no requirements).
+   */
   private def modelCompute(
-      lintSuccess: Boolean
+    lintSuccess: Boolean
   ): stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
     ChainStateKernel.compute(
       lintSuccess = lintSuccess,
@@ -230,8 +232,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
     assert(prodResult.isLeft, s"production must return Left for failed lint, got $prodResult")
 
-    val modelResult
-        : stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
+    val modelResult: stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
       modelCompute(lintSuccess = false)
     assert(modelResult.isLeft, s"model must return Left for failed lint, got $modelResult")
 
@@ -245,8 +246,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       s"production must return Right for successful lint, got $prodResult"
     )
 
-    val modelResult
-        : stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
+    val modelResult: stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
       modelCompute(lintSuccess = true)
     assert(
       modelResult.isRight,
@@ -269,8 +269,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     // Model: the ensuring clause on compute guarantees that a failed lint
     // always produces Left, never Right. If it produced Right with a clean
     // report (all counts zero), that would be the collapsed defect.
-    val modelResult
-        : stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
+    val modelResult: stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
       modelCompute(lintSuccess = false)
     assert(
       modelResult.isLeft,
@@ -298,8 +297,8 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
   test("bridge-bannerengine-idempotence — both production and model are idempotent"):
     // Production idempotence: render(inputs) == render(inputs)
     val prodInputs: BannerInputs = emptyBannerInputs(13)
-    val prodOnce: BannerOutput = BannerEngine.render(prodInputs)
-    val prodTwice: BannerOutput = BannerEngine.render(prodInputs)
+    val prodOnce: BannerOutput   = BannerEngine.render(prodInputs)
+    val prodTwice: BannerOutput  = BannerEngine.render(prodInputs)
     assertEquals(prodOnce, prodTwice, "production: render(inputs) must equal render(inputs)")
 
     // Model idempotence: driftScan is the core pure function of the banner
@@ -310,9 +309,11 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     // Scala (stainlessEnabled := false). driftScan has no such issue and
     // exercises the same purity property.
     val modelRoots: stainless.collection.List[BannerEngineKernel.InstallRoot] =
-      scalaToStainlessList(ScalaList(
-        BannerEngineKernel.InstallRoot(BigInt(1), stainless.lang.Some(BigInt(13)))
-      ))
+      scalaToStainlessList(
+        ScalaList(
+          BannerEngineKernel.InstallRoot(BigInt(1), stainless.lang.Some(BigInt(13)))
+        )
+      )
     val modelOnce: BannerEngineKernel.DriftScanResult =
       BannerEngineKernel.driftScan(BigInt(13), modelRoots)
     val modelTwice: BannerEngineKernel.DriftScanResult =
@@ -339,9 +340,11 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
 
     // Model: roots with stampVersion = None → noSkillInstalled = true
     val modelRoots: stainless.collection.List[BannerEngineKernel.InstallRoot] =
-      scalaToStainlessList(ScalaList(
-        BannerEngineKernel.InstallRoot(BigInt(1), stainless.lang.None[BigInt]())
-      ))
+      scalaToStainlessList(
+        ScalaList(
+          BannerEngineKernel.InstallRoot(BigInt(1), stainless.lang.None[BigInt]())
+        )
+      )
     val modelDriftResult: BannerEngineKernel.DriftScanResult =
       BannerEngineKernel.driftScan(BigInt(13), modelRoots)
     assert(
@@ -365,9 +368,11 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
 
     // Model: roots with stampVersion = Some(12) and schemaVersion = 13 → warnings
     val modelRoots: stainless.collection.List[BannerEngineKernel.InstallRoot] =
-      scalaToStainlessList(ScalaList(
-        BannerEngineKernel.InstallRoot(BigInt(1), stainless.lang.Some(BigInt(12)))
-      ))
+      scalaToStainlessList(
+        ScalaList(
+          BannerEngineKernel.InstallRoot(BigInt(1), stainless.lang.Some(BigInt(12)))
+        )
+      )
     val modelDriftResult: BannerEngineKernel.DriftScanResult =
       BannerEngineKernel.driftScan(BigInt(13), modelRoots)
     val modelWarnings: ScalaList[BannerEngineKernel.DriftWarning] =

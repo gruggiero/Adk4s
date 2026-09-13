@@ -22,7 +22,10 @@ object Verdict:
       case ujson.Str("bound")    => Verdict.Bound
       case ujson.Str("resolved") => Verdict.Resolved
       case ujson.Str("unbound")  => Verdict.Unbound
-      case other                 => sys.error(s"invalid verdict: $other") // danger-scan:allow type-rejection — invalid verdict crashes, never maps to valid value
+      case other =>
+        sys.error(
+          s"invalid verdict: $other"
+        ) // danger-scan:allow type-rejection — invalid verdict crashes, never maps to valid value
     }
   )
 
@@ -56,7 +59,10 @@ object CheckId:
       case ujson.Str("F8")  => CheckId.F8
       case ujson.Str("F9")  => CheckId.F9
       case ujson.Str("F10") => CheckId.F10
-      case other            => sys.error(s"invalid check id: $other") // danger-scan:allow type-rejection — invalid check id crashes, never maps to valid value
+      case other =>
+        sys.error(
+          s"invalid check id: $other"
+        ) // danger-scan:allow type-rejection — invalid check id crashes, never maps to valid value
     }
   )
 

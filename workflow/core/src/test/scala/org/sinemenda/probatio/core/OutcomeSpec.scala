@@ -35,7 +35,9 @@ final class OutcomeSpec extends ProbatioSuite:
   // spec: port-scanner-to-probatio/probatio-core — Scenario: no fourth case is constructible (adversarial)
   test("no fourth case is constructible — the enum is sealed"):
     val allCases: List[Outcome[Int]] = List(
-      Outcome.Ran(1), Outcome.Finding("x"), Outcome.Undetermined("y")
+      Outcome.Ran(1),
+      Outcome.Finding("x"),
+      Outcome.Undetermined("y")
     )
     // A match on Outcome is exhaustive without a catch-all — the compiler
     // enforces this. The test below would not compile if a fourth case existed
@@ -72,8 +74,8 @@ final class OutcomeSpec extends ProbatioSuite:
       msg <- Gen.string(Gen.alphaNum, Range.linear(1, 50)).forAll
     yield
       val outcome: Outcome[Int] = tag match
-        case "clean"       => Outcome.Ran(v)
-        case "finding"     => Outcome.Finding(msg)
+        case "clean"        => Outcome.Ran(v)
+        case "finding"      => Outcome.Finding(msg)
         case "undetermined" => Outcome.Undetermined(msg)
       val exitCode: Int = Outcome.toExitCode(outcome)
       outcome match

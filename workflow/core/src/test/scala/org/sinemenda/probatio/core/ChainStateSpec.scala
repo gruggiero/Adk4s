@@ -36,7 +36,7 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
     assert(result.isLeft, "Expected Left (undetermined) for a failed lint, got Right")
     result match
-      case Left(u) => assert(u.reason.nonEmpty, "undetermined reason must be non-empty")
+      case Left(u)  => assert(u.reason.nonEmpty, "undetermined reason must be non-empty")
       case Right(r) => fail(s"Expected undetermined, got report with discharged=${r.discharged}")
 
   // ── Scenario: a failed lint yields undetermined, not zero
@@ -46,7 +46,10 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
     result match
       case Left(u) =>
-        assert(u.reason.contains("lint") || u.reason.contains("Lint"), s"reason should name the lint failure, got: ${u.reason}")
+        assert(
+          u.reason.contains("lint") || u.reason.contains("Lint"),
+          s"reason should name the lint failure, got: ${u.reason}"
+        )
       case Right(_) => fail("Expected undetermined")
 
   // ── Scenario: a genuinely empty ledger is reported as zero discharged
@@ -75,16 +78,19 @@ final class ChainStateSpec extends ProbatioSuite:
   // spec: port-scanner-to-probatio/probatio-core — Property: Chain-state computation is referentially transparent
   property("chain-state computation is referentially transparent"):
     for
-      nReqs   <- Gen.int(Range.linear(0, 10)).forAll
-      lintOk  <- Gen.boolean.forAll
-      baseline <- Gen.string(Gen.element1('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'), Range.linear(7, 40)).forAll
+      nReqs  <- Gen.int(Range.linear(0, 10)).forAll
+      lintOk <- Gen.boolean.forAll
+      baseline <- Gen
+        .string(
+          Gen.element1('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'),
+          Range.linear(7, 40)
+        )
+        .forAll
     yield
       val lint: LintReport =
         if lintOk then emptyLint else failedLint
       val reqs: List[ChainState.Requirement] =
-        (1 to nReqs).toList.map(i =>
-          ChainState.Requirement(spec = "s", requirement = s"R$i")
-        )
+        (1 to nReqs).toList.map(i => ChainState.Requirement(spec = "s", requirement = s"R$i"))
       val result1: Either[ChainStateUndetermined, ChainStateReport] =
         ChainState.compute(lint, emptyLedger, reqs, baseline, "c")
       val result2: Either[ChainStateUndetermined, ChainStateReport] =
@@ -114,9 +120,16 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.Requirement("s", "R2")
     )
     val record: LedgerRecord = LedgerRecord(
-      v = 1, ts = "2026-08-08T12:34:56Z", change = "c", spec = "s",
-      ring = Ring.R3, obligation = "R1", artifact = "a.scala",
-      command = "sbt test", exit = 0, baseline = "abc1234"
+      v = 1,
+      ts = "2026-08-08T12:34:56Z",
+      change = "c",
+      spec = "s",
+      ring = Ring.R3,
+      obligation = "R1",
+      artifact = "a.scala",
+      command = "sbt test",
+      exit = 0,
+      baseline = "abc1234"
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
@@ -134,9 +147,16 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.Requirement("s", "R1")
     )
     val record: LedgerRecord = LedgerRecord(
-      v = 1, ts = "2026-08-08T12:34:56Z", change = "c", spec = "s",
-      ring = Ring.Manual, obligation = "R1", artifact = "a.scala",
-      command = "sbt test", exit = 0, baseline = "abc1234"
+      v = 1,
+      ts = "2026-08-08T12:34:56Z",
+      change = "c",
+      spec = "s",
+      ring = Ring.Manual,
+      obligation = "R1",
+      artifact = "a.scala",
+      command = "sbt test",
+      exit = 0,
+      baseline = "abc1234"
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
@@ -153,9 +173,16 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.Requirement("s", "R1")
     )
     val record: LedgerRecord = LedgerRecord(
-      v = 1, ts = "2026-08-08T12:34:56Z", change = "c", spec = "s",
-      ring = Ring.R3, obligation = "R1", artifact = "a.scala",
-      command = "sbt test", exit = 0, baseline = "deadbeef"
+      v = 1,
+      ts = "2026-08-08T12:34:56Z",
+      change = "c",
+      spec = "s",
+      ring = Ring.R3,
+      obligation = "R1",
+      artifact = "a.scala",
+      command = "sbt test",
+      exit = 0,
+      baseline = "deadbeef"
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
@@ -171,9 +198,16 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.Requirement("s", "R1")
     )
     val record: LedgerRecord = LedgerRecord(
-      v = 1, ts = "2026-08-08T12:34:56Z", change = "other", spec = "s",
-      ring = Ring.R3, obligation = "R1", artifact = "a.scala",
-      command = "sbt test", exit = 0, baseline = "abc1234"
+      v = 1,
+      ts = "2026-08-08T12:34:56Z",
+      change = "other",
+      spec = "s",
+      ring = Ring.R3,
+      obligation = "R1",
+      artifact = "a.scala",
+      command = "sbt test",
+      exit = 0,
+      baseline = "abc1234"
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
@@ -239,7 +273,9 @@ final class ChainStateSpec extends ProbatioSuite:
     )
     val lint: LintReport = LintReport(
       verdicts = List(RequirementVerdict("R1", Verdict.Unbound, CheckId.F1)),
-      warnings = List.empty, applicability = Map.empty, lintSuccess = true
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
       ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
@@ -256,7 +292,9 @@ final class ChainStateSpec extends ProbatioSuite:
     )
     val lint: LintReport = LintReport(
       verdicts = List(RequirementVerdict("R1", Verdict.Bound, CheckId.F1)),
-      warnings = List.empty, applicability = Map.empty, lintSuccess = true
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
       ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
@@ -273,7 +311,9 @@ final class ChainStateSpec extends ProbatioSuite:
     )
     val lint: LintReport = LintReport(
       verdicts = List(RequirementVerdict("R1", Verdict.Resolved, CheckId.F1)),
-      warnings = List.empty, applicability = Map.empty, lintSuccess = true
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
       ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
@@ -290,12 +330,21 @@ final class ChainStateSpec extends ProbatioSuite:
     )
     val lint: LintReport = LintReport(
       verdicts = List(RequirementVerdict("R1", Verdict.Resolved, CheckId.F1)),
-      warnings = List.empty, applicability = Map.empty, lintSuccess = true
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
     )
     val record: LedgerRecord = LedgerRecord(
-      v = 1, ts = "2026-08-08T12:34:56Z", change = "c", spec = "s",
-      ring = Ring.R3, obligation = "R1", artifact = "a.scala",
-      command = "sbt test", exit = 0, baseline = "abc1234"
+      v = 1,
+      ts = "2026-08-08T12:34:56Z",
+      change = "c",
+      spec = "s",
+      ring = Ring.R3,
+      obligation = "R1",
+      artifact = "a.scala",
+      command = "sbt test",
+      exit = 0,
+      baseline = "abc1234"
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
@@ -321,7 +370,9 @@ final class ChainStateSpec extends ProbatioSuite:
         RequirementVerdict("R2", Verdict.Resolved, CheckId.F2),
         RequirementVerdict("R3", Verdict.Unbound, CheckId.F3)
       ),
-      warnings = List.empty, applicability = Map.empty, lintSuccess = true
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
       ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
@@ -337,7 +388,10 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
     result match
       case Left(u) =>
-        assert(u.reason.contains("spec-lint did not complete successfully"), s"reason must contain exact text, got: ${u.reason}")
+        assert(
+          u.reason.contains("spec-lint did not complete successfully"),
+          s"reason must contain exact text, got: ${u.reason}"
+        )
       case Right(r) => fail(s"Expected Left, got Right with discharged=${r.discharged}")
 
   // ── Mutation-killing: successful lint produces Right, not Left

@@ -52,7 +52,10 @@ final class DriftScanSpec extends ProbatioSuite:
       case Some(w: DriftWarning.PreRenameStamp) =>
         assertEquals(w.expected, 14)
         assertEquals(w.found, 13)
-        assert(w.message.contains("migrate") || w.message.contains("rename"), s"Expected migration message, got: ${w.message}")
+        assert(
+          w.message.contains("migrate") || w.message.contains("rename"),
+          s"Expected migration message, got: ${w.message}"
+        )
       case other => fail(s"Expected PreRenameStamp, got $other")
 
   // ── Scenario: silence about drift is never emitted (adversarial)
@@ -113,7 +116,10 @@ final class DriftScanSpec extends ProbatioSuite:
         assert(w.message.contains("14"), s"message must contain expected=14, got: ${w.message}")
         assert(w.message.contains("13"), s"message must contain found=13, got: ${w.message}")
         assert(w.message.contains("probatio-schema"), s"message must contain probatio-schema, got: ${w.message}")
-        assert(w.message.contains("verified-scala3-schema"), s"message must contain verified-scala3-schema, got: ${w.message}")
+        assert(
+          w.message.contains("verified-scala3-schema"),
+          s"message must contain verified-scala3-schema, got: ${w.message}"
+        )
       case other => fail(s"Expected PreRenameStamp, got $other")
 
   // ── Mutation-killing: a non-preRename mismatched stamp does NOT produce PreRenameStamp
@@ -124,7 +130,7 @@ final class DriftScanSpec extends ProbatioSuite:
     val result: DriftScanResult = DriftScan.scan(schemaVersion = 14, roots)
     result.warnings.headOption match
       case Some(_: DriftWarning.VersionMismatch) => assert(true)
-      case other => fail(s"Expected VersionMismatch for non-preRename, got $other")
+      case other                                 => fail(s"Expected VersionMismatch for non-preRename, got $other")
 
   // ── Mutation-killing: a pre-rename stamp with matching version still produces a warning
   test("a pre-rename stamp with matching version still produces a PreRenameStamp warning"):
@@ -135,7 +141,7 @@ final class DriftScanSpec extends ProbatioSuite:
     assert(result.warnings.nonEmpty, "pre-rename stamp must produce a warning even when version matches")
     result.warnings.headOption match
       case Some(_: DriftWarning.PreRenameStamp) => assert(true)
-      case other => fail(s"Expected PreRenameStamp, got $other")
+      case other                                => fail(s"Expected PreRenameStamp, got $other")
 
   // ── Mutation-killing: mixed roots — one matching, one mismatched
   test("mixed roots produce warnings only for mismatched ones"):
@@ -154,4 +160,7 @@ final class DriftScanSpec extends ProbatioSuite:
       InstallRootScan(".agents/skills", stampVersion = None)
     )
     val result: DriftScanResult = DriftScan.scan(schemaVersion = 14, roots)
-    assert(!result.noSkillInstalled, "at least one installed skill must set noSkillInstalled=false even if another has None")
+    assert(
+      !result.noSkillInstalled,
+      "at least one installed skill must set noSkillInstalled=false even if another has None"
+    )

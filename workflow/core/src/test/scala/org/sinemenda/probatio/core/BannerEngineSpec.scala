@@ -26,7 +26,7 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Scenario: identical inputs produce byte-identical output
   // spec: port-scanner-to-probatio/probatio-core — Scenario: identical inputs produce byte-identical output
   test("identical inputs produce byte-identical output"):
-    val inputs: BannerInputs = emptyInputs(13)
+    val inputs: BannerInputs  = emptyInputs(13)
     val output1: BannerOutput = BannerEngine.render(inputs)
     val output2: BannerOutput = BannerEngine.render(inputs)
     assertEquals(output1, output2)
@@ -43,8 +43,11 @@ final class BannerEngineSpec extends ProbatioSuite:
   test("the invariant block is verbatim-match text"):
     val inputs: BannerInputs = emptyInputs(13)
     val output: BannerOutput = BannerEngine.render(inputs)
-    val invariant: String = BannerEngine.invariantText(13)
-    assert(output.payload.contains(invariant), s"banner payload must contain the verbatim invariant block, got: ${output.payload}")
+    val invariant: String    = BannerEngine.invariantText(13)
+    assert(
+      output.payload.contains(invariant),
+      s"banner payload must contain the verbatim invariant block, got: ${output.payload}"
+    )
 
   // ── Scenario: the session-context block reflects live chain state
   // spec: port-scanner-to-probatio/probatio-core — Scenario: the session-context block reflects live chain state
@@ -63,13 +66,20 @@ final class BannerEngineSpec extends ProbatioSuite:
           name = "port-scanner-to-probatio",
           artifactsPresent = List("proposal.md", "design.md"),
           nextArtifact = Some("implementation-order.md"),
-          chainState = Some(Right(ChainStateReport(
-            change = "port-scanner-to-probatio",
-            baseline = "abc1234",
-            total = 12, bound = 10, resolved = 8, discharged = 5,
-            unresolved = List(UnresolvedEntry("s", "R3", List(UnresolvedReason.Unbound))),
-            unmappedObligations = List.empty
-          )))
+          chainState = Some(
+            Right(
+              ChainStateReport(
+                change = "port-scanner-to-probatio",
+                baseline = "abc1234",
+                total = 12,
+                bound = 10,
+                resolved = 8,
+                discharged = 5,
+                unresolved = List(UnresolvedEntry("s", "R3", List(UnresolvedReason.Unbound))),
+                unmappedObligations = List.empty
+              )
+            )
+          )
         )
       )
     )
@@ -80,7 +90,7 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Scenario: an unchanged payload injects nothing
   // spec: port-scanner-to-probatio/probatio-core — Scenario: an unchanged payload injects nothing
   test("an unchanged payload is byte-identical across invocations"):
-    val inputs: BannerInputs = emptyInputs(13)
+    val inputs: BannerInputs  = emptyInputs(13)
     val output1: BannerOutput = BannerEngine.render(inputs)
     val output2: BannerOutput = BannerEngine.render(inputs)
     assertEquals(output1.payload, output2.payload, "unchanged inputs produce unchanged payload")
@@ -99,7 +109,10 @@ final class BannerEngineSpec extends ProbatioSuite:
   test("the trailer contains the READ FROM DISK text"):
     val inputs: BannerInputs = emptyInputs(13)
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("READ FROM DISK"), s"banner must contain the READ FROM DISK trailer, got: ${output.payload.take(200)}")
+    assert(
+      output.payload.contains("READ FROM DISK"),
+      s"banner must contain the READ FROM DISK trailer, got: ${output.payload.take(200)}"
+    )
     assert(output.payload.contains("facts, not"), "banner must contain 'facts, not'")
     assert(output.payload.contains("recollection"), "banner must contain 'recollection'")
 
@@ -107,10 +120,10 @@ final class BannerEngineSpec extends ProbatioSuite:
   // spec: port-scanner-to-probatio/probatio-core — Property: Banner engine produces byte-identical output for identical inputs
   property("banner engine produces byte-identical output for identical inputs"):
     for
-      schemaVersion <- Gen.int(Range.linear(1, 20)).forAll
-      registryPresent <- Gen.boolean.forAll
+      schemaVersion    <- Gen.int(Range.linear(1, 20)).forAll
+      registryPresent  <- Gen.boolean.forAll
       inventoryPresent <- Gen.boolean.forAll
-      profilePresent <- Gen.boolean.forAll
+      profilePresent   <- Gen.boolean.forAll
     yield
       val inputs: BannerInputs = BannerInputs(
         schemaVersion = schemaVersion,
@@ -144,7 +157,8 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Mutation-killing: banner contains registry presence info
   test("banner with registry present contains PRESENT and concept count"):
     val inputs: BannerInputs = emptyInputs(13).copy(
-      registryPresent = true, registryConceptCount = 35
+      registryPresent = true,
+      registryConceptCount = 35
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("PRESENT"), "banner must contain PRESENT for registry")
@@ -160,7 +174,8 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Mutation-killing: banner with inventory present contains type count
   test("banner with inventory present contains PRESENT and type count"):
     val inputs: BannerInputs = emptyInputs(13).copy(
-      inventoryPresent = true, inventoryTypeCount = 203
+      inventoryPresent = true,
+      inventoryTypeCount = 203
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("PRESENT"), "banner must contain PRESENT for inventory")
@@ -176,7 +191,8 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Mutation-killing: banner with test kit contains the kit name
   test("banner with detected test kit contains the kit name"):
     val inputs: BannerInputs = emptyInputs(13).copy(
-      profilePresent = true, detectedTestKit = Some("TestControl testkit")
+      profilePresent = true,
+      detectedTestKit = Some("TestControl testkit")
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("TestControl testkit"), "banner must contain the test kit name")
@@ -202,21 +218,31 @@ final class BannerEngineSpec extends ProbatioSuite:
     val inputs: BannerInputs = BannerInputs(
       schemaVersion = 13,
       skillInstallScan = List.empty,
-      registryPresent = false, registryConceptCount = 0,
-      inventoryPresent = false, inventoryTypeCount = 0,
-      profilePresent = false, detectedTestKit = None,
+      registryPresent = false,
+      registryConceptCount = 0,
+      inventoryPresent = false,
+      inventoryTypeCount = 0,
+      profilePresent = false,
+      detectedTestKit = None,
       activeChanges = List(
         ActiveChangeWithChainState(
           name = "port-scanner-to-probatio",
           artifactsPresent = List("proposal.md", "design.md"),
           nextArtifact = Some("implementation-order.md"),
-          chainState = Some(Right(ChainStateReport(
-            change = "port-scanner-to-probatio",
-            baseline = "abc1234",
-            total = 12, bound = 10, resolved = 8, discharged = 5,
-            unresolved = List(UnresolvedEntry("s", "R3", List(UnresolvedReason.Unbound))),
-            unmappedObligations = List.empty
-          )))
+          chainState = Some(
+            Right(
+              ChainStateReport(
+                change = "port-scanner-to-probatio",
+                baseline = "abc1234",
+                total = 12,
+                bound = 10,
+                resolved = 8,
+                discharged = 5,
+                unresolved = List(UnresolvedEntry("s", "R3", List(UnresolvedReason.Unbound))),
+                unmappedObligations = List.empty
+              )
+            )
+          )
         )
       )
     )
@@ -236,9 +262,12 @@ final class BannerEngineSpec extends ProbatioSuite:
     val inputs: BannerInputs = BannerInputs(
       schemaVersion = 13,
       skillInstallScan = List.empty,
-      registryPresent = false, registryConceptCount = 0,
-      inventoryPresent = false, inventoryTypeCount = 0,
-      profilePresent = false, detectedTestKit = None,
+      registryPresent = false,
+      registryConceptCount = 0,
+      inventoryPresent = false,
+      inventoryTypeCount = 0,
+      profilePresent = false,
+      detectedTestKit = None,
       activeChanges = List(
         ActiveChangeWithChainState(
           name = "test-change",
@@ -257,9 +286,12 @@ final class BannerEngineSpec extends ProbatioSuite:
     val inputs: BannerInputs = BannerInputs(
       schemaVersion = 13,
       skillInstallScan = List.empty,
-      registryPresent = false, registryConceptCount = 0,
-      inventoryPresent = false, inventoryTypeCount = 0,
-      profilePresent = false, detectedTestKit = None,
+      registryPresent = false,
+      registryConceptCount = 0,
+      inventoryPresent = false,
+      inventoryTypeCount = 0,
+      profilePresent = false,
+      detectedTestKit = None,
       activeChanges = List(
         ActiveChangeWithChainState(
           name = "test-change",
@@ -277,7 +309,10 @@ final class BannerEngineSpec extends ProbatioSuite:
     assert(BannerEngine.trailerText.contains("READ FROM DISK"), "trailer must contain READ FROM DISK")
     assert(BannerEngine.trailerText.contains("facts, not"), "trailer must contain 'facts, not'")
     assert(BannerEngine.trailerText.contains("recollection"), "trailer must contain 'recollection'")
-    assert(BannerEngine.trailerText.contains("finding, not a formality"), "trailer must contain 'finding, not a formality'")
+    assert(
+      BannerEngine.trailerText.contains("finding, not a formality"),
+      "trailer must contain 'finding, not a formality'"
+    )
 
   // ── Mutation-killing: banner contains the schema line with version
   test("banner contains the schema line with version number"):
@@ -309,7 +344,10 @@ final class BannerEngineSpec extends ProbatioSuite:
       skillInstallScan = List(InstallRootScan(".claude/skills", None))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("no skill installed across any"), "banner must contain 'no skill installed across any'")
+    assert(
+      output.payload.contains("no skill installed across any"),
+      "banner must contain 'no skill installed across any'"
+    )
     assert(output.payload.contains("searched roots"), "banner must contain 'searched roots'")
 
   // ── Mutation-killing: skill installed (no drift) — no noSkillInstalled line
@@ -318,7 +356,10 @@ final class BannerEngineSpec extends ProbatioSuite:
       skillInstallScan = List(InstallRootScan(".claude/skills", Some(13)))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(!output.payload.contains("no skill installed across any"), "banner must NOT contain 'no skill installed across any' when skill is installed")
+    assert(
+      !output.payload.contains("no skill installed across any"),
+      "banner must NOT contain 'no skill installed across any' when skill is installed"
+    )
 
   // ── Mutation-killing: drift warning in context line
   test("banner with drift warnings contains INSTRUCTION DRIFT"):
@@ -331,68 +372,103 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Mutation-killing: registry present — full line text
   test("banner with registry present contains full PRESENT line"):
     val inputs: BannerInputs = emptyInputs(13).copy(
-      registryPresent = true, registryConceptCount = 35
+      registryPresent = true,
+      registryConceptCount = 35
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("behavioural registry  openspec/concepts/             PRESENT (35 concepts)"), "banner must contain full registry PRESENT line")
+    assert(
+      output.payload.contains("behavioural registry  openspec/concepts/             PRESENT (35 concepts)"),
+      "banner must contain full registry PRESENT line"
+    )
 
   // ── Mutation-killing: registry absent — full line text
   test("banner with registry absent contains full ABSENT line"):
     val inputs: BannerInputs = emptyInputs(13).copy(registryPresent = false)
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("behavioural registry  openspec/concepts/             ABSENT"), "banner must contain full registry ABSENT line")
+    assert(
+      output.payload.contains("behavioural registry  openspec/concepts/             ABSENT"),
+      "banner must contain full registry ABSENT line"
+    )
 
   // ── Mutation-killing: inventory present — full line text
   test("banner with inventory present contains full PRESENT line"):
     val inputs: BannerInputs = emptyInputs(13).copy(
-      inventoryPresent = true, inventoryTypeCount = 203
+      inventoryPresent = true,
+      inventoryTypeCount = 203
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("type inventory        openspec/concept-inventory.md  PRESENT (203 typed rows)"), "banner must contain full inventory PRESENT line")
+    assert(
+      output.payload.contains("type inventory        openspec/concept-inventory.md  PRESENT (203 typed rows)"),
+      "banner must contain full inventory PRESENT line"
+    )
 
   // ── Mutation-killing: inventory absent — full line text
   test("banner with inventory absent contains full ABSENT line"):
     val inputs: BannerInputs = emptyInputs(13).copy(inventoryPresent = false)
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("type inventory        openspec/concept-inventory.md  ABSENT"), "banner must contain full inventory ABSENT line")
+    assert(
+      output.payload.contains("type inventory        openspec/concept-inventory.md  ABSENT"),
+      "banner must contain full inventory ABSENT line"
+    )
 
   // ── Mutation-killing: profile present — full line text
   test("banner with profile present contains full PRESENT line"):
     val inputs: BannerInputs = emptyInputs(13).copy(profilePresent = true)
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("capability profile    openspec/capability-profile.md PRESENT"), "banner must contain full profile PRESENT line")
+    assert(
+      output.payload.contains("capability profile    openspec/capability-profile.md PRESENT"),
+      "banner must contain full profile PRESENT line"
+    )
 
   // ── Mutation-killing: profile absent — full line text
   test("banner with profile absent contains full ABSENT line"):
     val inputs: BannerInputs = emptyInputs(13).copy(profilePresent = false)
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("capability profile    openspec/capability-profile.md ABSENT"), "banner must contain full profile ABSENT line")
+    assert(
+      output.payload.contains("capability profile    openspec/capability-profile.md ABSENT"),
+      "banner must contain full profile ABSENT line"
+    )
 
   // ── Mutation-killing: no test kit detected
   test("banner with no test kit contains 'no deterministic test kit detected'"):
     val inputs: BannerInputs = emptyInputs(13).copy(detectedTestKit = None)
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("no deterministic test kit detected"), "banner must contain 'no deterministic test kit detected'")
+    assert(
+      output.payload.contains("no deterministic test kit detected"),
+      "banner must contain 'no deterministic test kit detected'"
+    )
 
   // ── Mutation-killing: test kit detected
   test("banner with test kit contains 'deterministic test kit detected:'"):
     val inputs: BannerInputs = emptyInputs(13).copy(
-      profilePresent = true, detectedTestKit = Some("TestControl testkit")
+      profilePresent = true,
+      detectedTestKit = Some("TestControl testkit")
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("deterministic test kit detected:"), "banner must contain 'deterministic test kit detected:'")
+    assert(
+      output.payload.contains("deterministic test kit detected:"),
+      "banner must contain 'deterministic test kit detected:'"
+    )
 
   // ── Mutation-killing: active change name line
   test("banner with active change contains 'active change' label and name"):
     val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13, skillInstallScan = List.empty,
-      registryPresent = false, registryConceptCount = 0,
-      inventoryPresent = false, inventoryTypeCount = 0,
-      profilePresent = false, detectedTestKit = None,
-      activeChanges = List(ActiveChangeWithChainState(
-        name = "my-change", artifactsPresent = List("a.md"),
-        nextArtifact = None, chainState = None
-      ))
+      schemaVersion = 13,
+      skillInstallScan = List.empty,
+      registryPresent = false,
+      registryConceptCount = 0,
+      inventoryPresent = false,
+      inventoryTypeCount = 0,
+      profilePresent = false,
+      detectedTestKit = None,
+      activeChanges = List(
+        ActiveChangeWithChainState(
+          name = "my-change",
+          artifactsPresent = List("a.md"),
+          nextArtifact = None,
+          chainState = None
+        )
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("active change"), "banner must contain 'active change' label")
@@ -401,14 +477,22 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Mutation-killing: artifacts present with separator
   test("banner with multiple artifacts contains comma separator"):
     val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13, skillInstallScan = List.empty,
-      registryPresent = false, registryConceptCount = 0,
-      inventoryPresent = false, inventoryTypeCount = 0,
-      profilePresent = false, detectedTestKit = None,
-      activeChanges = List(ActiveChangeWithChainState(
-        name = "c", artifactsPresent = List("a.md", "b.md"),
-        nextArtifact = None, chainState = None
-      ))
+      schemaVersion = 13,
+      skillInstallScan = List.empty,
+      registryPresent = false,
+      registryConceptCount = 0,
+      inventoryPresent = false,
+      inventoryTypeCount = 0,
+      profilePresent = false,
+      detectedTestKit = None,
+      activeChanges = List(
+        ActiveChangeWithChainState(
+          name = "c",
+          artifactsPresent = List("a.md", "b.md"),
+          nextArtifact = None,
+          chainState = None
+        )
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("a.md, b.md"), "banner must contain comma-separated artifacts")
@@ -416,14 +500,22 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Mutation-killing: chain state not computed
   test("banner with chainState=None contains '(not computed)'"):
     val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13, skillInstallScan = List.empty,
-      registryPresent = false, registryConceptCount = 0,
-      inventoryPresent = false, inventoryTypeCount = 0,
-      profilePresent = false, detectedTestKit = None,
-      activeChanges = List(ActiveChangeWithChainState(
-        name = "c", artifactsPresent = List("a.md"),
-        nextArtifact = None, chainState = None
-      ))
+      schemaVersion = 13,
+      skillInstallScan = List.empty,
+      registryPresent = false,
+      registryConceptCount = 0,
+      inventoryPresent = false,
+      inventoryTypeCount = 0,
+      profilePresent = false,
+      detectedTestKit = None,
+      activeChanges = List(
+        ActiveChangeWithChainState(
+          name = "c",
+          artifactsPresent = List("a.md"),
+          nextArtifact = None,
+          chainState = None
+        )
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("(not computed)"), "banner must contain '(not computed)'")
@@ -431,19 +523,35 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Mutation-killing: chain state header with change name
   test("banner with Right chain state contains 'chain state' label and change name"):
     val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13, skillInstallScan = List.empty,
-      registryPresent = false, registryConceptCount = 0,
-      inventoryPresent = false, inventoryTypeCount = 0,
-      profilePresent = false, detectedTestKit = None,
-      activeChanges = List(ActiveChangeWithChainState(
-        name = "my-change", artifactsPresent = List("a.md"),
-        nextArtifact = None,
-        chainState = Some(Right(ChainStateReport(
-          change = "my-change", baseline = "abc1234",
-          total = 1, bound = 0, resolved = 0, discharged = 0,
-          unresolved = List.empty, unmappedObligations = List.empty
-        )))
-      ))
+      schemaVersion = 13,
+      skillInstallScan = List.empty,
+      registryPresent = false,
+      registryConceptCount = 0,
+      inventoryPresent = false,
+      inventoryTypeCount = 0,
+      profilePresent = false,
+      detectedTestKit = None,
+      activeChanges = List(
+        ActiveChangeWithChainState(
+          name = "my-change",
+          artifactsPresent = List("a.md"),
+          nextArtifact = None,
+          chainState = Some(
+            Right(
+              ChainStateReport(
+                change = "my-change",
+                baseline = "abc1234",
+                total = 1,
+                bound = 0,
+                resolved = 0,
+                discharged = 0,
+                unresolved = List.empty,
+                unmappedObligations = List.empty
+              )
+            )
+          )
+        )
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("chain state"), "banner must contain 'chain state' label")
@@ -452,20 +560,36 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Mutation-killing: unresolved entry with reasons and separator
   test("banner with unresolved entries contains requirement and reasons"):
     val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13, skillInstallScan = List.empty,
-      registryPresent = false, registryConceptCount = 0,
-      inventoryPresent = false, inventoryTypeCount = 0,
-      profilePresent = false, detectedTestKit = None,
-      activeChanges = List(ActiveChangeWithChainState(
-        name = "c", artifactsPresent = List("a.md"),
-        nextArtifact = None,
-        chainState = Some(Right(ChainStateReport(
-          change = "c", baseline = "abc1234",
-          total = 2, bound = 0, resolved = 0, discharged = 0,
-          unresolved = List(UnresolvedEntry("s", "R1", List(UnresolvedReason.Unbound, UnresolvedReason.Unresolved))),
-          unmappedObligations = List.empty
-        )))
-      ))
+      schemaVersion = 13,
+      skillInstallScan = List.empty,
+      registryPresent = false,
+      registryConceptCount = 0,
+      inventoryPresent = false,
+      inventoryTypeCount = 0,
+      profilePresent = false,
+      detectedTestKit = None,
+      activeChanges = List(
+        ActiveChangeWithChainState(
+          name = "c",
+          artifactsPresent = List("a.md"),
+          nextArtifact = None,
+          chainState = Some(
+            Right(
+              ChainStateReport(
+                change = "c",
+                baseline = "abc1234",
+                total = 2,
+                bound = 0,
+                resolved = 0,
+                discharged = 0,
+                unresolved =
+                  List(UnresolvedEntry("s", "R1", List(UnresolvedReason.Unbound, UnresolvedReason.Unresolved))),
+                unmappedObligations = List.empty
+              )
+            )
+          )
+        )
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("R1"), "banner must contain requirement R1")
@@ -473,7 +597,10 @@ final class BannerEngineSpec extends ProbatioSuite:
     assert(output.payload.contains("unresolved"), "banner must contain reason 'unresolved'")
     // The comma separator between reasons is in the unresolved entry line:
     // "    R1 (unbound, unresolved)" — check for this specific pattern
-    assert(output.payload.contains("unbound, unresolved"), "banner must contain comma-separated reasons in unresolved entry")
+    assert(
+      output.payload.contains("unbound, unresolved"),
+      "banner must contain comma-separated reasons in unresolved entry"
+    )
 
   // ── Mutation-killing: drift lines — no skill installed
   test("banner drift section with no skill contains 're-install to enable drift checking'"):
@@ -481,7 +608,10 @@ final class BannerEngineSpec extends ProbatioSuite:
       skillInstallScan = List(InstallRootScan(".claude/skills", None))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("re-install to enable drift checking"), "banner must contain 're-install to enable drift checking'")
+    assert(
+      output.payload.contains("re-install to enable drift checking"),
+      "banner must contain 're-install to enable drift checking'"
+    )
 
   // ── Mutation-killing: drift lines — warnings present
   test("banner drift section with warnings contains warning message"):
@@ -504,7 +634,10 @@ final class BannerEngineSpec extends ProbatioSuite:
       skillInstallScan = List(InstallRootScan(".claude/skills", Some(13)))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(!output.payload.contains("re-install to enable drift checking"), "banner must NOT contain re-install when skill is installed")
+    assert(
+      !output.payload.contains("re-install to enable drift checking"),
+      "banner must NOT contain re-install when skill is installed"
+    )
     assert(!output.payload.contains("INSTRUCTION DRIFT"), "banner must NOT contain INSTRUCTION DRIFT when no drift")
     // The drift section should not have any drift warning lines
     val hasDriftSectionWarning: Boolean = output.lines.exists { line =>

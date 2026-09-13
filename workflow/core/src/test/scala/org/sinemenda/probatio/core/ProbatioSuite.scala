@@ -21,20 +21,20 @@ import munit.Location
 abstract class ProbatioSuite extends FunSuite:
 
   private val seedSource: hr.SeedSource = hr.SeedSource.fromEnvOrTime()
-  private val seed: Seed = Seed.fromLong(seedSource.seed)
+  private val seed: Seed                = Seed.fromLong(seedSource.seed)
 
   /** Runs a hedgehog property-based test. */
   def property(
-      name: String,
-      withConfig: PropertyConfig => PropertyConfig = identity
+    name: String,
+    withConfig: PropertyConfig => PropertyConfig = identity
   )(
-      prop: => hedgehog.Property
+    prop: => hedgehog.Property
   )(implicit loc: Location): Unit =
     val t: hr.Test = hedgehog.runner.property(name, prop).config(withConfig)
     test(name)(check(t, t.withConfig(PropertyConfig.default)))
 
   private def check(test: hr.Test, config: PropertyConfig)(implicit
-      loc: Location
+    loc: Location
   ): Any =
     val report = hedgehog.Property.check(test.withConfig(config), test.result, seed)
     if report.status != Status.ok then

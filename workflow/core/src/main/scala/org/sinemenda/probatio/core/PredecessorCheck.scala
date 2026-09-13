@@ -46,11 +46,8 @@ object PredecessorCheck:
     specs match
       case Nil => Right(())
       case (name, phase, hasPres) :: rest =>
-        if phase == SpecPhase.Verified && hasPres then
-          checkList(rest)
-        else if phase == SpecPhase.Verified && !hasPres then
-          Left(BlockReason.PredecessorNotCheckpointed(name))
-        else
-          Left(BlockReason.PredecessorNotVerified(name, phase))
+        if phase == SpecPhase.Verified && hasPres then checkList(rest)
+        else if phase == SpecPhase.Verified && !hasPres then Left(BlockReason.PredecessorNotCheckpointed(name))
+        else Left(BlockReason.PredecessorNotVerified(name, phase))
 
 end PredecessorCheck

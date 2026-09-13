@@ -17,7 +17,7 @@ final class MetalsClientSpec extends FunSuite:
   // ── Scenario: a header split across reads is parsed correctly
   // spec: port-scanner-to-probatio/probatio-core — Scenario: a header split across reads is parsed correctly
   test("a header split across reads is parsed correctly"):
-    val body: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+    val body: String      = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
     val full: Array[Byte] = lspMessage(body)
     // Split the header: "Content-Len" + "gth: 42\r\n\r\n" + body
     val split1: Array[Byte] = full.take(11)
@@ -38,7 +38,7 @@ final class MetalsClientSpec extends FunSuite:
   // ── Scenario: a body split across reads is assembled correctly
   // spec: port-scanner-to-probatio/probatio-core — Scenario: a body split across reads is assembled correctly
   test("a body split across reads is assembled correctly"):
-    val body: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"x\":42}}"
+    val body: String      = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"x\":42}}"
     val full: Array[Byte] = lspMessage(body)
     // Split after 20 bytes (into the body)
     val split1: Array[Byte] = full.take(20)
@@ -51,14 +51,14 @@ final class MetalsClientSpec extends FunSuite:
         assertEquals(messages.length, 1)
         messages.headOption match
           case Some(m) => assertEquals(m.body, body)
-          case None => fail("empty messages")
+          case None    => fail("empty messages")
       case Left(e) => fail(s"Expected Right, got Left($e)")
 
   // ── Scenario: multiple messages in a single read are split correctly
   // spec: port-scanner-to-probatio/probatio-core — Scenario: multiple messages in a single read are split correctly
   test("multiple messages in a single read are split correctly"):
-    val body1: String = "{\"jsonrpc\":\"2.0\",\"id\":1}"
-    val body2: String = "{\"jsonrpc\":\"2.0\",\"id\":2}"
+    val body1: String         = "{\"jsonrpc\":\"2.0\",\"id\":1}"
+    val body2: String         = "{\"jsonrpc\":\"2.0\",\"id\":2}"
     val combined: Array[Byte] = lspMessage(body1) ++ lspMessage(body2)
     val result: Either[MetalsClient.MetalsError, List[MetalsClient.LspMessage]] =
       MetalsClient.frameMessages(List(combined))
@@ -78,7 +78,7 @@ final class MetalsClientSpec extends FunSuite:
     assert(result.isRight, s"Expected Right (initialized), got $result")
     result match
       case Right(session) => assert(session.initialized, "session must be initialized")
-      case Left(e) => fail(s"Expected Right, got Left($e)")
+      case Left(e)        => fail(s"Expected Right, got Left($e)")
 
   // ── Scenario: the initialization handshake times out
   // spec: port-scanner-to-probatio/probatio-core — Scenario: the initialization handshake times out
@@ -88,9 +88,9 @@ final class MetalsClientSpec extends FunSuite:
     // With a 1ms timeout, the handshake should time out (no server running).
     // This is RED until the implementation exists.
     result match
-      case Left(_: MetalsClient.MetalsError.Timeout) => // expected
+      case Left(_: MetalsClient.MetalsError.Timeout)         => // expected
       case Left(_: MetalsClient.MetalsError.HandshakeFailed) => // also acceptable
-      case other => fail(s"Expected Timeout or HandshakeFailed, got $other")
+      case other                                             => fail(s"Expected Timeout or HandshakeFailed, got $other")
 
   // ── Scenario: an empty buffer returns an empty list, not an error
   // Kills: offset >= buffer.length mutated to > or false (line 47)
@@ -115,8 +115,8 @@ final class MetalsClientSpec extends FunSuite:
   // ── Scenario: a valid message followed by incomplete trailing data returns only complete messages
   // Kills: acc.nonEmpty mutated to false (line 52)
   test("a valid message followed by incomplete trailing data returns only complete messages"):
-    val body: String = "{\"jsonrpc\":\"2.0\",\"id\":1}"
-    val valid: Array[Byte] = lspMessage(body)
+    val body: String          = "{\"jsonrpc\":\"2.0\",\"id\":1}"
+    val valid: Array[Byte]    = lspMessage(body)
     val trailing: Array[Byte] = "incomplete trailing data".getBytes("UTF-8")
     val result: Either[MetalsClient.MetalsError, List[MetalsClient.LspMessage]] =
       MetalsClient.frameMessages(List(valid ++ trailing))
@@ -142,7 +142,7 @@ final class MetalsClientSpec extends FunSuite:
   // ── Scenario: Content-Length exactly matching available body data parses correctly
   // Kills: bodyEnd > buffer.length mutated to >= (line 72, > to >=)
   test("Content-Length exactly matching available body data parses correctly"):
-    val body: String = "hello"
+    val body: String        = "hello"
     val buffer: Array[Byte] = s"Content-Length: ${body.length}\r\n\r\n${body}".getBytes("UTF-8")
     val result: Either[MetalsClient.MetalsError, List[MetalsClient.LspMessage]] =
       MetalsClient.frameMessages(List(buffer))
