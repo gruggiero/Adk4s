@@ -154,7 +154,7 @@
 
 ## Spec 3: live-fact-banner
 
-### Status: RINGS COMPLETE — checkpoint written, AWAITING HUMAN VALIDATION
+### Status: VALIDATED — human checkpoint approval 2026-09-16
 
 ### Baseline
 - SHA: `2ec4cbe` (tracked tree clean; untracked docs files only)
