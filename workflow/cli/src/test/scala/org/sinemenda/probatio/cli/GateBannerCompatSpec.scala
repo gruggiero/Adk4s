@@ -4,6 +4,8 @@ import hedgehog.*
 import hedgehog.Range
 import org.sinemenda.probatio.core.*
 
+import LiveFactFixtures.withTempDir
+
 /**
  * Test oracle for the `gate` subcommand wiring (cli-wiring spec).
  *
@@ -20,17 +22,20 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
   // spec: cli-wiring — Scenario: session-start emits the banner and exits 0
 
   test("gate session-start emits banner and exits 0"):
-    // The wired entrypoint should emit the banner and return Ran(0).
-    // The stub currently returns Ran(0) but emits nothing — this test
-    // checks the outcome (RED until the banner is wired).
-    val outcome: Outcome[Int] = GateCmd.run(
-      Array("--event", "session-start", "--change", "test-change", "--format", "text")
-    )
-    outcome match
-      case Outcome.Ran(0)              => () // expected
-      case Outcome.Ran(n)              => fail(s"session-start should exit 0, got $n")
-      case Outcome.Finding(msg)        => fail(s"session-start should not block: $msg")
-      case Outcome.Undetermined(reason) => fail(s"session-start should not be undetermined: $reason")
+    // The wired entrypoint emits the banner and returns Ran(0). A temp repo
+    // with an openspec/ dir exercises the real fact-reading path; the repo
+    // is not a git repo so no suppression state or heartbeat persists.
+    withTempDir("gate-test-repo") { (repo: java.nio.file.Path) =>
+      java.nio.file.Files.createDirectory(repo.resolve("openspec"))
+      val outcome: Outcome[Int] = GateCmd.run(
+        Array("--event", "session-start", "--format", "text", "--repo", repo.toString, "--session", "t")
+      )
+      outcome match
+        case Outcome.Ran(0)               => () // expected
+        case Outcome.Ran(n)               => fail(s"session-start should exit 0, got $n")
+        case Outcome.Finding(msg)         => fail(s"session-start should not block: $msg")
+        case Outcome.Undetermined(reason) => fail(s"session-start should not be undetermined: $reason")
+    }
 
   // ── Scenario: tool-call blocks when a predecessor spec is not checkpointed
   // spec: cli-wiring — Scenario: tool-call blocks when a predecessor spec is not checkpointed
@@ -64,15 +69,19 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
     // With no requirements parsed, chain-state reports zero unresolved —
     // the gate should return Ran(0) (trivially clean). The blocking behavior
     // is verified by the core chain-state logic below.
-    val tempFile: java.nio.file.Path = java.nio.file.Files.createTempFile("gate-test-ledger", ".jsonl")
-    try
+    withTempDir("gate-test-ledger") { (tempDir: java.nio.file.Path) =>
+      val tempFile: java.nio.file.Path = tempDir.resolve("ledger.jsonl")
       java.nio.file.Files.write(tempFile, Array.emptyByteArray)
       val outcome: Outcome[Int] = GateCmd.run(
         Array(
-          "--event", "completion",
-          "--change", "test-change",
-          "--baseline", "abc1234",
-          "--ledger-file", tempFile.toString
+          "--event",
+          "completion",
+          "--change",
+          "test-change",
+          "--baseline",
+          "abc1234",
+          "--ledger-file",
+          tempFile.toString
         )
       )
       // Verify the core chain-state logic detects unresolved obligations
@@ -95,13 +104,12 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
           // When requirements are parsed (future wiring), the gate would block.
           // For now, verify the gate delegates to chain-state and doesn't crash.
           outcome match
-            case Outcome.Ran(0)              => () // expected — no reqs parsed → trivially clean
-            case Outcome.Ran(n)              => fail(s"completion should exit 0, got $n")
-            case Outcome.Finding(msg)        => fail(s"completion with no reqs should not block: $msg")
+            case Outcome.Ran(0)               => () // expected — no reqs parsed → trivially clean
+            case Outcome.Ran(n)               => fail(s"completion should exit 0, got $n")
+            case Outcome.Finding(msg)         => fail(s"completion with no reqs should not block: $msg")
             case Outcome.Undetermined(reason) => fail(s"completion should not be undetermined: $reason")
         case Left(u) => fail(s"chain-state should be determinable: $u")
-    finally
-      java.nio.file.Files.deleteIfExists(tempFile)
+    }
 
   // ── Scenario: The escape hatch bypasses the tool-call lock
   // spec: cli-wiring — Scenario: The escape hatch bypasses the tool-call lock
@@ -125,24 +133,22 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
 
   property("gate-banner-byte-compatibility"):
     for
-      schemaVersion <- Gen.int(Range.linear(1, 20)).forAll
-      registryPresent <- Gen.boolean.forAll
+      schemaVersion    <- Gen.int(Range.linear(1, 20)).forAll
+      registryPresent  <- Gen.boolean.forAll
       inventoryPresent <- Gen.boolean.forAll
-      profilePresent <- Gen.boolean.forAll
-      conceptCount <- Gen.int(Range.linear(0, 100)).forAll
-      typeCount <- Gen.int(Range.linear(0, 500)).forAll
+      profilePresent   <- Gen.boolean.forAll
+      conceptCount     <- Gen.int(Range.linear(0, 100)).forAll
+      typeCount        <- Gen.int(Range.linear(0, 500)).forAll
     yield
-      val inputs: BannerInputs = BannerInputs(
-        schemaVersion = schemaVersion,
-        skillInstallScan = Nil,
-        registryPresent = registryPresent,
-        registryConceptCount = conceptCount,
-        inventoryPresent = inventoryPresent,
-        inventoryTypeCount = typeCount,
-        profilePresent = profilePresent,
-        detectedTestKit = Some("TestControl testkit"),
-        activeChanges = Nil
+      val facts: RepositoryFacts = RepositoryFacts(
+        schemaVersion = FactRead.Present(schemaVersion),
+        registry = if registryPresent then FactRead.Present(conceptCount) else FactRead.Absent,
+        inventory = if inventoryPresent then FactRead.Present(typeCount) else FactRead.Absent,
+        profile = if profilePresent then FactRead.Present(Some("TestControl testkit")) else FactRead.Absent,
+        installRoots = Nil,
+        activeChanges = FactRead.Present(Nil)
       )
+      val inputs: BannerInputs = BannerInputs.from(facts)
       // The banner engine is a pure function — identical inputs produce
       // byte-identical output. This is the byte-compatibility invariant.
       val banner1: BannerOutput = BannerEngine.render(inputs)

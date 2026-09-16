@@ -12,7 +12,7 @@ addSbtPlugin("org.scalameta" % "sbt-native-image" % "0.4.0")
 addSbtPlugin("org.wartremover" % "sbt-wartremover" % "3.6.1")
 
 // Ring 5 — Mutation testing
-addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "0.21.0")
+addSbtPlugin("io.stryker-mutator" % "sbt-stryker4s" % "1.1.1")
 
 // Ring 6 — Stainless formal verification (bundled jar, not on Maven Central)
 // The jar in project/lib/sbt-stainless.jar provides ch.epfl.lara.sbt.stainless.StainlessPlugin

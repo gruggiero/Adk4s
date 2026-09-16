@@ -49,6 +49,10 @@ object CliContext:
       escapeHatch = escapeHatch
     )
 
-  /** Read the escape hatch from the environment. */
-  def readEscapeHatch: Boolean =
-    sys.env.get("PROBATIO_HOOKS").contains("1")
+  /**
+   * Read the escape hatch from a given environment — `true` when
+   * `PROBATIO_HOOKS` is set to `"1"`. The gate boundary passes the process
+   * environment.
+   */
+  def readEscapeHatch(env: Map[String, String]): Boolean =
+    env.get("PROBATIO_HOOKS").contains("1")

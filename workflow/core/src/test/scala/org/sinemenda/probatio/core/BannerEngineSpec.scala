@@ -5,23 +5,30 @@ import hedgehog.*
 /**
  * Tests for the BannerEngine pure function.
  *
+ * Migrated to the spec-3 contract: `BannerInputs` is constructible only from
+ * a `RepositoryFacts` value, and install-root scans use `InstallRootState`.
+ *
  * spec: port-scanner-to-probatio/probatio-core — Requirement: The drift, context, and banner engine is a pure function
  * spec: port-scanner-to-probatio/probatio-core — Requirement: The banner is assembled from live reads, not remembered state
+ * spec: live-fact-banner — Requirement: Every fact the banner states is read during the run that states it
  */
 final class BannerEngineSpec extends ProbatioSuite:
 
-  private def emptyInputs(schemaVersion: Int): BannerInputs =
-    BannerInputs(
-      schemaVersion = schemaVersion,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List.empty
+  private def emptyFacts(schemaVersion: Int): RepositoryFacts =
+    RepositoryFacts(
+      schemaVersion = FactRead.Present(schemaVersion),
+      registry = FactRead.Absent,
+      inventory = FactRead.Absent,
+      profile = FactRead.Absent,
+      installRoots = List.empty,
+      activeChanges = FactRead.Present(List.empty)
     )
+
+  private def emptyInputs(schemaVersion: Int): BannerInputs =
+    BannerInputs.from(emptyFacts(schemaVersion))
+
+  private def changes(cs: ActiveChangeWithChainState*): FactRead[List[ActiveChangeWithChainState]] =
+    FactRead.Present(cs.toList)
 
   // ── Scenario: identical inputs produce byte-identical output
   // spec: port-scanner-to-probatio/probatio-core — Scenario: identical inputs produce byte-identical output
@@ -52,22 +59,21 @@ final class BannerEngineSpec extends ProbatioSuite:
   // ── Scenario: the session-context block reflects live chain state
   // spec: port-scanner-to-probatio/probatio-core — Scenario: the session-context block reflects live chain state
   test("the session-context block reflects live chain state"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = true,
-      registryConceptCount = 35,
-      inventoryPresent = true,
-      inventoryTypeCount = 203,
-      profilePresent = true,
-      detectedTestKit = Some("TestControl testkit"),
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "port-scanner-to-probatio",
-          artifactsPresent = List("proposal.md", "design.md"),
-          nextArtifact = Some("implementation-order.md"),
-          chainState = Some(
-            Right(
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        registry = FactRead.Present(35),
+        inventory = FactRead.Present(203),
+        profile = FactRead.Present(Some("TestControl testkit")),
+        activeChanges = changes(
+          ActiveChangeWithChainState(
+            name = "port-scanner-to-probatio",
+            artifacts = FactRead.Present(
+              ArtifactScan(
+                List("proposal.md", "design.md"),
+                Some(ArtifactRef("implementation-order", "implementation-order.md"))
+              )
+            ),
+            chainState = Right(
               ChainStateReport(
                 change = "port-scanner-to-probatio",
                 baseline = "abc1234",
@@ -125,16 +131,12 @@ final class BannerEngineSpec extends ProbatioSuite:
       inventoryPresent <- Gen.boolean.forAll
       profilePresent   <- Gen.boolean.forAll
     yield
-      val inputs: BannerInputs = BannerInputs(
-        schemaVersion = schemaVersion,
-        skillInstallScan = List.empty,
-        registryPresent = registryPresent,
-        registryConceptCount = if registryPresent then 35 else 0,
-        inventoryPresent = inventoryPresent,
-        inventoryTypeCount = if inventoryPresent then 203 else 0,
-        profilePresent = profilePresent,
-        detectedTestKit = if profilePresent then Some("TestControl testkit") else None,
-        activeChanges = List.empty
+      val inputs: BannerInputs = BannerInputs.from(
+        emptyFacts(schemaVersion).copy(
+          registry = if registryPresent then FactRead.Present(35) else FactRead.Absent,
+          inventory = if inventoryPresent then FactRead.Present(203) else FactRead.Absent,
+          profile = if profilePresent then FactRead.Present(Some("TestControl testkit")) else FactRead.Absent
+        )
       )
       val output1: BannerOutput = BannerEngine.render(inputs)
       val output2: BannerOutput = BannerEngine.render(inputs)
@@ -156,9 +158,8 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: banner contains registry presence info
   test("banner with registry present contains PRESENT and concept count"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      registryPresent = true,
-      registryConceptCount = 35
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(registry = FactRead.Present(35))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("PRESENT"), "banner must contain PRESENT for registry")
@@ -167,15 +168,16 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: banner with registry absent contains ABSENT
   test("banner with registry absent contains ABSENT"):
-    val inputs: BannerInputs = emptyInputs(13).copy(registryPresent = false)
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(registry = FactRead.Absent)
+    )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("ABSENT"), "banner must contain ABSENT when registry is not present")
 
   // ── Mutation-killing: banner with inventory present contains type count
   test("banner with inventory present contains PRESENT and type count"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      inventoryPresent = true,
-      inventoryTypeCount = 203
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(inventory = FactRead.Present(203))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("PRESENT"), "banner must contain PRESENT for inventory")
@@ -184,53 +186,60 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: banner with profile present contains capability profile
   test("banner with profile present contains PRESENT for capability profile"):
-    val inputs: BannerInputs = emptyInputs(13).copy(profilePresent = true)
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(profile = FactRead.Present(None))
+    )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("capability profile"), "banner must contain 'capability profile'")
 
   // ── Mutation-killing: banner with test kit contains the kit name
   test("banner with detected test kit contains the kit name"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      profilePresent = true,
-      detectedTestKit = Some("TestControl testkit")
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(profile = FactRead.Present(Some("TestControl testkit")))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("TestControl testkit"), "banner must contain the test kit name")
 
   // ── Mutation-killing: banner with no skill installed contains the no-skill line
   test("banner with no skill installed contains no-skill text"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", None))
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        installRoots = List(InstallRootScan(".claude/skills", InstallRootState.Absent))
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("no skill installed"), "banner must contain 'no skill installed' text")
+    assert(
+      output.payload.contains("no openspec-spec-lint skill installed in the searched roots"),
+      "banner must contain the no-skill-installed text"
+    )
 
   // ── Mutation-killing: banner with drift warnings contains drift text
   test("banner with drift warnings contains drift message"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", Some(12)))
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        installRoots = List(InstallRootScan(".claude/skills", InstallRootState.Stamped(12, StampFormat.New)))
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("drift"), "banner must contain 'drift' text when drift exists")
+    assert(
+      output.payload.contains("INSTRUCTION DRIFT"),
+      "banner must contain 'INSTRUCTION DRIFT' text when drift exists"
+    )
 
   // ── Mutation-killing: banner with active change contains change name and counts
   test("banner with active change contains change name and chain-state counts"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "port-scanner-to-probatio",
-          artifactsPresent = List("proposal.md", "design.md"),
-          nextArtifact = Some("implementation-order.md"),
-          chainState = Some(
-            Right(
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        activeChanges = changes(
+          ActiveChangeWithChainState(
+            name = "port-scanner-to-probatio",
+            artifacts = FactRead.Present(
+              ArtifactScan(
+                List("proposal.md", "design.md"),
+                Some(ArtifactRef("implementation-order", "implementation-order.md"))
+              )
+            ),
+            chainState = Right(
               ChainStateReport(
                 change = "port-scanner-to-probatio",
                 baseline = "abc1234",
@@ -257,47 +266,33 @@ final class BannerEngineSpec extends ProbatioSuite:
     assert(output.payload.contains("discharged 5"), "banner must contain discharged count")
     assert(output.payload.contains("unresolved 1"), "banner must contain unresolved count")
 
-  // ── Mutation-killing: banner with undetermined chain state contains UNDETERMINED
-  test("banner with undetermined chain state contains UNDETERMINED"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "test-change",
-          artifactsPresent = List("proposal.md"),
-          nextArtifact = None,
-          chainState = Some(Left(ChainStateUndetermined("test-change", "abc1234", "ledger unreadable")))
+  // ── Mutation-killing: banner with undetermined chain state contains undetermined
+  test("banner with undetermined chain state contains undetermined"):
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        activeChanges = changes(
+          ActiveChangeWithChainState(
+            name = "test-change",
+            artifacts = FactRead.Present(ArtifactScan(List("proposal.md"), None)),
+            chainState = Left(ChainStateUndetermined("test-change", "abc1234", "ledger unreadable"))
+          )
         )
       )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("UNDETERMINED"), "banner must contain UNDETERMINED for undetermined chain state")
+    assert(output.payload.contains("undetermined"), "banner must contain undetermined for undetermined chain state")
     assert(output.payload.contains("ledger unreadable"), "banner must contain the undetermined reason")
 
   // ── Mutation-killing: banner with no next artifact contains 'none'
   test("banner with no next artifact contains 'none'"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "test-change",
-          artifactsPresent = List("proposal.md"),
-          nextArtifact = None,
-          chainState = None
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        activeChanges = changes(
+          ActiveChangeWithChainState(
+            name = "test-change",
+            artifacts = FactRead.Present(ArtifactScan(List("proposal.md"), None)),
+            chainState = Left(ChainStateUndetermined("test-change", "abc1234", "ledger absent"))
+          )
         )
       )
     )
@@ -339,41 +334,45 @@ final class BannerEngineSpec extends ProbatioSuite:
     assertEquals(output.payload, output.lines.mkString("\n"), "payload must be lines joined by newlines")
 
   // ── Mutation-killing: no skill installed — context line
-  test("banner with no skill installed contains 'no skill installed across any'"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", None))
+  test("banner with no skill installed names the searched roots"):
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        installRoots = List(InstallRootScan(".claude/skills", InstallRootState.Absent))
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
-      output.payload.contains("no skill installed across any"),
-      "banner must contain 'no skill installed across any'"
+      output.payload.contains("no openspec-spec-lint skill installed in the searched roots"),
+      "banner must name the searched roots when no skill is installed"
     )
-    assert(output.payload.contains("searched roots"), "banner must contain 'searched roots'")
 
   // ── Mutation-killing: skill installed (no drift) — no noSkillInstalled line
-  test("banner with skill installed does NOT contain 'no skill installed across any'"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", Some(13)))
+  test("banner with skill installed does NOT contain the no-skill-installed line"):
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        installRoots = List(InstallRootScan(".claude/skills", InstallRootState.Stamped(13, StampFormat.New)))
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
-      !output.payload.contains("no skill installed across any"),
-      "banner must NOT contain 'no skill installed across any' when skill is installed"
+      !output.payload.contains("no openspec-spec-lint skill installed"),
+      "banner must NOT contain the no-skill-installed line when skill is installed"
     )
 
   // ── Mutation-killing: drift warning in context line
   test("banner with drift warnings contains INSTRUCTION DRIFT"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", Some(12)))
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        installRoots = List(InstallRootScan(".claude/skills", InstallRootState.Stamped(12, StampFormat.New)))
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("INSTRUCTION DRIFT"), "banner must contain 'INSTRUCTION DRIFT'")
 
   // ── Mutation-killing: registry present — full line text
   test("banner with registry present contains full PRESENT line"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      registryPresent = true,
-      registryConceptCount = 35
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(registry = FactRead.Present(35))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
@@ -383,7 +382,9 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: registry absent — full line text
   test("banner with registry absent contains full ABSENT line"):
-    val inputs: BannerInputs = emptyInputs(13).copy(registryPresent = false)
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(registry = FactRead.Absent)
+    )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
       output.payload.contains("behavioural registry  openspec/concepts/             ABSENT"),
@@ -392,9 +393,8 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: inventory present — full line text
   test("banner with inventory present contains full PRESENT line"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      inventoryPresent = true,
-      inventoryTypeCount = 203
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(inventory = FactRead.Present(203))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
@@ -404,7 +404,9 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: inventory absent — full line text
   test("banner with inventory absent contains full ABSENT line"):
-    val inputs: BannerInputs = emptyInputs(13).copy(inventoryPresent = false)
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(inventory = FactRead.Absent)
+    )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
       output.payload.contains("type inventory        openspec/concept-inventory.md  ABSENT"),
@@ -413,7 +415,9 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: profile present — full line text
   test("banner with profile present contains full PRESENT line"):
-    val inputs: BannerInputs = emptyInputs(13).copy(profilePresent = true)
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(profile = FactRead.Present(None))
+    )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
       output.payload.contains("capability profile    openspec/capability-profile.md PRESENT"),
@@ -422,7 +426,9 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: profile absent — full line text
   test("banner with profile absent contains full ABSENT line"):
-    val inputs: BannerInputs = emptyInputs(13).copy(profilePresent = false)
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(profile = FactRead.Absent)
+    )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
       output.payload.contains("capability profile    openspec/capability-profile.md ABSENT"),
@@ -431,7 +437,9 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: no test kit detected
   test("banner with no test kit contains 'no deterministic test kit detected'"):
-    val inputs: BannerInputs = emptyInputs(13).copy(detectedTestKit = None)
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(profile = FactRead.Present(None))
+    )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
       output.payload.contains("no deterministic test kit detected"),
@@ -440,9 +448,8 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: test kit detected
   test("banner with test kit contains 'deterministic test kit detected:'"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      profilePresent = true,
-      detectedTestKit = Some("TestControl testkit")
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(profile = FactRead.Present(Some("TestControl testkit")))
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
@@ -452,21 +459,14 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: active change name line
   test("banner with active change contains 'active change' label and name"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "my-change",
-          artifactsPresent = List("a.md"),
-          nextArtifact = None,
-          chainState = None
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        activeChanges = changes(
+          ActiveChangeWithChainState(
+            name = "my-change",
+            artifacts = FactRead.Present(ArtifactScan(List("a.md"), None)),
+            chainState = Left(ChainStateUndetermined("my-change", "abc1234", "ledger absent"))
+          )
         )
       )
     )
@@ -476,68 +476,49 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: artifacts present with separator
   test("banner with multiple artifacts contains comma separator"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "c",
-          artifactsPresent = List("a.md", "b.md"),
-          nextArtifact = None,
-          chainState = None
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        activeChanges = changes(
+          ActiveChangeWithChainState(
+            name = "c",
+            artifacts = FactRead.Present(ArtifactScan(List("a.md", "b.md"), None)),
+            chainState = Left(ChainStateUndetermined("c", "abc1234", "ledger absent"))
+          )
         )
       )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("a.md, b.md"), "banner must contain comma-separated artifacts")
 
-  // ── Mutation-killing: chain state not computed
-  test("banner with chainState=None contains '(not computed)'"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "c",
-          artifactsPresent = List("a.md"),
-          nextArtifact = None,
-          chainState = None
-        )
+  // ── Mutation-killing: an unlistable changes dir renders UNREADABLE, not empty
+  // spec: live-fact-banner — SHALL NOT report an empty active-change list for a
+  // repository whose changes could not be listed
+  test("banner with Unreadable activeChanges states UNREADABLE and no fabricated list"):
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        activeChanges = FactRead.Unreadable("openspec/changes could not be listed")
       )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
-    assert(output.payload.contains("(not computed)"), "banner must contain '(not computed)'")
+    assert(output.payload.contains("UNREADABLE"), "banner must state UNREADABLE")
+    assert(
+      output.payload.contains("could not be listed"),
+      "banner must state the unreadable reason"
+    )
+    assert(
+      !output.payload.contains("active change       "),
+      "an unreadable changes dir must not fabricate a per-change line"
+    )
 
   // ── Mutation-killing: chain state header with change name
   test("banner with Right chain state contains 'chain state' label and change name"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "my-change",
-          artifactsPresent = List("a.md"),
-          nextArtifact = None,
-          chainState = Some(
-            Right(
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        activeChanges = changes(
+          ActiveChangeWithChainState(
+            name = "my-change",
+            artifacts = FactRead.Present(ArtifactScan(List("a.md"), None)),
+            chainState = Right(
               ChainStateReport(
                 change = "my-change",
                 baseline = "abc1234",
@@ -559,22 +540,13 @@ final class BannerEngineSpec extends ProbatioSuite:
 
   // ── Mutation-killing: unresolved entry with reasons and separator
   test("banner with unresolved entries contains requirement and reasons"):
-    val inputs: BannerInputs = BannerInputs(
-      schemaVersion = 13,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List(
-        ActiveChangeWithChainState(
-          name = "c",
-          artifactsPresent = List("a.md"),
-          nextArtifact = None,
-          chainState = Some(
-            Right(
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        activeChanges = changes(
+          ActiveChangeWithChainState(
+            name = "c",
+            artifacts = FactRead.Present(ArtifactScan(List("a.md"), None)),
+            chainState = Right(
               ChainStateReport(
                 change = "c",
                 baseline = "abc1234",
@@ -596,51 +568,50 @@ final class BannerEngineSpec extends ProbatioSuite:
     assert(output.payload.contains("unbound"), "banner must contain reason 'unbound'")
     assert(output.payload.contains("unresolved"), "banner must contain reason 'unresolved'")
     // The comma separator between reasons is in the unresolved entry line:
-    // "    R1 (unbound, unresolved)" — check for this specific pattern
+    // "    R1 (unbound,unresolved)" — the predecessor's join(",") form
     assert(
-      output.payload.contains("unbound, unresolved"),
+      output.payload.contains("unbound,unresolved"),
       "banner must contain comma-separated reasons in unresolved entry"
     )
 
-  // ── Mutation-killing: drift lines — no skill installed
-  test("banner drift section with no skill contains 're-install to enable drift checking'"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", None))
+  // ── Mutation-killing: drift warning names the root and both versions
+  test("banner drift warning names root, expected and found versions"):
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        installRoots = List(InstallRootScan(".claude/skills", InstallRootState.Stamped(12, StampFormat.New)))
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
-      output.payload.contains("re-install to enable drift checking"),
-      "banner must contain 're-install to enable drift checking'"
+      output.lines.exists(line => line.contains("skill at .claude/skills is schema v12, this schema is v13")),
+      "banner must contain the drift warning naming the root and both versions"
     )
+    assert(output.payload.contains("INSTRUCTION DRIFT"), "banner must contain 'INSTRUCTION DRIFT'")
 
-  // ── Mutation-killing: drift lines — warnings present
-  test("banner drift section with warnings contains warning message"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", Some(12)))
-    )
-    val output: BannerOutput = BannerEngine.render(inputs)
-    // The drift section (buildDriftLines) outputs "  ${w.message}" without the
-    // "!! INSTRUCTION DRIFT:" prefix. The context section has that prefix.
-    // We need to assert the drift-section-specific line exists.
-    val driftSectionLine: Boolean = output.lines.exists { line =>
-      line.startsWith("  drift: root") && !line.contains("INSTRUCTION DRIFT")
-    }
-    assert(driftSectionLine, "banner drift section must contain warning message without INSTRUCTION DRIFT prefix")
-    assert(output.payload.contains("expected"), "banner must contain 'expected' in drift warning")
-
-  // ── Mutation-killing: drift lines — no warnings, skill installed
-  test("banner drift section with no warnings and skill installed is empty"):
-    val inputs: BannerInputs = emptyInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", Some(13)))
+  // ── Mutation-killing: no warnings when the installed stamp matches
+  test("banner with a matching stamp emits no drift warnings"):
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(
+        installRoots = List(InstallRootScan(".claude/skills", InstallRootState.Stamped(13, StampFormat.New)))
+      )
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(
-      !output.payload.contains("re-install to enable drift checking"),
-      "banner must NOT contain re-install when skill is installed"
+      !output.payload.contains("INSTRUCTION DRIFT"),
+      "banner must NOT contain INSTRUCTION DRIFT when no drift"
     )
-    assert(!output.payload.contains("INSTRUCTION DRIFT"), "banner must NOT contain INSTRUCTION DRIFT when no drift")
-    // The drift section should not have any drift warning lines
-    val hasDriftSectionWarning: Boolean = output.lines.exists { line =>
-      line.startsWith("  drift: root") && !line.contains("INSTRUCTION DRIFT")
-    }
-    assert(!hasDriftSectionWarning, "banner must NOT have drift-section warning lines when no drift")
+    val hasDriftWarning: Boolean = output.lines.exists(line => line.contains("skill at"))
+    assert(!hasDriftWarning, "banner must NOT have drift warning lines when no drift")
+
+  // ── Mutation-killing: an unreadable fact is never rendered as absent
+  test("banner with unreadable registry states UNREADABLE, not ABSENT"):
+    val inputs: BannerInputs = BannerInputs.from(
+      emptyFacts(13).copy(registry = FactRead.Unreadable("permission denied"))
+    )
+    val output: BannerOutput         = BannerEngine.render(inputs)
+    val registryLine: Option[String] = output.lines.find(_.contains("behavioural registry"))
+    registryLine match
+      case Some(line) =>
+        assert(line.contains("UNREADABLE"), s"unreadable registry must state UNREADABLE, got: $line")
+        assert(!line.contains("ABSENT"), s"unreadable registry must NOT state ABSENT, got: $line")
+      case None => fail("banner must contain a registry line")

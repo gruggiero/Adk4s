@@ -34,19 +34,19 @@
 - [x] Ring 6 — `CutoverKernel` mirror + `CutoverBridgeSpec`; `sbt -J-Xmx6g ring6`
 - [x] Concept-delta check + inventory update (2 added, `SeamConfiguration` modified) + checkpoint
 
-## 3. live-fact-banner
+## 3. live-fact-banner — COMPLETE
 
-- [ ] Step 1 — typed contract: `RepositoryFacts`, `RepositoryFactsReader.read(root): RepositoryFacts`, `BannerInputs.from(RepositoryFacts)` with the raw constructor made private, `DriftScan.installRoots` widened to six (compiles, human gate)
-- [ ] Step 2 — test oracle: 13 scenarios + 4 properties (`facts-reflect-repository`, `banner-states-only-read-facts`, `every-searched-root-is-scanned`, `suppression-tracks-facts`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate)
-- [ ] Step 3 — implementation: the reader reads registry, inventory, profile, six install roots and active changes; `GateCmd` stops constructing `BannerInputs` from literals; active changes carry live chain-state; suppression is keyed on the facts
-- [ ] Ring 0 — `sbt "probatio-core/compile" "probatio-cli/compile"` clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan via the predecessor script, recorded
-- [ ] Ring 2 — `dependencyLint` clean for both modules
-- [ ] Ring 3 — property + scenario suites green; **`gate-payload.bats` at parity with the control under `probatioOracleDiff`** (baseline: 0 predecessor failures, 21 ported)
-- [ ] Ring 8 — fresh-context adversarial review, diffing the emitted banner against the predecessor's on one repository
-- [ ] Ring 5 — retarget to `RepositoryFactsReader.scala`, `BannerEngine.scala`, `DriftScan.scala`; threshold 80%; read and record the score
-- [ ] Ring 6 — extend `BannerEngineKernel` with the unreadable-is-not-absent clause + `BannerBridgeSpec`; `sbt -J-Xmx6g ring6`
-- [ ] Concept-delta check + inventory update (1 added, `BannerInputs` and `DriftScan` modified) + checkpoint
+- [x] Step 1 — typed contract: `RepositoryFacts`, `RepositoryFactsReader.read(root): RepositoryFacts`, `BannerInputs.from(RepositoryFacts)` with the raw constructor made private, `DriftScan.installRoots` widened to six (compiles, human gate)
+- [x] Step 2 — test oracle: 13 scenarios + 4 properties (`facts-reflect-repository`, `banner-states-only-read-facts`, `every-searched-root-is-scanned`, `suppression-tracks-facts`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate)
+- [x] Step 3 — implementation: the reader reads registry, inventory, profile, six install roots and active changes; `GateCmd` stops constructing `BannerInputs` from literals; active changes carry live chain-state; suppression is keyed on the facts
+- [x] Ring 0 — `sbt "probatio-core/compile" "probatio-cli/compile"` clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan via the predecessor script, recorded
+- [x] Ring 2 — `dependencyLint` clean for both modules
+- [x] Ring 3 — property + scenario suites green; **`gate-payload.bats` at parity with the control under `probatioOracleDiff`** (baseline: 0 predecessor failures, 21 ported)
+- [x] Ring 8 — fresh-context adversarial review, diffing the emitted banner against the predecessor's on one repository
+- [x] Ring 5 — Stryker4s on `RepositoryFactsReader.scala`, `GateStateDir.scala`, `SubcommandEntrypoints.scala`: 95.16% covered-code (≥80%); 12 survivors all classified equivalent/dead-code in implementation-progress.md
+- [x] Ring 6 — `BannerEngineKernel.bannerClaims` + helpers + 5 law lemmas verified (223/223 VCs, 0 invalid); `BannerBridgeSpec` green; direct `probatio-verified` invocation (ring6 alias broken in sbt 1.12)
+- [x] Concept-delta check + inventory update (13 added, `BannerInputs`/`ActiveChangeWithChainState`/`InstallRootScan`/`DriftWarning`/`DriftScan` modified) + checkpoint
 
 ## 4. spec-lint-engine
 

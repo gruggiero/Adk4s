@@ -24,8 +24,9 @@ import stainless.annotation._
  *   - `skillInstallScan` → `List[InstallRoot]` where `InstallRoot` has
  *     `rootPath: BigInt` and `stampVersion: Option[BigInt]`.
  *   - `activeChanges` → `List[ActiveChange]` with `name: BigInt`,
- *     `artifacts: List[BigInt]`, `chainState: Option[Either[BigInt,
- *     ChainStateSummary]]`.
+ *     `artifacts: List[BigInt]`, `chainState: Either[BigInt,
+ *     ChainStateSummary]` — every reported change carries a live attempt;
+ *     "never attempted" is unrepresentable.
  *   - `BannerOutput` → case class with `lines: List[BigInt]` and
  *     `payload: BigInt` (abstracted).
  *   - `DriftScanResult` → case class with `noSkillInstalled: Boolean`,
@@ -63,7 +64,7 @@ object BannerEngineKernel:
   case class ActiveChange(
     name: BigInt,
     artifacts: List[BigInt],
-    chainState: Option[Either[BigInt, ChainStateSummary]]
+    chainState: Either[BigInt, ChainStateSummary]
   )
 
   /** The abstracted banner inputs. */
@@ -140,9 +141,11 @@ object BannerEngineKernel:
   def trailerText: BigInt =
     BigInt(0)
 
-  /** Build the context-facts lines from the declared inputs (abstracted).
+  /**
+   * Build the context-facts lines from the declared inputs (abstracted).
    * Simplified to Cons/Nil construction to avoid flatMap/++ VCs that Z3
-   * cannot discharge on unbounded lists. */
+   * cannot discharge on unbounded lists.
+   */
   @pure
   def buildContextLines(inputs: BannerInputs): List[BigInt] =
     val driftResult: DriftScanResult =
@@ -170,11 +173,15 @@ object BannerEngineKernel:
       case Some(kit) => kit
       case None()    => BigInt(-5)
 
-    Cons(schemaLine, Cons(driftWarningLine, Cons(registryLine,
-      Cons(inventoryLine, Cons(profileLine, Cons(testKitLine, Nil()))))))
+    Cons(
+      schemaLine,
+      Cons(driftWarningLine, Cons(registryLine, Cons(inventoryLine, Cons(profileLine, Cons(testKitLine, Nil())))))
+    )
 
-  /** Build the chain-state lines from active changes (abstracted).
-   * Simplified to Cons/Nil construction. */
+  /**
+   * Build the chain-state lines from active changes (abstracted).
+   * Simplified to Cons/Nil construction.
+   */
   @pure
   def buildChainStateLines(inputs: BannerInputs): List[BigInt] =
     decreases(inputs.activeChanges.size)
@@ -183,34 +190,36 @@ object BannerEngineKernel:
       case Cons(change, rest) =>
         val nameLine: BigInt = change.name
         val artifactsLine: BigInt = change.artifacts match
-          case Nil()       => BigInt(0)
-          case Cons(h, t)  => h + (t match
-            case Nil()       => BigInt(0)
-            case Cons(h2, t2) => h2 + (t2 match
-              case Nil()        => BigInt(0)
-              case Cons(h3, _)  => h3
+          case Nil() => BigInt(0)
+          case Cons(h, t) =>
+            h + (t match
+              case Nil() => BigInt(0)
+              case Cons(h2, t2) =>
+                h2 + (t2 match
+                  case Nil()       => BigInt(0)
+                  case Cons(h3, _) => h3
+                )
             )
-          )
         val chainStateLine: BigInt = change.chainState match
-          case None()           => BigInt(-6)
-          case Some(Left(_))    => BigInt(-7)
-          case Some(Right(report)) =>
+          case Left(_) => BigInt(-7)
+          case Right(report) =>
             report.total + report.bound + report.resolved + report.discharged
-        Cons(nameLine, Cons(artifactsLine, Cons(chainStateLine,
-          buildChainStateLines(inputs.copy(activeChanges = rest)))))
+        Cons(
+          nameLine,
+          Cons(artifactsLine, Cons(chainStateLine, buildChainStateLines(inputs.copy(activeChanges = rest))))
+        )
 
-  /** Build drift lines from the skill install scan (abstracted).
-   * Simplified to a single sentinel value. */
+  /**
+   * Build drift lines from the skill install scan (abstracted).
+   * Simplified to a single sentinel value.
+   */
   @pure
   def buildDriftLines(inputs: BannerInputs): List[BigInt] =
     val driftResult: DriftScanResult =
       driftScan(inputs.schemaVersion, inputs.skillInstallScan)
-    if driftResult.noSkillInstalled then
-      Cons(BigInt(-8), Nil())
-    else if driftResult.warnings.nonEmpty then
-      Cons(BigInt(-9), Nil())
-    else
-      Nil()
+    if driftResult.noSkillInstalled then Cons(BigInt(-8), Nil())
+    else if driftResult.warnings.nonEmpty then Cons(BigInt(-9), Nil())
+    else Nil()
 
   /**
    * Render the banner from declared inputs.
@@ -222,12 +231,88 @@ object BannerEngineKernel:
    */
   @pure
   def render(inputs: BannerInputs): BannerOutput =
-    val invariant: BigInt = invariantText(inputs.schemaVersion)
+    val invariant: BigInt          = invariantText(inputs.schemaVersion)
     val contextLines: List[BigInt] = buildContextLines(inputs)
     // Payload is the invariant + trailer (simplified — avoids foldLeft on
     // unbounded lists which generates Vcs Z3 cannot discharge).
     val payload: BigInt = invariant + trailerText
     BannerOutput(lines = Cons(invariant, Cons(trailerText, contextLines)), payload = payload)
+
+  // ---------------------------------------------------------------------------
+  // bannerClaims — the emitted-claim contract (spec: live-fact-banner, Ring 6)
+  //
+  // The fact-code vector abstracts the facts record: `-1` = unreadable,
+  // `0` = absent, `n > 0` = present with count `n`. The claim vector is what
+  // the banner emits for each fact. The contract: the emitted claim vector
+  // has the same length as the fact vector, each emitted claim equals the
+  // corresponding fact code, and an unreadable fact is never claimed absent.
+  //
+  // The spec's `zip`/`forall` postconditions are stated here as structural
+  // recursions (`claimsMatchFacts`, `noUnreadableClaimedAbsent`) — `zip`,
+  // `forall`, `map`, and `foldLeft` on unbounded lists generate
+  // termination-measure VCs Z3 cannot discharge.
+  // ---------------------------------------------------------------------------
+
+  /** Every entry of a well-formed fact-code vector is `>= -1`. */
+  @pure
+  def allFactCodesValid(facts: List[BigInt]): Boolean =
+    decreases(facts.size)
+    facts match
+      case Nil()         => true
+      case Cons(f, rest) => f >= BigInt(-1) && allFactCodesValid(rest)
+
+  /**
+   * Elementwise `claims == facts` — the structural form of the spec's
+   * `claims.zip(facts).forall { case (c, f) => c == f }`.
+   */
+  @pure
+  def claimsMatchFacts(claims: List[BigInt], facts: List[BigInt]): Boolean =
+    decreases(claims.size)
+    (claims, facts) match
+      case (Nil(), Nil()) => true
+      case (Cons(c, crest), Cons(f, frest)) =>
+        c == f && claimsMatchFacts(crest, frest)
+      case _ => false
+
+  /**
+   * No unreadable fact (`-1`) is emitted as an absent claim (`0`) — the
+   * structural form of the spec's
+   * `claims.zip(facts).forall { case (c, f) => (f == -1) ==> (c != 0) }`.
+   */
+  @pure
+  def noUnreadableClaimedAbsent(claims: List[BigInt], facts: List[BigInt]): Boolean =
+    decreases(claims.size)
+    (claims, facts) match
+      case (Nil(), Nil()) => true
+      case (Cons(c, crest), Cons(f, frest)) =>
+        (f != BigInt(-1) || c != BigInt(0)) && noUnreadableClaimedAbsent(crest, frest)
+      case _ => false
+
+  /** The claim emitted for one fact code is the code itself. */
+  @pure
+  def claimFor(fact: BigInt): BigInt = {
+    require(fact >= BigInt(-1))
+    fact
+  }.ensuring((claim: BigInt) => claim == fact && (fact != BigInt(-1) || claim != BigInt(0)))
+
+  /**
+   * The banner's emitted-claim vector: one claim per fact code, each equal
+   * to the code read.
+   *
+   * spec: live-fact-banner — Formal Contract: bannerClaims
+   */
+  @pure
+  def bannerClaims(facts: List[BigInt]): List[BigInt] = {
+    require(allFactCodesValid(facts))
+    decreases(facts.size)
+    facts match
+      case Nil()         => Nil()
+      case Cons(f, rest) => Cons(claimFor(f), bannerClaims(rest))
+  }.ensuring { (claims: List[BigInt]) =>
+    claims.length == facts.length &&
+    claimsMatchFacts(claims, facts) &&
+    noUnreadableClaimedAbsent(claims, facts)
+  }
 
   // ---------------------------------------------------------------------------
   // Property lemmas — standalone boolean functions
@@ -271,7 +356,7 @@ object BannerEngineKernel:
    */
   @pure
   def driftScanSingleNone(schemaVersion: BigInt, rootPath: BigInt): Boolean = {
-    val root: InstallRoot = InstallRoot(rootPath, None())
+    val root: InstallRoot       = InstallRoot(rootPath, None())
     val result: DriftScanResult = driftScan(schemaVersion, Cons(root, Nil()))
     result.noSkillInstalled
   }.ensuring(_ == true)
@@ -282,7 +367,7 @@ object BannerEngineKernel:
    */
   @pure
   def driftScanSingleSome(schemaVersion: BigInt, rootPath: BigInt, v: BigInt): Boolean = {
-    val root: InstallRoot = InstallRoot(rootPath, Some(v))
+    val root: InstallRoot       = InstallRoot(rootPath, Some(v))
     val result: DriftScanResult = driftScan(schemaVersion, Cons(root, Nil()))
     !result.noSkillInstalled
   }.ensuring(_ == true)
@@ -297,7 +382,7 @@ object BannerEngineKernel:
     rootPath: BigInt,
     v: BigInt
   ): Boolean = {
-    val root: InstallRoot = InstallRoot(rootPath, Some(v))
+    val root: InstallRoot       = InstallRoot(rootPath, Some(v))
     val result: DriftScanResult = driftScan(schemaVersion, Cons(root, Nil()))
     v == schemaVersion || result.warnings.nonEmpty
   }.ensuring(_ == true)
@@ -311,7 +396,52 @@ object BannerEngineKernel:
     schemaVersion: BigInt,
     rootPath: BigInt
   ): Boolean = {
-    val root: InstallRoot = InstallRoot(rootPath, Some(schemaVersion))
+    val root: InstallRoot       = InstallRoot(rootPath, Some(schemaVersion))
     val result: DriftScanResult = driftScan(schemaVersion, Cons(root, Nil()))
     result.warnings.isEmpty
+  }.ensuring(_ == true)
+
+  /**
+   * Law: the empty fact vector emits the empty claim vector.
+   */
+  @pure
+  def bannerClaimsEmpty: Boolean =
+    bannerClaims(Nil()).isEmpty
+      .ensuring(_ == true)
+
+  /**
+   * Law: a lone unreadable fact (`-1`) is claimed unreadable — never
+   * absent (`0`). This is the unreadable-is-not-absent clause.
+   */
+  @pure
+  def bannerClaimsUnreadableNotAbsent: Boolean = {
+    val claims: List[BigInt] = bannerClaims(Cons(BigInt(-1), Nil()))
+    claims == Cons(BigInt(-1), Nil())
+  }.ensuring(_ == true)
+
+  /**
+   * Law: a lone absent fact (`0`) is claimed absent.
+   */
+  @pure
+  def bannerClaimsAbsentStaysAbsent: Boolean = {
+    bannerClaims(Cons(BigInt(0), Nil())) == Cons(BigInt(0), Nil())
+  }.ensuring(_ == true)
+
+  /**
+   * Law: a lone present fact (`n > 0`) is claimed with its own count.
+   */
+  @pure
+  def bannerClaimsPresentKeepsCount(n: BigInt): Boolean = {
+    require(n > BigInt(0))
+    bannerClaims(Cons(n, Nil())) == Cons(n, Nil())
+  }.ensuring(_ == true)
+
+  /**
+   * Law: the claim vector has the fact vector's length — the two-element
+   * witness for the `claims.length == facts.length` clause.
+   */
+  @pure
+  def bannerClaimsLengthPreserved(f1: BigInt, f2: BigInt): Boolean = {
+    require(f1 >= BigInt(-1) && f2 >= BigInt(-1))
+    bannerClaims(Cons(f1, Cons(f2, Nil()))).length == BigInt(2)
   }.ensuring(_ == true)

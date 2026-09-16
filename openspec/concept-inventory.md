@@ -579,12 +579,12 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `LintReport` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `HookSpecificOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `GatePayload` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `InstallRootScan` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `DriftWarning` | sealed trait (VersionMismatch, PreRenameStamp) | `org.sinemenda.probatio.core` | shipped |
+| `InstallRootScan` | final case class (rootPath, state: InstallRootState — four-state root read, was a two-field stamp record) | `org.sinemenda.probatio.core` | shipped; modified by `spec:complete-probatio-cutover/live-fact-banner` |
+| `DriftWarning` | sealed trait (VersionMismatch, PreRenameStamp, NoStampDeclared, Unreadable — two variants added) | `org.sinemenda.probatio.core` | shipped; extended by `spec:complete-probatio-cutover/live-fact-banner` |
 | `DriftScanResult` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `BannerInputs` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `BannerInputs` | final class (private constructor; only `BannerInputs.from(facts: RepositoryFacts)` — hand-constructed literals cannot reach the engine) | `org.sinemenda.probatio.core` | shipped; re-shaped by `spec:complete-probatio-cutover/live-fact-banner` |
 | `BannerEngine` | object (`render`: BannerInputs → BannerOutput — pure function; method name corrected from `assembleBanner` 2026-08-29 by spec:complete-probatio-cutover/inventory-check) | `org.sinemenda.probatio.core` | shipped |
-| `ActiveChangeWithChainState` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `ActiveChangeWithChainState` | final case class (name, artifacts: FactRead[ArtifactScan], chainState: Either[ChainStateUndetermined, ChainStateReport] — "never attempted" unrepresentable) | `org.sinemenda.probatio.core` | shipped; re-shaped by `spec:complete-probatio-cutover/live-fact-banner` |
 | `BannerOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `MetalsClient.LspMessage` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `MetalsClient.MetalsError` | sealed trait (FramingError, HandshakeFailed, Timeout) | `org.sinemenda.probatio.core` | shipped |
@@ -746,3 +746,30 @@ The following concepts were introduced by `spec:complete-probatio-porting/cli-wi
 | `CliContext` | final case class (repoRoot, changeDir, ledgerFile, gitDir: String; escapeHatch: Boolean) — resolved paths + env-var overrides read once at entrypoint start | `org.sinemenda.probatio.cli` | shipped |
 | `StdoutRenderer[A]` | trait (render(value: A): String) — typeclass for byte-compatible stdout rendering; given instances for ChainStateReport, ChainStateUndetermined, LintReport, GatePayload, BannerOutput | `org.sinemenda.probatio.cli` | shipped |
 | `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int] | `org.sinemenda.probatio.cli` | shipped |
+
+### complete-probatio-cutover change — live-fact-banner spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/live-fact-banner`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `FactRead[+A]` | enum (Present(value), Absent, Unreadable(reason)) — three-state read result; unreadable never collapses to absent | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `ArtifactRef` | final case class (id, generates) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `ArtifactScan` | final case class (present: List[String], next: Option[ArtifactRef]) — the schema.yaml artifact DAG as read | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `RepositoryFacts` | final case class (schemaVersion/registry/inventory: `FactRead[Int]`, profile: `FactRead[Option[String]]`, installRoots: `List[InstallRootScan]`, activeChanges: `FactRead[List[ActiveChangeWithChainState]]`; `fingerprint` — canonical whole-record JSON encoding incl. reasons/baselines) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `RootBase` | enum (RepoRoot, UserHome) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `InstallRootRef` | final case class (base: RootBase, relativePath) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `InstallRoots` | final case class — fixed-arity record of the predecessor's six install roots (`.all`, `.length`); cannot be narrowed without a compile error | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `InstallRootState` | enum (Absent, PresentNoStamp, Stamped(version, StampFormat), Unreadable(reason)) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `SessionId` | opaque type over String (fromRaw, resolve with signal-priority, `.raw`, `.encoded` — lossless base64url, injective) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `HeartbeatRecord` | final case class (ts, event, format) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `RepositoryFactsReader` | object (`read(repoRoot, userHome, env): RepositoryFacts` — the single fact-reading seam; total: failures are data, never thrown) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `GateStateDir` | final case class (path: Path) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `GateStateDirReader` | object (resolve via `git rev-parse --absolute-git-dir`, fingerprint `fp-<SessionId.encoded>` read/write, heartbeat read/write; all ops fail-open) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `BannerEngineKernel.bannerClaims` | Ring 6 contract (`facts: List[BigInt] => List[BigInt]` — emitted claims equal fact codes; `-1` unreadable, `0` absent, `n>0` present-with-count) + helpers (`allFactCodesValid`, `claimsMatchFacts`, `noUnreadableClaimedAbsent`, `claimFor`) and five fixed-size law lemmas | `org.sinemenda.probatio.verified` | `spec:complete-probatio-cutover/live-fact-banner` |
+
+Existing rows modified by this spec (annotated in place above): `BannerInputs`
+(private constructor), `ActiveChangeWithChainState` (FactRead artifacts + Either
+chain state), `InstallRootScan` (four-state root read), `DriftWarning`
+(+NoStampDeclared, +Unreadable), `DriftScan.installRoots` (three-root list →
+six-root `InstallRoots` record).

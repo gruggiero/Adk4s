@@ -3,8 +3,10 @@ package org.sinemenda.probatio.cli
 import org.sinemenda.probatio.core.*
 
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import scala.util.control.NonFatal // danger-scan:allow fail-open — the gate hook degrades silently, it never fails a session
 
 /**
  * Subcommand entrypoints (R-P1).
@@ -40,40 +42,216 @@ object GateCmd:
    * spec: cli-wiring — Scenario: completion blocks when chain-state is unresolved
    * spec: cli-wiring — Scenario: The escape hatch bypasses the tool-call lock
    */
+  /**
+   * Flags that consume a following value — the predecessor's set plus the
+   * port's own (`--change`, `--spec`, `--baseline`, `--ledger-file`,
+   * `--change-dir`). Unknown tokens are skipped; `--check-installed` is a
+   * boolean flag.
+   */
+  private val valueFlags: Set[String] = Set(
+    "--event",
+    "--format",
+    "--repo",
+    "--session",
+    "--file",
+    "--turn-text",
+    "--stop-hook-active",
+    "--tool",
+    "--command",
+    "--exit",
+    "--change",
+    "--spec",
+    "--baseline",
+    "--ledger-file",
+    "--change-dir"
+  )
+
+  /** Leniently-parsed gate arguments (predecessor-compatible). */
+  final private case class GateArgs(
+    flags: Map[String, String],
+    checkInstalled: Boolean
+  )
+
+  /**
+   * Parse args the way the predecessor does: a `case` loop where each
+   * known flag consumes a value, `--check-installed` is boolean, and any
+   * unrecognized token is skipped (`*) shift`). A trailing value-flag
+   * with no value binds the empty string.
+   */
+  private def parseGateArgs(args: List[String]): GateArgs = args match
+    case Nil => GateArgs(Map.empty, checkInstalled = false)
+    case "--check-installed" :: rest =>
+      val tail: GateArgs = parseGateArgs(rest)
+      tail.copy(checkInstalled = true)
+    case flag :: rest if valueFlags.contains(flag) =>
+      rest match
+        case value :: after =>
+          val tail: GateArgs = parseGateArgs(after)
+          tail.copy(flags = tail.flags + (flag -> value))
+        case Nil =>
+          val tail: GateArgs = parseGateArgs(Nil)
+          tail.copy(flags = tail.flags + (flag -> ""))
+    case _ :: rest => // danger-scan:allow lenient-parse — unknown tokens skipped, never mapped (predecessor `*) shift`)
+      parseGateArgs(rest)
+
+  /**
+   * Wire the gate subcommand to the 5-event tier logic.
+   *
+   * Dispatches on `--event` to one of 5 events, assembles the GatePayload
+   * via BannerEngine, and implements the blocking logic per event tier.
+   * The escape hatch (`PROBATIO_HOOKS=1`) bypasses both predecessor check
+   * and grant waiver.
+   *
+   * spec: cli-wiring — Requirement: The gate subcommand wires to the 5-event tier logic and emits the hook banner
+   * spec: cli-wiring — Scenario: session-start emits the banner and exits 0
+   * spec: cli-wiring — Scenario: completion blocks when chain-state is unresolved
+   * spec: cli-wiring — Scenario: The escape hatch bypasses the tool-call lock
+   * spec: live-fact-banner — Requirement: Every fact the banner states is read during the run that states it
+   */
   def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set(
-      "--event",
-      "--change",
-      "--spec",
-      "--baseline",
-      "--format",
-      "--ledger-file",
-      "--change-dir",
-      "--session",
-      "--file",
-      "--tool",
-      "--repo",
-      "--turn-text",
-      "--stop-hook-active"
-    )
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"gate: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        val change: String       = parsed.getOrElse("--change", "")
-        val escapeHatch: Boolean = CliContext.readEscapeHatch
-        parsed.get("--event") match
-          case None =>
-            SubcommandWiring.emitStderr("gate: --event is required\n")
-            Outcome.Finding("--event is required")
-          case Some(eventStr) =>
-            parseEvent(eventStr) match
-              case Some(event) =>
-                runEvent(event, change, escapeHatch, parsed)
-              case None =>
-                SubcommandWiring.emitStderr(s"gate: unknown event '$eventStr'\n")
-                Outcome.Finding(s"unknown event: $eventStr")
+    // The hook boundary must read the process env (CLAUDE_CODE_SESSION_ID,
+    // PROBATIO_HOOKS); Adk4sConfig is not on this classpath (R-ARCH1).
+    run(args, sys.env) // scalafix:ok DisableSyntax.NoSysEnv
+
+  /**
+   * The gate run with an explicit environment — the test seam. `run(args)`
+   * reads the process environment once and delegates; the env is threaded
+   * through every downstream decision (repo resolution, hook control,
+   * session, escape hatch) so tests exercise the identical logic.
+   */
+  private[cli] def run(args: Array[String], env: Map[String, String]): Outcome[Int] =
+    val parsed: GateArgs = parseGateArgs(args.toList)
+    if parsed.checkInstalled then runCheckInstalled(parsed, env)
+    else
+      parsed.flags.get("--event") match
+        case None =>
+          SubcommandWiring.emitStderr("gate: --event is required\n")
+          Outcome.Finding("--event is required")
+        case Some(eventStr) =>
+          parseEvent(eventStr) match
+            case Some(event) =>
+              runEvent(event, parsed, env)
+            case None =>
+              SubcommandWiring.emitStderr(s"gate: unknown event '$eventStr'\n")
+              Outcome.Finding(s"unknown event: $eventStr")
+
+  /**
+   * `--check-installed`: a pure read of the heartbeat — no state is ever
+   * created, and it works in any repository (the relevance guard does not
+   * apply). Reports `{installed, last_run, event}`.
+   *
+   * spec: gate-event-completeness — Requirement: The installation probe reports whether the gate has run
+   */
+  private def runCheckInstalled(
+    parsed: GateArgs,
+    env: Map[String, String]
+  ): Outcome[Int] =
+    val repo: Path = resolveRepo(parsed.flags.get("--repo"), env)
+    val record: Option[HeartbeatRecord] =
+      GateStateDirReader.resolve(repo).flatMap(GateStateDirReader.readHeartbeat)
+    val json: String = record match
+      case Some(hb) =>
+        ujson.write(
+          ujson.Obj(
+            "installed" -> ujson.Bool(true),
+            "last_run"  -> ujson.Str(hb.ts),
+            "event"     -> ujson.Str(hb.event)
+          )
+        )
+      case None =>
+        ujson.write(
+          ujson.Obj(
+            "installed" -> ujson.Bool(false),
+            "last_run"  -> ujson.Null,
+            "event"     -> ujson.Null
+          )
+        )
+    SubcommandWiring.emitStdout(json + "\n")
+    Outcome.Ran(0)
+
+  /**
+   * Resolve the repository root from the strongest available signal:
+   * explicit `--repo`, then `CLAUDE_PROJECT_DIR`, then
+   * `git rev-parse --show-toplevel` from the process cwd, then the cwd
+   * itself. (The stdin-payload `.cwd` signal is spec-8 scope; adapters
+   * pass `--repo`.)
+   */
+  private def resolveRepo(
+    explicit: Option[String],
+    env: Map[String, String]
+  ): Path =
+    val cwd: Path =
+      Path.of(System.getProperty("user.dir")).toAbsolutePath.normalize()
+    explicit
+      .filter(_.nonEmpty)
+      .map(Path.of(_))
+      .orElse(env.get("CLAUDE_PROJECT_DIR").filter(_.nonEmpty).map(Path.of(_)))
+      .orElse(gitToplevel(cwd))
+      .getOrElse(cwd)
+
+  /** `git rev-parse --show-toplevel` under `cwd`; None on any failure. */
+  private def gitToplevel(cwd: Path): Option[Path] =
+    try
+      val pb: ProcessBuilder =
+        new ProcessBuilder("git", "rev-parse", "--show-toplevel")
+      pb.directory(cwd.toFile)
+      // predecessor parity: `git ... 2>/dev/null` — stderr is discarded.
+      pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+      val p: Process = pb.start()
+      val out: String =
+        new String(p.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+      if p.waitFor() == 0 && out.trim.nonEmpty then Some(Path.of(out.trim))
+      else None
+    catch
+      case NonFatal(_) => None // danger-scan:allow fail-open — a failed git probe means "repo = cwd", never an error
+
+  /**
+   * The hook-control env var, honouring the one-major-version deprecated
+   * alias `VERIFIED_SCALA3_HOOKS` (renamed to `PROBATIO_HOOKS` at schema
+   * v14; alias expires when the repo's schema version exceeds 15, unknown
+   * version honours the alias — fail safe, matching the predecessor).
+   */
+  private def hooksControlValue(repo: Path, env: Map[String, String]): String =
+    val aliasExpired: Boolean = repoSchemaVersion(repo).exists(_ > 15)
+    env.get("PROBATIO_HOOKS").filter(_.nonEmpty) match
+      case Some(v) => v
+      case None =>
+        env.get("VERIFIED_SCALA3_HOOKS").filter(_.nonEmpty) match
+          case Some(v) if !aliasExpired =>
+            SubcommandWiring.emitStderr(
+              "probatio: VERIFIED_SCALA3_HOOKS is deprecated — renamed to " +
+                "PROBATIO_HOOKS at schema v14. The old name is read as an " +
+                "alias for one major version. Update your shell config to " +
+                "use PROBATIO_HOOKS.\n"
+            )
+            v
+          case _ => "on" // danger-scan:allow control-default — no hook-control env var means on (predecessor default)
+
+  /** The repo's schema version for the env-alias expiry window. */
+  private def repoSchemaVersion(repo: Path): Option[Int] =
+    try
+      val p: Path =
+        repo.resolve("openspec/schemas/verified-scala3/schema.yaml")
+      if !Files.isRegularFile(p) then None
+      else
+        Files
+          .readString(p)
+          .linesIterator
+          .find(_.startsWith("version:"))
+          .flatMap(l => l.substring(l.indexOf(':') + 1).trim.toIntOption)
+    catch
+      case NonFatal(_) => None // danger-scan:allow fail-open — an unreadable schema.yaml keeps the alias window open
+
+  /** The parent process id for the `ppid-<n>` session fallback. */
+  private def parentPid: Long =
+    try
+      ProcessHandle
+        .current()
+        .parent()
+        .map[Long]((h: ProcessHandle) => h.pid())
+        .orElse(0L)
+    catch
+      case NonFatal(_) => 0L // danger-scan:allow fail-open — an unknown parent pid degrades to the ppid-0 session key
 
   /** Parse the event name from the --event flag value. */
   private def parseEvent(s: String): Option[Event] = s match
@@ -82,8 +260,8 @@ object GateCmd:
     case "tool-call"     => Some(Event.ToolCall)
     case "post-edit"     => Some(Event.PostEdit)
     case "completion"    => Some(Event.Completion)
-    case _ =>
-      None // danger-scan:allow string-rejection — unrecognized event name maps to None (error), never a valid Event
+    case _ => // danger-scan:allow string-rejection — unrecognized event name maps to None (error), never a valid Event
+      None
 
   /**
    * Run the gate for a specific event. The blocking tiers:
@@ -96,40 +274,16 @@ object GateCmd:
    */
   private def runEvent(
     event: Event,
-    change: String,
-    escapeHatch: Boolean,
-    parsed: Map[String, String]
+    parsed: GateArgs,
+    env: Map[String, String]
   ): Outcome[Int] =
+    val change: String = parsed.flags.getOrElse("--change", "")
+    // The escape hatch reads the same env the caller resolved — under
+    // `run(args)` this is exactly the process environment.
+    val escapeHatch: Boolean = CliContext.readEscapeHatch(env)
     event match
       case Event.SessionStart | Event.PromptSubmit =>
-        // Tier B — informational, always exit 0
-        // Emit the banner via BannerEngine
-        val banner: BannerOutput = BannerEngine.render(
-          BannerInputs(
-            schemaVersion = 14,
-            skillInstallScan = Nil,
-            registryPresent = false,
-            registryConceptCount = 0,
-            inventoryPresent = false,
-            inventoryTypeCount = 0,
-            profilePresent = false,
-            detectedTestKit = None,
-            activeChanges = Nil
-          )
-        )
-        val format: String = parsed.getOrElse("--format", "text")
-        if format == "hook-json" then
-          // Hook-json envelope: the banner goes into additionalContext
-          val eventName: String = event.toString
-          val envelope: ujson.Obj = ujson.Obj(
-            "hookSpecificOutput" -> ujson.Obj(
-              "hookEventName"     -> ujson.Str(eventName),
-              "additionalContext" -> ujson.Str(banner.payload)
-            )
-          )
-          SubcommandWiring.emitStdout(ujson.write(envelope) + "\n")
-        else SubcommandWiring.emitStdout(banner.payload + "\n")
-        Outcome.Ran(0)
+        runBanner(event, parsed, env)
 
       case Event.PostEdit =>
         // Tier A — informational, run spec-lint or danger-scan on the edited file
@@ -152,8 +306,8 @@ object GateCmd:
         if escapeHatch then Outcome.Ran(0)
         else
           // Read the ledger and compute chain-state
-          val ledgerFile: String = parsed.getOrElse("--ledger-file", "")
-          val baseline: String   = parsed.getOrElse("--baseline", "")
+          val ledgerFile: String = parsed.flags.getOrElse("--ledger-file", "")
+          val baseline: String   = parsed.flags.getOrElse("--baseline", "")
           if ledgerFile.isEmpty || change.isEmpty || baseline.isEmpty then
             // Missing required parameters — this is a Finding, not clean.
             Outcome.Finding(
@@ -197,6 +351,102 @@ object GateCmd:
                             }
                             .mkString("; ")
                           Outcome.Finding(s"chain-state unresolved: $reason")
+
+  /**
+   * The Tier-B banner path — the spec-3 live-fact wiring:
+   * relevance guard → env control → state dir → heartbeat → facts read →
+   * render → per-session suppression → emit. Always exit 0; a failure at
+   * any step degrades (no output), never fails a session.
+   *
+   * spec: live-fact-banner — Requirement: Every fact the banner states is read during the run that states it
+   * spec: live-fact-banner — Requirement: Repeated injections within one session are suppressed only when the underlying facts are unchanged
+   * spec: live-fact-banner — Requirement: The hook emits the invariant and live chain state on session-start and prompt-submit
+   */
+  private def runBanner(
+    event: Event,
+    parsed: GateArgs,
+    env: Map[String, String]
+  ): Outcome[Int] =
+    val repo: Path = resolveRepo(parsed.flags.get("--repo"), env)
+    // Relevance guard: a repository that does not use this workflow gets
+    // NOTHING — no output, and no state directory created.
+    if !Files.isDirectory(repo.resolve("openspec")) then Outcome.Ran(0)
+    else if hooksControlValue(repo, env) == "off" then Outcome.Ran(0)
+    else
+      val format: String = parsed.flags.getOrElse("--format", "hook-json")
+      val eventName: String = event match
+        case Event.SessionStart => "session-start"
+        case Event.PromptSubmit => "prompt-submit"
+        case _ => "session-start" // danger-scan:allow predecessor-default — only banner events reach this path
+      // State directory — created only after the relevance guard (D8), and
+      // fail-open when unresolvable or unwritable.
+      val stateDir: Option[GateStateDir] =
+        GateStateDirReader.resolve(repo).flatMap { (d: GateStateDir) =>
+          try
+            Files.createDirectories(d.path)
+            Some(d)
+          catch case NonFatal(_) => None // danger-scan:allow fail-open — unwritable state dir means no persistence
+        }
+      stateDir.foreach { (d: GateStateDir) =>
+        GateStateDirReader.writeHeartbeat(
+          d,
+          HeartbeatRecord(SubcommandWiring.stampTimestamp, eventName, format)
+        )
+      }
+      val session: SessionId = SessionId.resolve(
+        parsed.flags.get("--session"),
+        env.get("CLAUDE_CODE_SESSION_ID"),
+        env.get("VERIFIED_SCALA3_SESSION_ID"),
+        parentPid
+      )
+      try
+        // The predecessor scans `$HOME/…`; the JVM's user.home comes from
+        // the passwd entry, not $HOME — under an overridden HOME the
+        // user-scoped roots must still resolve where the predecessor looked.
+        val userHome: Path =
+          env
+            .get("HOME")
+            .filter(_.nonEmpty)
+            .map(Path.of(_))
+            .getOrElse(
+              Path.of(System.getProperty("user.home"))
+            ) // danger-scan:allow home-fallback — user.home is the last resort when HOME is unset
+        val facts: RepositoryFacts =
+          RepositoryFactsReader.read(repo, userHome, env)
+        val banner: BannerOutput =
+          BannerEngine.render(BannerInputs.from(facts))
+        val suppressed: Boolean = stateDir.exists { (d: GateStateDir) =>
+          GateStateDirReader.readFingerprint(d, session).contains(facts.fingerprint)
+        }
+        if suppressed then Outcome.Ran(0)
+        else
+          stateDir.foreach((d: GateStateDir) => GateStateDirReader.writeFingerprint(d, session, facts.fingerprint))
+          emitBanner(event, format, banner.payload)
+          Outcome.Ran(0)
+      catch case NonFatal(_) => Outcome.Ran(0) // danger-scan:allow fail-open — the gate never fails a session
+
+  /**
+   * Emit the banner payload: `hook-json` wraps it in the shared
+   * `hookSpecificOutput` envelope (prompt-submit maps to
+   * `UserPromptSubmit`, matching the predecessor); every other format
+   * value — including `text` — prints the payload itself.
+   */
+  private def emitBanner(event: Event, format: String, payload: String): Unit =
+    format match
+      case "hook-json" =>
+        val hookEventName: String = event match
+          case Event.SessionStart => "SessionStart"
+          case Event.PromptSubmit => "UserPromptSubmit"
+          case _ => "SessionStart" // danger-scan:allow predecessor-default — only banner events reach this path
+        val envelope: ujson.Obj = ujson.Obj(
+          "hookSpecificOutput" -> ujson.Obj(
+            "hookEventName"     -> ujson.Str(hookEventName),
+            "additionalContext" -> ujson.Str(payload)
+          )
+        )
+        SubcommandWiring.emitStdout(ujson.write(envelope) + "\n")
+      case _ => // danger-scan:allow format-default — any non-hook-json format emits the text payload (predecessor `*)`)
+        SubcommandWiring.emitStdout(payload + "\n")
 
 /** The `spec-lint` subcommand — spec file linting. */
 object SpecLintCmd:
@@ -358,8 +608,8 @@ object LedgerCmd:
     case "append"   => Some(Action.Append)
     case "read"     => Some(Action.Read)
     case "validate" => Some(Action.Validate)
-    case _ =>
-      None // danger-scan:allow string-rejection — unrecognized action maps to None (error), never a valid Action
+    case _ => // danger-scan:allow string-rejection — unrecognized action maps to None (error), never a valid Action
+      None
 
   /**
    * Run the ledger action with the given args.

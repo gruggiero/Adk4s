@@ -278,19 +278,20 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
 
   // ── 3. BannerEngineKernel bridge ────────────────────────────────────────
 
-  /** Production banner inputs with empty skillInstallScan. */
-  private def emptyBannerInputs(schemaVersion: Int): BannerInputs =
-    BannerInputs(
-      schemaVersion = schemaVersion,
-      skillInstallScan = List.empty,
-      registryPresent = false,
-      registryConceptCount = 0,
-      inventoryPresent = false,
-      inventoryTypeCount = 0,
-      profilePresent = false,
-      detectedTestKit = None,
-      activeChanges = List.empty
+  /** Production banner facts with no install roots and all facts absent. */
+  private def emptyBannerFacts(schemaVersion: Int): RepositoryFacts =
+    RepositoryFacts(
+      schemaVersion = FactRead.Present(schemaVersion),
+      registry = FactRead.Absent,
+      inventory = FactRead.Absent,
+      profile = FactRead.Absent,
+      installRoots = List.empty,
+      activeChanges = FactRead.Present(List.empty)
     )
+
+  /** Production banner inputs from a facts record (the only construction path). */
+  private def emptyBannerInputs(schemaVersion: Int): BannerInputs =
+    BannerInputs.from(emptyBannerFacts(schemaVersion))
 
   // ── idempotence: both production and model are idempotent ───────────────
 
@@ -327,12 +328,11 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
   // ── no skill installed: both detect it ──────────────────────────────────
 
   test("bridge-bannerengine-no-skill — both detect no skill installed"):
-    // Production: skillInstallScan with a root that has no stamp → noSkillInstalled = true
-    val prodInputs: BannerInputs = emptyBannerInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", None))
-    )
+    // Production: installRoots with an absent root → noSkillInstalled = true
+    val prodRoots: List[InstallRootScan] =
+      List(InstallRootScan(".claude/skills", InstallRootState.Absent))
     val prodDriftResult: DriftScanResult =
-      DriftScan.scan(13, prodInputs.skillInstallScan)
+      DriftScan.scan(Some(13), prodRoots)
     assert(
       prodDriftResult.noSkillInstalled,
       "production: no skill installed should be detected (noSkillInstalled = true)"
@@ -355,12 +355,11 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
   // ── version mismatch: both detect drift ────────────────────────────────
 
   test("bridge-bannerengine-version-mismatch — both detect drift"):
-    // Production: skillInstallScan with a mismatched version → warnings
-    val prodInputs: BannerInputs = emptyBannerInputs(13).copy(
-      skillInstallScan = List(InstallRootScan(".claude/skills", Some(12)))
-    )
+    // Production: installRoots with a mismatched version → warnings
+    val prodRoots: List[InstallRootScan] =
+      List(InstallRootScan(".claude/skills", InstallRootState.Stamped(12, StampFormat.New)))
     val prodDriftResult: DriftScanResult =
-      DriftScan.scan(13, prodInputs.skillInstallScan)
+      DriftScan.scan(Some(13), prodRoots)
     assert(
       prodDriftResult.warnings.nonEmpty,
       "production: version mismatch (schema=13, found=12) should produce warnings"

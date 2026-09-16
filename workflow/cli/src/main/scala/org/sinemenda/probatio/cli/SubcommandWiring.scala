@@ -3,8 +3,10 @@ package org.sinemenda.probatio.cli
 import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.Validator
 
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
 import java.time.Instant
-import java.nio.file.{ Files, Paths, StandardOpenOption }
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
@@ -105,7 +107,7 @@ object SubcommandWiring:
               case Right(_) =>
                 parseLedgerLinesLoop(rest, index + 1, json :: acc, path)
           catch
-            case _: ujson.ParseException =>
+            case _: ujson.ParseException => // danger-scan:allow typed-catch — bad JSON maps to a named Left
               Left(s"line ${index + 1} does not parse as JSON")
 
   /**
@@ -124,7 +126,7 @@ object SubcommandWiring:
       val filePath: java.nio.file.Path = Paths.get(path)
       // Ensure file ends with newline before appending
       if Files.exists(filePath) && Files.size(filePath) > 0 then
-        val lastByte: Byte = Files.readAllBytes(filePath).last
+        val lastByte: Byte = Files.readAllBytes(filePath).last // danger-scan:allow guarded-head
         if lastByte != '\n'.toByte then Files.write(filePath, "\n".getBytes, StandardOpenOption.APPEND)
       Files.write(filePath, (line + "\n").getBytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
       Outcome.Ran(())
