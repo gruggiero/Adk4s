@@ -108,6 +108,13 @@ object SubcommandWiring:
                 Left(
                   s"line ${index + 1} violates the record contract: clause ${violation.clauseIndex} — ${violation.description}"
                 )
+              case Right(validated) if validated.record.v != supportedVersion =>
+                // The contract admits any integer v >= 1; the reader
+                // accepts only the version it knows — matching the
+                // predecessor's separate `v != SUPPORTED_V` refusal.
+                Left(
+                  s"line ${index + 1} has format version ${validated.record.v}; this reader knows $supportedVersion. Refusing to report a partial result."
+                )
               case Right(_) =>
                 parseLedgerLinesLoop(rest, index + 1, json :: acc, path)
           catch

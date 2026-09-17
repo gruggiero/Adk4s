@@ -10,6 +10,7 @@ import org.sinemenda.probatio.core.Outcome
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import scala.util.control.NonFatal
 
 /**
  * The cli-level oracle for chain-state attribution (spec 5).
@@ -284,6 +285,10 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
 
   test("a missing ledger produces a diagnostic with the marker exactly once"):
     LiveFactFixtures.withTempDir("chain-state-marker") { (fx: Path) =>
+      // A readable spec is required so fact measurement completes and the
+      // ledger read is reached — the predecessor enumerates specs before
+      // reading the ledger, so a missing spec tree preempts this path.
+      writeSpec(fx, "only", specHeader + poHeader)
       val missing: Path = fx.resolve("no-such-ledger.jsonl")
       val (stdout, stderr, outcome) = StdoutCapture.captureBoth(
         ChainStateCmd.run(
@@ -336,6 +341,7 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
 
   test("an undetermined run still emits the report on stdout"):
     LiveFactFixtures.withTempDir("chain-state-und-report") { (fx: Path) =>
+      writeSpec(fx, "only", specHeader + poHeader)
       val (stdout, _, outcome) = StdoutCapture.captureBoth(
         ChainStateCmd.run(
           Array(
@@ -473,3 +479,165 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
       finally // scalafix:ok DisableSyntax.NoKeywordFinally
         // fixture cleanup must always run
         LiveFactFixtures.deleteTree(readableFx.getParent)
+
+  // ════════════════════════════════════════════════════════════════════
+  // Ring-8 fix coverage: the adversarial findings' regression tests.
+  // ════════════════════════════════════════════════════════════════════
+
+  /**
+   * R8-F1: an existing-but-unlistable `specs/` tree is a discovery fault —
+   * undetermined, never a clean zero. `Files.walk` throws on a mode-000
+   * directory; environments that permit the walk anyway (root, non-POSIX)
+   * skip the end-to-end assertion via `cancel`.
+   */
+  test("an unlistable specs tree is could-not-determine, never a clean zero"):
+    LiveFactFixtures.withTempDir("chain-state-unlistable") { (fx: Path) =>
+      val specsDir: Path = fx.resolve("specs")
+      Files.createDirectories(specsDir.resolve("only"))
+      Files.writeString(
+        specsDir.resolve("only").resolve("spec.md"),
+        specHeader + poHeader,
+        StandardCharsets.UTF_8
+      )
+      writeLedger(fx, Nil)
+      try Files.setPosixFilePermissions(specsDir, java.util.Set.of())
+      catch case NonFatal(_) => ()
+      try
+        SpecLintCmd.findSpecs(specsDir, (_: Path) => true) match
+          case Left(_) =>
+            val (stdout, _, outcome) = runCmd(fx, degradedEnv(fx))
+            outcome match
+              case Outcome.Undetermined(_) =>
+                assert(
+                  stdout.contains("\"undetermined\":true") || stdout.contains("\"undetermined\": true"),
+                  s"the undetermined report must still be emitted, got: $stdout"
+                )
+              case other =>
+                fail(s"an unlistable spec tree must not produce a result: $other — $stdout")
+          case Right(_) =>
+            assume(
+              false,
+              "the environment permits walking a mode-000 directory; the fault cannot be simulated"
+            )
+      finally // scalafix:ok DisableSyntax.NoKeywordFinally
+        // restore listability so fixture cleanup can delete the tree
+        try
+          Files.setPosixFilePermissions(
+            specsDir,
+            java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")
+          )
+        catch case NonFatal(_) => ()
+    }
+
+  /**
+   * R8-F3: a parseable export that fails the `.obligations` usability
+   * gate takes the degraded path and is announced as invalid JSON — the
+   * "extractor ran" diagnostic may only name the graph path when the
+   * export is actually usable.
+   */
+  test("a parseable export without .obligations is announced as invalid JSON, never as graph"):
+    LiveFactFixtures.withTempDir("chain-state-unusable-export") { (fx: Path) =>
+      assume(pythonAvailable(), "the graph-export probe needs python3")
+      val stubDir: Path = fx.resolve("stub-scanner")
+      Files.createDirectories(stubDir)
+      Files.writeString(
+        stubDir.resolve("openspec-graph.py"),
+        "import sys\nprint('{\"requirements\": []}')\n",
+        StandardCharsets.UTF_8
+      )
+      writeSpec(
+        fx,
+        "only",
+        specHeader + reqBlock("Solo Req") + poHeader +
+          s"| obl | Requirement: Solo Req | manual | `$resolvesArtifact` |\n"
+      )
+      writeLedger(fx, Nil)
+      val env: Map[String, String] = Map(
+        "OPENSPEC_ROOT"        -> fx.toString,
+        "PROBATIO_SCANNER_DIR" -> stubDir.toString
+      )
+      val (_, stderr, _) = runCmd(fx, env)
+      assert(
+        stderr.contains("produced invalid JSON"),
+        s"an unusable export is announced as invalid JSON, got: $stderr"
+      )
+      assert(
+        !stderr.contains("export (graph)"),
+        s"the graph-path diagnostic may not name an unusable export, got: $stderr"
+      )
+    }
+
+  /**
+   * R8-F6: a non-empty per-spec baseline map makes a failed ledger read
+   * non-fatal — the predecessor skips the per-spec read and the spec's
+   * requirements report undischarged (exit 1), never undetermined.
+   */
+  test("a corrupt ledger under a populated baseline map is undischarged, not undetermined"):
+    LiveFactFixtures.withTempDir("chain-state-map-corrupt") { (fx: Path) =>
+      writeSpec(
+        fx,
+        "only",
+        specHeader + reqBlock("Solo Req") + poHeader +
+          s"| obl | Requirement: Solo Req | manual | `$resolvesArtifact` |\n"
+      )
+      writeLedger(fx, List("{corrupt"))
+      Files.writeString(
+        fx.resolve("implementation-progress.md"),
+        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nSHA `00d3de1`\n",
+        StandardCharsets.UTF_8
+      )
+      val (stdout, _, outcome) = runCmd(fx, degradedEnv(fx))
+      outcome match
+        case Outcome.Finding(_) =>
+          val parsed: ujson.Value = ujson.read(stdout.trim)
+          val reasons: List[String] =
+            parsed("unresolved").arr.headOption.toList
+              .flatMap((e: ujson.Value) => e("reasons").arr.map(_.str).toList)
+          assert(
+            reasons.contains("undischarged"),
+            s"the mapped spec's requirement reports undischarged, got: $stdout"
+          )
+        case other =>
+          fail(s"baseline-map tolerance: a corrupt ledger is undischarged, got $other — $stdout")
+    }
+
+  /**
+   * R8-N1: the contract admits any integer `v >= 1`, but the READER knows
+   * only v=1 — the predecessor refuses a `v:2` row with die_undetermined
+   * ("Refusing to report a partial result"). A contract-valid,
+   * version-unknown row must never be admitted as discharge evidence.
+   */
+  test("a v:2 ledger row is undetermined, not discharge evidence"):
+    LiveFactFixtures.withTempDir("chain-state-v2-row") { (fx: Path) =>
+      writeSpec(
+        fx,
+        "only",
+        specHeader + reqBlock("Solo Req") + poHeader +
+          s"| obl | Requirement: Solo Req | manual | `$resolvesArtifact` |\n"
+      )
+      // Contract-valid (v is an integer >= 1) but a version this reader
+      // does not know — the predecessor dies undetermined on it.
+      writeLedger(
+        fx,
+        List(
+          s"{\"v\":2,\"ts\":\"2026-09-17T00:00:00Z\",\"change\":\"$change\"," +
+            s"\"spec\":\"only\",\"ring\":\"manual\",\"obligation\":\"obl\"," +
+            s"\"artifact\":\"$resolvesArtifact\",\"command\":\"true\",\"exit\":0," +
+            s"\"baseline\":\"$baseline\"}"
+        )
+      )
+      val (stdout, _, outcome) = runCmd(fx, degradedEnv(fx))
+      outcome match
+        case Outcome.Undetermined(_) =>
+          assert(
+            stdout.contains("\"undetermined\":true") || stdout.contains("\"undetermined\": true"),
+            s"the undetermined report must still be emitted, got: $stdout"
+          )
+        case other =>
+          fail(s"a v:2 row must refuse the whole read, not discharge: $other — $stdout")
+    }
+
+  /** `python3` is runnable — the graph-export probe's own prerequisite. */
+  private def pythonAvailable(): Boolean =
+    try new ProcessBuilder("python3", "-c", "pass").start().waitFor() == 0
+    catch case NonFatal(_) => false

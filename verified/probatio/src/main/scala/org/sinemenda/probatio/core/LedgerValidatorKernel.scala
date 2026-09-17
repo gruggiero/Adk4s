@@ -322,14 +322,11 @@ object LedgerValidatorKernel:
 
   /**
    * Law: Mutual exclusivity — an `Either` outcome is never both `Left` and
-   * `Right` simultaneously.
+   * `Right` simultaneously. The parens keep `.ensuring` outside the unary `!`.
    */
   @pure
-  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
   def mutualExclusivityLaw(result: Either[Violation, ValidRecord]): Boolean =
-    !(result.isLeft && result.isRight)
-      .ensuring(_ == true)
-  // format: on
+    (!(result.isLeft && result.isRight)).ensuring(_ == true)
 
   /**
    * Law: If all 15 clauses pass, `validate` returns `Right` with a

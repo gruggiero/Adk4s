@@ -272,7 +272,7 @@ object BannerEngineKernel:
       case (Nil(), Nil()) => true
       case (Cons(c, crest), Cons(f, frest)) =>
         c == f && claimsMatchFacts(crest, frest)
-      case _ => false
+      case _ => false // danger-scan:allow shape-mismatch — the law fails closed, never silently holds
 
   /**
    * No unreadable fact (`-1`) is emitted as an absent claim (`0`) — the
@@ -286,7 +286,7 @@ object BannerEngineKernel:
       case (Nil(), Nil()) => true
       case (Cons(c, crest), Cons(f, frest)) =>
         (f != BigInt(-1) || c != BigInt(0)) && noUnreadableClaimedAbsent(crest, frest)
-      case _ => false
+      case _ => false // danger-scan:allow shape-mismatch — the law fails closed, never silently holds
 
   /** The claim emitted for one fact code is the code itself. */
   @pure

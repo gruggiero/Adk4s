@@ -47,12 +47,12 @@ object ChainState:
    *   carries its `FactSource`, and an empty `requirements` list is a fact
    *   about the change, not a placeholder for an extraction that never ran.
    * @param specBaselines
-   *   spec name → that spec's RESOLVED baseline (the per-spec baseline map
+   *   spec name → that spec's RESOLVED baselines (the per-spec baseline map
    *   from `implementation-progress.md` after `git rev-parse`; empty when no
-   *   map was parsed). A row for that spec counts when its baseline is the
-   *   spec's resolved baseline or `resolvedBaseline` — the predecessor reads
-   *   the ledger once per mapped spec and once unfiltered, so both baselines
-   *   admit evidence.
+   *   map was parsed). A spec with several `## Spec` sections carries one
+   *   entry per section — the predecessor reads the ledger once per map
+   *   line, so a row counts when its baseline is ANY of the spec's resolved
+   *   baselines or `resolvedBaseline` (the unfiltered read).
    * @param baseline
    *   the effective baseline echoed into the report (the predecessor's
    *   `EFFECTIVE_BASELINE` — the progress-file fallback when present, else
@@ -84,7 +84,7 @@ object ChainState:
     lints: Map[String, Outcome[LintReport]],
     ledger: Ledger.LedgerData,
     reqs: RequirementSet,
-    specBaselines: Map[String, String],
+    specBaselines: Map[String, List[String]],
     baseline: String,
     resolvedBaseline: String,
     change: String,
@@ -145,6 +145,16 @@ object ChainState:
             .toSet
         }
 
+        // Graph mode: the predecessor greps a FLAT F7 title set built from
+        // the combined lint output — a title unbound in ANY spec marks the
+        // same title unbound in every spec that declares it. Degraded mode
+        // greps spec_path+title rows instead, so it stays per-spec.
+        val flatUnbound: Set[String] =
+          reqs.requirements
+            .filter((req: Requirement) => bySpec(req.spec).requirementRows.getOrElse(req.requirement, Nil).isEmpty)
+            .map(_.requirement)
+            .toSet
+
         // Per requirement, in the predecessor's order: unbound (spec-lint
         // found no binding row) → bound-but-unattributable (degraded only;
         // graph reports the same shape as unresolved) → unresolved (a
@@ -153,7 +163,11 @@ object ChainState:
           reqs.requirements.map { (req: Requirement) =>
             val report: LintReport = bySpec(req.spec)
             val bound: Boolean =
-              report.requirementRows.getOrElse(req.requirement, Nil).nonEmpty
+              reqs.source match
+                case FactSource.Degraded =>
+                  report.requirementRows.getOrElse(req.requirement, Nil).nonEmpty
+                case FactSource.Graph =>
+                  !flatUnbound.contains(req.requirement)
             if !bound then req -> Some(UnresolvedReason.Unbound)
             else
               val mapped: List[ExtractedObligation] =
@@ -172,11 +186,15 @@ object ChainState:
                     mapped.exists(o => o.artifacts.exists(f9Artifacts.getOrElse(req.spec, Set.empty)))
                 if carriesFinding then req -> Some(UnresolvedReason.Unresolved)
                 else
-                  val specBaseline: String =
-                    specBaselines.getOrElse(req.spec, resolvedBaseline)
+                  // The predecessor reads the ledger once per baseline-map
+                  // LINE, so a spec with several `## Spec` sections counts
+                  // evidence under EACH of its baselines, plus once under
+                  // the effective baseline for unmapped specs.
+                  val specBaselinesFor: List[String] =
+                    specBaselines.getOrElse(req.spec, Nil)
                   def qualifies(r: LedgerRecord): Boolean =
                     r.change == change && r.spec == req.spec &&
-                      (r.baseline == specBaseline || r.baseline == resolvedBaseline ||
+                      (specBaselinesFor.contains(r.baseline) || r.baseline == resolvedBaseline ||
                         artifactUnchanged(r.baseline, r.artifact))
                   val obls: List[(Boolean, Boolean)] = mapped.map { o =>
                     val rows: List[LedgerRecord] =
@@ -203,8 +221,9 @@ object ChainState:
                   if o.unmappable &&
                     f9Lines.getOrElse(o.spec, Set.empty).contains(o.line) =>
                 // The artifact token comes from spec-lint's own F9 message
-                // at that line, exactly as the predecessor recovers it; the
-                // fallback names the failure rather than leaking the raw log.
+                // at that line, recovered with the predecessor's greedy sed
+                // (NOT spec-lint's `[^']+` field extraction); the fallback
+                // names the failure rather than leaking the raw log.
                 val artifact: String = bySpec
                   .get(o.spec)
                   .flatMap(r =>
@@ -212,7 +231,8 @@ object ChainState:
                       case CheckOutcome.Fail(CheckId.F9, Some(l), m) if l == o.line => m
                     }
                   )
-                  .flatMap(f9ArtifactToken)
+                  .flatMap(f9ArtifactTokenSed)
+                  .filter(_.nonEmpty)
                   .getOrElse(s"<unrecoverable artifact token, spec-lint line: ${o.line}>")
                 UnmappedObligation(o.spec, o.line, artifact)
             }
@@ -255,9 +275,25 @@ object ChainState:
               )
             )
 
-  /** The artifact token in an F9 message — `artifact 'X' does not resolve`. */
+  /**
+   * The artifact token as spec-lint's own JSON `.artifact` field extracts
+   * it — `artifact '([^']+)'`, to the first quote — used for the graph
+   * join, where the predecessor reads spec-lint's emitted field.
+   */
   private val f9ArtifactRe: scala.util.matching.Regex =
     "artifact '([^']+)'".r
 
   private def f9ArtifactToken(message: String): Option[String] =
     f9ArtifactRe.findFirstMatchIn(message).map(_.group(1))
+
+  /**
+   * The artifact token as the predecessor's degraded-mode sed recovers it
+   * (greedy `.*` anchored on the last "' does not resolve"), so a token
+   * containing an apostrophe is kept whole — spec-lint's own `[^']+`
+   * field extraction would truncate it.
+   */
+  private val f9ArtifactSedRe: scala.util.matching.Regex =
+    ".*artifact '(.*)' does not resolve.*".r
+
+  private def f9ArtifactTokenSed(message: String): Option[String] =
+    f9ArtifactSedRe.findFirstMatchIn(message).map(_.group(1))

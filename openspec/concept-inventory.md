@@ -780,7 +780,7 @@ The following concepts were introduced by `spec:complete-probatio-cutover/spec-l
 
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
-| `SpecDocument` | final case class (name, lines: Vector[String], requirements, properties, temporals, scenarios, obligationRows, dataRowCount, bridgeRowCount, hasProofObligations, formalContractsContentLines, hasBehavioralConcepts, artifactRows) — the parsed spec as immutable data | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SpecDocument` | final case class (name, lines: Vector[String], requirements, properties, temporals, scenarios, obligationRows, dataRowCount, bridgeRowCount, hasProofObligations, formalContractsContentLines, hasBehavioralConcepts, artifactRows, chainRows — the chain-state awk's own proof-obligation row set, admitted under `## `-only section flags) — the parsed spec as immutable data | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine`; +`chainRows` by `spec:complete-probatio-cutover/chain-state-attribution` |
 | `RequirementBlock` | final case class (title, line, endLine, hasNormative, negative, scenarioCount, normativeText) — `line`/`endLine` bracket the block for body rescans and live-visibility filtering | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
 | `PropertyBlock` | final case class (title, line, endLine, hasGeneratorStrategy) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
 | `TemporalBlock` | final case class (title, line, endLine, hasTriggerEvent, hasResponseEvent) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
@@ -800,3 +800,23 @@ unresolvableRows/requirementRows; `lintSuccess` derived from findings),
 instance for `LintContext`), `SpecLintCmd` (skeleton → real implementation:
 positional change-dir, `--context-only`, `--artifacts`, `--format json`,
 nested `specs/` discovery).
+
+The following concepts were introduced by `spec:complete-probatio-cutover/chain-state-attribution`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `FactSource` | enum (Graph, Degraded) + `asString` — which fact pipeline produced the requirement set; gates `unattributable` eligibility (degraded only) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `ExtractedObligation` | final case class (spec, line, obligation, artifact, artifacts, requirementClaims, unmappable) — one normalised obligation row; `unmappable` evaluated per-path at extraction time | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `RequirementSet` | final case class (specNames, requirements, obligations, source) + `empty` + `isEmpty` — the only way requirements enter `ChainState.compute`; a bare `List[Requirement]` cannot | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `RequirementExtractor` | object (`NamedSpec(name, document)`; `extract(specs, graphExport: Option[ujson.Value]): RequirementSet`; `usableExport`, `degradedObligations` exposed for verification) — total; degraded/empty inputs surface as data, never thrown | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `ChainState` | object (`compute(lints, ledger, reqs: RequirementSet, specBaselines: Map[String, List[String]], baseline, change, artifactUnchanged)` — per-spec lint outcomes + unfiltered ledger + per-section baseline lists + injected forgiveness predicate) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `ChainStateKernel.chainStateFold` | Ring 6 contract (`total, verdicts, discharged, unattributable => (bound, resolved, dis, unresolved)` — verdict codes 0/1/2, index ranges in `[0,total)`; postcondition: `dis <= resolved <= bound <= total`, `unresolved.size == total - dis`, unattributable indices never counted discharged and always appear in `unresolved`) + helpers (`filterOut`, `foldFrom`, `rangeClause`, `clauseFrom`, `filteredNotBanned`, `absentIsUnresolved`) + three witness lemmas | `org.sinemenda.probatio.core` (verified/probatio) | `spec:complete-probatio-cutover/chain-state-attribution` |
+
+Existing rows modified by this spec (annotated in place above):
+`SpecDocument` (+`chainRows` — the chain-state awk's own row set, populated
+under `## `-only section flags parallel to `obligationRows`),
+`UnresolvedEntry`/`ChainStateReport` (private constructors + `of`/`fromCounts`
+smart constructors; wire reads route through them),
+`UnresolvedReason` (`Unattributable` now reachable — degraded-mode-only
+reason), `ChainState.Requirement` (unchanged shape; consumed only via
+`RequirementSet`).

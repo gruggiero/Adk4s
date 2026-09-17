@@ -37,6 +37,9 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
   private val coverConfig: PropertyConfig => PropertyConfig =
     (c: PropertyConfig) => c.copy(testLimit = SuccessCount(200))
 
+  private val poTable: String =
+    "## Proof Obligations\n\n| Obligation | Source | Enforcement | Artifact |\n|---|---|---|---|\n"
+
   // ── helpers ─────────────────────────────────────────────────────────
 
   private def req(title: String, spec: String = "s"): ChainState.Requirement =
@@ -92,7 +95,8 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       hasProofObligations = true,
       formalContractsContentLines = 0,
       hasBehavioralConcepts = false,
-      artifactRows = Nil
+      artifactRows = Nil,
+      chainRows = Nil
     )
 
   private def row(line: Int, source: String): ObligationRow =
@@ -567,6 +571,130 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     )
     assertEquals(malformed.source, FactSource.Degraded, "a malformed export falls back to Degraded")
 
+  /**
+   * R8-N5: the predecessor reads `.artifacts[]?` only — an obligation
+   * carrying a singular `artifact` but no `artifacts` array contributes NO
+   * artifacts to the resolved join. A singular-field fallback would invent
+   * evidence the predecessor never consults.
+   */
+  test("a graph obligation with `artifact` but no `artifacts` yields no artifacts for the resolved join"):
+    val named: List[RequirementExtractor.NamedSpec] =
+      List(RequirementExtractor.NamedSpec("only", doc(List("Alpha"), name = "only")))
+    val graph: RequirementSet = RequirementExtractor.extract(
+      named,
+      Some(
+        ujson.Obj(
+          "obligations" -> ujson.Arr(
+            ujson.Obj(
+              "spec"       -> ujson.Str("only"),
+              "obligation" -> ujson.Str("obl one"),
+              "artifact"   -> ujson.Str("x/phantom.scala"),
+              "sources"    -> ujson.Arr(ujson.Obj("requirement" -> ujson.Str("Alpha")))
+            )
+          ),
+          "specs" -> ujson.Arr("only")
+        )
+      )
+    )
+    assertEquals(graph.source, FactSource.Graph)
+    assertEquals(graph.obligations.length, 1)
+    assertEquals(
+      graph.obligations.flatMap(_.artifacts),
+      Nil,
+      "a singular `artifact` field must not fabricate an `artifacts` set — the predecessor reads `.artifacts[]?` only"
+    )
+    assertEquals(
+      graph.obligations.map(_.artifact),
+      List("x/phantom.scala"),
+      "the singular field is still carried for the unmapped-obligations report"
+    )
+
+  /**
+   * R8-N6: the degraded unmapped-obligation token is recovered with the
+   * predecessor's greedy sed ("to the LAST ' does not resolve"), not
+   * spec-lint's `[^']+` field extraction — an apostrophe in the artifact
+   * name must survive whole.
+   */
+  test("degraded unmapped recovery keeps an apostrophe artifact whole"):
+    val reqs: List[ChainState.Requirement] = List(req("Alpha"))
+    val lint: Outcome[LintReport] = lintRan(
+      List("Alpha"),
+      Map("Alpha" -> List(row(30, "Requirement: Alpha"))),
+      findings = List(
+        CheckOutcome.Fail(CheckId.F9, Some(40), "artifact 'it's.scala' does not resolve to any tracked file")
+      )
+    )
+    val set: RequirementSet = reqSet(
+      reqs,
+      List(obl(40, "obl stray", Nil, unmappable = true)),
+      FactSource.Degraded
+    )
+    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+      case Right(report) =>
+        assertEquals(
+          report.unmappedObligations.map(_.artifact),
+          List("it's.scala"),
+          "the predecessor's sed captures to the LAST ' does not resolve — the apostrophe must survive"
+        )
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+
+  /**
+   * R8-D1: in graph mode the predecessor greps a FLAT F7 title set built
+   * from the combined lint output — a title unbound in ANY spec marks the
+   * same title unbound in every spec that declares it. Degraded mode
+   * greps spec_path+title rows, so the same fixture stays per-spec there.
+   */
+  test("graph-mode unbound is a flat cross-spec title set; degraded stays per-spec"):
+    val reqs: List[ChainState.Requirement] =
+      List(req("Shared", spec = "a"), req("Shared", spec = "b"))
+    val lints: Map[String, Outcome[LintReport]] = Map(
+      "a" -> lintRan(List("Shared"), Map("Shared" -> List(row(30, "Requirement: Shared"))), name = "a"),
+      "b" -> lintRan(List("Shared"), Map.empty, name = "b")
+    )
+    // Graph: b's F7 FAIL puts "Shared" in the flat set → BOTH unbound.
+    ChainState.compute(
+      lints,
+      ledgerOf(Nil),
+      reqSet(reqs, Nil, FactSource.Graph),
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
+      case Right(report) =>
+        assertEquals(
+          report.unresolved.map(e => (e.spec, e.requirement, e.reasons)).toSet,
+          Set(
+            ("a", "Shared", List(UnresolvedReason.Unbound)),
+            ("b", "Shared", List(UnresolvedReason.Unbound))
+          ),
+          "flat F7_TITLES: a title unbound in ANY spec is unbound everywhere it is declared"
+        )
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+    // Degraded: spec_path+title keying keeps the verdict per-spec —
+    // a's Shared is bound (then unattributable: no obligations map to it).
+    ChainState.compute(
+      lints,
+      ledgerOf(Nil),
+      reqSet(reqs, Nil, FactSource.Degraded),
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
+      case Right(report) =>
+        assertEquals(
+          report.unresolved.map(e => (e.spec, e.reasons)).toSet,
+          Set(
+            ("a", List(UnresolvedReason.Unattributable)),
+            ("b", List(UnresolvedReason.Unbound))
+          ),
+          "degraded mode greps spec_path+title: per-spec binding is preserved"
+        )
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+
   // ── Scenario: a requirement with no obligations at all is unbound ────
   // spec: chain-state-attribution — Requirement: A requirement whose obligations cannot be attributed is never counted as discharged
   test("a requirement spec-lint never bound is unbound, not unattributable"):
@@ -593,7 +721,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       Map[String, Outcome[LintReport]],
       Ledger.LedgerData,
       RequirementSet,
-      Map[String, String],
+      Map[String, List[String]],
       String,
       String
     )
@@ -664,7 +792,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
             Map[String, Outcome[LintReport]],
             Ledger.LedgerData,
             RequirementSet,
-            Map[String, String],
+            Map[String, List[String]],
             String,
             String
           )) => in._3.requirements.nonEmpty && in._2.records.nonEmpty
@@ -676,7 +804,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
             Map[String, Outcome[LintReport]],
             Ledger.LedgerData,
             RequirementSet,
-            Map[String, String],
+            Map[String, List[String]],
             String,
             String
           )) => in._2.records.isEmpty && in._3.requirements.nonEmpty
@@ -688,7 +816,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
             Map[String, Outcome[LintReport]],
             Ledger.LedgerData,
             RequirementSet,
-            Map[String, String],
+            Map[String, List[String]],
             String,
             String
           )) => in._3.requirements.nonEmpty
@@ -864,3 +992,332 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
                 .log("no unmapped row may be reported twice")
             )
         case Left(u) => Result.failure.log(s"expected Right, got undetermined: ${u.reason}")
+
+  // ════════════════════════════════════════════════════════════════════
+  // Ring-8 fix coverage: the degraded row set is the chain-state script's
+  // OWN awk set (`chainRows`), not spec-lint's `obligationRows`.
+  // ════════════════════════════════════════════════════════════════════
+
+  private def extractDegraded(text: String): RequirementSet =
+    RequirementExtractor.extract(
+      List(RequirementExtractor.NamedSpec("only", SpecDocumentParser.parse("only/spec.md", text))),
+      None
+    )
+
+  test("degraded extraction admits rows spec-lint's source check never sees"):
+    // Empty and `<!--` comment Source cells, an Obligation-prefixed cell,
+    // and a row after a `### ` heading that closed spec-lint's scan — all
+    // chain-state rows in the predecessor's awk, all absent from
+    // `obligationRows`.
+    val text: String =
+      "### Requirement: Solo Req\n\nBody SHALL hold.\n\n" + poTable +
+        "| obl one | Requirement: Solo Req | manual | `a` |\n" +
+        "| empty-src obl | | manual | `b` |\n" +
+        "| comment-src obl | <!-- note --> | manual | `c` |\n" +
+        "| Obligation-shaped | Requirement: Solo Req | manual | `d` |\n" +
+        "### Requirement: Decoy\n\nDecoy SHALL hold.\n\n" +
+        "| post-heading obl | Requirement: Solo Req | manual | `e` |\n"
+    val set: RequirementSet       = extractDegraded(text)
+    val obligations: List[String] = set.obligations.map(_.obligation)
+    List("obl one", "empty-src obl", "comment-src obl", "Obligation-shaped", "post-heading obl")
+      .foreach { (o: String) =>
+        assert(obligations.contains(o), s"chain-state's row set must include '$o', got $obligations")
+      }
+
+  test("degraded extraction skips rows before the first separator"):
+    // spec-lint admits the pre-separator row as a data row; chain-state's
+    // sep-gated awk does not.
+    val text: String =
+      "### Requirement: Solo Req\n\nBody SHALL hold.\n\n" +
+        "## Proof Obligations\n\n" +
+        "| pre-sep obl | Requirement: Solo Req | manual | `a` |\n" +
+        "| Obligation | Source | Enforcement | Artifact |\n|---|---|---|---|\n" +
+        "| obl one | Requirement: Solo Req | manual | `b` |\n"
+    val set: RequirementSet       = extractDegraded(text)
+    val obligations: List[String] = set.obligations.map(_.obligation)
+    assert(
+      !obligations.contains("pre-sep obl"),
+      s"a row before the separator is not a chain-state row, got $obligations"
+    )
+    assert(obligations.contains("obl one"), s"post-separator rows are admitted, got $obligations")
+
+  test("degraded extraction marks an empty-source finding-carrying row unmappable"):
+    // The F9-on-an-empty-source-row path: the row exists in chain-state's
+    // set with no `Requirement:` claim — it must surface as unmappable so
+    // a finding on its line lands in unmapped_obligations, never dropped.
+    val text: String =
+      "### Requirement: Solo Req\n\nBody SHALL hold.\n\n" + poTable +
+        "| obl one | Requirement: Solo Req | manual | `a` |\n" +
+        "| empty-src obl | | manual | `b` |\n"
+    val set: RequirementSet = extractDegraded(text)
+    val emptySrcRow: Option[ExtractedObligation] =
+      set.obligations.find(_.obligation == "empty-src obl")
+    assert(emptySrcRow.exists(_.unmappable), "an empty Source claims no title — unmappable")
+
+  test("degraded extraction keeps a bound requirement unattributable when only chain-state-invisible rows name it"):
+    // A row spec-lint sees (binds the title loosely) but chain-state's
+    // awk does NOT — here the pre-separator row. The requirement is bound
+    // per spec-lint, has no chain-state row naming it → unattributable.
+    val text: String =
+      "### Requirement: Solo Req\n\nBody SHALL hold.\n\n" +
+        "## Proof Obligations\n\n" +
+        "| pre-sep obl | Requirement: Solo Req | manual | `a` |\n" +
+        "| Obligation | Source | Enforcement | Artifact |\n|---|---|---|---|\n"
+    val set: RequirementSet = extractDegraded(text)
+    val lint: Outcome[LintReport] = lintRan(
+      List("Solo Req"),
+      Map("Solo Req" -> List(row(9, "Requirement: Solo Req"))),
+      name = "only"
+    )
+    ChainState.compute(Map("only" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+      case Right(report) =>
+        assertEquals(
+          reasonsOf(report, "Solo Req"),
+          List(UnresolvedReason.Unattributable),
+          "a title bound by spec-lint but unnamed in chain-state's row set is unattributable"
+        )
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+
+  // ════════════════════════════════════════════════════════════════════
+  // Ring 5 mutation coverage
+  // ════════════════════════════════════════════════════════════════════
+
+  test("a spec-lint Finding outcome makes chain-state undetermined, naming spec and cause"):
+    ChainState.compute(
+      Map("s" -> Outcome.Finding("lint exploded")),
+      ledgerOf(Nil),
+      reqSet(List(req("Alpha")), Nil, FactSource.Degraded),
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
+      case Left(u) =>
+        assert(u.reason.contains("'s'"), s"reason must name the spec: ${u.reason}")
+        assert(u.reason.contains("lint exploded"), s"reason must carry the cause: ${u.reason}")
+      case Right(_) => fail("expected undetermined")
+
+  test("a spec with no lint outcome at all is undetermined, naming the spec"):
+    ChainState.compute(
+      Map.empty,
+      ledgerOf(Nil),
+      reqSet(List(req("Alpha")), Nil, FactSource.Degraded),
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
+      case Left(u) =>
+        assert(u.reason.contains("'s'"), s"reason must name the spec: ${u.reason}")
+        assert(u.reason.contains("did not complete"), s"reason must name the cause: ${u.reason}")
+      case Right(_) => fail("expected undetermined")
+
+  test("an F9 finding on ANY mapped obligation line makes the requirement unresolved"):
+    // exists, not forall: only line 40 carries the finding; line 41 is clean.
+    val lint: Outcome[LintReport] = lintRan(
+      List("Alpha"),
+      Map("Alpha" -> List(row(30, "Requirement: Alpha"))),
+      findings = List(
+        CheckOutcome.Fail(CheckId.F9, Some(40), "artifact 'x.scala' does not resolve to any tracked file")
+      )
+    )
+    val set: RequirementSet = reqSet(
+      List(req("Alpha")),
+      List(obl(40, "obl a", List("Alpha")), obl(41, "obl b", List("Alpha"))),
+      FactSource.Degraded
+    )
+    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+      case Right(report) =>
+        assertEquals(reasonsOf(report, "Alpha"), List(UnresolvedReason.Unresolved))
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+
+  test("a requirement is undischarged when only some mapped obligations have ledger rows"):
+    // forall(_._1), not exists: "obl b" has no rows — absence of evidence.
+    val lint: Outcome[LintReport] =
+      lintRan(List("Alpha"), Map("Alpha" -> List(row(30, "Requirement: Alpha"))))
+    val set: RequirementSet = reqSet(
+      List(req("Alpha")),
+      List(obl(40, "obl a", List("Alpha")), obl(41, "obl b", List("Alpha"))),
+      FactSource.Degraded
+    )
+    val ledger: Ledger.LedgerData =
+      ledgerOf(List(ledgerRow(spec = "s", obligation = "obl a")))
+    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+      case Right(report) =>
+        assertEquals(reasonsOf(report, "Alpha"), List(UnresolvedReason.Undischarged))
+        assertEquals(report.discharged, 0)
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+
+  test("a requirement is failed when every obligation has rows but not all are green"):
+    // forall(_._2), not exists: one red row is negative evidence.
+    val lint: Outcome[LintReport] =
+      lintRan(List("Alpha"), Map("Alpha" -> List(row(30, "Requirement: Alpha"))))
+    val set: RequirementSet = reqSet(
+      List(req("Alpha")),
+      List(obl(40, "obl a", List("Alpha")), obl(41, "obl b", List("Alpha"))),
+      FactSource.Degraded
+    )
+    val ledger: Ledger.LedgerData = ledgerOf(
+      List(
+        ledgerRow(spec = "s", obligation = "obl a"),
+        ledgerRow(spec = "s", obligation = "obl b", exit = 1)
+      )
+    )
+    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+      case Right(report) =>
+        assertEquals(reasonsOf(report, "Alpha"), List(UnresolvedReason.Failed))
+        assertEquals(report.discharged, 0)
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+
+  test("an unrecoverable F9 token falls back to a named placeholder, never an empty artifact"):
+    // The F9 line carries no 'artifact ... does not resolve' token.
+    val lint: Outcome[LintReport] = lintRan(
+      List("Alpha"),
+      Map("Alpha" -> List(row(30, "Requirement: Alpha"))),
+      findings = List(CheckOutcome.Fail(CheckId.F9, Some(40), "quota exceeded"))
+    )
+    val set: RequirementSet = reqSet(
+      List(req("Alpha")),
+      List(obl(40, "stray", Nil, unmappable = true)),
+      FactSource.Degraded
+    )
+    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+      case Right(report) =>
+        assertEquals(
+          report.unmappedObligations.map(_.artifact),
+          List("<unrecoverable artifact token, spec-lint line: 40>"),
+          "a token that survives neither extractor is reported by name, not by empty string"
+        )
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+
+  test("graph-mode F9 join marks a requirement unresolved when ANY obligation artifact is in the F9 set"):
+    // exists, not forall: x.scala is in the F9 set; y.scala is not.
+    val lint: Outcome[LintReport] = lintRan(
+      List("Alpha"),
+      Map("Alpha" -> List(row(30, "Requirement: Alpha"))),
+      findings = List(
+        CheckOutcome.Fail(CheckId.F9, Some(40), "artifact 'x.scala' does not resolve to any tracked file")
+      )
+    )
+    val obligation: ExtractedObligation = ExtractedObligation(
+      spec = "s",
+      line = 10,
+      obligation = "obl g",
+      artifact = "x.scala",
+      artifacts = List("x.scala", "y.scala"),
+      requirementClaims = List("Alpha"),
+      unmappable = false
+    )
+    // A second mapped obligation carrying NO F9 artifact — `mapped.forall`
+    // would miss it; the predecessor's any-hit join must not.
+    val cleanObligation: ExtractedObligation = ExtractedObligation(
+      spec = "s",
+      line = 11,
+      obligation = "obl h",
+      artifact = "z.scala",
+      artifacts = List("z.scala"),
+      requirementClaims = List("Alpha"),
+      unmappable = false
+    )
+    val set: RequirementSet =
+      reqSet(List(req("Alpha")), List(obligation, cleanObligation), FactSource.Graph)
+    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+      case Right(report) =>
+        assertEquals(reasonsOf(report, "Alpha"), List(UnresolvedReason.Unresolved))
+      case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
+
+  test("graph obligations take claims and artifacts from the export's arrays only"):
+    val graph: RequirementSet = RequirementExtractor.extract(
+      List(RequirementExtractor.NamedSpec("only", doc(List("Alpha"), name = "only"))),
+      Some(
+        ujson.Obj(
+          "obligations" -> ujson.Arr(
+            ujson.Obj(
+              "spec"       -> ujson.Str("only"),
+              "obligation" -> ujson.Str("obl one"),
+              "artifact"   -> ujson.Str("singular.scala"),
+              "artifacts"  -> ujson.Arr(ujson.Str("x.scala")),
+              "sources"    -> ujson.Arr(ujson.Obj("requirement" -> ujson.Str("Alpha")))
+            ),
+            ujson.Obj(
+              "spec"       -> ujson.Str("only"),
+              "obligation" -> ujson.Str("obl two")
+            )
+          ),
+          "specs" -> ujson.Arr("only")
+        )
+      )
+    )
+    graph.obligations match
+      case o1 :: o2 :: Nil =>
+        assertEquals(o1.requirementClaims, List("Alpha"), "claims come from sources[].requirement")
+        assertEquals(o1.unmappable, false, "an entry with sources is mappable")
+        assertEquals(o1.artifacts, List("x.scala"))
+        assertEquals(o1.artifact, "singular.scala")
+        assertEquals(o2.unmappable, true, "an entry without sources is unmappable")
+        assertEquals(o2.artifact, "", "absent artifact field defaults to empty")
+        assertEquals(o2.artifacts, Nil)
+      case other => fail(s"expected two obligations, got $other")
+
+  test("a graph obligation's line is the first containing line, 1 when absent"):
+    val named: List[RequirementExtractor.NamedSpec] = List(
+      RequirementExtractor.NamedSpec(
+        "only",
+        doc(List("Alpha"), name = "only")
+          .copy(lines = Vector("zero", "one", "obl one appears here", "three"))
+      )
+    )
+    val graph: RequirementSet = RequirementExtractor.extract(
+      named,
+      Some(
+        ujson.Obj(
+          "obligations" -> ujson.Arr(
+            ujson.Obj(
+              "spec"       -> ujson.Str("only"),
+              "obligation" -> ujson.Str("obl one appears here"),
+              "sources"    -> ujson.Arr(ujson.Obj("requirement" -> ujson.Str("Alpha")))
+            ),
+            ujson.Obj(
+              "spec"       -> ujson.Str("only"),
+              "obligation" -> ujson.Str("obl absent"),
+              "sources"    -> ujson.Arr(ujson.Obj("requirement" -> ujson.Str("Alpha")))
+            )
+          ),
+          "specs" -> ujson.Arr("only")
+        )
+      )
+    )
+    assertEquals(
+      graph.obligations.map(_.line),
+      List(3, 1),
+      "grep -nF parity: first containing line (1-based), 1 when absent"
+    )
+
+  test("degraded rows claim Requirement: segments and carry an empty artifact"):
+    val text: String =
+      "### Requirement: Alpha\n\nBody SHALL hold.\n\n" +
+        "## Proof Obligations\n\n" +
+        "| Obligation | Source | Enforcement | Artifact |\n|---|---|---|---|\n" +
+        "| obl text | Requirement: Alpha | manual | `a` |\n"
+    val set: RequirementSet = extractDegraded(text)
+    set.obligations match
+      case o1 :: Nil =>
+        assertEquals(o1.obligation, "obl text")
+        assertEquals(o1.requirementClaims, List("Alpha"))
+        assertEquals(o1.artifact, "", "degraded rows carry no artifact token")
+        assertEquals(o1.unmappable, false)
+      case other => fail(s"expected one obligation, got $other")
+
+  test("FactSource.asString names the diagnostic channel"):
+    assertEquals(FactSource.asString(FactSource.Graph), "graph")
+    assertEquals(FactSource.asString(FactSource.Degraded), "degraded")
+
+  test("usableExport gates on the .obligations key alone"):
+    assertEquals(RequirementExtractor.usableExport(ujson.Obj("obligations" -> ujson.Arr())), true)
+    assertEquals(RequirementExtractor.usableExport(ujson.Obj("obligations" -> ujson.Str("x"))), true)
+    assertEquals(RequirementExtractor.usableExport(ujson.Obj("obligations" -> ujson.Null)), false)
+    assertEquals(RequirementExtractor.usableExport(ujson.Obj("obligations" -> ujson.False)), false)
+    assertEquals(RequirementExtractor.usableExport(ujson.Obj("other" -> ujson.Arr())), false)
+    assertEquals(RequirementExtractor.usableExport(ujson.Arr()), false)

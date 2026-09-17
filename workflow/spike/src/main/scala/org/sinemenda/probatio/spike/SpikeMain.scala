@@ -1,8 +1,10 @@
 package org.sinemenda.probatio.spike
 
-import mainargs.{ main, arg, ParserForMethods, Leftover }
+import mainargs.ParserForMethods
+import mainargs.arg
+import mainargs.main
 import os.Path
-import upickle.default._
+import upickle.default.*
 
 /**
  * V1 spike: prove GraalVM native-image can build a probatio-style CLI

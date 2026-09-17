@@ -69,7 +69,7 @@ object CutoverKernel:
     (predecessor, ported) match
       case (Nil(), Nil())                   => true
       case (Cons(p, restP), Cons(q, restQ)) => q <= p && noWorse(restP, restQ)
-      case _                                => true
+      case _                                => true // danger-scan:allow unreachable — equal-length fold invariant
   }
 
   /**
@@ -112,7 +112,7 @@ object CutoverKernel:
       case (Cons(p, restP), Cons(q, restQ)) =>
         if q > p then Some(idx)
         else findWorse(restP, restQ, idx + BigInt(1))
-      case _ => None()
+      case _ => None() // danger-scan:allow shape-mismatch — never maps to a valid index
   }
 
   // ---------------------------------------------------------------------------

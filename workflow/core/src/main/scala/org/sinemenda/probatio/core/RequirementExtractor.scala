@@ -147,9 +147,11 @@ object RequirementExtractor:
    * The predecessor's `jq -e '.obligations'` gate: the export is usable iff
    * it is an object whose `.obligations` member exists and is neither null
    * nor false. An `[]` IS usable — an empty-but-real obligation table is
-   * graph data, not a fallback trigger.
+   * graph data, not a fallback trigger. Public: the CLI layer applies this
+   * gate BEFORE it reports which extraction path ran, so a parseable but
+   * unusable export is announced as degraded, never as graph.
    */
-  private def usableExport(exportValue: ujson.Value): Boolean =
+  def usableExport(exportValue: ujson.Value): Boolean =
     exportValue match
       case obj: ujson.Obj =>
         obj.obj.get("obligations") match
@@ -157,19 +159,24 @@ object RequirementExtractor:
           case Some(ujson.False) => false
           case Some(_)           => true
           case None              => false
-      case _ => false // danger-scan:allow non-object-export — only a ujson.Obj can satisfy the predecessor's `.obligations` gate
+      case _ => false // danger-scan:allow non-object-export — only a ujson.Obj satisfies the `.obligations` gate
 
   /**
-   * The degraded path: obligation rows come from the parsed documents, and
-   * a row maps to a requirement iff one of its `+`-separated Source
-   * segments is exactly `Requirement: <title>` for a real title of this
-   * spec — the predecessor's `seg_trimmed == "Requirement: $title"` test.
+   * The degraded path: obligation rows come from the parsed documents'
+   * `chainRows` — the chain-state script's OWN awk row set, which admits
+   * rows spec-lint's source check never sees (empty or comment `Source`
+   * cells, `Obligation`-prefixed cells, rows after a `### ` heading that
+   * interrupted spec-lint's scan but not this script's) and skips rows
+   * spec-lint admits (any `|` row before the first separator). A row
+   * maps to a requirement iff one of its `+`-separated Source segments
+   * is exactly `Requirement: <title>` for a real title of this spec —
+   * the predecessor's `seg_trimmed == "Requirement: $title"` test.
    */
   private def degradedObligations(specs: List[NamedSpec]): List[ExtractedObligation] =
     specs.flatMap { (s: NamedSpec) =>
       val titles: Set[String] =
         s.document.requirements.map((b: RequirementBlock) => b.title).toSet
-      s.document.obligationRows.map { (r: ObligationRow) =>
+      s.document.chainRows.map { (r: ObligationRow) =>
         val claims: List[String] =
           r.source
             .split('+')
@@ -217,9 +224,14 @@ object RequirementExtractor:
                     val sources: List[ujson.Value] = arrField(entry, "sources")
                     val claims: List[String] = sources.flatMap {
                       case src: ujson.Obj => strField(src, "requirement")
-                      case _              => None // danger-scan:allow non-object-source — a malformed source entry carries no requirement claim
+                      case _ => // danger-scan:allow non-object-source — malformed source carries no requirement claim
+                        None
                     }
                     val artifact: String = strField(entry, "artifact").getOrElse("")
+                    // `.artifacts[]?` only — the predecessor reads no
+                    // singular fallback, so an entry carrying `artifact`
+                    // without `artifacts` contributes no artifacts to the
+                    // resolved check.
                     val artifacts: List[String] =
                       arrField(entry, "artifacts").collect { case ujson.Str(a) => a }
                     ExtractedObligation(
@@ -227,9 +239,7 @@ object RequirementExtractor:
                       line = obligationLine(named.document, obligation),
                       obligation = obligation,
                       artifact = artifact,
-                      artifacts =
-                        if artifacts.nonEmpty then artifacts
-                        else List(artifact).filter(_.nonEmpty),
+                      artifacts = artifacts,
                       requirementClaims = claims,
                       unmappable = sources.isEmpty
                     )
@@ -263,4 +273,4 @@ object RequirementExtractor:
   private def arrField(obj: ujson.Obj, key: String): List[ujson.Value] =
     obj.obj.get(key) match
       case Some(ujson.Arr(items)) => items.toList
-      case _                      => Nil // danger-scan:allow absent-or-non-array — a missing/mistyped member means an empty list, never coerced data
+      case _ => Nil // danger-scan:allow absent-or-non-array — missing/mistyped member means empty list, never coerced

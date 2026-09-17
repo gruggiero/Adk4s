@@ -550,3 +550,235 @@ final class ChainStateSpec extends ProbatioSuite:
     val result: Either[ChainStateUndetermined, ChainStateReport] =
       ChainState.compute(okLints(emptyLint), emptyLedger, reqSet(reqs), Map.empty, "abc1234", "abc1234", "c", noForgive)
     assert(result.isRight, "successful lint must produce Right, not Left")
+
+  // ════════════════════════════════════════════════════════════════════
+  // Ring 5 mutation coverage — UnresolvedEntry.of / fromCounts / wire codec
+  // ════════════════════════════════════════════════════════════════════
+
+  private def entry(
+    spec: String,
+    requirement: String,
+    reasons: List[UnresolvedReason]
+  ): UnresolvedEntry =
+    UnresolvedEntry.of(spec, requirement, reasons) match
+      case Some(e) => e
+      case None    => fail(s"test fixture bug: invalid entry ($spec, $requirement, $reasons)")
+
+  /** A minimally valid report: 1 requirement, bound, resolved, undischarged. */
+  private def baseReport(
+    change: String = "c",
+    baseline: String = "b",
+    total: Int = 1,
+    bound: Int = 1,
+    resolved: Int = 1,
+    discharged: Int = 0,
+    unresolved: List[UnresolvedEntry] = List(entry("s", "r", List(UnresolvedReason.Undischarged))),
+    unmappedObligations: List[UnmappedObligation] = Nil
+  ): Either[String, ChainStateReport] =
+    ChainStateReport.fromCounts(
+      change,
+      baseline,
+      total,
+      bound,
+      resolved,
+      discharged,
+      unresolved,
+      unmappedObligations
+    )
+
+  private def expectRejection(result: Either[String, ChainStateReport], clause: String): Unit =
+    result match
+      case Left(msg) => assert(msg.nonEmpty, s"$clause: rejection must name the violated clause")
+      case Right(r)  => fail(s"$clause: expected Left, got report $r")
+
+  // ── UnresolvedEntry.of admits only contract-valid entries ────────────
+  test("UnresolvedEntry.of rejects empty spec, empty requirement, empty reasons, and repeated reasons"):
+    assertEquals(UnresolvedEntry.of("", "r", List(UnresolvedReason.Unbound)), None)
+    assertEquals(UnresolvedEntry.of("s", "", List(UnresolvedReason.Unbound)), None)
+    assertEquals(UnresolvedEntry.of("s", "r", Nil), None)
+    assertEquals(
+      UnresolvedEntry.of("s", "r", List(UnresolvedReason.Unbound, UnresolvedReason.Unbound)),
+      None
+    )
+    assert(UnresolvedEntry.of("s", "r", List(UnresolvedReason.Unbound)).isDefined)
+
+  // ── fromCounts: every clause of the report contract is enforced ──────
+  test("fromCounts rejects an empty change"):
+    expectRejection(baseReport(change = ""), "empty change")
+
+  test("fromCounts rejects an empty baseline"):
+    expectRejection(baseReport(baseline = ""), "empty baseline")
+
+  test("fromCounts rejects a negative count"):
+    expectRejection(baseReport(total = -1), "negative count")
+
+  test("fromCounts rejects discharged exceeding resolved"):
+    expectRejection(baseReport(discharged = 2, resolved = 1), "discharged > resolved")
+
+  test("fromCounts rejects resolved exceeding bound"):
+    expectRejection(baseReport(total = 2, bound = 1, resolved = 2), "resolved > bound")
+
+  test("fromCounts rejects bound exceeding total"):
+    expectRejection(baseReport(total = 1, bound = 2, resolved = 2), "bound > total")
+
+  test("fromCounts rejects an unresolved list shorter than total - discharged"):
+    expectRejection(baseReport(unresolved = Nil), "unresolved.length != total - discharged")
+
+  test("fromCounts rejects duplicate (spec, requirement) pairs in unresolved"):
+    val dup: UnresolvedEntry = entry("s", "r", List(UnresolvedReason.Undischarged))
+    expectRejection(
+      baseReport(total = 2, bound = 2, resolved = 2, unresolved = List(dup, dup)),
+      "duplicate (spec, requirement)"
+    )
+
+  test("fromCounts rejects an unbound count that disagrees with total - bound"):
+    expectRejection(
+      baseReport(unresolved = List(entry("s", "r", List(UnresolvedReason.Unbound)))),
+      "total - bound != unbound-reasoned entries"
+    )
+
+  test("fromCounts rejects an unresolved/unattributable count that disagrees with bound - resolved"):
+    expectRejection(
+      baseReport(unresolved = List(entry("s", "r", List(UnresolvedReason.Unresolved)))),
+      "bound - resolved != unresolved/unattributable-reasoned entries"
+    )
+
+  test("fromCounts rejects an undischarged/failed count that disagrees with resolved - discharged"):
+    expectRejection(
+      baseReport(
+        bound = 0,
+        resolved = 0,
+        discharged = 0,
+        unresolved = List(
+          entry("s", "r", List(UnresolvedReason.Unbound, UnresolvedReason.Undischarged))
+        )
+      ),
+      "resolved - discharged != undischarged/failed-reasoned entries"
+    )
+
+  test("fromCounts rejects unmapped obligations with an empty spec, empty artifact, or non-positive line"):
+    expectRejection(
+      baseReport(unmappedObligations = List(UnmappedObligation("", 5, "a.scala"))),
+      "unmapped entry with empty spec"
+    )
+    expectRejection(
+      baseReport(unmappedObligations = List(UnmappedObligation("s", 5, ""))),
+      "unmapped entry with empty artifact"
+    )
+    expectRejection(
+      baseReport(unmappedObligations = List(UnmappedObligation("s", 0, "a.scala"))),
+      "unmapped entry with line 0"
+    )
+
+  test("fromCounts accepts a valid report, including a line-1 unmapped obligation"):
+    assert(baseReport().isRight)
+    assert(
+      baseReport(unmappedObligations = List(UnmappedObligation("s", 1, "a.scala"))).isRight,
+      "line 1 is a valid unmapped-obligation line"
+    )
+
+  // ── Wire codec: contract field names out, contract-checked parse in ──
+  test("report codec emits the contract field names and round-trips"):
+    val report: ChainStateReport = baseReport(
+      total = 6,
+      bound = 4,
+      resolved = 2,
+      discharged = 0,
+      unresolved = List(
+        entry("s", "a", List(UnresolvedReason.Unbound)),
+        entry("s", "b", List(UnresolvedReason.Unresolved)),
+        entry("s", "c", List(UnresolvedReason.Undischarged)),
+        entry("s", "d", List(UnresolvedReason.Failed)),
+        entry("s", "e", List(UnresolvedReason.Unbound)),
+        entry("s", "f", List(UnresolvedReason.Unattributable))
+      ),
+      unmappedObligations = List(UnmappedObligation("s", 40, "x.scala"))
+    ) match
+      case Right(r)  => r
+      case Left(msg) => fail(s"fixture report must satisfy the contract: $msg")
+    val written: String = upickle.default.write(report)
+    val obj: ujson.Obj = ujson.read(written) match
+      case o: ujson.Obj => o
+      case other        => fail(s"expected a JSON object, got $other")
+    assertEquals(
+      obj.value.keySet,
+      Set("change", "baseline", "total", "bound", "resolved", "discharged", "unresolved", "unmapped_obligations")
+    )
+    obj("unresolved").arr.toList match
+      case e0 :: _ => assertEquals(e0.obj.keySet, Set("spec", "requirement", "reasons"))
+      case other   => fail(s"expected unresolved entries, got $other")
+    // Every UnresolvedReason string survives the wire.
+    List("unbound", "unresolved", "unattributable", "undischarged", "failed").foreach { rs =>
+      assert(written.contains(s"\"$rs\""), s"written report must carry reason '$rs'")
+    }
+    assertEquals(upickle.default.read[ChainStateReport](written), report)
+
+  test("report codec rejects contract-violating wire values"):
+    // upickle wraps the reader's rejection in a TraceException — an
+    // Exception either way, never a silently-mapped value.
+    // Non-integer count
+    intercept[Exception](
+      upickle.default.read[ChainStateReport](
+        """{"change":"c","baseline":"b","total":1.5,"bound":1,"resolved":1,"discharged":0}"""
+      )
+    )
+    // Count-inconsistent object (negative total) is rejected via fromCounts
+    intercept[Exception](
+      upickle.default.read[ChainStateReport](
+        """{"change":"c","baseline":"b","total":-1,"bound":0,"resolved":0,"discharged":0}"""
+      )
+    )
+    // Unresolved entry with an unknown reason string
+    intercept[Exception](
+      upickle.default.read[ChainStateReport](
+        """{"change":"c","baseline":"b","total":1,"bound":0,"resolved":0,"discharged":0,"unresolved":[{"spec":"s","requirement":"r","reasons":["bogus"]}]}"""
+      )
+    )
+    // Unresolved entry violating `of` (empty reasons)
+    intercept[Exception](
+      upickle.default.read[ChainStateReport](
+        """{"change":"c","baseline":"b","total":1,"bound":0,"resolved":0,"discharged":0,"unresolved":[{"spec":"s","requirement":"r","reasons":[]}]}"""
+      )
+    )
+    // A non-object top level crashes, never maps to a value
+    intercept[Exception](upickle.default.read[ChainStateReport]("\"oops\""))
+
+  test("UnresolvedReason codec round-trips every case and rejects non-strings and unknowns"):
+    List(
+      UnresolvedReason.Unbound,
+      UnresolvedReason.Unresolved,
+      UnresolvedReason.Unattributable,
+      UnresolvedReason.Undischarged,
+      UnresolvedReason.Failed
+    ).foreach(r => assertEquals(upickle.default.read[UnresolvedReason](upickle.default.write(r)), r))
+    intercept[Exception](upickle.default.read[UnresolvedReason]("\"bogus\""))
+    intercept[Exception](upickle.default.read[UnresolvedReason]("42"))
+
+  test("UnresolvedEntry codec round-trips and rejects contract-violating entries"):
+    val e: UnresolvedEntry = entry("s", "r", List(UnresolvedReason.Failed, UnresolvedReason.Undischarged))
+    val written: String    = upickle.default.write(e)
+    val obj: ujson.Obj = ujson.read(written) match
+      case o: ujson.Obj => o
+      case other        => fail(s"expected a JSON object, got $other")
+    assertEquals(obj.value.keySet, Set("spec", "requirement", "reasons"))
+    assertEquals(upickle.default.read[UnresolvedEntry](written), e)
+    // A missing field, an unknown reason, and an `of`-violating entry all reject.
+    intercept[Exception](
+      upickle.default.read[UnresolvedEntry]("""{"spec":"s","requirement":"r"}""")
+    )
+    intercept[Exception](
+      upickle.default.read[UnresolvedEntry](
+        """{"spec":"s","requirement":"r","reasons":["bogus"]}"""
+      )
+    )
+    intercept[Exception](
+      upickle.default.read[UnresolvedEntry]("""{"spec":"","requirement":"r","reasons":["unbound"]}""")
+    )
+
+  test("report codec treats absent unresolved/unmapped_obligations keys as empty (jq parity)"):
+    val report: ChainStateReport =
+      upickle.default.read[ChainStateReport](
+        """{"change":"c","baseline":"b","total":0,"bound":0,"resolved":0,"discharged":0}"""
+      )
+    assertEquals(report.unresolved, Nil)
+    assertEquals(report.unmappedObligations, Nil)

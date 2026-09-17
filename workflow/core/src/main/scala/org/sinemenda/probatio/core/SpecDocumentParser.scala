@@ -36,6 +36,14 @@ object SpecDocumentParser:
   private val headerRe = "^\\| *Obligation".r
 
   /**
+   * The chain-state script's separator row —
+   * `^\|[ \t:-]*\|[ \t:-]*\|[ \t:-]*\|[ \t:-]*\|[ \t]*$` — four cells of
+   * dashes/colons/blanks ending the line. Stricter about shape than
+   * `separatorRe` but requiring NO dash: `|||||` sets the flag.
+   */
+  private val chainSeparatorRe = "^\\|[ \t:-]*\\|[ \t:-]*\\|[ \t:-]*\\|[ \t:-]*\\|[ \t]*$".r
+
+  /**
    * `(^|[^A-Za-z])(SHALL|MUST)([^A-Za-z]|$)` — case-sensitive; a digit
    *  adjacent to the keyword still counts (`SHALL2`, `9MUST`).
    */
@@ -102,6 +110,12 @@ object SpecDocumentParser:
     scenarios: List[ScenarioHeading],
     obligationRows: List[ObligationRow],
     artifactRows: List[ObligationRow],
+    chainRows: List[ObligationRow],
+    // The chain-state script's separator flag — sticky for the whole file:
+    // once the first four-cell separator is seen inside a Proof
+    // Obligations region it is never reset, so a second `## Proof
+    // Obligations` section admits its pre-separator rows as data.
+    chainSepSeen: Boolean,
     dataRowCount: Int,
     bridgeRowCount: Int,
     hasProofObligations: Boolean,
@@ -123,6 +137,8 @@ object SpecDocumentParser:
       scenarios = Nil,
       obligationRows = Nil,
       artifactRows = Nil,
+      chainRows = Nil,
+      chainSepSeen = false,
       dataRowCount = 0,
       bridgeRowCount = 0,
       hasProofObligations = false,
@@ -269,7 +285,31 @@ object SpecDocumentParser:
           )
         else withPo
       else withPo
-    withArt
+    // The chain-state script's OWN row set (chain-state.sh's awk, not
+    // spec-lint's): `m` is `inPoArtifacts` (toggled by `## ` headings
+    // only); the separator pattern sets a sticky flag and is never a row;
+    // a `|` row after the separator is a chain row iff its Obligation
+    // cell ($2) is non-empty — the Source cell is never tested, and the
+    // `^\| *Obligation` content exclusion does not apply.
+    val withChain: Acc =
+      if withArt.inPoArtifacts && chainSeparatorRe.findFirstIn(line).nonEmpty then withArt.copy(chainSepSeen = true)
+      else if withArt.inPoArtifacts && withArt.chainSepSeen && line.startsWith("|") then
+        val fields: Array[String] = line.split("\\|", -1)
+        val ob: String            = fields.lift(1).map(_.trim).getOrElse("")
+        if ob.nonEmpty then
+          withArt.copy(
+            chainRows = withArt.chainRows :+ ObligationRow(
+              line = nr,
+              fieldCount = fields.length,
+              source = fields.lift(2).map(_.trim).getOrElse(""),
+              enforcement = fields.lift(3).map(_.trim).getOrElse(""),
+              artifact = fields.lift(4).map(_.trim).getOrElse(""),
+              raw = line
+            )
+          )
+        else withArt
+      else withArt
+    withChain
 
   /** One line of the awk pass. `nr` is the 1-based line number. */
   private def step(acc: Acc, line: String, nr: Int): Acc =
@@ -353,6 +393,7 @@ object SpecDocumentParser:
       hasProofObligations = finalAcc.hasProofObligations,
       formalContractsContentLines = finalAcc.formalContractsContentLines,
       hasBehavioralConcepts = finalAcc.hasBehavioralConcepts,
-      artifactRows = finalAcc.artifactRows
+      artifactRows = finalAcc.artifactRows,
+      chainRows = finalAcc.chainRows
     )
 end SpecDocumentParser

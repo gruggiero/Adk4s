@@ -67,15 +67,15 @@
 - [x] Step 1 — typed contract: `RequirementSet`, `FactSource`, `RequirementExtractor.extract`, `ChainState.compute` taking `RequirementSet` instead of `List[Requirement]`, smart constructors on `ChainStateReport` and `UnresolvedEntry` — compiled under `-Werror`, `ChainStateAttributionTypeContract` + `ChainStateAttributionSpec` compile-negatives green (APPROVED)
 - [x] Step 2 — test oracle: 15 scenarios + 5 properties (`verdict-parity-with-predecessor`, `counts-are-consistent`, `unattributable-is-reachable-and-never-discharged`, `obligation-rows-are-conserved`, `empty-is-not-unreadable`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate)
 - [x] Step 3 — implementation: extract requirements from parsed spec documents; attribute obligation rows by exact title; emit `Unattributable` and `unmapped_obligations`; report the extraction path; stop double-prefixing the could-not-determine marker; `ChainStateCmd` gains the predecessor's remaining flags — GREEN: all oracle suites + 414 core + 325 cli tests pass (APPROVED 2026-09-17)
-- [ ] Ring 0 — clean; the newly-reachable `UnresolvedReason.Unattributable` must be handled in every match
-- [ ] Ring 1 — lint clean; dangerous-pattern scan via the predecessor script, recorded
-- [ ] Ring 2 — `dependencyLint` clean
-- [ ] Ring 3 — property + scenario suites green; **`chain-state.bats` and `discharge-fidelity.bats` at parity** (baseline: 6 and 0 predecessor failures, 17 and 6 ported)
-- [ ] Ring 4 — `chain-state-report-contract.jq` conforms against the port's output for every fixture; `unmapped_obligations` present when empty
-- [ ] Ring 8 — fresh-context adversarial review
-- [ ] Ring 5 — retarget to `ChainState.scala`, `ChainStateReport.scala`, `RequirementExtractor.scala`; threshold 90%; read and record the score
-- [ ] Ring 6 — extend `ChainStateKernel` with the unattributable clause + `ChainStateBridgeSpec`; `sbt -J-Xmx6g ring6`
-- [ ] Concept-delta check + inventory update (2 added, `ChainState` and `ChainStateReport` modified) + checkpoint
+- [x] Ring 0 — clean; the newly-reachable `UnresolvedReason.Unattributable` must be handled in every match
+- [x] Ring 1 — lint clean; dangerous-pattern scan via the predecessor script, recorded
+- [x] Ring 2 — `dependencyLint` clean
+- [x] Ring 3 — property + scenario suites green; **`chain-state.bats` and `discharge-fidelity.bats` at parity** (baseline: 6 and 0 predecessor failures, 17 and 6 ported)
+- [x] Ring 4 — `chain-state-report-contract.jq` conforms against the port's output for every fixture; `unmapped_obligations` present when empty
+- [x] Ring 8 — fresh-context adversarial review ×3: 1st run FAIL (6 defects F1–F6) → fixed; re-run PARTIAL (N1/N2 dangerous + N3–N7 edge) → N1/N2/N5/N6/N7 fixed; re-run 2 PARTIAL → PROCEED (D-new-1 fixed; N3 path-keying declared for checkpoint human review)
+- [x] Ring 5 — retargeted to `ChainState.scala`, `ChainStateReport.scala`, `RequirementExtractor.scala`: **91.41% total / 92.35% covered** (threshold 80); 17 undetected all dispositioned equivalent/dead-code/defensive
+- [x] Ring 6 — `ChainStateKernel.chainStateFold` (count ordering + unresolved complement + unattributable-never-discharged) + Manual-ring reconcile + `VerifiedKernelBridgeSpec` non-empty bridge; `probatio-verified` **325/325 VCs valid**
+- [ ] Concept-delta check + inventory update + checkpoint — inventory updated (6 new rows + reshaped annotations); **checkpoint PENDING N3 human sign-off**
 
 ## 6. danger-reconcile-engines
 

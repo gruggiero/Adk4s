@@ -96,12 +96,6 @@ object ChainStateKernel:
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  /** A ring is non-Manual (R0–R8), i.e. discharge-eligible. */
-  @pure
-  def isNonManual(r: Ring): Boolean = r match
-    case Manual => false
-    case _      => true // danger-scan:allow spec-contract-code — all R0–R8 rings are discharge-eligible
-
   /** A verdict is Bound or Resolved (counts toward bound). */
   @pure
   def isBoundOrResolved(v: Verdict): Boolean = v match
@@ -117,16 +111,17 @@ object ChainStateKernel:
     case Unbound()  => false
 
   /**
-   * A ledger record matches the current change and baseline and is
-   * discharge-eligible (non-Manual ring).
+   * A ledger record matches the current change and baseline. `ledger.sh
+   * read` has no ring filter — Manual-ring rows are legitimate discharge
+   * evidence, matching the predecessor.
    */
   @pure
   def matchesBaselineChange(rec: LedgerRecord, baseline: BigInt, change: BigInt): Boolean =
-    rec.change == change && rec.baseline == baseline && isNonManual(rec.ring)
+    rec.change == change && rec.baseline == baseline
 
   /**
-   * A requirement has a matching non-Manual ledger record (same spec +
-   * obligation, matching change/baseline, non-Manual ring).
+   * A requirement has a matching ledger record (same spec + obligation,
+   * matching change/baseline — any ring, including Manual).
    */
   @pure
   def isDischarged(
@@ -173,7 +168,7 @@ object ChainStateKernel:
         else BigInt(0)
         head + countResolved(verdicts, rest)
 
-  /** Count requirements with a matching non-Manual ledger record. */
+  /** Count requirements with a matching ledger record (any ring). */
   @pure
   def countDischarged(
     records: List[LedgerRecord],
@@ -315,12 +310,291 @@ object ChainStateKernel:
 
   /** Law: isDischarged on an empty record list is false. */
   @pure
-  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
   def isDischargedEmpty(
     req: Requirement,
     baseline: BigInt,
     change: BigInt
   ): Boolean =
-    !isDischarged(req, Nil(), baseline, change)
-      .ensuring(_ == true)
-  // format: on
+    (!isDischarged(req, Nil(), baseline, change)).ensuring(_ == true)
+
+  // ---------------------------------------------------------------------------
+  // chainStateFold — the spec-5 formal contract
+  //
+  // The fold reduces a requirement to an index, a verdict to 0/1/2
+  // (unbound / bound / resolved), a ledger to the set of discharged
+  // indices, and the unreachable-obligation boundary to the set of
+  // reachable-but-unattributable indices. `total` is the number of
+  // requirements; `verdicts` is indexed by position — hence
+  // `verdicts.size == total` (implied by the spec's bound <= total
+  // postcondition).
+  //
+  // spec: chain-state-attribution — Formal Contracts (Ring 6): chainStateFold
+  // ---------------------------------------------------------------------------
+
+  /** The fold's accumulator: running counts plus the unresolved index list. */
+  case class FoldResult(
+    bound: BigInt,
+    resolved: BigInt,
+    dis: BigInt,
+    unresolved: List[BigInt]
+  )
+
+  /** Every verdict code is in `[0, 2]`. */
+  @pure
+  def verdictCodesValid(vs: List[BigInt]): Boolean =
+    decreases(vs.size)
+    vs match
+      case Nil() => true
+      case Cons(v, rest) =>
+        v >= BigInt(0) && v <= BigInt(2) && verdictCodesValid(rest)
+
+  /** Every index in `is` lies in `[0, n)`. */
+  @pure
+  def indicesInRange(is: List[BigInt], n: BigInt): Boolean =
+    decreases(is.size)
+    is match
+      case Nil() => true
+      case Cons(i, rest) =>
+        i >= BigInt(0) && i < n && indicesInRange(rest, n)
+
+  /** Every element of `is` is a valid index into `[0, hi)`. */
+  @pure
+  def allValidIndex(is: List[BigInt], hi: BigInt): Boolean =
+    decreases(is.size)
+    is match
+      case Nil() => true
+      case Cons(u, rest) =>
+        u >= BigInt(0) && u < hi && allValidIndex(rest, hi)
+
+  /**
+   * `filterOut(l, banned)` drops every `banned` element from `l`. The
+   * unattributable exclusion is applied HERE, before the fold: an index
+   * absent from the effective discharged set can never be discharged —
+   * that is the unreachable-obligation boundary.
+   */
+  @pure
+  def filterOut(l: List[BigInt], banned: List[BigInt]): List[BigInt] =
+    decreases(l.size)
+    l match
+      case Nil() => Nil()
+      case Cons(x, rest) =>
+        if banned.contains(x) then filterOut(rest, banned)
+        else Cons(x, filterOut(rest, banned))
+
+  /**
+   * A banned element never survives `filterOut` — the recursive call is
+   * the induction hypothesis.
+   */
+  @pure
+  def filteredNotBanned(x: BigInt, l: List[BigInt], banned: List[BigInt]): Unit = {
+    require(banned.contains(x))
+    decreases(l.size)
+    l match
+      case Nil()         => ()
+      case Cons(_, rest) => filteredNotBanned(x, rest, banned)
+  }.ensuring((_: Unit) => !filterOut(l, banned).contains(x))
+
+  /**
+   * The spec's unattributable clause over an index range: every `i` in
+   * `[k, hi)` that is both unattributable and ledger-discharged appears
+   * in `unresolved`. Iterating the range (not the unattributable list)
+   * keeps the induction in the `uncoveredFrom` shape — the recursive
+   * call's postcondition is the hypothesis for the tail.
+   */
+  @pure
+  def rangeClause(
+    k: BigInt,
+    hi: BigInt,
+    discharged: List[BigInt],
+    unattributable: List[BigInt],
+    unresolved: List[BigInt]
+  ): Boolean = {
+    require(k <= hi)
+    decreases(hi - k)
+    if k >= hi then true
+    else
+      (!(unattributable.contains(k) && discharged.contains(k)) ||
+        unresolved.contains(k)) &&
+      rangeClause(k + BigInt(1), hi, discharged, unattributable, unresolved)
+  }
+
+  /**
+   * The fold over verdicts `vs` starting at index `idx`, where
+   * `dischargedEff` is already free of unattributable indices. Each index
+   * is either effectively discharged (ledger-discharged with a resolved
+   * verdict — counted, absent from `unresolved`) or unresolved
+   * (prepended) — so `unresolved` is the exact complement of the
+   * effective discharged set within the visited range, and the counts
+   * obey `dis <= resolved <= bound <= |vs|` because an effective
+   * discharge implies a resolved verdict implies a bound verdict.
+   */
+  @pure
+  def foldFrom(
+    idx: BigInt,
+    vs: List[BigInt],
+    dischargedEff: List[BigInt]
+  ): FoldResult = {
+    require(idx >= BigInt(0))
+    decreases(vs.size)
+    vs match
+      case Nil() => FoldResult(BigInt(0), BigInt(0), BigInt(0), Nil())
+      case Cons(v, rest) =>
+        val rec: FoldResult     = foldFrom(idx + BigInt(1), rest, dischargedEff)
+        val boundInc: BigInt    = if v >= BigInt(1) then BigInt(1) else BigInt(0)
+        val resolvedInc: BigInt = if v == BigInt(2) then BigInt(1) else BigInt(0)
+        if dischargedEff.contains(idx) && v == BigInt(2) then
+          FoldResult(
+            rec.bound + boundInc,
+            rec.resolved + resolvedInc,
+            rec.dis + BigInt(1),
+            rec.unresolved
+          )
+        else
+          FoldResult(
+            rec.bound + boundInc,
+            rec.resolved + resolvedInc,
+            rec.dis,
+            Cons(idx, rec.unresolved)
+          )
+  }.ensuring { (res: FoldResult) =>
+    res.dis <= res.resolved &&
+    res.resolved <= res.bound &&
+    res.bound <= vs.size &&
+    res.unresolved.size == vs.size - res.dis &&
+    allValidIndex(res.unresolved, idx + vs.size)
+  }
+
+  /**
+   * Law (completeness): an in-range index absent from the effective
+   * discharged set is consed onto `unresolved` at its step — regardless
+   * of its verdict, since absence falsifies the discharge condition.
+   * The recursive call is the induction hypothesis; the `idx == j` base
+   * case unfolds `foldFrom` once.
+   */
+  @pure
+  def absentIsUnresolved(
+    idx: BigInt,
+    j: BigInt,
+    vs: List[BigInt],
+    dischargedEff: List[BigInt]
+  ): Unit = {
+    require(
+      idx >= BigInt(0) && j >= idx && j < idx + vs.size && !dischargedEff.contains(j)
+    )
+    decreases(vs.size)
+    vs match
+      case Nil() => ()
+      case Cons(_, rest) =>
+        if idx < j then absentIsUnresolved(idx + BigInt(1), j, rest, dischargedEff)
+  }.ensuring((_: Unit) => foldFrom(idx, vs, dischargedEff).unresolved.contains(j))
+
+  /**
+   * The range-clause lift: every `k` in `[k, hi)` that is unattributable
+   * and discharged is in the fold's unresolved set, because filtering
+   * removes it from `dischargedEff` and `absentIsUnresolved` conses it.
+   * The recursive call is the induction hypothesis for `k + 1`.
+   */
+  @pure
+  def clauseFrom(
+    k: BigInt,
+    hi: BigInt,
+    vs: List[BigInt],
+    discharged: List[BigInt],
+    unattributable: List[BigInt]
+  ): Unit = {
+    require(k >= BigInt(0) && k <= hi && vs.size == hi)
+    decreases(hi - k)
+    if k < hi then {
+      if unattributable.contains(k) && discharged.contains(k) then {
+        filteredNotBanned(k, discharged, unattributable)
+        absentIsUnresolved(BigInt(0), k, vs, filterOut(discharged, unattributable))
+      }
+      clauseFrom(k + BigInt(1), hi, vs, discharged, unattributable)
+    }
+  }.ensuring { (_: Unit) =>
+    rangeClause(
+      k,
+      hi,
+      discharged,
+      unattributable,
+      foldFrom(BigInt(0), vs, filterOut(discharged, unattributable)).unresolved
+    )
+  }
+
+  /**
+   * The spec-5 fold contract. `verdicts` is indexed by requirement
+   * position, so `verdicts.size == total` is required for the
+   * `bound <= total` postcondition to be meaningful. The effective
+   * discharged set filters unattributable indices out BEFORE the fold —
+   * so no reachable-but-unattributable index can ever be counted
+   * discharged, by construction.
+   *
+   * spec: chain-state-attribution — Formal Contracts (Ring 6): chainStateFold
+   */
+  @pure
+  def chainStateFold(
+    total: BigInt,
+    verdicts: List[BigInt],
+    discharged: List[BigInt],
+    unattributable: List[BigInt]
+  ): (BigInt, BigInt, BigInt, List[BigInt]) = {
+    require(
+      total >= BigInt(0) &&
+        verdicts.size == total &&
+        verdictCodesValid(verdicts) &&
+        indicesInRange(discharged, total) &&
+        indicesInRange(unattributable, total)
+    )
+    val disEff: List[BigInt] = filterOut(discharged, unattributable)
+    val res: FoldResult      = foldFrom(BigInt(0), verdicts, disEff)
+    clauseFrom(BigInt(0), total, verdicts, discharged, unattributable)
+    (res.bound, res.resolved, res.dis, res.unresolved)
+  }.ensuring { case (bound, resolved, dis, unresolved) =>
+    dis <= resolved &&
+    resolved <= bound &&
+    bound <= total &&
+    unresolved.size == total - dis &&
+    rangeClause(BigInt(0), total, discharged, unattributable, unresolved)
+  }
+
+  /** Law: empty inputs fold to all-zero counts and no unresolved indices. */
+  @pure
+  def foldEmptyInputs: Boolean = {
+    val res: (BigInt, BigInt, BigInt, List[BigInt]) =
+      chainStateFold(BigInt(0), Nil(), Nil(), Nil())
+    res._1 == BigInt(0) && res._2 == BigInt(0) && res._3 == BigInt(0) && res._4.isEmpty
+  }.ensuring(_ == true)
+
+  /**
+   * Law: an unattributable index admitted to `discharged` is not counted
+   * and lands in `unresolved` — the unattributable-never-discharged
+   * invariant on a concrete witness.
+   */
+  @pure
+  def foldUnattributableNotDischarged: Boolean = {
+    val res: (BigInt, BigInt, BigInt, List[BigInt]) = chainStateFold(
+      BigInt(2),
+      Cons(BigInt(1), Cons(BigInt(2), Nil())),
+      Cons(BigInt(0), Cons(BigInt(1), Nil())),
+      Cons(BigInt(0), Nil())
+    )
+    res._1 == BigInt(2) && res._2 == BigInt(1) && res._3 == BigInt(1) &&
+    res._4 == Cons(BigInt(0), Nil())
+  }.ensuring(_ == true)
+
+  /**
+   * Law: when every resolved index is discharged and none is
+   * unattributable, `dis == resolved` and `unresolved` is the complement
+   * of the resolved set.
+   */
+  @pure
+  def foldAllResolvedDischarged: Boolean = {
+    val res: (BigInt, BigInt, BigInt, List[BigInt]) = chainStateFold(
+      BigInt(3),
+      Cons(BigInt(0), Cons(BigInt(2), Cons(BigInt(2), Nil()))),
+      Cons(BigInt(1), Cons(BigInt(2), Nil())),
+      Nil()
+    )
+    res._1 == BigInt(2) && res._2 == BigInt(2) && res._3 == BigInt(2) &&
+    res._4 == Cons(BigInt(0), Nil())
+  }.ensuring(_ == true)

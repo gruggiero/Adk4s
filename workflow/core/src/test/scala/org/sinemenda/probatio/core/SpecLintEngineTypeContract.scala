@@ -183,7 +183,8 @@ final class SpecLintEngineTypeContract extends ProbatioSuite:
       hasProofObligations = true,
       formalContractsContentLines = 0,
       hasBehavioralConcepts = false,
-      artifactRows = Nil
+      artifactRows = Nil,
+      chainRows = Nil
     )
     val rows: List[ObligationRow] = document.obligationRows
     val report: LintReport = LintReport.fromRun(
@@ -217,7 +218,8 @@ final class SpecLintEngineTypeContract extends ProbatioSuite:
         hasProofObligations = false,
         formalContractsContentLines = 0,
         hasBehavioralConcepts = false,
-        artifactRows = Nil
+        artifactRows = Nil,
+        chainRows = Nil
       ),
       findings = List(CheckOutcome.Fail(CheckId.F4, None, "no PO section")),
       applicability = Map.empty,

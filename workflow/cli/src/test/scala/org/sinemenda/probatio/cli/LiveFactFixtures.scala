@@ -651,7 +651,8 @@ object LiveFactFixtures:
       hasProofObligations = true,
       formalContractsContentLines = 0,
       hasBehavioralConcepts = false,
-      artifactRows = rows
+      artifactRows = rows,
+      chainRows = rows
     )
     val findings: List[CheckOutcome] =
       warnings.map(CheckOutcome.Warn(_)) ++

@@ -119,7 +119,7 @@ final class ChainStateAttributionTypeContract extends ProbatioSuite:
     Map[String, Outcome[LintReport]],
     Ledger.LedgerData,
     RequirementSet,
-    Map[String, String],
+    Map[String, List[String]],
     String,
     String,
     String,

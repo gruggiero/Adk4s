@@ -28,7 +28,8 @@ final case class SpecDocument(
   hasProofObligations: Boolean,
   formalContractsContentLines: Int,
   hasBehavioralConcepts: Boolean,
-  artifactRows: List[ObligationRow]
+  artifactRows: List[ObligationRow],
+  chainRows: List[ObligationRow]
 )
 
 /**
@@ -111,6 +112,17 @@ final case class ScenarioHeading(
  * the `Source` cell, and its section flag is only toggled by `## `
  * headings (a `### Requirement:` heading inside the Proof Obligations
  * section stops the main scan but not the artifact scan).
+ *
+ * `chainRows` is the chain-state script's own awk row set — a THIRD
+ * consumer with its own, different row semantics: section toggled only
+ * by `## ` headings (like `artifactRows`), but the header is excluded
+ * STRUCTURALLY (every `|` row before the first four-cell separator is
+ * skipped; the separator flag is sticky across the whole file), the
+ * `Source` cell is never tested (empty and `<!--` comment sources are
+ * admitted), and the only content test is a non-empty Obligation cell.
+ * The `^\| *Obligation` content exclusion `obligationRows` applies does
+ * NOT apply here — a data row whose Obligation cell starts with the
+ * word "Obligation" is a real chain-state row.
  *
  * spec: spec-lint-engine — Concepts Introduced (new): ObligationRow
  */

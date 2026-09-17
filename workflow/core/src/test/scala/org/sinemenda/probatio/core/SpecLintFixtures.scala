@@ -78,7 +78,8 @@ object SpecLintFixtures:
       hasProofObligations = true,
       formalContractsContentLines = 0,
       hasBehavioralConcepts = false,
-      artifactRows = rows
+      artifactRows = rows,
+      chainRows = rows
     )
     val findings: List[CheckOutcome] =
       warnings.map(CheckOutcome.Warn(_)) ++
@@ -295,5 +296,6 @@ object SpecLintFixtures:
         hasProofObligations = hasPo,
         formalContractsContentLines = 0,
         hasBehavioralConcepts = true,
-        artifactRows = rows
+        artifactRows = rows,
+        chainRows = rows
       )

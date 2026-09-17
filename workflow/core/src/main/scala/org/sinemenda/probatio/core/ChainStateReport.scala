@@ -106,7 +106,8 @@ object UnresolvedEntry:
           reasons <- rs.foldLeft[Option[List[UnresolvedReason]]](Some(List.empty)) {
             case (Some(acc), ujson.Str(s)) =>
               UnresolvedReason.fromString(s).map(r => acc :+ r)
-            case _ => None // danger-scan:allow type-rejection — a non-string reason rejects the entry, never maps to valid
+            case _ => // danger-scan:allow type-rejection — non-string reason rejects the entry, never maps to valid
+              None
           }
           e <- of(sp, rq, reasons)
         yield e

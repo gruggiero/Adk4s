@@ -553,7 +553,7 @@ object SpecLintCmd:
    * `<target>/openspec/changes/` (a repository root, `archive/` excluded).
    * `None` means neither shape exists — the predecessor's exit-2 path.
    */
-  private def specFiles(target: Path): Option[List[Path]] =
+  private def specFiles(target: Path): Option[Either[String, List[Path]]] =
     val specsDir: Path   = target.resolve("specs")
     val changesDir: Path = target.resolve("openspec/changes")
     if Files.isDirectory(specsDir) then Some(findSpecs(specsDir, _ => true))
@@ -571,18 +571,27 @@ object SpecLintCmd:
       )
     else None
 
-  /** `find <root> -name spec.md` filtered and sorted — as the predecessor pipes it. */
-  private[cli] def findSpecs(root: Path, keep: Path => Boolean): List[Path] =
+  /**
+   * `find <root> -name spec.md` filtered and sorted — as the predecessor
+   * pipes it. A failed traversal is `Left`, never an empty list: an
+   * existing-but-unlistable directory tree is a discovery fault
+   * (could-not-determine), distinguishable from a genuinely empty one.
+   */
+  private[cli] def findSpecs(root: Path, keep: Path => Boolean): Either[String, List[Path]] =
     try
-      Using.resource(Files.walk(root)) { walk =>
-        walk
-          .iterator()
-          .asScala
-          .toList
-          .filter((p: Path) => Files.isRegularFile(p) && p.getFileName.toString == "spec.md" && keep(p))
-          .sortBy(_.toString)
-      }
-    catch case NonFatal(_) => Nil // danger-scan:allow degraded-discovery — a failed find is "no spec files"
+      Right(
+        Using.resource(Files.walk(root)) { walk =>
+          walk
+            .iterator()
+            .asScala
+            .toList
+            .filter((p: Path) => Files.isRegularFile(p) && p.getFileName.toString == "spec.md" && keep(p))
+            .sortBy(_.toString)
+        }
+      )
+    catch
+      case NonFatal(e) => // danger-scan:allow degraded-fact — a failed find is could-not-determine, not "no spec files"
+        Left(s"could not enumerate spec files under $root: ${e.getMessage}")
 
   /** A finding as the predecessor's text line: `FAIL F7 line 30: msg`. */
   private def findingText(f: CheckOutcome): String = f match
@@ -667,12 +676,15 @@ object SpecLintCmd:
               "(expected <change>/specs/ or openspec/changes/)"
           SubcommandWiring.emitStderr(s"spec-lint: $msg\n")
           Outcome.Undetermined(msg)
-        case Some(Nil) =>
+        case Some(Left(reason)) =>
+          SubcommandWiring.emitStderr(s"spec-lint: $reason\n")
+          Outcome.Undetermined(reason)
+        case Some(Right(Nil)) =>
           SubcommandWiring.emitStdout(
             s"spec-lint: no spec files to lint under ${parsed.target}\n"
           )
           Outcome.Ran(0)
-        case Some(specs) => runSpecs(specs, context, parsed, artifactTracked)
+        case Some(Right(specs)) => runSpecs(specs, context, parsed, artifactTracked)
 
   /**
    * Lint every discovered spec and emit findings in the predecessor's
@@ -782,64 +794,83 @@ object ChainStateCmd:
           SubcommandWiring.emitStderr("chain-state: --baseline is required\n")
           Outcome.Finding("--baseline is required")
         else
-          // Read the ledger file — an unreadable ledger is undetermined,
-          // never a silently zero measurement.
-          SubcommandWiring.readLedgerFile(ledgerFile) match
-            case Outcome.Undetermined(reason) =>
+          // Fact measurement runs FIRST (the predecessor enumerates specs
+          // and runs spec-lint before the ledger read), so the per-spec
+          // baseline map is known when the ledger read's failure mode is
+          // classified below.
+          prepareInputs(
+            Paths.get(changeDir),
+            change,
+            baseline,
+            specFilter,
+            env,
+            ledgerFile,
+            emitDiagnostics = true
+          ) match
+            case Left(reason) =>
               emitUndetermined(change, baseline, reason)
-            case Outcome.Finding(msg) =>
-              Outcome.Finding(msg)
-            case Outcome.Ran(rows) =>
-              // Validate every row — a corrupt ledger is Undetermined, not
-              // a silently truncated ledger with invalid rows dropped.
-              val validated: Either[String, List[LedgerRecord]] =
-                rows.foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
-                  case (Left(err), _) => Left(err)
-                  case (Right(acc), v) =>
-                    Validator.validate(v) match
-                      case Right(r) => Right(r :: acc)
-                      case Left(viol) =>
-                        Left(s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}")
-                }
-              validated match
-                case Left(err) =>
-                  emitUndetermined(change, baseline, err)
-                case Right(recordsRev) =>
-                  val records: List[LedgerRecord] = recordsRev.reverse
-                  val ledger: Ledger.LedgerData   = Ledger.fromRecords(records)
-                  prepareInputs(
-                    Paths.get(changeDir),
-                    change,
-                    baseline,
-                    specFilter,
-                    env,
-                    ledgerFile,
-                    emitDiagnostics = true
-                  ) match
-                    case Left(reason) =>
-                      emitUndetermined(change, baseline, reason)
-                    case Right(inputs) =>
-                      ChainState.compute(
-                        inputs.lints,
-                        ledger,
-                        inputs.extracted,
-                        inputs.specBaselines,
-                        inputs.effectiveBaseline,
-                        inputs.resolvedBaseline,
-                        change,
-                        inputs.artifactUnchanged
-                      ) match
-                        case Left(u) =>
-                          emitUndetermined(u.change, baseline, u.reason)
-                        case Right(report) =>
-                          val rendered: String = StdoutRenderer[ChainStateReport].render(report)
-                          SubcommandWiring.emitStdout(rendered + "\n")
-                          if report.unresolved.isEmpty && report.unmappedObligations.isEmpty then Outcome.Ran(0)
-                          else
-                            Outcome.Finding(
-                              s"chain-state: ${report.unresolved.length} unresolved, " +
-                                s"${report.unmappedObligations.length} unmapped obligation(s)"
-                            )
+            case Right(inputs) =>
+              // Read + validate the ledger file. The predecessor reads it
+              // ONCE PER MAPPED SPEC and once unfiltered: with a non-empty
+              // baseline map a failed per-spec read is traced and skipped
+              // (the spec's requirements report undischarged — absence of
+              // evidence), so a missing/corrupt ledger there is tolerated,
+              // never silently zero and never undetermined. With an EMPTY
+              // map a single failed read IS undetermined.
+              val ledgerRead: Either[String, Ledger.LedgerData] =
+                SubcommandWiring.readLedgerFile(ledgerFile) match
+                  case Outcome.Undetermined(reason) => Left(reason)
+                  case Outcome.Finding(msg)         => Left(msg)
+                  case Outcome.Ran(rows)            =>
+                    // Validate every row — a corrupt ledger is not a
+                    // silently truncated ledger with invalid rows dropped.
+                    rows
+                      .foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
+                        case (Left(err), _) => Left(err)
+                        case (Right(acc), v) =>
+                          Validator.validate(v) match
+                            case Right(r) => Right(r :: acc)
+                            case Left(viol) =>
+                              Left(
+                                s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}"
+                              )
+                      }
+                      .map((recordsRev: List[LedgerRecord]) => Ledger.fromRecords(recordsRev.reverse))
+              ledgerRead match
+                case Left(reason) if inputs.specBaselines.nonEmpty =>
+                  SubcommandWiring.emitStderr(
+                    s"chain-state: ledger read failed ($reason); per-spec baseline map present — " +
+                      "treating the spec's rows as unread (undischarged)\n"
+                  )
+                  emitReport(
+                    ChainState.compute(
+                      inputs.lints,
+                      Ledger.fromRecords(Nil),
+                      inputs.extracted,
+                      inputs.specBaselines,
+                      inputs.effectiveBaseline,
+                      inputs.resolvedBaseline,
+                      change,
+                      inputs.artifactUnchanged
+                    ),
+                    baseline
+                  )
+                case Left(reason) =>
+                  emitUndetermined(change, baseline, reason)
+                case Right(ledger) =>
+                  emitReport(
+                    ChainState.compute(
+                      inputs.lints,
+                      ledger,
+                      inputs.extracted,
+                      inputs.specBaselines,
+                      inputs.effectiveBaseline,
+                      inputs.resolvedBaseline,
+                      change,
+                      inputs.artifactUnchanged
+                    ),
+                    baseline
+                  )
 
   /**
    * Flags that consume a following value; `--artifacts` and
@@ -876,6 +907,28 @@ object ChainStateCmd:
     loop(args.toList, Map.empty)
 
   /**
+   * Emit a completed `ChainState.compute` result: the undetermined report
+   * on `Left`, else the contract-conformant JSON report — `Ran(0)` only
+   * when nothing is unresolved and nothing is unmapped.
+   */
+  private def emitReport(
+    computed: Either[ChainStateUndetermined, ChainStateReport],
+    baseline: String
+  ): Outcome[Int] =
+    computed match
+      case Left(u) =>
+        emitUndetermined(u.change, baseline, u.reason)
+      case Right(report) =>
+        val rendered: String = StdoutRenderer[ChainStateReport].render(report)
+        SubcommandWiring.emitStdout(rendered + "\n")
+        if report.unresolved.isEmpty && report.unmappedObligations.isEmpty then Outcome.Ran(0)
+        else
+          Outcome.Finding(
+            s"chain-state: ${report.unresolved.length} unresolved, " +
+              s"${report.unmappedObligations.length} unmapped obligation(s)"
+          )
+
+  /**
    * Emit the undetermined report on stdout and the diagnostic on stderr —
    * the `UNDETERMINED —` marker is written HERE, exactly once; the reason
    * field carries no marker (it is data, not a diagnostic line).
@@ -901,7 +954,7 @@ object ChainStateCmd:
   final private[cli] case class ChainStateInputs(
     extracted: RequirementSet,
     lints: Map[String, Outcome[LintReport]],
-    specBaselines: Map[String, String],
+    specBaselines: Map[String, List[String]],
     effectiveBaseline: String,
     resolvedBaseline: String,
     artifactUnchanged: (String, String) => Boolean
@@ -929,68 +982,80 @@ object ChainStateCmd:
     if !Files.isDirectory(specsDir) then
       Left(s"no spec documents found under $specsDir; cannot determine bound/resolved")
     else
-      val discovered: List[Path] = SpecLintCmd.findSpecs(specsDir, _ => true)
-      val selected: Either[String, List[Path]] = specFilter match
-        case Some(s) =>
-          discovered.filter((p: Path) => p.getParent.getFileName.toString == s) match
-            case Nil =>
-              Left(s"no spec document named '$s' under $specsDir; cannot determine bound/resolved")
-            case keep => Right(keep)
-        case None => Right(discovered)
-      selected match
-        case Left(reason) => Left(reason)
-        case Right(paths) =>
-          val named: Either[String, List[RequirementExtractor.NamedSpec]] =
-            paths.foldLeft[Either[String, List[RequirementExtractor.NamedSpec]]](Right(Nil)) { (acc, p) =>
-              acc.flatMap { (specs: List[RequirementExtractor.NamedSpec]) =>
-                try
-                  val text: String = Files.readString(p, StandardCharsets.UTF_8)
-                  Right(
-                    specs :+ RequirementExtractor.NamedSpec(
-                      p.getParent.getFileName.toString,
-                      SpecDocumentParser.parse(p.toString, text)
-                    )
-                  )
-                catch
-                  case NonFatal(e) => // danger-scan:allow degraded-fact — unreadable spec is undetermined, not skipped
-                    Left(s"could not read $p: ${e.getMessage}")
-              }
-            }
-          named match
+      SpecLintCmd.findSpecs(specsDir, _ => true) match
+        case Left(reason) => Left(s"$reason; cannot determine bound/resolved")
+        case Right(discovered) =>
+          val selected: Either[String, List[Path]] = specFilter match
+            case Some(s) =>
+              discovered.filter((p: Path) => p.getParent.getFileName.toString == s) match
+                case Nil =>
+                  Left(s"no spec document named '$s' under $specsDir; cannot determine bound/resolved")
+                case keep => Right(keep)
+            case None => Right(discovered)
+          selected match
             case Left(reason) => Left(reason)
-            case Right(namedSpecs) =>
-              val (specBaselines, effectiveBaseline, resolvedBaseline): (Map[String, String], String, String) =
-                resolveBaselines(changeDir, baselineArg, emitDiagnostics)
-              val (exportJson, diagnostics): (Option[ujson.Value], List[String]) =
-                graphExport(changeDir, change, env)
-              if emitDiagnostics then diagnostics.foreach((d: String) => SubcommandWiring.emitStderr(d + "\n"))
-              val extracted: RequirementSet =
-                RequirementExtractor.extract(namedSpecs, exportJson)
-              // spec-lint runs exactly as the predecessor invokes it:
-              // `--artifacts` always on, `git ls-files` at the caller's
-              // repo root deciding resolvability.
-              val root: Path = SpecLintCmd.repoRoot
-              val context: LintContext =
-                RepositoryFactsReader.readLintContext(root, SpecLintCmd.userHome(env))
-              val tracked: Set[String] = SpecLintCmd
-                .gitOut(root, List("ls-files"))
-                .map((out: String) => out.linesIterator.toSet)
-                .getOrElse(Set.empty)
-              val artifactTracked: String => Boolean =
-                (base: String) => tracked.exists(_.contains(base))
-              val lints: Map[String, Outcome[LintReport]] = namedSpecs.map { ns =>
-                ns.name -> SpecLintEngine.lint(ns.document, context, checkArtifacts = true, artifactTracked)
-              }.toMap
-              Right(
-                ChainStateInputs(
-                  extracted,
-                  lints,
-                  specBaselines,
-                  effectiveBaseline,
-                  resolvedBaseline,
-                  forgivePredicate(ledgerFile)
-                )
-              )
+            case Right(paths) =>
+              val named: Either[String, List[RequirementExtractor.NamedSpec]] =
+                paths.foldLeft[Either[String, List[RequirementExtractor.NamedSpec]]](Right(Nil)) { (acc, p) =>
+                  acc.flatMap { (specs: List[RequirementExtractor.NamedSpec]) =>
+                    try
+                      val text: String = Files.readString(p, StandardCharsets.UTF_8)
+                      Right(
+                        specs :+ RequirementExtractor.NamedSpec(
+                          p.getParent.getFileName.toString,
+                          SpecDocumentParser.parse(p.toString, text)
+                        )
+                      )
+                    catch
+                      case NonFatal(e) => // danger-scan:allow unreadable-spec-fact — Left(reason), never dropped
+                        Left(s"could not read $p: ${e.getMessage}")
+                  }
+                }
+              named match
+                case Left(reason)      => Left(reason)
+                case Right(namedSpecs) =>
+                  // Fact measurement — baseline resolution, graph export,
+                  // extraction, spec-lint — is the predecessor's bash
+                  // pipeline; a crash there is `die_undetermined` (exit 2),
+                  // never a finding. A throw here maps to Left, not a JVM
+                  // escape (which would exit 1 — the wrong direction).
+                  try
+                    val (specBaselines, effectiveBaseline, resolvedBaseline)
+                      : (Map[String, List[String]], String, String) =
+                      resolveBaselines(changeDir, baselineArg, emitDiagnostics)
+                    val (exportJson, diagnostics): (Option[ujson.Value], List[String]) =
+                      graphExport(changeDir, change, env)
+                    if emitDiagnostics then diagnostics.foreach((d: String) => SubcommandWiring.emitStderr(d + "\n"))
+                    val extracted: RequirementSet =
+                      RequirementExtractor.extract(namedSpecs, exportJson)
+                    // spec-lint runs exactly as the predecessor invokes it:
+                    // `--artifacts` always on, `git ls-files` at the caller's
+                    // repo root deciding resolvability.
+                    val root: Path = SpecLintCmd.repoRoot
+                    val context: LintContext =
+                      RepositoryFactsReader.readLintContext(root, SpecLintCmd.userHome(env))
+                    val tracked: Set[String] = SpecLintCmd
+                      .gitOut(root, List("ls-files"))
+                      .map((out: String) => out.linesIterator.toSet)
+                      .getOrElse(Set.empty)
+                    val artifactTracked: String => Boolean =
+                      (base: String) => tracked.exists(_.contains(base))
+                    val lints: Map[String, Outcome[LintReport]] = namedSpecs.map { ns =>
+                      ns.name -> SpecLintEngine.lint(ns.document, context, checkArtifacts = true, artifactTracked)
+                    }.toMap
+                    Right(
+                      ChainStateInputs(
+                        extracted,
+                        lints,
+                        specBaselines,
+                        effectiveBaseline,
+                        resolvedBaseline,
+                        forgivePredicate(ledgerFile)
+                      )
+                    )
+                  catch
+                    case NonFatal(e) => // danger-scan:allow crash-is-undetermined — exits 2, never a finding
+                      Left(s"could not measure chain-state facts: ${e.getMessage}")
 
   /**
    * The implementation-progress.md baseline map, ported from the
@@ -1007,7 +1072,7 @@ object ChainStateCmd:
     changeDir: Path,
     baselineArg: String,
     emitDiagnostics: Boolean
-  ): (Map[String, String], String, String) =
+  ): (Map[String, List[String]], String, String) =
     // REPO is derived from the change dir; the resolution itself runs
     // there or, when the change dir is outside any repository, in the
     // process cwd — the predecessor's `cd ""` is a no-op that keeps cwd.
@@ -1017,39 +1082,60 @@ object ChainStateCmd:
     else
       val lines: List[String] =
         try Files.readString(progressFile, StandardCharsets.UTF_8).linesIterator.toList
-        catch
-          case NonFatal(_) => Nil // danger-scan:allow degraded-fact — unreadable progress file means no baselines
+        catch case NonFatal(_) => Nil // danger-scan:allow degraded-fact — unreadable progress file means no baselines
       // The awk's two states: the `## Spec N:` block being walked and the
-      // `### Baseline` paragraph inside it. `inBaseline` survives any
-      // non-blank, non-SHA, non-`## Spec` line — the predecessor's own
-      // (loose) state machine, ported exactly.
+      // `### Baseline` paragraph inside it. The predecessor's rules run IN
+      // SEQUENCE (awk semantics — a `## Spec` heading does not itself clear
+      // `in_baseline`; `### Baseline`'s `next` skips the remaining rules;
+      // a `SHA `-marked line captures the first `` `hex` `` and always ends
+      // the paragraph; a blank line ends it; a non-`## Spec` `## ` heading
+      // ends it). Ported rule-for-rule.
       val specHeadRe: scala.util.matching.Regex = "^## Spec [0-9]".r
       val specNameRe: scala.util.matching.Regex = "[0-9]+[: ]+\\(?([a-zA-Z0-9_-]+)".r
       val shaRe: scala.util.matching.Regex      = "`([a-f0-9]{7,40})`".r
       final case class BaselineAcc(
         currentSpec: String,
         inBaseline: Boolean,
-        map: Map[String, String]
+        map: Map[String, List[String]]
       )
       val parsed: BaselineAcc = lines.foldLeft(BaselineAcc("", false, Map.empty)) { (acc, line) =>
-        if specHeadRe.findPrefixOf(line).isDefined then
-          BaselineAcc(
-            specNameRe.findFirstMatchIn(line).map(_.group(1)).getOrElse(""),
-            inBaseline = false,
-            acc.map
-          )
-        else if line.startsWith("### Baseline") then acc.copy(inBaseline = true)
-        else if acc.inBaseline && shaRe.findFirstMatchIn(line).isDefined then
-          val sha: String =
-            shaRe.findFirstMatchIn(line).map(_.group(1)).getOrElse("")
-          BaselineAcc(
-            acc.currentSpec,
-            inBaseline = false,
-            if acc.currentSpec.nonEmpty then acc.map + (acc.currentSpec -> sha)
-            else acc.map
-          )
-        else if acc.inBaseline && line.isEmpty then acc.copy(inBaseline = false)
-        else acc
+        // /^## Spec [0-9]/ — updates current_spec only when the name match
+        // succeeds; in_baseline is untouched (the awk has no clearing here).
+        val afterSpecHead: BaselineAcc =
+          if specHeadRe.findPrefixOf(line).isDefined then
+            acc.copy(
+              currentSpec = specNameRe.findFirstMatchIn(line).map(_.group(1)).getOrElse(acc.currentSpec)
+            )
+          else acc
+        if line.startsWith("### Baseline") then afterSpecHead.copy(inBaseline = true)
+        else
+          // in_baseline && /SHA `/ — first `` `hex` `` wins; the paragraph
+          // ends whether or not a hex was found or recorded.
+          val afterSha: BaselineAcc =
+            if afterSpecHead.inBaseline && line.contains("SHA `") then
+              val sha: String =
+                shaRe.findFirstMatchIn(line).map(_.group(1)).getOrElse("")
+              BaselineAcc(
+                afterSpecHead.currentSpec,
+                inBaseline = false,
+                // The predecessor's TSV appends one line per section, so a
+                // spec with several `## Spec` blocks is read under EACH of
+                // its baselines — rows qualify under any of them.
+                if sha.nonEmpty && afterSpecHead.currentSpec.nonEmpty then
+                  afterSpecHead.map.updated(
+                    afterSpecHead.currentSpec,
+                    afterSpecHead.map.getOrElse(afterSpecHead.currentSpec, Nil) :+ sha
+                  )
+                else afterSpecHead.map
+              )
+            else afterSpecHead
+          // in_baseline && /^$/ — an EMPTY line ends the paragraph.
+          val afterBlank: BaselineAcc =
+            if afterSha.inBaseline && line.isEmpty then afterSha.copy(inBaseline = false)
+            else afterSha
+          // /^## / && !/^## Spec/ — a non-Spec level-2 heading ends the paragraph.
+          if line.startsWith("## ") && !line.startsWith("## Spec") then afterBlank.copy(inBaseline = false)
+          else afterBlank
       }
       // EFFECTIVE_BASELINE: the first SHA match in the file (the old
       // single-baseline approach), else the gate's --baseline.
@@ -1072,7 +1158,7 @@ object ChainStateCmd:
       // resolved SHAs (the predecessor's `git rev-parse` with the `||`
       // fallback).
       (
-        parsed.map.map((spec, sha) => spec -> resolveSha(repo, sha)),
+        parsed.map.map((spec, shas) => spec -> shas.map((sha: String) => resolveSha(repo, sha))),
         rawEffective,
         resolveSha(repo, rawEffective)
       )
@@ -1122,10 +1208,20 @@ object ChainStateCmd:
               (None, List(s"chain-state: openspec-graph.py export failed (exit $code); $degraded"))
             else
               try
-                (
-                  Some(ujson.read(out)),
-                  List("chain-state: fact extraction via openspec-graph.py export (graph)")
-                )
+                val parsed: ujson.Value = ujson.read(out)
+                // The `.obligations` usability gate runs BEFORE the path
+                // diagnostic — a parseable but unusable export takes the
+                // degraded path and is announced as such, never as graph.
+                if RequirementExtractor.usableExport(parsed) then
+                  (
+                    Some(parsed),
+                    List("chain-state: fact extraction via openspec-graph.py export (graph)")
+                  )
+                else
+                  (
+                    None,
+                    List(s"chain-state: openspec-graph.py export produced invalid JSON; $degraded")
+                  )
               catch
                 case NonFatal(_) => // danger-scan:allow typed-catch — unparseable export output falls back
                   (
@@ -1161,7 +1257,7 @@ object ChainStateCmd:
       val out: String =
         new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8).trim
       if p.waitFor() == 0 then out
-      else List(out, sha).filter(_.nonEmpty).distinct.mkString("\n")
+      else List(out, sha).filter(_.nonEmpty).mkString("\n")
     catch
       case NonFatal(_) => // danger-scan:allow fail-open — a non-git cwd passes the literal through
         sha

@@ -859,7 +859,7 @@ spec's concept-registry clause, no `openspec/concepts/` file changes.
 
 ## Spec 5: chain-state-attribution
 
-### Status: IN PROGRESS — Step 3 APPROVED 2026-09-17; verification rings running
+### Status: IN PROGRESS — Steps 1–3 APPROVED; Rings 0–6 + Ring 8 complete; pending checkpoint + N3 human sign-off
 
 ### Baseline
 - SHA: `271a7560f494fbafd4555bc1e3c335c2890e9e92` — same commit as spec
@@ -1206,11 +1206,57 @@ probatio-cli, main + test).
 bridge — `VerifiedKernelBridgeSpec` currently bridges the OLD kernel
 shape only.
 
+### Verification Ring Results
+| Ring | Result | Evidence |
+|------|--------|----------|
+| Ring 0 — compile + exhaustiveness | PASS (re-verified 2026-09-17 post-R8 fixes) | `sbt "probatio-core/Test/compile" "probatio-cli/Test/compile"` clean under `-Werror` + `PatternMatchExhaustivity:e`; the newly-reachable `UnresolvedReason.Unattributable` is handled in every match (any unhandled case fails compilation). Post-fix: `SpecDocument.chainRows`/`chainSepSeen` accumulator + `Either[String, List[Path]]` discovery compile clean |
+| Ring 1 — scalafmt + scalafix + danger-scan | PASS (re-verified 2026-09-17 post-R8 fixes) | scalafmt reformatted 3 files (`RequirementExtractor`, `ChainStateReport`, `SubcommandEntrypoints`) — now clean. `scalafixAll` (invoked with `--check`, which ran in WRITE mode) rewrote imports repo-wide and broke `adk4s-orchestration` — RemoveUnused dropped an import needed for inline Iron `Not[Reserved]` resolution in `Chain.scala`; all non-probatio rewrites reverted, compile re-verified. `SpikeMain`'s `Leftover` removal kept (genuinely unused; `probatio-spike/compile` green). probatio files were already OrganizeImports-clean. Baseline linter hits: 4 pre-existing `NoSystemGetenv` in untouched `GrantWaiver`/`PredecessorCheck` doc comments (same tolerance as specs 1–4). `danger-scan.sh.predecessor.bak 51bd0bc` (spec-4+5 diff scope): **OK** — 8 same-line `danger-scan:allow` justifications: 4 spec-5 catch-alls all rejecting to `None`/`Nil`/`false` (safe direction) + 4 spec-4 kernel catch-alls (`=> false`/`None()` fail-closed; `=> true` unreachable under the equal-length fold invariant). NOTE: scalafmt's `align` preset detaches `body // danger-scan:allow` comments off the `case` line when it pushes past maxColumn — the stable form is `case _ => // danger-scan:allow …` with the body on the next line |
+| Ring 2 — dependency lint | PASS (re-verified 2026-09-17 post-R8 fixes) | `sbt "probatio-core/dependencyLint" "probatio-cli/dependencyLint"` — R-ARCH1 classpath clean, no forbidden dependencies |
+| Ring 3 — suites + bats parity | PASS (re-verified 2026-09-17 post-R8 fixes) | `probatio-core/test` **418/418** (+4 `chainRows` extraction tests), `probatio-cli/test` **328/328** (+3 R8 regression tests: unlistable specs, unusable graph export, corrupt-ledger baseline-map tolerance). `probatioOracleDiff` in-suite: **VERDICT PROCEED — `complete=true hasRegression=false`** — exact per-file parity retained (`chain-state.bats` 17/17, `discharge-fidelity.bats` 6/6). `ChainStateParitySpec` corpus extended with 4 adversarial fixtures (per-spec baseline map, `## ` baseline-termination, `SHA \`` gate, unresolvable-baseline doubling) — predecessor/port report parity on all |
+| Ring 4 — report contract | PASS (re-verified 2026-09-17 post-R8 fixes) | `chain-state-report-contract.jq` validated via `jq -e -f` inside `ChainStateCmdConformanceSpec` — 7/7 green; undetermined report emitted exactly once on discovery faults |
+| Ring 8 — adversarial review (1st run) | **FAIL — 3 findings** | Fresh-context review found 6 defects: F1 `findSpecs` swallowed walk failures (`Nil` on `NonFatal`); F2 degraded extraction reused spec-lint's `obligationRows` instead of chain-state's own awk row set; F3 graph diagnostic emitted before the `.obligations` usability gate; F4 `resolveSha` `.distinct` collapsed the predecessor's `<sha>\n<sha>` doubling on `rev-parse` failure; F5 `resolveBaselines` missing two awk arms (`^## ` non-spec heading clears `in_baseline`; capture gated on `SHA \`` literal); F6 ledger read before fact preparation + baseline-map tolerance asymmetry. Fixes applied (see below); Rings 0–4 re-verified; re-run pending |
+| Ring 8 — adversarial review (re-run) | **PARTIAL — N1/N2 dangerous + N3–N7 edge divergences** | Fresh-context re-review VERIFIED-FIXED all six F-findings, then found: **N1** `parseLedgerLinesLoop` validated via `validateFull` (v ≥ 1) but never reimplemented `ledger.sh read`'s `v != SUPPORTED_V` refusal — a v:2 row was admitted as discharge evidence → **fixed** (version refusal after contract check, `SubcommandWiring.scala:111`). **N2** `prepareInputs` fact measurement unguarded — a lint/extraction throw escaped as exit-1 finding vs the predecessor's die_undetermined → **fixed** (`NonFatal → Left`, `SubcommandEntrypoints.scala:1056`). **N5** graph obligation `artifact` singular-field fallback fabricated an `artifacts` set → **fixed** (`.artifacts[]?` only). **N6** degraded unmapped token used `[^']+` where the predecessor's sed is greedy to the last `' does not resolve` → **fixed** (`f9ArtifactTokenSed`; `[^']+` kept for the graph join, which mirrors spec-lint's own field). **N7** baseline `Map` last-wins vs predecessor's per-section TSV reads → **fixed** (`Map[String, List[String]]`, rows qualify under ANY section baseline). **N3** (spec-name keying vs predecessor's path keying): REAL but requires a `Requirement` path discriminator through the approved type contract (27+ construction sites) — divergence needs nested duplicate-named spec dirs under `specs/`; recorded as **known limitation for checkpoint human review**. **N4** (title-keyed `requirementRows`): VERIFIED-EQUIVALENT — F7 and bound-verdicts are per-title, so duplicate titles get identical verdicts either way. Formal-contract FAIL = scheduled Ring 6 scope (chainStateFold + bridge + kernel Manual-row reconcile). Tests added: v:2-row undetermined (cmd), apostrophe-token sed (core), singular-artifact no-fallback (core), duplicate-section-baseline parity fixture. Suites re-verified: 420 core + 329 cli green, oracle PROCEED/no-regression |
+| Ring 5 — Stryker4s mutation testing | **PASS — 91.41% total / 92.35% covered (threshold 80)** | `stryker4s.conf` retargeted to `ChainState`/`ChainStateReport`/`RequirementExtractor` under `ChainStateSpec`+`ChainStateAttributionSpec`+`ChainStateAttributionTypeContract`. 206 mutants; first run 47.98%/66.43% → +21 pinpoint tests (`of`/`fromCounts` rejection battery, wire-codec round-trip+rejections, exists-vs-forall F9/obls joins, Finding/missing-lint undetermined texts, unrecoverable-token placeholder, graph source/artifact/line extraction, `usableExport` gate, `FactSource.asString`). Final: 17 undetected, all dispositioned — 8 redundant-guard equivalents (the three reason-bucket equations + length law are mutually implying), 5 `sys.error` message-text mutants on covered throwing paths, 1 dead `getOrElse` default (`chainRows` admits only non-empty-cell rows), 1 boundary identity (`idx>=0` vs `>0` equal at idx∈{-1,0}), 2 defensive NoCoverage (internal-error message + non-object entry input). Report at `workflow/core/target/stryker4s-report/` |
+| Ring 8 — adversarial review (re-run 2) | **PARTIAL → PROCEED to Ring 5** | Fresh-context review: all dangerous divergences closed — N1/N2/N5/N6/N7 VERIFIED-FIXED with code+test evidence, F1–F6 re-verified. All 5 requirements PASS; properties PASS except verdict-parity PARTIAL on remaining edges. New edge finding **D-new-1**: graph-mode bound check was per-spec but the predecessor greps a FLAT `F7_TITLES` set across all specs (`chain-state.sh.predecessor.bak:359-362, 383`) — a title unbound in ANY spec marks it unbound everywhere declared → **fixed** (`ChainState.scala:152-172` flat `flatUnbound` for `FactSource.Graph`; degraded stays per-spec path+title per `:554`; regression test asserts both arms). Remaining declared edges: **N3** spec-name keying (deferred to checkpoint human review — needs `Requirement` path discriminator through approved contract), undetermined reason-text projection (documented non-parity surface), graph-mode corpus gap (recommended: one graph-mode parity fixture at checkpoint). D-new-4 (`ledger verify` scope) flagged as out-of-chain-state-scope. Oracle tampering: none. Kernel staleness = scheduled Ring 6 scope, not a blocker finding |
+| Ring 6 — Stainless formal verification | **PASS — 325/325 VCs valid** | `ChainStateKernel` extended per the spec's formal contract: `chainStateFold(total, verdicts, discharged, unattributable)` returning `(bound, resolved, dis, unresolved)` — require: verdict codes ∈ {0,1,2}, index lists ⊆ [0,total); ensure: `dis ≤ resolved ≤ bound ≤ total`, `unresolved.size == total − dis`, and `rangeClause` — every unattributable index is absent from effective discharge and present in `unresolved`. **Manual-ring reconcile**: `matchesBaselineChange` no longer filters `isNonManual` — `ledger.sh read` has no ring filter, so Manual rows are legitimate discharge evidence (dead helper removed). **Proof shape**: first design carried `unattributable` through the fold with moving-bound predicates → Stainless stalled at 191/337 >20min (documented no-per-VC-timeout trap — killed); redesigned to precompute `disEff = filterOut(discharged, unattributable)` and prove the clause separately via `rangeClause`/`clauseFrom`/`filteredNotBanned`/`absentIsUnresolved`; 1 invalid VC (`rangeClause` measure `hi − k` could go negative) → `require(k <= hi)` added; final run **325 valid / 0 invalid / 0 unknown**, nativez3. **Latent scalafmt defect found + fixed**: `RedundantBraces` had stripped `{ !expr }.ensuring` → `!expr\n.ensuring`, which parses `.ensuring` INSIDE the unary `!` → "Unexpected `ensuring`" extraction failure at `isDischargedEmpty` + `LedgerValidatorKernel.mutualExclusivityLaw` — i.e. the committed state was unverifiable. Fixed with `(!expr).ensuring` parens form (verified scalafmt-stable; `// format: off` markers removed — rewrite rules ignore them). `VerifiedKernelBridgeSpec` extended to non-empty inputs: verdict-code mapping, manual-row discharge, fold-count agreement vs production `compute` — 12/12 green |
+
+### Concept Delta
+
+`openspec/concept-inventory.md` updated: 6 new rows (`FactSource`,
+`ExtractedObligation`, `RequirementSet`, `RequirementExtractor`,
+`ChainState` — first inventory entry, `ChainStateKernel.chainStateFold`)
+plus in-place annotations on the reshaped rows (`SpecDocument` +`chainRows`,
+`UnresolvedEntry`/`ChainStateReport` smart constructors, `UnresolvedReason`
+`Unattributable` now reachable). Per the spec's concept-registry clause, no
+`openspec/concepts/` file changes.
+
+### Known Limitations
+
+- **N3 — spec-name keying vs predecessor path keying**: `Requirement` keys
+  on `(specName, title)`; the predecessor keys degraded-mode discharge on
+  `spec_path\ttitle`. Divergence requires nested duplicate-named spec dirs
+  under `specs/`; exact parity needs a path discriminator through the
+  approved type contract (27+ construction sites). **Declared for checkpoint
+  human review.**
+- **Predecessor `SHA \`` baseline gate never fires on real progress files**:
+  the real `### Baseline` format is `- SHA: \`sha\`` (colon before the
+  backticked value); the awk gate `/SHA \`/` requires no colon. The
+  `specBaselines` map is therefore empty in production; the port faithfully
+  implements both paths (parity fixtures exercise the non-empty arm).
+- **Undetermined reason-text projection**: port projects structured
+  undetermined reasons where the predecessor emits raw diagnostics —
+  documented non-parity surface (Ring 8 accepted).
+- **Graph-mode corpus gap**: `ChainStateParitySpec` fixtures exercise the
+  degraded path; a graph-mode parity fixture was recommended by Ring 8 for
+  checkpoint consideration.
+- `probatio-cli` tests run with `Test / parallelExecution := false` —
+  required while any suite mutates global streams (carried from spec 4).
+
 ### Step Progress
 - [x] Step 1 — Typed contract (human gate) — APPROVED
 - [x] Step 2 — Test oracle (human gate) — APPROVED
 - [x] Step 3 — Implementation — all suites green; APPROVED 2026-09-17
-- [ ] Ring 0–6, 8 + concept-delta + checkpoint
+- [ ] Ring 0–6, 8 + concept-delta + checkpoint — rings + concept-delta COMPLETE (see table); checkpoint PENDING N3 human sign-off
 
 ---
 

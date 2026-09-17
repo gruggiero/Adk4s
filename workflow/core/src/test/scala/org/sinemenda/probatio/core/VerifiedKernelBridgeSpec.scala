@@ -280,6 +280,213 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       "model: failed lint must yield Left (undetermined), never Right (clean report)"
     )
 
+  // ── 2b. chainStateFold bridge — non-empty generated inputs ─────────────
+  //
+  // `chainStateFold` is the spec-5 Ring-6 contract: verdicts as 0/1/2
+  // (unbound / bound / resolved), the ledger as a discharged index set,
+  // and the unreachable-obligation boundary as an unattributable index
+  // set. The bridge derives the kernel inputs by projecting a production
+  // `ChainState.compute` report: a requirement's verdict code is its
+  // unresolved reason (Unbound → 0; Unattributable/Unresolved → 1;
+  // Undischarged/Failed/absent → 2), the discharged set is the indices
+  // carrying no unresolved entry, and the unattributable set is the
+  // indices carrying Unattributable. It then asserts the fold's counts
+  // and unresolved index set agree with the production report exactly.
+  //
+  // spec: chain-state-attribution — Formal Contracts (Ring 6): chainStateFold
+
+  private def foldDoc(titles: List[String], name: String): SpecDocument =
+    SpecDocument(
+      name = name,
+      lines = Vector.empty,
+      requirements = titles.zipWithIndex.map { case (t, i) =>
+        RequirementBlock(t, i * 10 + 1, i * 10 + 9, true, false, 1, "")
+      },
+      properties = Nil,
+      temporals = Nil,
+      scenarios = Nil,
+      obligationRows = Nil,
+      dataRowCount = 0,
+      bridgeRowCount = 0,
+      hasProofObligations = true,
+      formalContractsContentLines = 0,
+      hasBehavioralConcepts = false,
+      artifactRows = Nil,
+      chainRows = Nil
+    )
+
+  private def foldLint(
+    titles: List[String],
+    requirementRows: Map[String, List[ObligationRow]],
+    findings: List[CheckOutcome] = Nil,
+    name: String = "s"
+  ): Outcome[LintReport] =
+    Outcome.Ran(
+      LintReport.fromRun(
+        foldDoc(titles, name),
+        findings,
+        Map.empty,
+        resolvedRows = requirementRows.values.flatten.toList.distinct,
+        unresolvableRows = Nil,
+        requirementRows = requirementRows,
+        artifactUnresolved = Some(Set.empty)
+      )
+    )
+
+  private def foldRow(line: Int, source: String): ObligationRow =
+    ObligationRow(line, 5, source, "", "", s"| | $source | | |")
+
+  private def foldObl(line: Int, text: String, claims: List[String]): ExtractedObligation =
+    ExtractedObligation("s", line, text, "a/b.scala", List("a/b.scala"), claims, unmappable = false)
+
+  private def foldReq(title: String): ChainState.Requirement =
+    ChainState.Requirement("s", title)
+
+  private def foldLedgerRow(obligation: String, exit: Int = 0, ring: Ring = Ring.R3): LedgerRecord =
+    LedgerRecord(1, "2026-09-17T00:00:00Z", "c", "s", ring, obligation, "a/b.scala", "sbt test", exit, "base0")
+
+  /**
+   * Run production compute on the scenario and the kernel fold on the
+   * projected indices, asserting count and index-set agreement.
+   */
+  private def assertFoldBridge(
+    reqs: List[ChainState.Requirement],
+    obligations: List[ExtractedObligation],
+    ledger: Ledger.LedgerData,
+    lint: Outcome[LintReport],
+    source: FactSource
+  ): Unit =
+    val set: RequirementSet =
+      RequirementSet(List("s"), reqs, obligations, source)
+    val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
+      ChainState.compute(
+        Map("s" -> lint),
+        ledger,
+        set,
+        Map.empty,
+        "base0",
+        "base0",
+        "c",
+        noForgive
+      )
+    val report: ChainStateReport = prodResult match
+      case Right(r)  => r
+      case Left(u)   => fail(s"production must produce a report, got undetermined: ${u.reason}")
+
+    // Project the production verdict onto kernel inputs.
+    val idxByTitle: Map[String, Int] = reqs.map(_.requirement).zipWithIndex.toMap
+    val reasonAt: Map[Int, UnresolvedReason] = report.unresolved.flatMap { (e: UnresolvedEntry) =>
+      idxByTitle.get(e.requirement).flatMap { (i: Int) => e.reasons.headOption.map(i -> _) }
+    }.toMap
+    val verdicts: ScalaList[BigInt] = reqs.indices.map { (i: Int) =>
+      reasonAt.get(i) match
+        case Some(UnresolvedReason.Unbound)                                 => BigInt(0)
+        case Some(UnresolvedReason.Unattributable | UnresolvedReason.Unresolved) => BigInt(1)
+        case _                                                              => BigInt(2)
+    }.toList
+    val dischargedIdx: ScalaList[BigInt] =
+      reqs.indices.filterNot(reasonAt.contains).map(BigInt(_)).toList
+    val unattrIdx: ScalaList[BigInt] =
+      reasonAt.collect { case (i, UnresolvedReason.Unattributable) => BigInt(i) }.toList
+
+    val kernelResult: (BigInt, BigInt, BigInt, stainless.collection.List[BigInt]) =
+      ChainStateKernel.chainStateFold(
+        BigInt(reqs.length),
+        scalaToStainlessList(verdicts),
+        scalaToStainlessList(dischargedIdx),
+        scalaToStainlessList(unattrIdx)
+      )
+    val kBound: BigInt    = kernelResult._1
+    val kResolved: BigInt = kernelResult._2
+    val kDis: BigInt      = kernelResult._3
+    val kUnresolved: stainless.collection.List[BigInt] = kernelResult._4
+
+    assertEquals(kBound, BigInt(report.bound), "kernel bound must equal production bound")
+    assertEquals(kResolved, BigInt(report.resolved), "kernel resolved must equal production resolved")
+    assertEquals(kDis, BigInt(report.discharged), "kernel dis must equal production discharged")
+    val kernelUnresolvedIdx: Set[Int] = stainlessListToScala(kUnresolved).map(_.toInt).toSet
+    val prodUnresolvedIdx: Set[Int]   = reasonAt.keySet
+    assertEquals(
+      kernelUnresolvedIdx,
+      prodUnresolvedIdx,
+      "kernel unresolved must be the exact index complement of production's unresolved entries"
+    )
+
+  test("bridge-chainstatefold-degraded — fold agrees with production on a mixed degraded scenario"):
+    // Alpha: unbound (no row names it). Beta: bound via ordinal row but
+    // unmappable → unattributable. Gamma: resolved + green row → discharged.
+    // Delta: resolved + red row → failed.
+    val titles: List[String]       = List("Alpha", "Beta", "Gamma", "Delta")
+    val lint: Outcome[LintReport]  = foldLint(
+      titles,
+      Map(
+        "Beta"  -> List(foldRow(21, "Requirement 2")),
+        "Gamma" -> List(foldRow(31, "Requirement: Gamma")),
+        "Delta" -> List(foldRow(41, "Requirement: Delta"))
+      )
+    )
+    val obligations: List[ExtractedObligation] = List(
+      foldObl(21, "obl beta", Nil),
+      foldObl(31, "obl gamma", List("Gamma")),
+      foldObl(41, "obl delta", List("Delta"))
+    )
+    val ledger: Ledger.LedgerData = Ledger.fromRecords(
+      List(foldLedgerRow("obl gamma"), foldLedgerRow("obl delta", exit = 1))
+    )
+    assertFoldBridge(
+      List("Alpha", "Beta", "Gamma", "Delta").map(foldReq),
+      obligations,
+      ledger,
+      lint,
+      FactSource.Degraded
+    )
+
+  test("bridge-chainstatefold-graph — fold agrees with production on a graph-mode scenario"):
+    // Graph mode: a bound title with no mapped obligations is Unresolved
+    // (not Unattributable); an F9 artifact finding marks its obligation's
+    // requirement unresolved too.
+    val titles: List[String]      = List("Alpha", "Beta")
+    val lint: Outcome[LintReport] = foldLint(
+      titles,
+      Map(
+        "Alpha" -> List(foldRow(11, "Requirement: Alpha")),
+        "Beta"  -> List(foldRow(21, "Requirement: Beta"))
+      ),
+      findings = List(CheckOutcome.Fail(CheckId.F9, Some(21), "artifact 'a/b.scala' does not resolve"))
+    )
+    // Alpha is bound but has no claiming obligation → graph-mode
+    // Unresolved. Beta's obligation carries the F9 artifact → Unresolved.
+    val obligations: List[ExtractedObligation] = List(foldObl(21, "obl beta", List("Beta")))
+    assertFoldBridge(
+      titles.map(foldReq),
+      obligations,
+      Ledger.fromRecords(List.empty),
+      lint,
+      FactSource.Graph
+    )
+
+  test("bridge-chainstate-manual-ring — model admits Manual-ring rows like production"):
+    // Production: a Manual-ring row discharges (ledger.sh read has no
+    // ring filter). The model's isDischarged must agree — the kernel's
+    // matchesBaselineChange carries no ring check.
+    val req: ChainStateKernel.Requirement = ChainStateKernel.Requirement(BigInt(1), BigInt(7))
+    val rec: ChainStateKernel.LedgerRecord = ChainStateKernel.LedgerRecord(
+      spec = BigInt(1),
+      obligation = BigInt(7),
+      ring = ChainStateKernel.Manual,
+      change = BigInt(1),
+      baseline = BigInt(1)
+    )
+    assert(
+      ChainStateKernel.isDischarged(
+        req,
+        scalaToStainlessList(ScalaList(rec)),
+        BigInt(1),
+        BigInt(1)
+      ),
+      "model: a Manual-ring row matching change/baseline/spec/obligation must discharge"
+    )
+
   // ── 3. BannerEngineKernel bridge ────────────────────────────────────────
 
   /** Production banner facts with no install roots and all facts absent. */

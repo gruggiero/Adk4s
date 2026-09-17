@@ -114,6 +114,7 @@ object ChainStateParitySpec:
   final case class CorpusCase(
     name: String,
     fixtureDir: Path,
+    baselineArg: String,
     predStdout: String,
     predExit: Int,
     predNormalised: ujson.Value,
@@ -126,7 +127,9 @@ object ChainStateParitySpec:
   final private case class Fixture(
     name: String,
     specs: Map[String, String],
-    ledgerLines: List[String]
+    ledgerLines: List[String],
+    progress: Option[String] = None,
+    baselineArg: String = baseline
   )
 
   // ── fixture text (the bats shapes, verbatim) ─────────────────────────
@@ -174,8 +177,9 @@ object ChainStateParitySpec:
   private val unresolvedArtifact: String =
     "tests/totally-fake-nonexistent-fixture-artifact.bats"
 
-  private val baseline: String = "00d3de1"
-  private val change: String   = "fixture-change"
+  private val baseline: String     = "00d3de1"
+  private val fullBaseline: String = "00d3de1aa49141277dc4855a353f009fc7cc941a"
+  private val change: String       = "fixture-change"
 
   private def ledgerJson(
     spec: String,
@@ -351,6 +355,156 @@ object ChainStateParitySpec:
         ledgerJson("only", "obl 3", resolvesArtifact, exit = 1)
         // obl 4 has no row — undischarged.
       )
+    ),
+    // ── Ring-8 adversarial fixtures: the row-set and baseline divergences ──
+    // An empty Source cell — spec-lint's source check skips the row but
+    // its artifact pass still flags F9 there; chain-state's own awk row
+    // set admits it, so the finding lands in unmapped_obligations.
+    Fixture(
+      "empty-source-f9",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact) +
+          s"| empty-src obl | | manual | `$unresolvedArtifact` |\n"
+      ),
+      Nil
+    ),
+    // A comment Source cell — same path as the empty one.
+    Fixture(
+      "comment-source-f9",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact) +
+          s"| comment-src obl | <!-- note --> | manual | `$unresolvedArtifact` |\n"
+      ),
+      Nil
+    ),
+    // An Obligation-prefixed data row — spec-lint's content-based header
+    // exclusion drops it from ITS row set, but chain-state's structural
+    // exclusion admits it, so the row joins Solo Req's mapped set; with
+    // no ledger row for its obligation the requirement is undischarged.
+    Fixture(
+      "obligation-prefixed-row",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact) +
+          s"| Obligation-shaped row | Requirement: Solo Req | manual | `$resolvesArtifact` |\n"
+      ),
+      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline))
+    ),
+    // A `### Requirement:` heading inside the PO section stops spec-lint's
+    // source scan (its row never binds) but not chain-state's awk — the
+    // post-heading row still maps to Solo Req, and its F9 makes Solo Req
+    // unresolved.
+    Fixture(
+      "heading-interruption-f9",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact) +
+          "### Requirement: Decoy\n\nThe system SHALL hold the decoy.\n\n" +
+          s"| post-heading obl | Requirement: Solo Req | manual | `$unresolvedArtifact` |\n"
+      ),
+      Nil
+    ),
+    // A `|` row BEFORE the separator — spec-lint admits it (binds Solo
+    // Req, F9 fires on its line); chain-state's sep-gated awk skips it,
+    // so the finding is silently dropped and Solo Req stays resolved.
+    Fixture(
+      "pre-separator-row",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") +
+          "## Proof Obligations\n\n" +
+          s"| pre-sep obl | Requirement: Solo Req | manual | `$unresolvedArtifact` |\n" +
+          "| Obligation | Source | Enforcement | Artifact |\n|---|---|---|---|\n" +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      Nil
+    ),
+    // An unresolvable --baseline — `git rev-parse` echoes the arg to
+    // stdout before the `||` fallback echoes it again, so the resolved
+    // baseline is "zzz\nzzz" and the literal row stays stale.
+    Fixture(
+      "unresolvable-baseline",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = "zzz")),
+      baselineArg = "zzz"
+    ),
+    // A populated per-spec baseline map — the spec's own baseline admits
+    // its row even though the effective baseline is unresolvable.
+    Fixture(
+      "baseline-map-match",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline)),
+      progress = Some(
+        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nSHA `00d3de1`\n"
+      ),
+      baselineArg = "dead000"
+    ),
+    // A non-`## Spec` `## ` heading clears in_baseline — the SHA line
+    // after it is NOT captured, the map is empty, and the row stays stale.
+    Fixture(
+      "baseline-non-spec-heading",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline)),
+      progress = Some(
+        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\n## Unrelated heading\n\nSHA `00d3de1`\n"
+      ),
+      baselineArg = "dead000"
+    ),
+    // The `SHA `` gate — a backticked hex on a line without the literal
+    // `SHA ` marker is not a baseline capture.
+    Fixture(
+      "baseline-sha-gate",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline)),
+      progress = Some(
+        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nsee `00d3de1` for details\n"
+      ),
+      baselineArg = "dead000"
+    ),
+    // Corrupt ledger + non-empty baseline map — per-spec read failures
+    // are traced and skipped, so the requirement is undischarged (exit
+    // 1), never undetermined.
+    Fixture(
+      "baseline-map-corrupt-ledger",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      List("{corrupt"),
+      progress = Some(
+        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nSHA `00d3de1`\n"
+      ),
+      baselineArg = "dead000"
+    ),
+    // R8-N7: a spec with TWO `## Spec` sections is read under EACH of
+    // its baselines — the predecessor's TSV appends one line per
+    // section, it does not dedup. The row's baseline matches only the
+    // FIRST section's SHA; a last-wins Map would call it stale.
+    Fixture(
+      "baseline-duplicate-section",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline)),
+      progress = Some(
+        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nSHA `00d3de1`\n\n" +
+          "## Spec 2: only\n\n### Baseline\nSHA `2ec4cbe`\n"
+      ),
+      baselineArg = "dead000"
     )
   )
 
@@ -407,6 +561,13 @@ object ChainStateParitySpec:
       Files.createDirectories(dir)
       Files.writeString(dir.resolve("spec.md"), text, StandardCharsets.UTF_8)
     }
+    f.progress.foreach { (text: String) =>
+      Files.writeString(
+        fx.resolve("implementation-progress.md"),
+        text,
+        StandardCharsets.UTF_8
+      )
+    }
     Files.writeString(
       fx.resolve("evidence-ledger.jsonl"),
       f.ledgerLines.mkString("", "\n", if f.ledgerLines.isEmpty then "" else "\n"),
@@ -417,7 +578,7 @@ object ChainStateParitySpec:
     Files.createDirectories(fx.resolve("no-openspec-root"))
     fx
 
-  private def runPredecessor(fx: Path): (String, Int) =
+  private def runPredecessor(fx: Path, baselineArg: String): (String, Int) =
     val pb: ProcessBuilder = new ProcessBuilder(
       "bash",
       predecessor.toString,
@@ -426,7 +587,7 @@ object ChainStateParitySpec:
       "--change",
       change,
       "--baseline",
-      baseline
+      baselineArg
     )
     val env: java.util.Map[String, String] = pb.environment()
     env.put("OPENSPEC_ROOT", fx.resolve("no-openspec-root").toString)
@@ -446,7 +607,7 @@ object ChainStateParitySpec:
           "--change",
           change,
           "--baseline",
-          baseline
+          c.baselineArg
         ),
         Map(
           "OPENSPEC_ROOT"        -> c.fixtureDir.resolve("no-openspec-root").toString,
@@ -472,7 +633,7 @@ object ChainStateParitySpec:
   lazy val corpus: List[CorpusCase] =
     fixtures.map { (f: Fixture) =>
       val fx: Path    = materialise(f)
-      val (out, exit) = runPredecessor(fx)
+      val (out, exit) = runPredecessor(fx, f.baselineArg)
       val json: ujson.Value =
         try ujson.read(out.trim)
         catch
@@ -483,6 +644,7 @@ object ChainStateParitySpec:
       CorpusCase(
         f.name,
         fx,
+        f.baselineArg,
         out,
         exit,
         normalise(json),
