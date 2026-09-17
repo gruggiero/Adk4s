@@ -75,7 +75,7 @@
 - [x] Ring 8 — fresh-context adversarial review ×3: 1st run FAIL (6 defects F1–F6) → fixed; re-run PARTIAL (N1/N2 dangerous + N3–N7 edge) → N1/N2/N5/N6/N7 fixed; re-run 2 PARTIAL → PROCEED (D-new-1 fixed; N3 path-keying declared for checkpoint human review)
 - [x] Ring 5 — retargeted to `ChainState.scala`, `ChainStateReport.scala`, `RequirementExtractor.scala`: **91.41% total / 92.35% covered** (threshold 80); 17 undetected all dispositioned equivalent/dead-code/defensive
 - [x] Ring 6 — `ChainStateKernel.chainStateFold` (count ordering + unresolved complement + unattributable-never-discharged) + Manual-ring reconcile + `VerifiedKernelBridgeSpec` non-empty bridge; `probatio-verified` **325/325 VCs valid**
-- [ ] Concept-delta check + inventory update + checkpoint — inventory updated (6 new rows + reshaped annotations); **checkpoint PENDING N3 human sign-off**
+- [x] Concept-delta check + inventory update + checkpoint — inventory updated (6 new rows + reshaped annotations); **VALIDATED — human checkpoint approval 2026-09-17 (N3 signed off)**
 
 ## 6. danger-reconcile-engines
 

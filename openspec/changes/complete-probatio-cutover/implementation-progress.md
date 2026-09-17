@@ -859,7 +859,7 @@ spec's concept-registry clause, no `openspec/concepts/` file changes.
 
 ## Spec 5: chain-state-attribution
 
-### Status: IN PROGRESS — Steps 1–3 APPROVED; Rings 0–6 + Ring 8 complete; pending checkpoint + N3 human sign-off
+### Status: VALIDATED — human checkpoint approval 2026-09-17 (N3 path-keying limitation signed off)
 
 ### Baseline
 - SHA: `271a7560f494fbafd4555bc1e3c335c2890e9e92` — same commit as spec
@@ -1236,8 +1236,8 @@ plus in-place annotations on the reshaped rows (`SpecDocument` +`chainRows`,
   on `(specName, title)`; the predecessor keys degraded-mode discharge on
   `spec_path\ttitle`. Divergence requires nested duplicate-named spec dirs
   under `specs/`; exact parity needs a path discriminator through the
-  approved type contract (27+ construction sites). **Declared for checkpoint
-  human review.**
+  approved type contract (27+ construction sites). **Accepted at checkpoint
+  2026-09-17.**
 - **Predecessor `SHA \`` baseline gate never fires on real progress files**:
   the real `### Baseline` format is `- SHA: \`sha\`` (colon before the
   backticked value); the awk gate `/SHA \`/` requires no colon. The
@@ -1256,7 +1256,7 @@ plus in-place annotations on the reshaped rows (`SpecDocument` +`chainRows`,
 - [x] Step 1 — Typed contract (human gate) — APPROVED
 - [x] Step 2 — Test oracle (human gate) — APPROVED
 - [x] Step 3 — Implementation — all suites green; APPROVED 2026-09-17
-- [ ] Ring 0–6, 8 + concept-delta + checkpoint — rings + concept-delta COMPLETE (see table); checkpoint PENDING N3 human sign-off
+- [x] Ring 0–6, 8 + concept-delta + checkpoint — COMPLETE (see table); N3 signed off at checkpoint
 
 ---
 
