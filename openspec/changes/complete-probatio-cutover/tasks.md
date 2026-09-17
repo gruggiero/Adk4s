@@ -48,7 +48,7 @@
 - [x] Ring 6 — `BannerEngineKernel.bannerClaims` + helpers + 5 law lemmas verified (223/223 VCs, 0 invalid); `BannerBridgeSpec` green; direct `probatio-verified` invocation (ring6 alias broken in sbt 1.12)
 - [x] Concept-delta check + inventory update (13 added, `BannerInputs`/`ActiveChangeWithChainState`/`InstallRootScan`/`DriftWarning`/`DriftScan` modified) + checkpoint
 
-## 4. spec-lint-engine
+## 4. spec-lint-engine — COMPLETE
 
 - [x] Step 1 — typed contract: `SpecDocument`, `RequirementBlock`, `PropertyBlock`, `TemporalBlock`, `ObligationRow`, `ObligationSource`, `CheckOutcome`, `LintContext`, `SpecDocumentParser.parse`, `SpecLintEngine.lint` (compiles, human gate)
 - [x] Step 2 — test oracle: 14 scenarios + 4 properties (`verdict-parity-with-predecessor`, `reachability-is-total`, `unmatched-rows-are-reported-never-dropped`, `applicability-reflects-repository`) + 3 compile-negative stubs; extract the fixture corpus from the predecessor's bats fixtures plus the repository's spec documents; ORACLE POLARITY run (human gate)
@@ -64,9 +64,9 @@
 
 ## 5. chain-state-attribution
 
-- [x] Step 1 — typed contract: `RequirementSet`, `FactSource`, `RequirementExtractor.extract`, `ChainState.compute` taking `RequirementSet` instead of `List[Requirement]`, smart constructors on `ChainStateReport` and `UnresolvedEntry` — compiled under `-Werror`, `ChainStateAttributionTypeContract` + `ChainStateAttributionSpec` compile-negatives green (AWAITING APPROVAL)
+- [x] Step 1 — typed contract: `RequirementSet`, `FactSource`, `RequirementExtractor.extract`, `ChainState.compute` taking `RequirementSet` instead of `List[Requirement]`, smart constructors on `ChainStateReport` and `UnresolvedEntry` — compiled under `-Werror`, `ChainStateAttributionTypeContract` + `ChainStateAttributionSpec` compile-negatives green (APPROVED)
 - [x] Step 2 — test oracle: 15 scenarios + 5 properties (`verdict-parity-with-predecessor`, `counts-are-consistent`, `unattributable-is-reachable-and-never-discharged`, `obligation-rows-are-conserved`, `empty-is-not-unreadable`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate)
-- [x] Step 3 — implementation: extract requirements from parsed spec documents; attribute obligation rows by exact title; emit `Unattributable` and `unmapped_obligations`; report the extraction path; stop double-prefixing the could-not-determine marker; `ChainStateCmd` gains the predecessor's remaining flags — GREEN: all oracle suites + 414 core + 325 cli tests pass (AWAITING APPROVAL)
+- [x] Step 3 — implementation: extract requirements from parsed spec documents; attribute obligation rows by exact title; emit `Unattributable` and `unmapped_obligations`; report the extraction path; stop double-prefixing the could-not-determine marker; `ChainStateCmd` gains the predecessor's remaining flags — GREEN: all oracle suites + 414 core + 325 cli tests pass (APPROVED 2026-09-17)
 - [ ] Ring 0 — clean; the newly-reachable `UnresolvedReason.Unattributable` must be handled in every match
 - [ ] Ring 1 — lint clean; dangerous-pattern scan via the predecessor script, recorded
 - [ ] Ring 2 — `dependencyLint` clean

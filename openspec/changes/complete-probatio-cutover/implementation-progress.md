@@ -10,7 +10,7 @@
 
 ## Spec 1: cli-entrypoint-contract
 
-### Status: RINGS COMPLETE — checkpoint written, AWAITING HUMAN VALIDATION
+### Status: VALIDATED — human checkpoint approval 2026-09-17
 
 ### Baseline
 - SHA: `ad73d13bec153d6e243a1ac2e1f6bdd81d9b428d`
@@ -88,7 +88,7 @@
 
 ## Spec 2: cutover-gate
 
-### Status: RINGS COMPLETE — checkpoint written, AWAITING HUMAN VALIDATION
+### Status: VALIDATED — human checkpoint approval 2026-09-17
 
 ### Step Progress
 - [x] Prerequisite — add `probatioOracleDiff` sbt task
@@ -468,7 +468,7 @@ count-less (`PRESENT` only), so its code is drawn from the boolean domain
 
 ## Spec 4: spec-lint-engine
 
-### Status: RINGS COMPLETE — checkpoint written, AWAITING HUMAN VALIDATION
+### Status: VALIDATED — human checkpoint approval 2026-09-17
 
 ### Baseline
 - SHA: `271a7560f494fbafd4555bc1e3c335c2890e9e92` (tracked tree clean;
@@ -859,13 +859,15 @@ spec's concept-registry clause, no `openspec/concepts/` file changes.
 
 ## Spec 5: chain-state-attribution
 
-### Status: IN PROGRESS — Step 3 implemented, all oracle + legacy suites green, AWAITING HUMAN REVIEW
+### Status: IN PROGRESS — Step 3 APPROVED 2026-09-17; verification rings running
 
 ### Baseline
 - SHA: `271a7560f494fbafd4555bc1e3c335c2890e9e92` — same commit as spec
-  4's baseline; spec-4's implementation is uncommitted on
-  `probatio/porting` and is part of this spec's baseline tree state
-  (47 tracked modifications + spec-4's new files).
+  4's baseline; spec-4's implementation was uncommitted on
+  `probatio/porting` at Step 0 and was part of this spec's baseline
+  tree state (47 tracked modifications + spec-4's new files).
+  Spec-4's work + this spec's Step-3 implementation landed as commit
+  `000cda3` on 2026-09-17; rings run on top of that commit.
 - Date: 2026-09-16
 
 ### Step 0 — Baseline + concept check
@@ -1207,7 +1209,7 @@ shape only.
 ### Step Progress
 - [x] Step 1 — Typed contract (human gate) — APPROVED
 - [x] Step 2 — Test oracle (human gate) — APPROVED
-- [x] Step 3 — Implementation — all suites green; AWAITING APPROVAL
+- [x] Step 3 — Implementation — all suites green; APPROVED 2026-09-17
 - [ ] Ring 0–6, 8 + concept-delta + checkpoint
 
 ---
