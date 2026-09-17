@@ -5,7 +5,7 @@
 | Concept | Role here | File |
 |---------|-----------|------|
 | Schema | The evidence record is where a run becomes a fact; the checkpoint is where those facts are presented for a human decision | [schema.md](../../../../concepts/schema.md) |
-| Conformance Property-Test Contract | The record format is stated once, by the record contract, and both the tool and the oracle conform to it | [conformance-property-test-contract.md](../../../../concepts/conformance-property-test-contract.md) |
+| `Conformance` (Conformance Property-Test Contract) | The record format is stated once, by the record contract, and both the tool and the oracle conform to it | [conformance-property-test-contract.md](../../../../concepts/conformance-property-test-contract.md) |
 
 This spec does not alter either concept's actions, state, or synchronizations. No
 concept file update is required.

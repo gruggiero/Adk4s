@@ -2,10 +2,13 @@ package org.sinemenda.probatio.cli
 
 import org.sinemenda.probatio.core.*
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import scala.jdk.CollectionConverters.IteratorHasAsScala
+import scala.util.Using
 import scala.util.control.NonFatal // danger-scan:allow fail-open — the gate hook degrades silently, it never fails a session
 
 /**
@@ -335,22 +338,52 @@ object GateCmd:
                   case Left(err) =>
                     Outcome.Undetermined(err)
                   case Right(recordsRev) =>
-                    val records: List[LedgerRecord]        = recordsRev.reverse
-                    val ledger: Ledger.LedgerData          = Ledger.fromRecords(records)
-                    val lint: LintReport                   = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
-                    val reqs: List[ChainState.Requirement] = Nil // no requirements parsed yet
-                    ChainState.compute(lint, ledger, reqs, baseline, change) match
-                      case Left(u) =>
-                        Outcome.Undetermined(u.reason)
-                      case Right(report) =>
-                        if report.unresolved.isEmpty then Outcome.Ran(0)
-                        else
-                          val reason: String = report.unresolved
-                            .map { e =>
-                              s"${e.requirement} (${e.reasons.map(UnresolvedReason.asString).mkString(", ")})"
-                            }
-                            .mkString("; ")
-                          Outcome.Finding(s"chain-state unresolved: $reason")
+                    val records: List[LedgerRecord] = recordsRev.reverse
+                    val ledger: Ledger.LedgerData   = Ledger.fromRecords(records)
+                    // The gate's change dir: `--change-dir` when the hook
+                    // passes it, else <repo>/openspec/changes/<change>.
+                    val changeDir: Path = parsed.flags
+                      .get("--change-dir")
+                      .filter(_.nonEmpty)
+                      .map(Paths.get(_))
+                      .getOrElse(
+                        resolveRepo(parsed.flags.get("--repo"), env)
+                          .resolve("openspec/changes")
+                          .resolve(change)
+                      )
+                    ChainStateCmd.prepareInputs(
+                      changeDir,
+                      change,
+                      baseline,
+                      specFilter = None,
+                      env,
+                      ledgerFile,
+                      emitDiagnostics = false
+                    ) match
+                      case Left(reason) =>
+                        Outcome.Undetermined(reason)
+                      case Right(inputs) =>
+                        ChainState.compute(
+                          inputs.lints,
+                          ledger,
+                          inputs.extracted,
+                          inputs.specBaselines,
+                          inputs.effectiveBaseline,
+                          inputs.resolvedBaseline,
+                          change,
+                          inputs.artifactUnchanged
+                        ) match
+                          case Left(u) =>
+                            Outcome.Undetermined(u.reason)
+                          case Right(report) =>
+                            if report.unresolved.isEmpty then Outcome.Ran(0)
+                            else
+                              val reason: String = report.unresolved
+                                .map { e =>
+                                  s"${e.requirement} (${e.reasons.map(UnresolvedReason.asString).mkString(", ")})"
+                                }
+                                .mkString("; ")
+                              Outcome.Finding(s"chain-state unresolved: $reason")
 
   /**
    * The Tier-B banner path — the spec-3 live-fact wiring:
@@ -450,33 +483,263 @@ object GateCmd:
 
 /** The `spec-lint` subcommand — spec file linting. */
 object SpecLintCmd:
+
+  /** The predecessor's parsed invocation shape. */
+  final private case class SpecLintArgs(
+    artifacts: Boolean,
+    contextOnly: Boolean,
+    formatJson: Boolean,
+    target: String
+  )
+
+  /**
+   * Parse args exactly as the predecessor's `case` loop does:
+   * `--artifacts` and `--context-only` are boolean modifiers, `--format`
+   * is consumed without effect (its value arrives as its own token), a
+   * bare `json` token selects JSON output, and every other token becomes
+   * the target — last one wins, default `.`.
+   */
+  private def parseArgs(args: Array[String]): SpecLintArgs =
+    args.toList.foldLeft(SpecLintArgs(false, false, false, ".")) { (acc, arg) =>
+      arg match
+        case "--artifacts"    => acc.copy(artifacts = true)
+        case "--context-only" => acc.copy(contextOnly = true)
+        case "--format"       => acc
+        case "json"           => acc.copy(formatJson = true)
+        case other => // danger-scan:allow positional-arg — unrecognized args are the target, last one wins
+          acc.copy(target = other)
+    }
+
+  /** `git <args>` under `dir`; trimmed stdout on exit 0, else None. */
+  private[cli] def gitOut(dir: Path, args: List[String]): Option[String] =
+    try
+      val pb: ProcessBuilder = new ProcessBuilder(("git" +: args)*)
+      pb.directory(dir.toFile)
+      // predecessor parity: `git ... 2>/dev/null` — stderr is discarded.
+      pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+      val p: Process = pb.start()
+      val out: String =
+        new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
+      if p.waitFor() == 0 && out.trim.nonEmpty then Some(out.trim) else None
+    catch
+      case NonFatal(_) => // danger-scan:allow fail-open — a non-git cwd falls back to "." like the predecessor
+        None
+
+  /**
+   * The repository root — the predecessor's
+   * `git rev-parse --show-toplevel || echo .` from the caller's cwd, so
+   * the applicability facts resolve even when the tool is invoked from a
+   * repository subdirectory.
+   */
+  private[cli] def repoRoot: Path =
+    val cwd: Path = Paths.get("").toAbsolutePath.normalize
+    gitOut(cwd, List("rev-parse", "--show-toplevel")) match
+      case Some(p) => Paths.get(p)
+      case None    => cwd
+
+  /** The user-scoped install-root base — `$HOME`, else `user.home`. */
+  private[cli] def userHome(env: Map[String, String]): Path =
+    env
+      .get("HOME")
+      .filter(_.nonEmpty)
+      .map(Paths.get(_))
+      .getOrElse(
+        Paths.get(System.getProperty("user.home"))
+      ) // danger-scan:allow home-fallback — user.home is the last resort when HOME is unset
+
+  /**
+   * Discover the spec files to lint — the predecessor's two-step probe:
+   * `<target>/specs/` first (a change directory), else
+   * `<target>/openspec/changes/` (a repository root, `archive/` excluded).
+   * `None` means neither shape exists — the predecessor's exit-2 path.
+   */
+  private def specFiles(target: Path): Option[List[Path]] =
+    val specsDir: Path   = target.resolve("specs")
+    val changesDir: Path = target.resolve("openspec/changes")
+    if Files.isDirectory(specsDir) then Some(findSpecs(specsDir, _ => true))
+    else if Files.isDirectory(changesDir) then
+      // `-path '*/specs/*'` — a `specs` component anywhere in the path
+      // (nested `specs/x/spec.md` is found); `! -path '*/archive/*'` —
+      // no `archive` component anywhere.
+      Some(
+        findSpecs(
+          changesDir,
+          p =>
+            p.iterator().asScala.exists(_.toString == "specs") &&
+              !p.iterator().asScala.exists(_.toString == "archive")
+        )
+      )
+    else None
+
+  /** `find <root> -name spec.md` filtered and sorted — as the predecessor pipes it. */
+  private[cli] def findSpecs(root: Path, keep: Path => Boolean): List[Path] =
+    try
+      Using.resource(Files.walk(root)) { walk =>
+        walk
+          .iterator()
+          .asScala
+          .toList
+          .filter((p: Path) => Files.isRegularFile(p) && p.getFileName.toString == "spec.md" && keep(p))
+          .sortBy(_.toString)
+      }
+    catch case NonFatal(_) => Nil // danger-scan:allow degraded-discovery — a failed find is "no spec files"
+
+  /** A finding as the predecessor's text line: `FAIL F7 line 30: msg`. */
+  private def findingText(f: CheckOutcome): String = f match
+    case CheckOutcome.Fail(check, line, msg) =>
+      s"FAIL ${CheckId.asString(check)}${line.fold("")(l => s" line $l")}: $msg"
+    case CheckOutcome.Warn(w) =>
+      s"WARN ${w.code}${w.line.fold("")(l => s" line $l")}: ${w.message}"
+    case CheckOutcome.Pass(check) =>
+      s"PASS ${CheckId.asString(check)}" // danger-scan:allow unreachable-shape — the finding stream carries no Pass
+
+  private val requirementRe: scala.util.matching.Regex =
+    "requirement \"([^\"]+)\"".r
+  private val artifactRe: scala.util.matching.Regex =
+    "artifact '([^']+)'".r
+
+  /**
+   * A finding as the predecessor's jq object:
+   * `{check, verdict, requirement, reason, line, artifact}` — `requirement`
+   * and `artifact` extracted from the reason text, `line` 0 when absent.
+   */
+  private def findingJson(f: CheckOutcome): ujson.Obj =
+    val (verdict: String, check: String, line: Option[Int], reason: String) = f match
+      case CheckOutcome.Fail(c, l, msg) => ("FAIL", CheckId.asString(c), l, msg)
+      case CheckOutcome.Warn(w)         => ("WARN", w.code, w.line, w.message)
+      case CheckOutcome.Pass(c) =>
+        (
+          "PASS",
+          CheckId.asString(c),
+          None,
+          ""
+        ) // danger-scan:allow unreachable-shape — the finding stream carries no Pass
+    ujson.Obj(
+      "check"   -> ujson.Str(check),
+      "verdict" -> ujson.Str(verdict),
+      "requirement" -> ujson.Str(
+        requirementRe.findFirstMatchIn(reason).map(_.group(1)).getOrElse("")
+      ),
+      "reason" -> ujson.Str(reason),
+      "line"   -> ujson.Num(line.getOrElse(0)),
+      "artifact" -> ujson.Str(
+        artifactRe.findFirstMatchIn(reason).map(_.group(1)).getOrElse("")
+      )
+    )
+
   /**
    * Wire the spec-lint subcommand to the F1–F10 checks and CONTEXT block.
    *
+   * The CONTEXT block prints before the lint run in text mode; in
+   * `--format json` mode it is suppressed entirely (the predecessor
+   * redirects it to /dev/null), so `--context-only --format json` emits
+   * nothing and exits clean.
+   *
    * spec: cli-wiring — Requirement: The spec-lint subcommand wires to the F1–F10 checks and emits the CONTEXT block
+   * spec: spec-lint-engine — Requirement: The lint tool's caller-facing surface accepts the predecessor's invocation forms
    */
   def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--change", "--spec", "--context-only")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"spec-lint: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        val change: String = parsed.getOrElse("--change", "")
-        val spec: String   = parsed.getOrElse("--spec", "")
-        if change.isEmpty then
-          SubcommandWiring.emitStderr("spec-lint: --change is required\n")
-          Outcome.Finding("--change is required")
-        else if spec.isEmpty then
-          SubcommandWiring.emitStderr("spec-lint: --spec is required\n")
-          Outcome.Finding("--spec is required")
-        else
-          // Run the F1–F10 checks (delegated to core LintReport logic)
-          // For now, produce a clean lint report
-          val report: LintReport = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
-          val rendered: String   = StdoutRenderer[LintReport].render(report)
-          SubcommandWiring.emitStdout(rendered + "\n")
+    val parsed: SpecLintArgs     = parseArgs(args)
+    val env: Map[String, String] = sys.env // scalafix:ok DisableSyntax.NoSysEnv
+    val root: Path               = repoRoot
+    val context: LintContext =
+      RepositoryFactsReader.readLintContext(root, userHome(env))
+
+    if parsed.contextOnly then
+      if !parsed.formatJson then SubcommandWiring.emitStdout(StdoutRenderer[LintContext].render(context) + "\n")
+      Outcome.Ran(0)
+    else
+      val tracked: Set[String] =
+        if parsed.artifacts then
+          gitOut(root, List("ls-files"))
+            .map(_.linesIterator.toSet)
+            .getOrElse(Set.empty)
+        else Set.empty
+      val artifactTracked: String => Boolean =
+        (base: String) => tracked.exists(_.contains(base))
+
+      if !parsed.formatJson then SubcommandWiring.emitStdout(StdoutRenderer[LintContext].render(context) + "\n\n")
+
+      specFiles(Paths.get(parsed.target)) match
+        case None =>
+          val msg: String =
+            s"no specs found under ${parsed.target} " +
+              "(expected <change>/specs/ or openspec/changes/)"
+          SubcommandWiring.emitStderr(s"spec-lint: $msg\n")
+          Outcome.Undetermined(msg)
+        case Some(Nil) =>
+          SubcommandWiring.emitStdout(
+            s"spec-lint: no spec files to lint under ${parsed.target}\n"
+          )
           Outcome.Ran(0)
+        case Some(specs) => runSpecs(specs, context, parsed, artifactTracked)
+
+  /**
+   * Lint every discovered spec and emit findings in the predecessor's
+   * shape — per-file headers in text mode, one JSON array in JSON mode —
+   * then the summary line and the FAIL/WARN exit mapping.
+   */
+  private def runSpecs(
+    specs: List[Path],
+    context: LintContext,
+    parsed: SpecLintArgs,
+    artifactTracked: String => Boolean
+  ): Outcome[Int] =
+    val outcomes: List[Either[String, (Path, LintReport)]] = specs.map { spec =>
+      try
+        val text: String      = Files.readString(spec, StandardCharsets.UTF_8)
+        val doc: SpecDocument = SpecDocumentParser.parse(spec.toString, text)
+        SpecLintEngine.lint(doc, context, parsed.artifacts, artifactTracked) match
+          case Outcome.Ran(report)     => Right(spec -> report)
+          case Outcome.Undetermined(r) => Left(r)
+          case Outcome.Finding(msg)    => Left(msg)
+      catch
+        case NonFatal(e) => // danger-scan:allow degraded-fact — an unreadable spec is could-not-determine, not skipped
+          Left(s"could not read $spec: ${e.getMessage}")
+    }
+    outcomes.collectFirst { case Left(reason) => reason } match
+      case Some(reason) =>
+        SubcommandWiring.emitStderr(s"spec-lint: UNDETERMINED — $reason\n")
+        Outcome.Undetermined(reason)
+      case None =>
+        val reports: List[(Path, LintReport)] =
+          outcomes.collect { case Right(r) => r }
+        val fails: Int = reports.map(_._2.failures.length).sum
+        val warns: Int = reports.map(_._2.warnings.length).sum
+        if parsed.formatJson then
+          val findings: ujson.Arr = ujson.Arr(
+            reports.flatMap(_._2.findings).map(findingJson)*
+          )
+          SubcommandWiring.emitStdout(ujson.write(findings) + "\n")
+        else
+          reports.foreach { case (spec, report) =>
+            if report.findings.nonEmpty then
+              SubcommandWiring.emitStdout(s"spec-lint: $spec\n")
+              report.findings.foreach { f =>
+                SubcommandWiring.emitStdout(s"  ${findingText(f)}\n")
+                // The generic-F6 hint is part of the predecessor's findings
+                // stream (9-space indent + the 2-space findings prefix); it
+                // is not a FAIL/WARN line so JSON mode never sees it.
+                f match
+                  case CheckOutcome.Fail(CheckId.F6, _, msg)
+                      if msg.startsWith("Source names no resolvable reference") =>
+                    SubcommandWiring.emitStdout(
+                      "           (use \"Requirement: <exact title>\", \"Requirement N\", " +
+                        "or a typed source like \"Property: <name>\")\n"
+                    )
+                  case _ => // danger-scan:allow non-F6-shape — the hint trails only the unresolvable-source F6
+                    ()
+              }
+          }
+          SubcommandWiring.emitStdout(
+            s"spec-lint: ${reports.length} spec file(s), $fails FAIL, $warns WARN\n"
+          )
+          if fails > 0 then
+            SubcommandWiring.emitStdout(
+              "spec-lint: FAILED — F-checks are lint failures; fix the specs and re-run.\n"
+            )
+        if fails > 0 then Outcome.Finding(s"spec-lint: $fails FAIL, $warns WARN")
+        else Outcome.Ran(0)
 
 /** The `chain-state` subcommand — chain-state report. */
 object ChainStateCmd:
@@ -489,16 +752,25 @@ object ChainStateCmd:
    * spec: cli-wiring — Scenario: An unreadable ledger produces undetermined
    */
   def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--change-dir", "--change", "--baseline", "--ledger-file")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"chain-state: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
+    run(args, sys.env) // scalafix:ok DisableSyntax.NoSysEnv
+
+  /**
+   * The env-injecting overload — `OPENSPEC_ROOT` selects the graph-export
+   * root (the predecessor's own contract) and `PROBATIO_SCANNER_DIR` names
+   * the directory holding `openspec-graph.py`; the seam exists so the test
+   * oracle can force the graph and degraded paths deterministically.
+   */
+  private[cli] def run(args: Array[String], env: Map[String, String]): Outcome[Int] =
+    parseChainStateArgs(args) match
+      case Left(msg) =>
+        SubcommandWiring.emitStderr(s"chain-state: $msg\n")
+        Outcome.Finding(msg)
       case Right(parsed) =>
-        val changeDir: String  = parsed.getOrElse("--change-dir", "")
-        val change: String     = parsed.getOrElse("--change", "")
-        val baseline: String   = parsed.getOrElse("--baseline", "")
-        val ledgerFile: String = parsed.getOrElse("--ledger-file", s"$changeDir/evidence-ledger.jsonl")
+        val changeDir: String          = parsed.flags.getOrElse("--change-dir", "")
+        val change: String             = parsed.flags.getOrElse("--change", "")
+        val baseline: String           = parsed.flags.getOrElse("--baseline", "")
+        val ledgerFile: String         = parsed.flags.getOrElse("--ledger-file", s"$changeDir/evidence-ledger.jsonl")
+        val specFilter: Option[String] = parsed.flags.get("--spec").filter(_.nonEmpty)
 
         if changeDir.isEmpty then
           SubcommandWiring.emitStderr("chain-state: --change-dir is required\n")
@@ -510,15 +782,11 @@ object ChainStateCmd:
           SubcommandWiring.emitStderr("chain-state: --baseline is required\n")
           Outcome.Finding("--baseline is required")
         else
-          // Read the ledger file
+          // Read the ledger file — an unreadable ledger is undetermined,
+          // never a silently zero measurement.
           SubcommandWiring.readLedgerFile(ledgerFile) match
             case Outcome.Undetermined(reason) =>
-              // Emit the undetermined report on stdout
-              val undetermined: ChainStateUndetermined = ChainStateUndetermined(change, baseline, reason)
-              val rendered: String                     = StdoutRenderer[ChainStateUndetermined].render(undetermined)
-              SubcommandWiring.emitStdout(rendered + "\n")
-              SubcommandWiring.emitStderr(s"chain-state: UNDETERMINED — $reason\n")
-              Outcome.Undetermined(reason)
+              emitUndetermined(change, baseline, reason)
             case Outcome.Finding(msg) =>
               Outcome.Finding(msg)
             case Outcome.Ran(rows) =>
@@ -535,29 +803,395 @@ object ChainStateCmd:
                 }
               validated match
                 case Left(err) =>
-                  val undetermined: ChainStateUndetermined = ChainStateUndetermined(change, baseline, err)
-                  val rendered: String                     = StdoutRenderer[ChainStateUndetermined].render(undetermined)
-                  SubcommandWiring.emitStdout(rendered + "\n")
-                  SubcommandWiring.emitStderr(s"chain-state: UNDETERMINED — $err\n")
-                  Outcome.Undetermined(err)
+                  emitUndetermined(change, baseline, err)
                 case Right(recordsRev) =>
                   val records: List[LedgerRecord] = recordsRev.reverse
                   val ledger: Ledger.LedgerData   = Ledger.fromRecords(records)
-                  // Build a clean lint report (the CLI delegates lint to spec-lint)
-                  val lint: LintReport                   = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
-                  val reqs: List[ChainState.Requirement] = Nil
-                  ChainState.compute(lint, ledger, reqs, baseline, change) match
-                    case Left(u) =>
-                      val undetermined: ChainStateUndetermined = u
-                      val rendered: String = StdoutRenderer[ChainStateUndetermined].render(undetermined)
-                      SubcommandWiring.emitStdout(rendered + "\n")
-                      SubcommandWiring.emitStderr(s"chain-state: UNDETERMINED — ${u.reason}\n")
-                      Outcome.Undetermined(u.reason)
-                    case Right(report) =>
-                      val rendered: String = StdoutRenderer[ChainStateReport].render(report)
-                      SubcommandWiring.emitStdout(rendered + "\n")
-                      if report.unresolved.isEmpty then Outcome.Ran(0)
-                      else Outcome.Finding(s"chain-state: ${report.unresolved.length} unresolved obligation(s)")
+                  prepareInputs(
+                    Paths.get(changeDir),
+                    change,
+                    baseline,
+                    specFilter,
+                    env,
+                    ledgerFile,
+                    emitDiagnostics = true
+                  ) match
+                    case Left(reason) =>
+                      emitUndetermined(change, baseline, reason)
+                    case Right(inputs) =>
+                      ChainState.compute(
+                        inputs.lints,
+                        ledger,
+                        inputs.extracted,
+                        inputs.specBaselines,
+                        inputs.effectiveBaseline,
+                        inputs.resolvedBaseline,
+                        change,
+                        inputs.artifactUnchanged
+                      ) match
+                        case Left(u) =>
+                          emitUndetermined(u.change, baseline, u.reason)
+                        case Right(report) =>
+                          val rendered: String = StdoutRenderer[ChainStateReport].render(report)
+                          SubcommandWiring.emitStdout(rendered + "\n")
+                          if report.unresolved.isEmpty && report.unmappedObligations.isEmpty then Outcome.Ran(0)
+                          else
+                            Outcome.Finding(
+                              s"chain-state: ${report.unresolved.length} unresolved, " +
+                                s"${report.unmappedObligations.length} unmapped obligation(s)"
+                            )
+
+  /**
+   * Flags that consume a following value; `--artifacts` and
+   * `--forgive-unchanged` are boolean. Both booleans are accepted for
+   * predecessor compatibility — the port always runs the artifact check
+   * and always applies the forgiveness oracle (the predecessor does too,
+   * unconditionally), so they carry no mode switch.
+   */
+  private val valueFlags: Set[String] = Set(
+    "--change-dir",
+    "--change",
+    "--baseline",
+    "--ledger-file",
+    "--format",
+    "--spec"
+  )
+
+  /** Leniently-parsed chain-state arguments. */
+  final private case class ChainStateArgs(
+    flags: Map[String, String]
+  )
+
+  private def parseChainStateArgs(args: Array[String]): Either[String, ChainStateArgs] =
+    def loop(rest: List[String], acc: Map[String, String]): Either[String, ChainStateArgs] =
+      rest match
+        case Nil                           => Right(ChainStateArgs(acc))
+        case "--artifacts" :: tail         => loop(tail, acc)
+        case "--forgive-unchanged" :: tail => loop(tail, acc)
+        case flag :: tail if valueFlags.contains(flag) =>
+          tail match
+            case value :: remaining => loop(remaining, acc + (flag -> value))
+            case Nil                => Left(s"$flag requires a value")
+        case unknown :: _ => Left(s"unrecognised argument: $unknown")
+    loop(args.toList, Map.empty)
+
+  /**
+   * Emit the undetermined report on stdout and the diagnostic on stderr —
+   * the `UNDETERMINED —` marker is written HERE, exactly once; the reason
+   * field carries no marker (it is data, not a diagnostic line).
+   *
+   * spec: chain-state-attribution — Requirement: The undetermined diagnostic marker is emitted exactly once
+   */
+  private def emitUndetermined(
+    change: String,
+    baseline: String,
+    reason: String
+  ): Outcome[Int] =
+    val undetermined: ChainStateUndetermined = ChainStateUndetermined(change, baseline, reason)
+    SubcommandWiring.emitStdout(StdoutRenderer[ChainStateUndetermined].render(undetermined) + "\n")
+    SubcommandWiring.emitStderr(s"chain-state: UNDETERMINED — $reason\n")
+    Outcome.Undetermined(reason)
+
+  /**
+   * The bundle of measured facts `ChainState.compute` consumes — the
+   * extracted requirement set (with its FactSource), the per-spec lint
+   * outcomes, the per-spec baseline map, the resolved effective baseline,
+   * and the forgive-unchanged oracle.
+   */
+  final private[cli] case class ChainStateInputs(
+    extracted: RequirementSet,
+    lints: Map[String, Outcome[LintReport]],
+    specBaselines: Map[String, String],
+    effectiveBaseline: String,
+    resolvedBaseline: String,
+    artifactUnchanged: (String, String) => Boolean
+  )
+
+  /**
+   * Discover the change's spec documents, parse them, attempt the graph
+   * export, run spec-lint per spec, and resolve the baselines — every
+   * fact `compute` needs, measured once. `Left` is a could-not-determine
+   * reason (no spec tree, an unreadable document, a `--spec` name that
+   * matches nothing); it is never a clean empty result.
+   */
+  private[cli] def prepareInputs(
+    changeDir: Path,
+    change: String,
+    baselineArg: String,
+    specFilter: Option[String],
+    env: Map[String, String],
+    ledgerFile: String,
+    emitDiagnostics: Boolean
+  ): Either[String, ChainStateInputs] =
+    // The predecessor enumerates `find "$CHANGE_DIR/specs" -name spec.md` —
+    // a missing specs/ tree means the spec-lint probe itself could not run.
+    val specsDir: Path = changeDir.resolve("specs")
+    if !Files.isDirectory(specsDir) then
+      Left(s"no spec documents found under $specsDir; cannot determine bound/resolved")
+    else
+      val discovered: List[Path] = SpecLintCmd.findSpecs(specsDir, _ => true)
+      val selected: Either[String, List[Path]] = specFilter match
+        case Some(s) =>
+          discovered.filter((p: Path) => p.getParent.getFileName.toString == s) match
+            case Nil =>
+              Left(s"no spec document named '$s' under $specsDir; cannot determine bound/resolved")
+            case keep => Right(keep)
+        case None => Right(discovered)
+      selected match
+        case Left(reason) => Left(reason)
+        case Right(paths) =>
+          val named: Either[String, List[RequirementExtractor.NamedSpec]] =
+            paths.foldLeft[Either[String, List[RequirementExtractor.NamedSpec]]](Right(Nil)) { (acc, p) =>
+              acc.flatMap { (specs: List[RequirementExtractor.NamedSpec]) =>
+                try
+                  val text: String = Files.readString(p, StandardCharsets.UTF_8)
+                  Right(
+                    specs :+ RequirementExtractor.NamedSpec(
+                      p.getParent.getFileName.toString,
+                      SpecDocumentParser.parse(p.toString, text)
+                    )
+                  )
+                catch
+                  case NonFatal(e) => // danger-scan:allow degraded-fact — unreadable spec is undetermined, not skipped
+                    Left(s"could not read $p: ${e.getMessage}")
+              }
+            }
+          named match
+            case Left(reason) => Left(reason)
+            case Right(namedSpecs) =>
+              val (specBaselines, effectiveBaseline, resolvedBaseline): (Map[String, String], String, String) =
+                resolveBaselines(changeDir, baselineArg, emitDiagnostics)
+              val (exportJson, diagnostics): (Option[ujson.Value], List[String]) =
+                graphExport(changeDir, change, env)
+              if emitDiagnostics then diagnostics.foreach((d: String) => SubcommandWiring.emitStderr(d + "\n"))
+              val extracted: RequirementSet =
+                RequirementExtractor.extract(namedSpecs, exportJson)
+              // spec-lint runs exactly as the predecessor invokes it:
+              // `--artifacts` always on, `git ls-files` at the caller's
+              // repo root deciding resolvability.
+              val root: Path = SpecLintCmd.repoRoot
+              val context: LintContext =
+                RepositoryFactsReader.readLintContext(root, SpecLintCmd.userHome(env))
+              val tracked: Set[String] = SpecLintCmd
+                .gitOut(root, List("ls-files"))
+                .map((out: String) => out.linesIterator.toSet)
+                .getOrElse(Set.empty)
+              val artifactTracked: String => Boolean =
+                (base: String) => tracked.exists(_.contains(base))
+              val lints: Map[String, Outcome[LintReport]] = namedSpecs.map { ns =>
+                ns.name -> SpecLintEngine.lint(ns.document, context, checkArtifacts = true, artifactTracked)
+              }.toMap
+              Right(
+                ChainStateInputs(
+                  extracted,
+                  lints,
+                  specBaselines,
+                  effectiveBaseline,
+                  resolvedBaseline,
+                  forgivePredicate(ledgerFile)
+                )
+              )
+
+  /**
+   * The implementation-progress.md baseline map, ported from the
+   * predecessor's awk: `## Spec N[: ]+(name)` blocks carry a
+   * `### Baseline` paragraph whose first `` SHA `hex` `` line is that
+   * spec's baseline; the effective baseline is the first
+   * `**BASELINE SHA**: <sha>`/`SHA \`<sha>\`` match in the file, else the
+   * gate's `--baseline`. The returned effective baseline is the RAW value
+   * (echoed into the report); the third element is its `git rev-parse`
+   * resolution — the staleness filter the ledger read applies (the
+   * predecessor's `full_effective`).
+   */
+  private def resolveBaselines(
+    changeDir: Path,
+    baselineArg: String,
+    emitDiagnostics: Boolean
+  ): (Map[String, String], String, String) =
+    // REPO is derived from the change dir; the resolution itself runs
+    // there or, when the change dir is outside any repository, in the
+    // process cwd — the predecessor's `cd ""` is a no-op that keeps cwd.
+    val repo: Option[Path] = repoContaining(changeDir)
+    val progressFile: Path = changeDir.resolve("implementation-progress.md")
+    if !Files.isRegularFile(progressFile) then (Map.empty, baselineArg, resolveSha(repo, baselineArg))
+    else
+      val lines: List[String] =
+        try Files.readString(progressFile, StandardCharsets.UTF_8).linesIterator.toList
+        catch
+          case NonFatal(_) => Nil // danger-scan:allow degraded-fact — unreadable progress file means no baselines
+      // The awk's two states: the `## Spec N:` block being walked and the
+      // `### Baseline` paragraph inside it. `inBaseline` survives any
+      // non-blank, non-SHA, non-`## Spec` line — the predecessor's own
+      // (loose) state machine, ported exactly.
+      val specHeadRe: scala.util.matching.Regex = "^## Spec [0-9]".r
+      val specNameRe: scala.util.matching.Regex = "[0-9]+[: ]+\\(?([a-zA-Z0-9_-]+)".r
+      val shaRe: scala.util.matching.Regex      = "`([a-f0-9]{7,40})`".r
+      final case class BaselineAcc(
+        currentSpec: String,
+        inBaseline: Boolean,
+        map: Map[String, String]
+      )
+      val parsed: BaselineAcc = lines.foldLeft(BaselineAcc("", false, Map.empty)) { (acc, line) =>
+        if specHeadRe.findPrefixOf(line).isDefined then
+          BaselineAcc(
+            specNameRe.findFirstMatchIn(line).map(_.group(1)).getOrElse(""),
+            inBaseline = false,
+            acc.map
+          )
+        else if line.startsWith("### Baseline") then acc.copy(inBaseline = true)
+        else if acc.inBaseline && shaRe.findFirstMatchIn(line).isDefined then
+          val sha: String =
+            shaRe.findFirstMatchIn(line).map(_.group(1)).getOrElse("")
+          BaselineAcc(
+            acc.currentSpec,
+            inBaseline = false,
+            if acc.currentSpec.nonEmpty then acc.map + (acc.currentSpec -> sha)
+            else acc.map
+          )
+        else if acc.inBaseline && line.isEmpty then acc.copy(inBaseline = false)
+        else acc
+      }
+      // EFFECTIVE_BASELINE: the first SHA match in the file (the old
+      // single-baseline approach), else the gate's --baseline.
+      val effectiveShaRe: scala.util.matching.Regex =
+        "(\\*\\*BASELINE SHA\\*\\*: `?|SHA `)([a-f0-9]{7,40})`?".r
+      val rawEffective: String = lines
+        .collectFirst((l: String) => effectiveShaRe.findFirstMatchIn(l).map(_.group(2)))
+        .flatten
+        .getOrElse(baselineArg)
+      if emitDiagnostics then
+        if lines.exists((l: String) => effectiveShaRe.findFirstMatchIn(l).isDefined) then
+          SubcommandWiring.emitStderr(
+            s"chain-state: using per-spec baseline $rawEffective from implementation-progress.md (gate baseline: $baselineArg)\n"
+          )
+        else
+          SubcommandWiring.emitStderr(
+            s"chain-state: no per-spec baseline in implementation-progress.md, falling back to gate baseline $baselineArg\n"
+          )
+      // Resolve every SHA under the change dir's repo — ledger rows record
+      // resolved SHAs (the predecessor's `git rev-parse` with the `||`
+      // fallback).
+      (
+        parsed.map.map((spec, sha) => spec -> resolveSha(repo, sha)),
+        rawEffective,
+        resolveSha(repo, rawEffective)
+      )
+
+  /**
+   * Attempt `openspec-graph.py export` — the predecessor's D5 mechanism:
+   * `python3 <script> export --change-dir <dir> --change <name>` with
+   * `OPENSPEC_ROOT` on the subprocess environment. Returns the parsed
+   * export (if it ran and produced JSON) plus the diagnostic lines to
+   * emit — the FactSource is stated, never inferred: a fallback is always
+   * announced as degraded, never presented as though the extractor ran.
+   */
+  private def graphExport(
+    changeDir: Path,
+    change: String,
+    env: Map[String, String]
+  ): (Option[ujson.Value], List[String]) =
+    val degraded: String = "using degraded mode (in-process fallback)"
+    env.get("PROBATIO_SCANNER_DIR").map(Paths.get(_)) match
+      case None =>
+        (
+          None,
+          List(s"chain-state: openspec-graph.py unavailable (PROBATIO_SCANNER_DIR not set); $degraded")
+        )
+      case Some(scannerDir) =>
+        val script: Path = scannerDir.resolve("openspec-graph.py")
+        if !Files.isRegularFile(script) then
+          (None, List(s"chain-state: openspec-graph.py not found at $script; $degraded"))
+        else
+          try
+            val pb: ProcessBuilder = new ProcessBuilder(
+              "python3",
+              script.toString,
+              "export",
+              "--change-dir",
+              changeDir.toString,
+              "--change",
+              change
+            )
+            env.get("OPENSPEC_ROOT").foreach((r: String) => pb.environment().put("OPENSPEC_ROOT", r))
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+            val p: Process = pb.start()
+            val out: String =
+              new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
+            val code: Int = p.waitFor()
+            if code != 0 || out.isBlank then
+              (None, List(s"chain-state: openspec-graph.py export failed (exit $code); $degraded"))
+            else
+              try
+                (
+                  Some(ujson.read(out)),
+                  List("chain-state: fact extraction via openspec-graph.py export (graph)")
+                )
+              catch
+                case NonFatal(_) => // danger-scan:allow typed-catch — unparseable export output falls back
+                  (
+                    None,
+                    List(s"chain-state: openspec-graph.py export produced invalid JSON; $degraded")
+                  )
+          catch
+            case NonFatal(_) => // danger-scan:allow degraded-fact — no python3 is the predecessor's degraded trigger
+              (None, List(s"chain-state: python3 unavailable; $degraded"))
+
+  /** The repository containing `dir` — `git -C <dir> rev-parse --show-toplevel`. */
+  private def repoContaining(dir: Path): Option[Path] =
+    if Files.isDirectory(dir) then SpecLintCmd.gitOut(dir, List("rev-parse", "--show-toplevel")).map(Paths.get(_))
+    else None
+
+  /**
+   * `$(cd "$REPO" && git rev-parse <sha> 2>/dev/null || echo <sha>)` —
+   * when `repo` is `None` the predecessor's `cd ""` is a no-op, so the
+   * resolution still runs in the process cwd (every test fixture relies on
+   * this: a short SHA inside the real repo resolves even though the change
+   * dir sits in /tmp). On failure git echoes the argument to stdout BEFORE
+   * the `||` fallback echoes it again, so an unresolvable baseline becomes
+   * `"<sha>\n<sha>"` — a value that matches no ledger row, which is the
+   * predecessor's observable behaviour and is reproduced exactly.
+   */
+  private def resolveSha(repo: Option[Path], sha: String): String =
+    val dir: Path = repo.getOrElse(Paths.get("").toAbsolutePath.normalize)
+    try
+      val pb: ProcessBuilder = new ProcessBuilder("git", "rev-parse", sha)
+      pb.directory(dir.toFile)
+      pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+      val p: Process = pb.start()
+      val out: String =
+        new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8).trim
+      if p.waitFor() == 0 then out
+      else List(out, sha).filter(_.nonEmpty).distinct.mkString("\n")
+    catch
+      case NonFatal(_) => // danger-scan:allow fail-open — a non-git cwd passes the literal through
+        sha
+
+  /** `git <args>` under `dir`, returning the exit code. */
+  private def gitExit(dir: Path, args: List[String]): Int =
+    try
+      val pb: ProcessBuilder = new ProcessBuilder(("git" +: args)*)
+      pb.directory(dir.toFile)
+      pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+      pb.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+      pb.start().waitFor()
+    catch case NonFatal(_) => 128 // danger-scan:allow fail-open — a git failure is "changed", never "unchanged"
+
+  /**
+   * The forgive-unchanged oracle — the predecessor's
+   * `git diff --quiet <row.baseline> HEAD -- <artifact>` under the ledger
+   * file's repository root. Anything that is not a clean diff (changed
+   * artifact, unknown baseline, no repo) is "changed" — a stale row that
+   * cannot be forgiven stays absent evidence.
+   */
+  private def forgivePredicate(ledgerFile: String): (String, String) => Boolean =
+    val ledgerDir: Option[Path] =
+      Option(Paths.get(ledgerFile).toAbsolutePath.normalize.getParent)
+    val repo: Option[Path] = ledgerDir.flatMap(repoContaining)
+    (rowBaseline: String, artifact: String) =>
+      repo match
+        case Some(r) =>
+          gitExit(r, List("diff", "--quiet", rowBaseline, "HEAD", "--", artifact)) == 0
+        case None => false
 
 /** The `ledger` subcommand — append-only ledger operations. */
 object LedgerCmd:
@@ -798,7 +1432,7 @@ object LedgerCmd:
     else
       SubcommandWiring.readLedgerFile(file) match
         case Outcome.Undetermined(reason) =>
-          SubcommandWiring.emitStderr(s"ledger: $reason\n")
+          SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
           Outcome.Undetermined(reason)
         case Outcome.Finding(msg) =>
           Outcome.Finding(msg)
@@ -830,7 +1464,7 @@ object LedgerCmd:
     else
       SubcommandWiring.readLedgerFile(file) match
         case Outcome.Undetermined(reason) =>
-          SubcommandWiring.emitStderr(s"ledger: $reason\n")
+          SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
           Outcome.Undetermined(reason)
         case Outcome.Finding(msg) =>
           Outcome.Finding(msg)
@@ -946,36 +1580,62 @@ object CheckpointCmd:
                     SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — $err\n")
                     Outcome.Undetermined(err)
                   case Right(recordsRev) =>
-                    val records: List[LedgerRecord]        = recordsRev.reverse
-                    val ledger: Ledger.LedgerData          = Ledger.fromRecords(records)
-                    val lint: LintReport                   = LintReport(Nil, Nil, Map.empty, lintSuccess = true)
-                    val reqs: List[ChainState.Requirement] = Nil
-                    ChainState.compute(lint, ledger, reqs, baseline, change) match
-                      case Left(u) =>
-                        SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — ${u.reason}\n")
-                        Outcome.Undetermined(u.reason)
-                      case Right(report) =>
-                        if report.unresolved.nonEmpty then
-                          val names: String = report.unresolved.map(u => s"${u.spec}/${u.requirement}").mkString(", ")
-                          SubcommandWiring.emitStdout(
-                            s"checkpoint: undischarged obligations for $change/$spec: $names\n"
-                          )
-                          Outcome.Finding(s"undischarged obligations: $names")
-                        else
-                          // All discharged — write the presentation marker
-                          val markerDir: java.nio.file.Path  = Paths.get(gitDir, ".git", "verified-scala3-gate")
-                          val markerPath: java.nio.file.Path = markerDir.resolve(s"presentation-$change-$spec-$session")
-                          try
-                            Files.createDirectories(markerDir)
-                            Files.write(markerPath, Array.emptyByteArray)
-                            SubcommandWiring.emitStdout(
-                              s"checkpoint: marker written for $change/$spec (session $session)\n"
-                            )
-                            Outcome.Ran(0)
-                          catch
-                            case e: java.io.IOException =>
-                              SubcommandWiring.emitStderr(s"checkpoint: could not write marker: ${e.getMessage}\n")
-                              Outcome.Undetermined(s"could not write marker: ${e.getMessage}")
+                    val records: List[LedgerRecord] = recordsRev.reverse
+                    val ledger: Ledger.LedgerData   = Ledger.fromRecords(records)
+                    // --change-dir is the repository root; the change's
+                    // spec tree lives under openspec/changes/<change>.
+                    val changeDir: Path =
+                      Paths.get(gitDir).resolve("openspec/changes").resolve(change)
+                    ChainStateCmd.prepareInputs(
+                      changeDir,
+                      change,
+                      baseline,
+                      specFilter = None,
+                      sys.env, // scalafix:ok DisableSyntax.NoSysEnv
+                      ledgerFile,
+                      emitDiagnostics = false
+                    ) match
+                      case Left(reason) =>
+                        SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — $reason\n")
+                        Outcome.Undetermined(reason)
+                      case Right(inputs) =>
+                        ChainState.compute(
+                          inputs.lints,
+                          ledger,
+                          inputs.extracted,
+                          inputs.specBaselines,
+                          inputs.effectiveBaseline,
+                          inputs.resolvedBaseline,
+                          change,
+                          inputs.artifactUnchanged
+                        ) match
+                          case Left(u) =>
+                            SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — ${u.reason}\n")
+                            Outcome.Undetermined(u.reason)
+                          case Right(report) =>
+                            if report.unresolved.nonEmpty then
+                              val names: String =
+                                report.unresolved.map(u => s"${u.spec}/${u.requirement}").mkString(", ")
+                              SubcommandWiring.emitStdout(
+                                s"checkpoint: undischarged obligations for $change/$spec: $names\n"
+                              )
+                              Outcome.Finding(s"undischarged obligations: $names")
+                            else
+                              // All discharged — write the presentation marker
+                              val markerDir: java.nio.file.Path = Paths.get(gitDir, ".git", "verified-scala3-gate")
+                              val markerPath: java.nio.file.Path =
+                                markerDir.resolve(s"presentation-$change-$spec-$session")
+                              try
+                                Files.createDirectories(markerDir)
+                                Files.write(markerPath, Array.emptyByteArray)
+                                SubcommandWiring.emitStdout(
+                                  s"checkpoint: marker written for $change/$spec (session $session)\n"
+                                )
+                                Outcome.Ran(0)
+                              catch
+                                case e: java.io.IOException =>
+                                  SubcommandWiring.emitStderr(s"checkpoint: could not write marker: ${e.getMessage}\n")
+                                  Outcome.Undetermined(s"could not write marker: ${e.getMessage}")
 
 /** The `reconcile` subcommand — obligation reconciliation. */
 object ReconcileCmd:

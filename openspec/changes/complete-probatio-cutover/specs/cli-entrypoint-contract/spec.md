@@ -4,7 +4,7 @@
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler Migration Protocol | The shim is the only production caller of the tool surface; this spec fixes what the shim's invocation actually reaches | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
+| `Strangler` (Strangler Migration Protocol) | The shim is the only production caller of the tool surface; this spec fixes what the shim's invocation actually reaches | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
 
 This spec does not alter the concept's actions, state, or synchronizations. No
 concept file update is required.

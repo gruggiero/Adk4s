@@ -8,9 +8,12 @@ import org.sinemenda.probatio.core.ArtifactScan
 import org.sinemenda.probatio.core.ChainStateReport
 import org.sinemenda.probatio.core.ChainStateUndetermined
 import org.sinemenda.probatio.core.DriftScan
+import org.sinemenda.probatio.core.DriftScanResult
+import org.sinemenda.probatio.core.DriftWarning
 import org.sinemenda.probatio.core.FactRead
 import org.sinemenda.probatio.core.InstallRootScan
 import org.sinemenda.probatio.core.InstallRootState
+import org.sinemenda.probatio.core.LintContext
 import org.sinemenda.probatio.core.RepositoryFacts
 import org.sinemenda.probatio.core.RootBase
 import org.sinemenda.probatio.core.StampFormat
@@ -562,7 +565,7 @@ final class RepositoryFactsSpec extends ProbatioCliSuite:
           "[ \"$5\" = \"--baseline\" ] || exit 93\n" +
           "printf '%s' '{\"change\":\"reported-name\",\"baseline\":\"rep-base\",\"total\":2," +
           "\"bound\":2,\"resolved\":2,\"discharged\":1,\"unresolved\":[" +
-          "{\"spec\":\"s\",\"requirement\":\"R\",\"reasons\":[\"unbound\"]}]," +
+          "{\"spec\":\"s\",\"requirement\":\"R\",\"reasons\":[\"undischarged\"]}]," +
           "\"unmapped_obligations\":[{\"spec\":\"s\",\"line\":3,\"artifact\":\"a.md\"}]}'\n"
       )
       val f: RepositoryFacts =
@@ -702,6 +705,239 @@ final class RepositoryFactsSpec extends ProbatioCliSuite:
             case Left(u)    => assertEquals(u.baseline, sha)
             case Right(rep) => assertEquals(rep.baseline, "unknown") // report's own field
         case other => fail(s"expected one active change, got $other")
+    }
+
+  // ════════════════════════════════════════════════════════════════════
+  // spec-lint-engine: readLintContext — the applicability-facts read
+  // ════════════════════════════════════════════════════════════════════
+
+  /** The registry `# Concept:` headings a materialised shape produces. */
+  private def expectedRegistryConcepts(r: RegistryShape): FactRead[List[String]] =
+    r match
+      case RegistryShape.Docs(n) =>
+        FactRead.Present((0 until n).map(i => s"C$i").sorted.toList)
+      case RegistryShape.Absent => FactRead.Absent
+
+  /** The inventory type names a materialised shape produces (the awk rule). */
+  private def expectedInventoryTypes(i: InventoryShape): FactRead[List[String]] =
+    i match
+      case InventoryShape.Absent => FactRead.Absent
+      case InventoryShape.Rows(types, junk) =>
+        val valid: List[String] = (types ++ junk)
+          .map(c => c.replace("`", "").trim.replaceAll("\\[.*", ""))
+          .filter(c => c.matches("[A-Z][A-Za-z0-9_]*") && c != "Type")
+          .distinct
+          .sorted
+        FactRead.Present(valid)
+
+  /**
+   * Whether the shape produces instruction drift — a stamped root whose
+   * version differs from the schema's, a legacy stamp, a stamp-less
+   * document, or an unreadable root.
+   */
+  private def shapeHasDrift(s: RepoShape): Boolean =
+    val schemaV: Option[Int] = s.schema match
+      case SchemaShape.Versioned(v) => Some(v)
+      case _                        => None
+    s.rootDocs.exists {
+      case RootDocShape.Stamped(v, StampFormat.New)    => schemaV.forall(_ != v)
+      case RootDocShape.Stamped(_, StampFormat.Legacy) => true
+      case RootDocShape.PresentNoStamp                 => true
+      case RootDocShape.Unreadable                     => true
+      case RootDocShape.Absent                         => false
+    }
+
+  // ── Property: applicability-reflects-repository ─────────────────────
+  // spec: spec-lint-engine — Property: applicability-reflects-repository
+  // spec: spec-lint-engine — Proof Obligation: Reported applicability facts equal the repository's actual state
+  property("applicability-reflects-repository", coverConfig):
+    for shape <- genRepoShape.forAll
+        .cover(
+          40,
+          "registry-present",
+          (s: RepoShape) =>
+            s.registry match
+              case RegistryShape.Docs(_) => true
+              case RegistryShape.Absent  => false
+        )
+        .cover(
+          30,
+          "registry-absent",
+          (s: RepoShape) =>
+            s.registry match
+              case RegistryShape.Absent => true
+              case _                    => false
+        )
+        .cover(20, "drift-present", (s: RepoShape) => shapeHasDrift(s))
+        .cover(10, "no-install-anywhere", (s: RepoShape) => s.rootDocs.forall(_ == RootDocShape.Absent))
+    yield withMaterialised(shape) { (m: Materialised) =>
+      val ctx: LintContext =
+        RepositoryFactsReader.readLintContext(m.repoRoot, m.userHome)
+
+      val schemaR: Result =
+        assertFactState("schemaVersion", ctx.schemaVersion, expectedSchema(shape.schema))
+      val registryR: Result =
+        assertFactState("registry", ctx.registry, expectedRegistry(shape.registry))
+      val conceptsR: Result =
+        assertFactState("registryConcepts", ctx.registryConcepts, expectedRegistryConcepts(shape.registry))
+      val inventoryR: Result =
+        assertFactState("inventoryTypes", ctx.inventoryTypes, expectedInventoryTypes(shape.inventory))
+      val profileR: Result =
+        assertFactState("profile", ctx.profile, expectedProfile(shape.profile))
+
+      val rootsR: Result =
+        val expectedScans: List[InstallRootScan] =
+          DriftScan.installRoots.all.zip(shape.rootDocs).map { case (ref, docShape) =>
+            val base: Path = ref.base match
+              case RootBase.RepoRoot => m.repoRoot
+              case RootBase.UserHome => m.userHome
+            InstallRootScan(base.resolve(ref.relativePath).toString, expectedRootState(docShape))
+          }
+        val pathOk: Boolean =
+          ctx.installRoots.map(_.rootPath) == expectedScans.map(_.rootPath)
+        val stateOk: Boolean =
+          ctx.installRoots.map(_.state).zip(expectedScans.map(_.state)).forall {
+            case (InstallRootState.Unreadable(_), InstallRootState.Unreadable(_)) => true
+            case (a, e)                                                           => a == e
+          }
+        Result
+          .assert(ctx.installRoots.length == DriftScan.installRoots.length)
+          .log(s"installRoots length: ${ctx.installRoots.length}")
+          .and(Result.assert(pathOk).log("install root paths differ"))
+          .and(Result.assert(stateOk).log(s"root states differ: ${ctx.installRoots.map(_.state)}"))
+
+      schemaR.and(registryR).and(conceptsR).and(inventoryR).and(profileR).and(rootsR)
+    }
+
+  // ── Scenario: a present registry is reported present with its count ─
+  // spec: spec-lint-engine — Scenario: Happy path — a present registry is reported present with its count
+  test("readLintContext: a present registry is reported present with its count and headings"):
+    withMaterialised(
+      RepoShape(
+        schema = SchemaShape.Absent,
+        registry = RegistryShape.Docs(3),
+        inventory = InventoryShape.Absent,
+        profile = ProfileShape.Absent,
+        rootDocs = List.fill(DriftScan.installRoots.length)(RootDocShape.Absent),
+        changes = Nil,
+        chainStub = ChainStub.Absent
+      )
+    ) { (m: Materialised) =>
+      val ctx: LintContext =
+        RepositoryFactsReader.readLintContext(m.repoRoot, m.userHome)
+      assertEquals(ctx.registry, FactRead.Present(3))
+      assertEquals(ctx.registryConcepts, FactRead.Present(List("C0", "C1", "C2")))
+      assert(ctx.hasRegistry, "a present registry gates the dependent checks on")
+    }
+
+  // ── `# Concept: ` requires the space — `grep -h '^# Concept: '` ─────
+  // spec: spec-lint-engine — Requirement: Applicability facts are read from the repository at the I/O boundary and passed to the engine as data
+  test("readLintContext: a `# Concept:` heading without the space is not a concept"):
+    withMaterialised(
+      RepoShape(
+        schema = SchemaShape.Absent,
+        registry = RegistryShape.Docs(1),
+        inventory = InventoryShape.Absent,
+        profile = ProfileShape.Absent,
+        rootDocs = List.fill(DriftScan.installRoots.length)(RootDocShape.Absent),
+        changes = Nil,
+        chainStub = ChainStub.Absent
+      )
+    ) { (m: Materialised) =>
+      Files.writeString(
+        m.repoRoot.resolve("openspec/concepts/nospace.md"),
+        "# Concept:NoSpace — not a heading the predecessor reads\n",
+        StandardCharsets.UTF_8
+      )
+      val ctx: LintContext =
+        RepositoryFactsReader.readLintContext(m.repoRoot, m.userHome)
+      assertEquals(ctx.registryConcepts, FactRead.Present(List("C0")))
+    }
+
+  // ── Scenario: a present registry is never reported absent ───────────
+  // spec: spec-lint-engine — Scenario: Adversarial — a present registry is never reported absent
+  test("readLintContext: a present registry is never reported absent"):
+    withMaterialised(
+      RepoShape(
+        schema = SchemaShape.Absent,
+        registry = RegistryShape.Docs(1),
+        inventory = InventoryShape.Absent,
+        profile = ProfileShape.Absent,
+        rootDocs = List.fill(DriftScan.installRoots.length)(RootDocShape.Absent),
+        changes = Nil,
+        chainStub = ChainStub.Absent
+      )
+    ) { (m: Materialised) =>
+      val ctx: LintContext =
+        RepositoryFactsReader.readLintContext(m.repoRoot, m.userHome)
+      ctx.registry match
+        case FactRead.Absent =>
+          fail("a registry containing a concept document must never report Absent")
+        case FactRead.Unreadable(r) =>
+          fail(s"a readable registry must not be Unreadable: $r")
+        case FactRead.Present(_) => ()
+    }
+
+  // ── Scenario: an older declared schema version is drift ─────────────
+  // spec: spec-lint-engine — Scenario: Error path — an installed instruction document declaring an older schema is reported as drift
+  test("readLintContext: an installed document declaring an older schema is reported as drift"):
+    withMaterialised(
+      RepoShape(
+        schema = SchemaShape.Versioned(14),
+        registry = RegistryShape.Absent,
+        inventory = InventoryShape.Absent,
+        profile = ProfileShape.Absent,
+        rootDocs = RootDocShape.Stamped(12, StampFormat.New) +:
+          List.fill(DriftScan.installRoots.length - 1)(RootDocShape.Absent),
+        changes = Nil,
+        chainStub = ChainStub.Absent
+      )
+    ) { (m: Materialised) =>
+      val ctx: LintContext =
+        RepositoryFactsReader.readLintContext(m.repoRoot, m.userHome)
+      val drift: DriftScanResult =
+        DriftScan.scan(Option(14), ctx.installRoots)
+      drift.warnings.headOption match
+        case Some(w: DriftWarning.VersionMismatch) =>
+          assertEquals(w.expected, 14)
+          assertEquals(w.found, 12)
+          assert(
+            w.rootPath.endsWith(".agents/skills"),
+            s"the drift warning names the install location: ${w.rootPath}"
+          )
+        case other => fail(s"expected a VersionMismatch drift warning, got $other")
+    }
+
+  // ── Scenario: unreadable registry propagates as Unreadable ──────────
+  // spec: spec-lint-engine — Scenario: Adversarial — an unreadable repository fact yields could-not-determine, not clean
+  test("readLintContext: an unreadable registry directory is Unreadable, never Absent"):
+    withMaterialised(
+      RepoShape(
+        schema = SchemaShape.Absent,
+        registry = RegistryShape.Docs(2),
+        inventory = InventoryShape.Absent,
+        profile = ProfileShape.Absent,
+        rootDocs = List.fill(DriftScan.installRoots.length)(RootDocShape.Absent),
+        changes = Nil,
+        chainStub = ChainStub.Absent
+      )
+    ) { (m: Materialised) =>
+      val conceptsDir: Path = m.repoRoot.resolve("openspec/concepts")
+      conceptsDir.toFile.setReadable(false, false)
+      conceptsDir.toFile.setExecutable(false, false)
+      bracket(
+        conceptsDir,
+        { (d: Path) =>
+          d.toFile.setReadable(true, false)
+          d.toFile.setExecutable(true, false)
+        }
+      ) { (_: Path) =>
+        val ctx: LintContext =
+          RepositoryFactsReader.readLintContext(m.repoRoot, m.userHome)
+        ctx.registry match
+          case FactRead.Unreadable(_) => ()
+          case other                  => fail(s"expected Unreadable registry, got $other")
+      }
     }
 
 end RepositoryFactsSpec

@@ -47,7 +47,7 @@ final class ExitProtocolSpec extends ProbatioCliSuite:
     )
     reasons.foreach { reason =>
       val outcome: Outcome[Int] = Outcome.Undetermined(reason)
-      val code: Int = ExitCode.toInt(ExitCode.from(outcome))
+      val code: Int             = ExitCode.toInt(ExitCode.from(outcome))
       assert(code == 2, s"Undetermined('$reason') mapped to $code, expected 2")
     }
 
@@ -61,7 +61,7 @@ final class ExitProtocolSpec extends ProbatioCliSuite:
     )
     findings.foreach { msg =>
       val outcome: Outcome[Int] = Outcome.Finding(msg)
-      val code: Int = ExitCode.toInt(ExitCode.from(outcome))
+      val code: Int             = ExitCode.toInt(ExitCode.from(outcome))
       assert(code == 1, s"Finding('$msg') mapped to $code, expected 1")
     }
 
@@ -70,7 +70,7 @@ final class ExitProtocolSpec extends ProbatioCliSuite:
     val values: List[Int] = List(0, 1, 42, -1, 100)
     values.foreach { v =>
       val outcome: Outcome[Int] = Outcome.Ran(v)
-      val code: Int = ExitCode.toInt(ExitCode.from(outcome))
+      val code: Int             = ExitCode.toInt(ExitCode.from(outcome))
       assert(code == 0, s"Ran($v) mapped to $code, expected 0")
     }
 

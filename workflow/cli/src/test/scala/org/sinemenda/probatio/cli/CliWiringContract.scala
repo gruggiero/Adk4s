@@ -96,8 +96,8 @@ object CliWiringContract:
       knownFlags: Set[String]
     ): Either[CliError, Map[String, String]] =
       // Stub — populated in Step 3 (implementation)
-      val _: Array[String]   = args
-      val _: Set[String]     = knownFlags
+      val _: Array[String] = args
+      val _: Set[String]   = knownFlags
       Right(Map.empty)
 
     /** Read a ledger file as a list of JSON values. Returns Undetermined on I/O failure. */

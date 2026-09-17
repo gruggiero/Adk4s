@@ -29,8 +29,10 @@ final class CutoverGateSpec extends ProbatioSuite:
 
   import SeamTypes.*
 
-  /** Cover thresholds are stable at 500 tests — the default 100 can
-    * fluctuate ±5% on edge-case classes, causing flaky cover failures. */
+  /**
+   * Cover thresholds are stable at 500 tests — the default 100 can
+   * fluctuate ±5% on edge-case classes, causing flaky cover failures.
+   */
   private val coverConfig: PropertyConfig => PropertyConfig =
     _.copy(testLimit = SuccessCount(500))
 
@@ -214,11 +216,27 @@ final class CutoverGateSpec extends ProbatioSuite:
   // spec: cutover-gate — Property: proceed-iff-no-file-worse
   property("proceed-iff-no-file-worse", coverConfig):
     for d <- genDifferentialResult.forAll
-        .cover(30, "no-file-worse", (d: DifferentialResult) => d.files.forall(f => f.portedFailures <= f.predecessorFailures))
-        .cover(25, "exactly-one-worse", (d: DifferentialResult) => d.files.count(f => f.portedFailures > f.predecessorFailures) == 1)
-        .cover(15, "worse-but-total-improves", (d: DifferentialResult) =>
-          d.hasRegression && d.files.map(_.portedFailures).sum < d.files.map(_.predecessorFailures).sum)
-        .cover(10, "all-files-equal", (d: DifferentialResult) => d.files.forall(f => f.portedFailures == f.predecessorFailures))
+        .cover(
+          30,
+          "no-file-worse",
+          (d: DifferentialResult) => d.files.forall(f => f.portedFailures <= f.predecessorFailures)
+        )
+        .cover(
+          25,
+          "exactly-one-worse",
+          (d: DifferentialResult) => d.files.count(f => f.portedFailures > f.predecessorFailures) == 1
+        )
+        .cover(
+          15,
+          "worse-but-total-improves",
+          (d: DifferentialResult) =>
+            d.hasRegression && d.files.map(_.portedFailures).sum < d.files.map(_.predecessorFailures).sum
+        )
+        .cover(
+          10,
+          "all-files-equal",
+          (d: DifferentialResult) => d.files.forall(f => f.portedFailures == f.predecessorFailures)
+        )
     yield
       if d.isComplete then
         Result
@@ -233,8 +251,11 @@ final class CutoverGateSpec extends ProbatioSuite:
   // spec: cutover-gate — Property: total-improvement-does-not-excuse-a-regression
   property("total-improvement-does-not-excuse-a-regression", coverConfig):
     for d <- genRegressingDifferential.forAll
-        .cover(60, "total-lower", (d: DifferentialResult) =>
-          d.files.map(_.portedFailures).sum < d.files.map(_.predecessorFailures).sum)
+        .cover(
+          60,
+          "total-lower",
+          (d: DifferentialResult) => d.files.map(_.portedFailures).sum < d.files.map(_.predecessorFailures).sum
+        )
     yield CutoverGate.decide(d) match
       case CutoverVerdict.Revert(evidence) =>
         Result.assert(evidence.hasRegression).log(s"revert with regression: $evidence")
@@ -260,11 +281,11 @@ final class CutoverGateSpec extends ProbatioSuite:
   // mark a predecessor-missing file as worse.
   property("isWorse-requires-both-runs-present", coverConfig):
     for
-      total  <- Gen.int(Range.linear(1, 40)).forAll
-      pred   <- Gen.int(Range.linear(0, total)).forAll
-      port   <- Gen.int(Range.linear(0, total)).forAll
-      predP  <- Gen.boolean.forAll
-      portP  <- Gen.boolean.forAll
+      total <- Gen.int(Range.linear(1, 40)).forAll
+      pred  <- Gen.int(Range.linear(0, total)).forAll
+      port  <- Gen.int(Range.linear(0, total)).forAll
+      predP <- Gen.boolean.forAll
+      portP <- Gen.boolean.forAll
     yield
       val f: FileComparison = FileComparison("f.bats", total, pred, port, predP, portP)
       val expected: Boolean = predP && portP && port > pred
@@ -276,10 +297,14 @@ final class CutoverGateSpec extends ProbatioSuite:
   // spec: cutover-gate — Property: seam-resolves-to-exactly-one
   property("seam-resolves-to-exactly-one", coverConfig):
     for
-      cfg  <- genSeamConfiguration.forAll
-          .cover(10, "all-ported", (cfg: SeamConfiguration) => cfg.portedTools.size == ToolId.swapOrder.length)
-          .cover(10, "all-predecessor", (cfg: SeamConfiguration) => cfg.portedTools.isEmpty)
-          .cover(60, "mixed", (cfg: SeamConfiguration) => cfg.portedTools.nonEmpty && cfg.portedTools.size < ToolId.swapOrder.length)
+      cfg <- genSeamConfiguration.forAll
+        .cover(10, "all-ported", (cfg: SeamConfiguration) => cfg.portedTools.size == ToolId.swapOrder.length)
+        .cover(10, "all-predecessor", (cfg: SeamConfiguration) => cfg.portedTools.isEmpty)
+        .cover(
+          60,
+          "mixed",
+          (cfg: SeamConfiguration) => cfg.portedTools.nonEmpty && cfg.portedTools.size < ToolId.swapOrder.length
+        )
       seam <- Gen.int(Range.linear(0, ToolId.swapOrder.length - 1)).map(ToolId.swapOrder(_)).forAll
     yield Result
       .assert(
@@ -412,9 +437,9 @@ final class CutoverGateSpec extends ProbatioSuite:
 
   def genNoWorseFileComparison: Gen[FileComparison] =
     for
-      name <- Gen.string(Gen.alpha, Range.linear(3, 10)).map(s => s"$s.bats")
-      total <- Gen.int(Range.linear(1, 40))
-      pred <- Gen.int(Range.linear(0, total))
+      name   <- Gen.string(Gen.alpha, Range.linear(3, 10)).map(s => s"$s.bats")
+      total  <- Gen.int(Range.linear(1, 40))
+      pred   <- Gen.int(Range.linear(0, total))
       ported <- Gen.int(Range.linear(0, pred))
     yield FileComparison(name, total, pred, ported, true, true)
 
@@ -458,7 +483,7 @@ final class CutoverGateSpec extends ProbatioSuite:
           // which outweighs the worse file's +1 regression. Without this,
           // when pred < 2 the improvement is 0 and the total increases,
           // causing the total-lower cover to miss its 60% floor.
-          val safePred: Int    = math.min(total, math.max(2, pred))
+          val safePred: Int     = math.min(total, math.max(2, pred))
           val improvedPort: Int = math.max(0, safePred - 2)
           FileComparison(name, total, safePred, improvedPort, true, true)
       }

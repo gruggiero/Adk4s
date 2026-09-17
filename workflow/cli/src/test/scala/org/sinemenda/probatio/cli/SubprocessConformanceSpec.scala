@@ -56,11 +56,10 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
    * Step 3.
    */
   private def runSubprocess(argList: List[String]): Int =
-    if !artifactExists then
-      fail(s"built artifact not found at $artifactPath — conformance check FAILS, does not skip")
-    val cmd: List[String] = List(artifactPath) ++ argList
+    if !artifactExists then fail(s"built artifact not found at $artifactPath — conformance check FAILS, does not skip")
+    val cmd: List[String]     = List(artifactPath) ++ argList
     val logger: ProcessLogger = ProcessLogger(_ => (), _ => ())
-    val exitCode: Int = cmd.!(logger)
+    val exitCode: Int         = cmd.!(logger)
     exitCode
 
   // ── Scenario: Happy path — every exposed tool starts and reports a documented exit status
@@ -84,8 +83,7 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
       // If the artifact exists, this test is vacuously true (the artifact is
       // present). The real check is the "every exposed tool" test above.
       ()
-    else
-      fail(s"built artifact not found at $artifactPath — a missing tool entry point is a FAILURE, not a skip")
+    else fail(s"built artifact not found at $artifactPath — a missing tool entry point is a FAILURE, not a skip")
 
   // ── Scenario: Edge case — the artifact under check is the one the shims resolve
   // spec: cli-entrypoint-contract — Scenario: Edge case — the artifact under check is the one the shims resolve
@@ -136,12 +134,18 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
         (sub, valid, invalid)
       }
     corpus.foreach { case (sub, validArgs, invalidArgs) =>
-      val subExitValid: Int = runSubprocess(validArgs)
-      val subExitInvalid: Int = runSubprocess(invalidArgs)
-      val inProcExitValid: Int = ProbatioMain.dispatch(inv("probatio"), ProgramArgs.fromFixture(validArgs))
+      val subExitValid: Int      = runSubprocess(validArgs)
+      val subExitInvalid: Int    = runSubprocess(invalidArgs)
+      val inProcExitValid: Int   = ProbatioMain.dispatch(inv("probatio"), ProgramArgs.fromFixture(validArgs))
       val inProcExitInvalid: Int = ProbatioMain.dispatch(inv("probatio"), ProgramArgs.fromFixture(invalidArgs))
-      assertEquals(subExitValid, inProcExitValid,
-        s"subprocess vs in-process mismatch for ${Subcommand.cliName(sub)} valid args: $subExitValid vs $inProcExitValid")
-      assertEquals(subExitInvalid, inProcExitInvalid,
-        s"subprocess vs in-process mismatch for ${Subcommand.cliName(sub)} invalid args: $subExitInvalid vs $inProcExitInvalid")
+      assertEquals(
+        subExitValid,
+        inProcExitValid,
+        s"subprocess vs in-process mismatch for ${Subcommand.cliName(sub)} valid args: $subExitValid vs $inProcExitValid"
+      )
+      assertEquals(
+        subExitInvalid,
+        inProcExitInvalid,
+        s"subprocess vs in-process mismatch for ${Subcommand.cliName(sub)} invalid args: $subExitInvalid vs $inProcExitInvalid"
+      )
     }

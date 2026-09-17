@@ -11,29 +11,74 @@ import hedgehog.*
 final class ChainStateSpec extends ProbatioSuite:
 
   private def emptyLint: LintReport =
-    LintReport(verdicts = List.empty, warnings = List.empty, applicability = Map.empty, lintSuccess = true)
+    SpecLintFixtures.report(verdicts = List.empty, warnings = List.empty, applicability = Map.empty, lintSuccess = true)
 
   private def failedLint: LintReport =
-    LintReport(verdicts = List.empty, warnings = List.empty, applicability = Map.empty, lintSuccess = false)
+    SpecLintFixtures.report(
+      verdicts = List.empty,
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = false
+    )
 
   private def emptyLedger: Ledger.LedgerData = Ledger.fromRecords(List.empty)
 
-  private def noReqs: List[ChainState.Requirement] = List.empty
+  // ── Step-1 contract adapters: the requirements channel is an extracted
+  // RequirementSet; lint outcomes are per-spec; forgiveness is off unless a
+  // test supplies an oracle.
+  private def reqSet(rs: List[ChainState.Requirement]): RequirementSet =
+    RequirementSet(rs.map(_.spec).distinct, rs, List.empty, FactSource.Degraded)
+
+  private def reqSetWith(
+    rs: List[ChainState.Requirement],
+    obls: List[ExtractedObligation]
+  ): RequirementSet =
+    RequirementSet(rs.map(_.spec).distinct, rs, obls, FactSource.Degraded)
+
+  /**
+   * An obligation row claiming `Requirement: <title>` — the mapped row a
+   *  ledger record discharges against (obligation text = requirement title,
+   *  matching the fixture ledger records).
+   */
+  private def oblFor(r: ChainState.Requirement): ExtractedObligation =
+    ExtractedObligation(
+      spec = r.spec,
+      line = 10,
+      obligation = r.requirement,
+      artifact = "a.scala",
+      artifacts = List("a.scala"),
+      requirementClaims = List(r.requirement),
+      unmappable = false
+    )
+
+  // A spec that was READ and produced no requirements — its lint outcome
+  // is still consulted (distinct from RequirementSet.empty, where no spec
+  // was read at all and no lint is needed).
+  private def noReqs: RequirementSet =
+    RequirementSet(List("s"), List.empty, List.empty, FactSource.Degraded)
+
+  private def okLints(lint: LintReport): Map[String, Outcome[LintReport]] =
+    Map("s" -> Outcome.Ran(lint))
+
+  private val failedLints: Map[String, Outcome[LintReport]] =
+    Map("s" -> Outcome.Undetermined("spec-lint did not complete successfully"))
+
+  private val noForgive: (String, String) => Boolean = (_, _) => false
 
   // ── Scenario: same inputs produce same output
   // spec: port-scanner-to-probatio/probatio-core — Scenario: same inputs produce same output
   test("same inputs produce same output"):
     val result1: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(okLints(emptyLint), emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     val result2: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(okLints(emptyLint), emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     assertEquals(result1, result2)
 
   // ── Scenario: an unreadable ledger yields undetermined, not zero
   // spec: port-scanner-to-probatio/probatio-core — Scenario: an unreadable ledger yields undetermined, not zero
   test("a failed lint yields undetermined, not zero"):
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     assert(result.isLeft, "Expected Left (undetermined) for a failed lint, got Right")
     result match
       case Left(u)  => assert(u.reason.nonEmpty, "undetermined reason must be non-empty")
@@ -43,7 +88,7 @@ final class ChainStateSpec extends ProbatioSuite:
   // spec: port-scanner-to-probatio/probatio-core — Scenario: a failed lint yields undetermined, not zero
   test("a failed lint yields undetermined with a reason naming the lint failure"):
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     result match
       case Left(u) =>
         assert(
@@ -56,7 +101,7 @@ final class ChainStateSpec extends ProbatioSuite:
   // spec: port-scanner-to-probatio/probatio-core — Scenario: a genuinely empty ledger is reported as zero discharged
   test("a genuinely empty ledger with a successful lint is reported as zero discharged"):
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(okLints(emptyLint), emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     result match
       case Right(report) =>
         assertEquals(report.discharged, 0)
@@ -71,7 +116,7 @@ final class ChainStateSpec extends ProbatioSuite:
     // cannot proceed without a successful lint). The undetermined result
     // is never collapsed into a clean (Right with discharged=0).
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     assert(result.isLeft, "corrupt input must yield Left (undetermined), never Right (clean)")
 
   // ── Property: Chain-state computation is referentially transparent
@@ -92,9 +137,9 @@ final class ChainStateSpec extends ProbatioSuite:
       val reqs: List[ChainState.Requirement] =
         (1 to nReqs).toList.map(i => ChainState.Requirement(spec = "s", requirement = s"R$i"))
       val result1: Either[ChainStateUndetermined, ChainStateReport] =
-        ChainState.compute(lint, emptyLedger, reqs, baseline, "c")
+        ChainState.compute(okLints(lint), emptyLedger, reqSet(reqs), Map.empty, baseline, baseline, "c", noForgive)
       val result2: Either[ChainStateUndetermined, ChainStateReport] =
-        ChainState.compute(lint, emptyLedger, reqs, baseline, "c")
+        ChainState.compute(okLints(lint), emptyLedger, reqSet(reqs), Map.empty, baseline, baseline, "c", noForgive)
       Result.assert(result1 == result2)
 
   // ── Mutation-killing: a successful lint with reqs produces a Right report
@@ -105,7 +150,7 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.Requirement("s", "R3")
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, emptyLedger, reqs, "abc1234", "c")
+      ChainState.compute(okLints(emptyLint), emptyLedger, reqSet(reqs), Map.empty, "abc1234", "abc1234", "c", noForgive)
     result match
       case Right(report) =>
         assertEquals(report.total, 3)
@@ -118,6 +163,15 @@ final class ChainStateSpec extends ProbatioSuite:
     val reqs: List[ChainState.Requirement] = List(
       ChainState.Requirement("s", "R1"),
       ChainState.Requirement("s", "R2")
+    )
+    val lint: LintReport = SpecLintFixtures.report(
+      verdicts = List(
+        RequirementVerdict("R1", Verdict.Resolved, CheckId.F1),
+        RequirementVerdict("R2", Verdict.Resolved, CheckId.F1)
+      ),
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
     )
     val record: LedgerRecord = LedgerRecord(
       v = 1,
@@ -133,7 +187,16 @@ final class ChainStateSpec extends ProbatioSuite:
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, ledger, reqs, "abc1234", "c")
+      ChainState.compute(
+        okLints(lint),
+        ledger,
+        reqSetWith(reqs, reqs.map(oblFor)),
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.discharged, 1)
@@ -141,10 +204,17 @@ final class ChainStateSpec extends ProbatioSuite:
         assertEquals(report.unresolved.headOption.map(_.requirement), Some("R2"))
       case Left(u) => fail(s"Expected Right, got Left: ${u.reason}")
 
-  // ── Mutation-killing: Manual ring records do NOT count as discharged
-  test("Manual ring records do not count as discharged"):
+  // ── Manual ring rows count as evidence — the predecessor's ledger.sh
+  // read does not filter by ring (spec 5 corrected the old exclusion).
+  test("Manual ring records count as discharged"):
     val reqs: List[ChainState.Requirement] = List(
       ChainState.Requirement("s", "R1")
+    )
+    val lint: LintReport = SpecLintFixtures.report(
+      verdicts = List(RequirementVerdict("R1", Verdict.Resolved, CheckId.F1)),
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
     )
     val record: LedgerRecord = LedgerRecord(
       v = 1,
@@ -160,11 +230,20 @@ final class ChainStateSpec extends ProbatioSuite:
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, ledger, reqs, "abc1234", "c")
+      ChainState.compute(
+        okLints(lint),
+        ledger,
+        reqSetWith(reqs, reqs.map(oblFor)),
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     result match
       case Right(report) =>
-        assertEquals(report.discharged, 0)
-        assertEquals(report.unresolved.length, 1)
+        assertEquals(report.discharged, 1)
+        assertEquals(report.unresolved.length, 0)
       case Left(u) => fail(s"Expected Right, got Left: ${u.reason}")
 
   // ── Mutation-killing: records with different baseline do NOT count
@@ -185,8 +264,23 @@ final class ChainStateSpec extends ProbatioSuite:
       baseline = "deadbeef"
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
+    val lint: LintReport = SpecLintFixtures.report(
+      verdicts = List(RequirementVerdict("R1", Verdict.Resolved, CheckId.F1)),
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
+    )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, ledger, reqs, "abc1234", "c")
+      ChainState.compute(
+        okLints(lint),
+        ledger,
+        reqSetWith(reqs, reqs.map(oblFor)),
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.discharged, 0)
@@ -210,8 +304,23 @@ final class ChainStateSpec extends ProbatioSuite:
       baseline = "abc1234"
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
+    val lint: LintReport = SpecLintFixtures.report(
+      verdicts = List(RequirementVerdict("R1", Verdict.Resolved, CheckId.F1)),
+      warnings = List.empty,
+      applicability = Map.empty,
+      lintSuccess = true
+    )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, ledger, reqs, "abc1234", "c")
+      ChainState.compute(
+        okLints(lint),
+        ledger,
+        reqSetWith(reqs, reqs.map(oblFor)),
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.discharged, 0)
@@ -224,7 +333,7 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.Requirement("s", "R2"),
       ChainState.Requirement("s", "R3")
     )
-    val lint: LintReport = LintReport(
+    val lint: LintReport = SpecLintFixtures.report(
       verdicts = List(
         RequirementVerdict("R1", Verdict.Bound, CheckId.F1),
         RequirementVerdict("R2", Verdict.Resolved, CheckId.F2),
@@ -234,8 +343,20 @@ final class ChainStateSpec extends ProbatioSuite:
       applicability = Map.empty,
       lintSuccess = true
     )
+    // R2's obligation makes it resolvable (no rows → undischarged, which
+    // counts as resolved); R1 is bound but has no attributable row —
+    // unattributable, which does not.
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
+      ChainState.compute(
+        okLints(lint),
+        emptyLedger,
+        reqSetWith(reqs, List(oblFor(reqs(1)))),
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.bound, 2)
@@ -246,7 +367,7 @@ final class ChainStateSpec extends ProbatioSuite:
   // ── Mutation-killing: failed lint reason contains "lint"
   test("failed lint reason is non-empty and contains the word lint"):
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     result match
       case Left(u) =>
         assert(u.reason.nonEmpty, "reason must be non-empty")
@@ -259,7 +380,7 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.Requirement("s", "R1")
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, emptyLedger, reqs, "abc1234", "c")
+      ChainState.compute(okLints(emptyLint), emptyLedger, reqSet(reqs), Map.empty, "abc1234", "abc1234", "c", noForgive)
     result match
       case Right(report) =>
         assertEquals(report.unresolved.length, 1)
@@ -271,37 +392,39 @@ final class ChainStateSpec extends ProbatioSuite:
     val reqs: List[ChainState.Requirement] = List(
       ChainState.Requirement("s", "R1")
     )
-    val lint: LintReport = LintReport(
+    val lint: LintReport = SpecLintFixtures.report(
       verdicts = List(RequirementVerdict("R1", Verdict.Unbound, CheckId.F1)),
       warnings = List.empty,
       applicability = Map.empty,
       lintSuccess = true
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
+      ChainState.compute(okLints(lint), emptyLedger, reqSet(reqs), Map.empty, "abc1234", "abc1234", "c", noForgive)
     result match
       case Right(report) =>
         assertEquals(report.unresolved.length, 1)
         assertEquals(report.unresolved.headOption.map(_.reasons), Some(List(UnresolvedReason.Unbound)))
       case Left(u) => fail(s"Expected Right, got Left: ${u.reason}")
 
-  // ── Mutation-killing: unresolved reason is Unresolved when verdict is Bound
-  test("unresolved reason is Unresolved when verdict is Bound but not discharged"):
+  // ── Bound with no attributable obligation row is Unattributable — the
+  // degraded-mode F1 fix: spec-lint's loose binding says bound, but no
+  // exact-title row exists to attribute evidence to.
+  test("unresolved reason is Unattributable when verdict is Bound with no attributable row"):
     val reqs: List[ChainState.Requirement] = List(
       ChainState.Requirement("s", "R1")
     )
-    val lint: LintReport = LintReport(
+    val lint: LintReport = SpecLintFixtures.report(
       verdicts = List(RequirementVerdict("R1", Verdict.Bound, CheckId.F1)),
       warnings = List.empty,
       applicability = Map.empty,
       lintSuccess = true
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
+      ChainState.compute(okLints(lint), emptyLedger, reqSet(reqs), Map.empty, "abc1234", "abc1234", "c", noForgive)
     result match
       case Right(report) =>
         assertEquals(report.unresolved.length, 1)
-        assertEquals(report.unresolved.headOption.map(_.reasons), Some(List(UnresolvedReason.Unresolved)))
+        assertEquals(report.unresolved.headOption.map(_.reasons), Some(List(UnresolvedReason.Unattributable)))
       case Left(u) => fail(s"Expected Right, got Left: ${u.reason}")
 
   // ── Mutation-killing: unresolved reason is Undischarged when verdict is Resolved but no ledger record
@@ -309,14 +432,23 @@ final class ChainStateSpec extends ProbatioSuite:
     val reqs: List[ChainState.Requirement] = List(
       ChainState.Requirement("s", "R1")
     )
-    val lint: LintReport = LintReport(
+    val lint: LintReport = SpecLintFixtures.report(
       verdicts = List(RequirementVerdict("R1", Verdict.Resolved, CheckId.F1)),
       warnings = List.empty,
       applicability = Map.empty,
       lintSuccess = true
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
+      ChainState.compute(
+        okLints(lint),
+        emptyLedger,
+        reqSetWith(reqs, reqs.map(oblFor)),
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.unresolved.length, 1)
@@ -328,7 +460,7 @@ final class ChainStateSpec extends ProbatioSuite:
     val reqs: List[ChainState.Requirement] = List(
       ChainState.Requirement("s", "R1")
     )
-    val lint: LintReport = LintReport(
+    val lint: LintReport = SpecLintFixtures.report(
       verdicts = List(RequirementVerdict("R1", Verdict.Resolved, CheckId.F1)),
       warnings = List.empty,
       applicability = Map.empty,
@@ -348,7 +480,16 @@ final class ChainStateSpec extends ProbatioSuite:
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(lint, ledger, reqs, "abc1234", "c")
+      ChainState.compute(
+        okLints(lint),
+        ledger,
+        reqSetWith(reqs, reqs.map(oblFor)),
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.discharged, 1)
@@ -364,7 +505,7 @@ final class ChainStateSpec extends ProbatioSuite:
       ChainState.Requirement("s", "R2"),
       ChainState.Requirement("s", "R3")
     )
-    val lint: LintReport = LintReport(
+    val lint: LintReport = SpecLintFixtures.report(
       verdicts = List(
         RequirementVerdict("R1", Verdict.Bound, CheckId.F1),
         RequirementVerdict("R2", Verdict.Resolved, CheckId.F2),
@@ -375,7 +516,16 @@ final class ChainStateSpec extends ProbatioSuite:
       lintSuccess = true
     )
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(lint, emptyLedger, reqs, "abc1234", "c")
+      ChainState.compute(
+        okLints(lint),
+        emptyLedger,
+        reqSetWith(reqs, List(oblFor(reqs(1)))),
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.bound, 2, "bound should count Bound + Resolved = 2")
@@ -385,7 +535,7 @@ final class ChainStateSpec extends ProbatioSuite:
   // ── Mutation-killing: failed lint reason contains the exact failure text
   test("failed lint reason contains 'spec-lint did not complete successfully'"):
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     result match
       case Left(u) =>
         assert(
@@ -398,5 +548,5 @@ final class ChainStateSpec extends ProbatioSuite:
   test("successful lint with empty ledger and reqs produces Right, not Left"):
     val reqs: List[ChainState.Requirement] = List(ChainState.Requirement("s", "R1"))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, emptyLedger, reqs, "abc1234", "c")
+      ChainState.compute(okLints(emptyLint), emptyLedger, reqSet(reqs), Map.empty, "abc1234", "abc1234", "c", noForgive)
     assert(result.isRight, "successful lint must produce Right, not Left")

@@ -5,7 +5,7 @@
 | Concept | Role here | File |
 |---------|-----------|------|
 | Schema | The lint checks are the schema's mechanical pre-pass; this spec ports them without altering any verdict | [schema.md](../../../../concepts/schema.md) |
-| Strangler Migration Protocol | The lint tool is one of the swapped seams; its parity is the swap's acceptance criterion | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
+| `Strangler` (Strangler Migration Protocol) | The lint tool is one of the swapped seams; its parity is the swap's acceptance criterion | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
 
 This spec does not alter either concept's actions, state, or synchronizations. No
 concept file update is required.

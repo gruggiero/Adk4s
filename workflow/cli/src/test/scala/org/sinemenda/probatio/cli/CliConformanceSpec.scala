@@ -43,16 +43,24 @@ final class CliConformanceSpec extends ProbatioCliSuite:
   // ── Scenario: Chain-state output accepted by chain-state report contract
   // spec: cli-protocol — Scenario: Chain-state output accepted by chain-state report contract
   test("ChainStateReport serializes to JSON accepted by the chain-state report contract shape"):
-    val report: ChainStateReport = ChainStateReport(
-      change = "port-scanner-to-probatio",
-      baseline = "abc123",
-      total = 52,
-      bound = 52,
-      resolved = 52,
-      discharged = 17,
-      unresolved = Nil,
-      unmappedObligations = Nil
-    )
+    // 35 undischarged + 17 discharged = 52 total — contract-consistent counts.
+    val unresolved: List[UnresolvedEntry] = (1 to 35).toList.map { i =>
+      UnresolvedEntry
+        .of("spec", s"req-$i", List(UnresolvedReason.Undischarged))
+        .getOrElse(fail(s"unrepresentable entry: req-$i"))
+    }
+    val report: ChainStateReport = ChainStateReport
+      .fromCounts(
+        change = "port-scanner-to-probatio",
+        baseline = "abc123",
+        total = 52,
+        bound = 52,
+        resolved = 52,
+        discharged = 17,
+        unresolved = unresolved,
+        unmappedObligations = Nil
+      )
+      .getOrElse(fail("fixture report violates the report contract"))
     val json: String = write(report)
     assert(json.contains("change"), "chain-state report JSON missing 'change' field")
     assert(json.contains("baseline"), "chain-state report JSON missing 'baseline' field")
@@ -101,20 +109,30 @@ final class CliConformanceSpec extends ProbatioCliSuite:
   // spec: cli-protocol — Property: stdout-conformance-with-jq-contracts
   property("stdout-conformance-with-jq-contracts"):
     for
-      change     <- Gen.string(Gen.alphaNum, Range.linear(1, 30)).forAll
-      total      <- Gen.int(Range.linear(0, 200)).forAll
-      discharged <- Gen.int(Range.linear(0, total)).forAll
+      change   <- Gen.string(Gen.alphaNum, Range.linear(1, 30)).forAll
+      nEntries <- Gen.int(Range.linear(0, 100)).forAll
+      okCount  <- Gen.int(Range.linear(0, 100)).forAll
     yield
-      val report: ChainStateReport = ChainStateReport(
-        change = change,
-        baseline = "baseline-sha",
-        total = total,
-        bound = total,
-        resolved = discharged,
-        discharged = discharged,
-        unresolved = Nil,
-        unmappedObligations = Nil
-      )
+      // Contract-valid by construction: every unresolved requirement is
+      // undischarged, so resolved == bound == total and discharged == okCount.
+      val unresolved: List[UnresolvedEntry] = (1 to nEntries).toList.map { i =>
+        UnresolvedEntry
+          .of("spec", s"req-$i", List(UnresolvedReason.Undischarged))
+          .getOrElse(fail(s"unrepresentable entry: req-$i"))
+      }
+      val total: Int = unresolved.length + okCount
+      val report: ChainStateReport = ChainStateReport
+        .fromCounts(
+          change = change,
+          baseline = "baseline-sha",
+          total = total,
+          bound = total,
+          resolved = total,
+          discharged = okCount,
+          unresolved = unresolved,
+          unmappedObligations = Nil
+        )
+        .getOrElse(fail("generated report violates the report contract"))
       val json: String = write(report)
       // The chain-state report contract requires these fields.
       Result

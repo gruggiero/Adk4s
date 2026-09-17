@@ -321,15 +321,9 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
 
   /** Runs `dispatch` with stdout redirected, returning (exit code, stdout). */
   private def captureStdout(name: InvocationName, pa: ProgramArgs): (Int, String) =
-    val baos: java.io.ByteArrayOutputStream = new java.io.ByteArrayOutputStream()
-    val ps: java.io.PrintStream             = new java.io.PrintStream(baos, true, "UTF-8")
-    val old: java.io.PrintStream            = System.out
-    System.setOut(ps)
-    try
-      val code: Int = ProbatioMain.dispatch(name, pa)
-      ps.flush()
-      (code, baos.toString("UTF-8"))
-    finally System.setOut(old)
+    val (out: String, code: Int) =
+      StdoutCapture.captureOut(ProbatioMain.dispatch(name, pa))
+    (code, out)
 
   test("subcommand --help prints that subcommand's help on stdout and exits 0"):
     val (code, out): (Int, String) = captureStdout(inv("probatio"), args("gate", "--help"))

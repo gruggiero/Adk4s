@@ -40,8 +40,10 @@ final class LedgerCmdProvenanceSpec extends ProbatioCliSuite:
     val result: Outcome[Int] = LedgerCmd.append(r8MissingSession, ledgerPath = None)
     result match
       case Outcome.Finding(desc) =>
-        assert(desc.contains("session") || desc.contains("14"),
-          s"Expected finding to mention session or clause 14, got: $desc")
+        assert(
+          desc.contains("session") || desc.contains("14"),
+          s"Expected finding to mention session or clause 14, got: $desc"
+        )
       case other => fail(s"Expected Finding, got $other")
 
   // ── Scenario: a record missing a required field is rejected at append (adversarial)
@@ -50,8 +52,7 @@ final class LedgerCmdProvenanceSpec extends ProbatioCliSuite:
     val result: Outcome[Int] = LedgerCmd.append(missingExit, ledgerPath = None)
     result match
       case Outcome.Finding(desc) =>
-        assert(desc.contains("exit") || desc.contains("1"),
-          s"Expected finding to mention exit or clause 1, got: $desc")
+        assert(desc.contains("exit") || desc.contains("1"), s"Expected finding to mention exit or clause 1, got: $desc")
       case other => fail(s"Expected Finding, got $other")
 
   // ── Scenario: no force flag exists (adversarial)

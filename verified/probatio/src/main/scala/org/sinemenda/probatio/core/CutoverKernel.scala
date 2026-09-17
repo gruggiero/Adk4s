@@ -124,9 +124,11 @@ object CutoverKernel:
    * spec: cutover-gate — Property: proceed-iff-no-file-worse
    */
   @pure
+  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
   def emptyVectorsProceed: Boolean =
     cutoverDecision(Nil(), Nil())
       .ensuring(_ == true)
+  // format: on
 
   /**
    * Law: a single file where ported <= predecessor yields proceed.

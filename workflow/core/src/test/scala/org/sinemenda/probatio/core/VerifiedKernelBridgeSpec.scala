@@ -190,24 +190,28 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
   // ── 2. ChainStateKernel bridge ───────────────────────────────────────────
 
   private def emptyLint: LintReport =
-    LintReport(
+    SpecLintFixtures.report(
       verdicts = List.empty,
       warnings = List.empty,
       applicability = Map.empty,
       lintSuccess = true
     )
 
-  private def failedLint: LintReport =
-    LintReport(
-      verdicts = List.empty,
-      warnings = List.empty,
-      applicability = Map.empty,
-      lintSuccess = false
-    )
-
   private def emptyLedger: Ledger.LedgerData = Ledger.fromRecords(List.empty)
 
-  private def noReqs: List[ChainState.Requirement] = List.empty
+  // A spec that was READ and produced no requirements — its lint outcome
+  // is still consulted (distinct from RequirementSet.empty, where no spec
+  // was read at all and no lint is needed).
+  private def noReqs: RequirementSet =
+    RequirementSet(List("s"), List.empty, List.empty, FactSource.Degraded)
+
+  private def okLints(lint: LintReport): Map[String, Outcome[LintReport]] =
+    Map("s" -> Outcome.Ran(lint))
+
+  private val failedLints: Map[String, Outcome[LintReport]] =
+    Map("s" -> Outcome.Undetermined("spec-lint did not complete successfully"))
+
+  private val noForgive: (String, String) => Boolean = (_, _) => false
 
   /**
    * Call the model's compute with the given lintSuccess flag and empty
@@ -229,7 +233,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
 
   test("bridge-chainstate-failed-lint — both return Left for failed lint"):
     val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     assert(prodResult.isLeft, s"production must return Left for failed lint, got $prodResult")
 
     val modelResult: stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
@@ -240,7 +244,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
 
   test("bridge-chainstate-successful-lint — both return Right for successful lint"):
     val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(emptyLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(okLints(emptyLint), emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     assert(
       prodResult.isRight,
       s"production must return Right for successful lint, got $prodResult"
@@ -260,7 +264,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     // with a clean report (discharged=0). The defect class is collapsing
     // undetermined into a clean "0 discharged" Right.
     val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLint, emptyLedger, noReqs, "abc1234", "c")
+      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
     assert(
       prodResult.isLeft,
       "production: failed lint must yield Left (undetermined), never Right (clean report)"

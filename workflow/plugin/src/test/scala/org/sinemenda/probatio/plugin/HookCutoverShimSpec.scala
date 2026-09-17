@@ -3,24 +3,25 @@ package org.sinemenda.probatio.plugin
 import hedgehog._
 import hedgehog.Range._
 
-/** Test oracle for the hook-cutover spec — shim-idempotency property and
-  * the shim-with-logic compile-negative.
-  *
-  * These tests live in the sbt-probatio plugin test sources because
-  * `ShimGenerator` is defined in the plugin module, which is not visible
-  * to probatio-core tests. The core-side tests (dependency order, oracle
-  * gating, SwapOrder compile-negative) are in `HookCutoverSpec.scala`.
-  *
-  * spec: hook-cutover — Requirement: Each bash hook is replaced by a 3-line exec shim pointing to the probatio binary
-  * spec: hook-cutover — Property: shim-idempotency
-  * spec: hook-cutover — Compile-Negative: shim with logic beyond shebang + exec + newline
-  */
+/**
+ * Test oracle for the hook-cutover spec — shim-idempotency property and
+ * the shim-with-logic compile-negative.
+ *
+ * These tests live in the sbt-probatio plugin test sources because
+ * `ShimGenerator` is defined in the plugin module, which is not visible
+ * to probatio-core tests. The core-side tests (dependency order, oracle
+ * gating, SwapOrder compile-negative) are in `HookCutoverSpec.scala`.
+ *
+ * spec: hook-cutover — Requirement: Each bash hook is replaced by a 3-line exec shim pointing to the probatio binary
+ * spec: hook-cutover — Property: shim-idempotency
+ * spec: hook-cutover — Compile-Negative: shim with logic beyond shebang + exec + newline
+ */
 final class HookCutoverShimSpec extends ProbatioPluginSuite {
 
   // ── Requirement: Each bash hook is replaced by a 3-line exec shim
   // spec: hook-cutover — Scenario: The gate shim is generated idempotently
   test("gate shim is generated idempotently — byte-identical on repeat") {
-    val path: String = "/path/to/probatio"
+    val path: String  = "/path/to/probatio"
     val shim1: String = ShimGenerator.generateShim(path)
     val shim2: String = ShimGenerator.generateShim(path)
     assertEquals(shim1, shim2, "shim must be byte-identical when regenerated")
@@ -50,18 +51,22 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
     } yield {
       val shim1: String = ShimGenerator.generateShim(path)
       val shim2: String = ShimGenerator.generateShim(path)
-      Result.assert(shim1 == shim2)
+      Result
+        .assert(shim1 == shim2)
         .log(s"shim1 != shim2 for path=$path:\n$shim1\n---\n$shim2")
         .and(
-          Result.assert(shim1.startsWith("#!/usr/bin/env bash\n"))
+          Result
+            .assert(shim1.startsWith("#!/usr/bin/env bash\n"))
             .log(s"missing shebang: $shim1")
         )
         .and(
-          Result.assert(shim1.endsWith("\n"))
+          Result
+            .assert(shim1.endsWith("\n"))
             .log(s"missing trailing newline: $shim1")
         )
         .and(
-          Result.assert(shim1.contains("gate \"$@\""))
+          Result
+            .assert(shim1.contains("gate \"$@\""))
             .log(s"missing gate subcommand: $shim1")
         )
     }
@@ -74,8 +79,10 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
     // the exec line content. No parameter exists for injecting arbitrary logic
     // into the shim. A call with a `logic` parameter must fail to compile.
     val err: String = compileErrors("ShimGenerator.generateShim(\"/path\", \"gate\", logic = true)")
-    assert(err.nonEmpty,
-      "ShimGenerator.generateShim must not accept a logic parameter — a shim with logic is a new code path")
+    assert(
+      err.nonEmpty,
+      "ShimGenerator.generateShim must not accept a logic parameter — a shim with logic is a new code path"
+    )
   }
 
   // ── Generator: genBinaryPath

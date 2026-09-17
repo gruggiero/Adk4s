@@ -5,7 +5,7 @@
 | Concept | Role here | File |
 |---------|-----------|------|
 | Schema | The correctness verdict — bound, resolved, discharged — is the schema's central definition; this spec makes the ported computation able to reach it | [schema.md](../../../../concepts/schema.md) |
-| Strangler Migration Protocol | Chain-state is the first swapped seam; its parity is the swap's acceptance criterion | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
+| `Strangler` (Strangler Migration Protocol) | Chain-state is the first swapped seam; its parity is the swap's acceptance criterion | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
 
 This spec does not alter either concept's actions, state, or synchronizations. No
 concept file update is required.

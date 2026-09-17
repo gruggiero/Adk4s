@@ -545,6 +545,10 @@ lazy val `probatio-cli` = (project in file("workflow/cli"))
     assembly / mainClass := Some("org.sinemenda.probatio.cli.ProbatioMain"),
     nativeImageOptions ++= Seq("--no-fallback", "-O1"),
     nativeImageOutput := target.value / "native-image" / "probatio",
+    // Several suites redirect the global System.out/System.err to assert on
+    // emitted bytes. With fork=false, sbt's default parallel task groups let
+    // another suite's production code print into a live capture buffer.
+    Test / parallelExecution := false,
     dependencyLint := {
       val report: UpdateReport = update.value
       val log: sbt.Logger = streams.value.log

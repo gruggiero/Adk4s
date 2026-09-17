@@ -4,8 +4,8 @@
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler Migration Protocol | This spec supplies the gate the protocol names but whose green predicate was unsatisfiable, and adds the abort path as an executable decision rather than a described one | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
-| Conformance Property-Test Contract | The green predicate is this concept's; this spec changes it from "zero failures" to "no worse than the predecessor" | [conformance-property-test-contract.md](../../../../concepts/conformance-property-test-contract.md) |
+| `Strangler` (Strangler Migration Protocol) | This spec supplies the gate the protocol names but whose green predicate was unsatisfiable, and adds the abort path as an executable decision rather than a described one | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
+| `Conformance` (Conformance Property-Test Contract) | The green predicate is this concept's; this spec changes it from "zero failures" to "no worse than the predecessor" | [conformance-property-test-contract.md](../../../../concepts/conformance-property-test-contract.md) |
 
 **Both concept files are updated as part of implementing this spec.** The
 Conformance Property-Test Contract's operational principle currently reads "the

@@ -16,28 +16,36 @@ final class InstallResolverSpec extends ProbatioPluginSuite {
   // spec: sbt-plugin — Property: install-resolution-order
   property("install-resolution-order: each fallback emits exactly one distinct log line") {
     for {
-      scenario <- Gen.element1(
-        ResolutionScenario.PrebuiltAvailable,
-        ResolutionScenario.PrebuiltChecksumInvalid,
-        ResolutionScenario.JarFallback,
-        ResolutionScenario.NativeImage
-      ).forAll
+      scenario <- Gen
+        .element1(
+          ResolutionScenario.PrebuiltAvailable,
+          ResolutionScenario.PrebuiltChecksumInvalid,
+          ResolutionScenario.JarFallback,
+          ResolutionScenario.NativeImage
+        )
+        .forAll
     } yield {
       val result: ResolutionResult = InstallResolver.resolve(scenario)
-      val firstLine: String = result.logLines.headOption.getOrElse("")
-      Result.assert(result.logLines.nonEmpty)
+      val firstLine: String        = result.logLines.headOption.getOrElse("")
+      Result
+        .assert(result.logLines.nonEmpty)
         .log("no fallback should be silent — logLines must be nonEmpty")
-        .and(Result.assert(result.logLines.length == 1)
-          .log(s"expected exactly 1 log line, got ${result.logLines.length}: ${result.logLines}"))
         .and(
-          (scenario match {
+          Result
+            .assert(result.logLines.length == 1)
+            .log(s"expected exactly 1 log line, got ${result.logLines.length}: ${result.logLines}")
+        )
+        .and(
+          scenario match {
             case ResolutionScenario.PrebuiltAvailable | ResolutionScenario.NativeImage =>
-              Result.assert(firstLine.startsWith("[info]"))
+              Result
+                .assert(firstLine.startsWith("[info]"))
                 .log(s"prebuilt/native-image should emit [info], got: $firstLine")
             case ResolutionScenario.PrebuiltChecksumInvalid | ResolutionScenario.JarFallback =>
-              Result.assert(firstLine.startsWith("[warn]"))
+              Result
+                .assert(firstLine.startsWith("[warn]"))
                 .log(s"JAR fallback should emit [warn], got: $firstLine")
-          })
+          }
         )
     }
   }
@@ -93,8 +101,13 @@ final class InstallResolverSpec extends ProbatioPluginSuite {
 
   // ── Scenario: prebuilt [info] and JAR [warn] are distinguishable ────────
   test("prebuilt [info] and JAR [warn] log lines are distinguishable") {
-    val prebuilt: String = InstallResolver.resolve(ResolutionScenario.PrebuiltAvailable).logLines.headOption.getOrElse(fail("prebuilt logLines empty"))
-    val jar: String = InstallResolver.resolve(ResolutionScenario.JarFallback).logLines.headOption.getOrElse(fail("jar logLines empty"))
+    val prebuilt: String = InstallResolver
+      .resolve(ResolutionScenario.PrebuiltAvailable)
+      .logLines
+      .headOption
+      .getOrElse(fail("prebuilt logLines empty"))
+    val jar: String =
+      InstallResolver.resolve(ResolutionScenario.JarFallback).logLines.headOption.getOrElse(fail("jar logLines empty"))
     assertNotEquals(prebuilt, jar, "prebuilt and JAR log lines must be distinguishable")
     assert(prebuilt.startsWith("[info]"), s"prebuilt should be [info]: $prebuilt")
     assert(jar.startsWith("[warn]"), s"JAR should be [warn]: $jar")

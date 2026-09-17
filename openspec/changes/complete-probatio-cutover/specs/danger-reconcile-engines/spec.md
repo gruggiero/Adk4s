@@ -5,7 +5,7 @@
 | Concept | Role here | File |
 |---------|-----------|------|
 | Schema | The dangerous-pattern scan is the mechanical half of the schema's first verification ring; corroboration is how a recorded run stops being testimony | [schema.md](../../../../concepts/schema.md) |
-| Strangler Migration Protocol | Both tools are swapped seams; their parity is the swap's acceptance criterion | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
+| `Strangler` (Strangler Migration Protocol) | Both tools are swapped seams; their parity is the swap's acceptance criterion | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
 
 This spec does not alter either concept's actions, state, or synchronizations. No
 concept file update is required.

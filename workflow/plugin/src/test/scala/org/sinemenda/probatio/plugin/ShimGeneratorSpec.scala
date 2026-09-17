@@ -20,18 +20,22 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
     } yield {
       val shim1: String = ShimGenerator.generateShim(resolvedPath)
       val shim2: String = ShimGenerator.generateShim(resolvedPath)
-      Result.assert(shim1 == shim2)
+      Result
+        .assert(shim1 == shim2)
         .log(s"shim1 != shim2:\n$shim1\n---\n$shim2")
         .and(
-          Result.assert(shim1.linesIterator.length == 2)
+          Result
+            .assert(shim1.linesIterator.length == 2)
             .log(s"expected 2 lines (shebang + exec), got ${shim1.linesIterator.length}")
         )
         .and(
-          Result.assert(shim1.startsWith("#!/usr/bin/env bash\n"))
+          Result
+            .assert(shim1.startsWith("#!/usr/bin/env bash\n"))
             .log(s"missing shebang: $shim1")
         )
         .and(
-          Result.assert(shim1.contains("gate \"$@\""))
+          Result
+            .assert(shim1.contains("gate \"$@\""))
             .log(s"missing gate subcommand: $shim1")
         )
     }
@@ -40,8 +44,8 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
   // ── Scenario: shim is three lines ───────────────────────────────────────
   // spec: sbt-plugin — Scenario: shim is three lines
   test("shim contains exactly shebang, exec, and trailing newline") {
-    val path: String = "/usr/local/bin/probatio"
-    val shim: String = ShimGenerator.generateShim(path)
+    val path: String         = "/usr/local/bin/probatio"
+    val shim: String         = ShimGenerator.generateShim(path)
     val lines: Array[String] = shim.split("\n", -1)
     // 3 lines: shebang, exec, trailing empty (from trailing newline)
     assertEquals(lines.length, 3, s"expected 3 parts (shebang, exec, trailing), got ${lines.length}: $shim")
@@ -53,7 +57,7 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
   // ── Scenario: running twice produces byte-identical output ──────────────
   // spec: sbt-plugin — Scenario: running twice produces byte-identical output
   test("running ShimGenerator twice produces byte-identical output") {
-    val path: String = "/opt/probatio/bin/probatio"
+    val path: String  = "/opt/probatio/bin/probatio"
     val shim1: String = ShimGenerator.generateShim(path)
     val shim2: String = ShimGenerator.generateShim(path)
     assertEquals(shim1, shim2)
@@ -83,6 +87,9 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
   test("shim always ends with trailing newline") {
     val path: String = "/usr/local/bin/probatio"
     val shim: String = ShimGenerator.generateShim(path)
-    assert(shim.endsWith("\n"), s"shim must end with trailing newline: repr=${shim.map(c => if (c == '\n') "\\n" else c.toString).mkString}")
+    assert(
+      shim.endsWith("\n"),
+      s"shim must end with trailing newline: repr=${shim.map(c => if (c == '\n') "\\n" else c.toString).mkString}"
+    )
   }
 }

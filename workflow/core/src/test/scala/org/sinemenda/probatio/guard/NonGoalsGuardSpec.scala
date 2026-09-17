@@ -261,11 +261,16 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
       fixtures.map(f => f -> bashSpecLint(f)).toMap
     val probatioVerdicts: Map[String, FixtureVerdict] =
       fixtures.map(f => f -> probatioSpecLint(f)).toMap
-    for fixture <- Gen.element(fixtures(0), fixtures.drop(1)).forAll
-    yield
-      val expected: FixtureVerdict = bashVerdicts(fixture)
-      val actual: FixtureVerdict   = probatioVerdicts(fixture)
-      Result.diff(actual, expected)((a, e) => a.verdict == e.verdict && a.warnings == e.warnings)
+    fixtures match
+      case first :: rest =>
+        for fixture <- Gen.element(first, rest).forAll
+        yield
+          val expected: FixtureVerdict = bashVerdicts(fixture)
+          val actual: FixtureVerdict   = probatioVerdicts(fixture)
+          Result.diff(actual, expected)((a, e) => a.verdict == e.verdict && a.warnings == e.warnings)
+      case Nil =>
+        for _ <- Gen.constant(()).forAll
+        yield Result.failure.log("no spec fixtures under complete-probatio-cutover/specs")
 
   // ── Property: dependency boundary is closed
   // spec: non-goals-guard — Property: dependency boundary is closed
@@ -342,7 +347,7 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
    * predecessor bash spec-lint on each fixture.
    */
   def allFixtures: List[String] =
-    val specsDir: os.Path = os.pwd / "openspec" / "changes" / "port-scanner-to-probatio" / "specs"
+    val specsDir: os.Path = os.pwd / "openspec" / "changes" / "complete-probatio-cutover" / "specs"
     if os.exists(specsDir) then
       os.walk(specsDir)
         .filter(_.last == "spec.md")
@@ -352,48 +357,60 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
     else Nil
 
   /**
-   * Runs the predecessor (bash) spec-lint on a fixture and returns the
-   * verdict (R-X1). The bash spec-lint exits 0 (clean), 1 (findings), or
-   * 2 (undetermined). The verdict string and warning set are parsed from
-   * stdout.
+   * Run one spec-lint arm on a fixture. The tools take a change
+   * directory, not a spec file — the fixture is wrapped in a temporary
+   * `<dir>/specs/spec.md` shape. Exits 0 (clean), 1 (findings), or 2
+   * (undetermined). The verdict string and warning set are parsed from
+   * stdout; finding lines are indented two spaces under the per-file
+   * header in both arms' text output.
    */
-  def bashSpecLint(fixture: String): FixtureVerdict =
-    val script: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3" / "scanner" / "spec-lint.sh"
-    if !os.exists(script) then FixtureVerdict(fixture, "undetermined", Set(s"spec-lint.sh not found at $script"))
-    else
+  private def runSpecLintArm(fixture: String, command: List[String]): FixtureVerdict =
+    val tmp: os.Path = os.temp.dir(prefix = "non-goals-spec-lint")
+    try
+      os.makeDir(tmp / "specs")
+      os.copy(os.Path(fixture), tmp / "specs" / "spec.md")
       val result: os.CommandResult = os
-        .proc(script.toString, fixture)
+        .proc(command ++ List(tmp.toString))
         .call(
           check = false,
           stdout = os.Pipe,
-          stderr = os.Pipe
+          stderr = os.Pipe,
+          cwd = os.pwd
         )
-      val exitCode: Int  = result.exitCode
-      val stdout: String = result.out.text()
-      val verdict: String = exitCode match
+      val verdict: String = result.exitCode match
         case 0 => "clean"
         case 1 => "findings"
-        case 2 => "undetermined"
         case _ => "undetermined"
-      val warnings: Set[String] = stdout.linesIterator
+      val warnings: Set[String] = result.out
+        .text()
+        .linesIterator
+        .map(_.trim)
         .filter(_.startsWith("WARN "))
         .toSet
       FixtureVerdict(fixture, verdict, warnings)
+    finally os.remove.all(tmp) // scalafix:ok DisableSyntax.NoKeywordFinally
+
+  /**
+   * Runs the predecessor (bash) spec-lint on a fixture and returns the
+   * verdict (R-X1). The true predecessor is `spec-lint.sh.predecessor.bak` —
+   * `spec-lint.sh` is now a shim execing the probatio binary.
+   */
+  def bashSpecLint(fixture: String): FixtureVerdict =
+    val script: os.Path =
+      os.pwd / "openspec" / "schemas" / "verified-scala3" / "scanner" / "spec-lint.sh.predecessor.bak"
+    if !os.exists(script) then FixtureVerdict(fixture, "undetermined", Set(s"predecessor not found at $script"))
+    else runSpecLintArm(fixture, List("bash", script.toString))
 
   /**
    * Runs the ported (Scala) spec-lint on a fixture and returns the verdict
-   * (R-X1). Since no tools are ported yet (the migration is in progress),
-   * this delegates to the predecessor bash spec-lint. After the spec-lint
-   * subcommand is ported, this will invoke the probatio binary instead.
-   * The property asserts the verdicts are identical — any divergence is a
-   * behavior delta, not a port bug.
+   * (R-X1). The spec-lint subcommand is ported — this invokes the probatio
+   * native binary. The property asserts the verdicts are identical to the
+   * predecessor's — any divergence is a behavior delta, not a port bug.
    */
   def probatioSpecLint(fixture: String): FixtureVerdict =
-    // Until the spec-lint subcommand is ported, the ported tool IS the
-    // predecessor tool. This is the correct baseline: the property passes
-    // trivially (same tool, same verdict) and will become non-trivial once
-    // the port is underway.
-    bashSpecLint(fixture)
+    val binary: os.Path = os.pwd / "workflow" / "cli" / "target" / "native-image" / "probatio"
+    if !os.exists(binary) then FixtureVerdict(fixture, "undetermined", Set(s"probatio binary not found at $binary"))
+    else runSpecLintArm(fixture, List(binary.toString, "spec-lint"))
 
   /**
    * Checks a subproject's classpath for a forbidden dependency (R-X3,

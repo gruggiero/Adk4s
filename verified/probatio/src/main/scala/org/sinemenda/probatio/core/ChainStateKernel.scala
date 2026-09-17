@@ -42,27 +42,29 @@ object ChainStateKernel:
 
   // ── Ring abstraction (R0–R8, Manual) ───────────────────────────────────
 
-  /** The closed ring domain (R0–R8, manual). A ring outside this set is
-    * unrepresentable at the type level. */
+  /**
+   * The closed ring domain (R0–R8, manual). A ring outside this set is
+   * unrepresentable at the type level.
+   */
   sealed abstract class Ring
-  case object R0 extends Ring
-  case object R1 extends Ring
-  case object R2 extends Ring
-  case object R3 extends Ring
-  case object R4 extends Ring
-  case object R5 extends Ring
-  case object R6 extends Ring
-  case object R7 extends Ring
-  case object R8 extends Ring
+  case object R0     extends Ring
+  case object R1     extends Ring
+  case object R2     extends Ring
+  case object R3     extends Ring
+  case object R4     extends Ring
+  case object R5     extends Ring
+  case object R6     extends Ring
+  case object R7     extends Ring
+  case object R8     extends Ring
   case object Manual extends Ring
 
   // ── Verdict abstraction ────────────────────────────────────────────────
 
   /** The per-requirement verdict (R-C4). */
   sealed abstract class Verdict
-  case class Bound() extends Verdict
+  case class Bound()    extends Verdict
   case class Resolved() extends Verdict
-  case class Unbound() extends Verdict
+  case class Unbound()  extends Verdict
 
   // ── Data abstractions ──────────────────────────────────────────────────
 
@@ -98,7 +100,7 @@ object ChainStateKernel:
   @pure
   def isNonManual(r: Ring): Boolean = r match
     case Manual => false
-    case _ => true // danger-scan:allow spec-contract-code — all R0–R8 rings are discharge-eligible
+    case _      => true // danger-scan:allow spec-contract-code — all R0–R8 rings are discharge-eligible
 
   /** A verdict is Bound or Resolved (counts toward bound). */
   @pure
@@ -114,14 +116,18 @@ object ChainStateKernel:
     case Bound()    => false
     case Unbound()  => false
 
-  /** A ledger record matches the current change and baseline and is
-    * discharge-eligible (non-Manual ring). */
+  /**
+   * A ledger record matches the current change and baseline and is
+   * discharge-eligible (non-Manual ring).
+   */
   @pure
   def matchesBaselineChange(rec: LedgerRecord, baseline: BigInt, change: BigInt): Boolean =
     rec.change == change && rec.baseline == baseline && isNonManual(rec.ring)
 
-  /** A requirement has a matching non-Manual ledger record (same spec +
-    * obligation, matching change/baseline, non-Manual ring). */
+  /**
+   * A requirement has a matching non-Manual ledger record (same spec +
+   * obligation, matching change/baseline, non-Manual ring).
+   */
   @pure
   def isDischarged(
     req: Requirement,
@@ -134,8 +140,8 @@ object ChainStateKernel:
       case Nil() => false
       case Cons(rec, rest) =>
         if matchesBaselineChange(rec, baseline, change) &&
-           rec.spec == req.spec &&
-           rec.obligation == req.obligation
+          rec.spec == req.spec &&
+          rec.obligation == req.obligation
         then true
         else isDischarged(req, rest, baseline, change)
 
@@ -147,9 +153,10 @@ object ChainStateKernel:
       case Nil() => BigInt(0)
       case Cons(r, rest) =>
         val head: BigInt = if verdicts.get(r.obligation) match
-          case Some(v) => isBoundOrResolved(v)
-          case None()  => false
-        then BigInt(1) else BigInt(0)
+            case Some(v) => isBoundOrResolved(v)
+            case None()  => false
+        then BigInt(1)
+        else BigInt(0)
         head + countBound(verdicts, rest)
 
   /** Count requirements with verdict Resolved. */
@@ -160,9 +167,10 @@ object ChainStateKernel:
       case Nil() => BigInt(0)
       case Cons(r, rest) =>
         val head: BigInt = if verdicts.get(r.obligation) match
-          case Some(v) => isResolved(v)
-          case None()  => false
-        then BigInt(1) else BigInt(0)
+            case Some(v) => isResolved(v)
+            case None()  => false
+        then BigInt(1)
+        else BigInt(0)
         head + countResolved(verdicts, rest)
 
   /** Count requirements with a matching non-Manual ledger record. */
@@ -180,27 +188,30 @@ object ChainStateKernel:
         val head: BigInt = if isDischarged(r, records, baseline, change) then BigInt(1) else BigInt(0)
         head + countDischarged(records, rest, baseline, change)
 
-  /** A "clean" report is the defect state: all counts zero. This is what
-    * an undetermined result must NEVER be collapsed into. */
+  /**
+   * A "clean" report is the defect state: all counts zero. This is what
+   * an undetermined result must NEVER be collapsed into.
+   */
   @pure
   def isCleanReport(r: ChainStateReport): Boolean =
     r.total == BigInt(0) &&
-    r.bound == BigInt(0) &&
-    r.resolved == BigInt(0) &&
-    r.discharged == BigInt(0)
+      r.bound == BigInt(0) &&
+      r.resolved == BigInt(0) &&
+      r.discharged == BigInt(0)
 
   // ── Core computation ───────────────────────────────────────────────────
 
-  /** Compute chain state from declared inputs.
-    *
-    * Returns either an `Undetermined` (when lint failed) or a
-    * `ChainStateReport` (when lint succeeded). The
-    * undetermined-never-collapses law guarantees that a failed lint NEVER
-    * produces a `Right` (report) — it is always `Left(Undetermined)`.
-    *
-    * spec: probatio-core — Scenario: a failed lint yields undetermined, not zero
-    * spec: probatio-core — Scenario: same inputs produce same output
-    */
+  /**
+   * Compute chain state from declared inputs.
+   *
+   * Returns either an `Undetermined` (when lint failed) or a
+   * `ChainStateReport` (when lint succeeded). The
+   * undetermined-never-collapses law guarantees that a failed lint NEVER
+   * produces a `Right` (report) — it is always `Left(Undetermined)`.
+   *
+   * spec: probatio-core — Scenario: a failed lint yields undetermined, not zero
+   * spec: probatio-core — Scenario: same inputs produce same output
+   */
   @pure
   def compute(
     lintSuccess: Boolean,
@@ -209,7 +220,7 @@ object ChainStateKernel:
     requirements: List[Requirement],
     baseline: BigInt,
     change: BigInt
-  ): Either[Undetermined, ChainStateReport] = {
+  ): Either[Undetermined, ChainStateReport] =
     if !lintSuccess then {
       Left(Undetermined(BigInt(0)))
     } else {
@@ -219,7 +230,6 @@ object ChainStateKernel:
       val discharged: BigInt = countDischarged(ledgerRecords, requirements, baseline, change)
       Right(ChainStateReport(total, bound, resolved, discharged))
     }
-  }
 
   // ---------------------------------------------------------------------------
   // Property lemmas — standalone Boolean functions
@@ -229,12 +239,13 @@ object ChainStateKernel:
   // these lemmas prove the core invariants on the base cases.
   // ---------------------------------------------------------------------------
 
-  /** Law: a failed lint always yields Undetermined (`Left`), never a report.
-    * Proven on empty inputs — the lint-success branch is independent of the
-    * list contents.
-    *
-    * spec: probatio-core — Scenario: a failed lint yields undetermined, not zero
-    */
+  /**
+   * Law: a failed lint always yields Undetermined (`Left`), never a report.
+   * Proven on empty inputs — the lint-success branch is independent of the
+   * list contents.
+   *
+   * spec: probatio-core — Scenario: a failed lint yields undetermined, not zero
+   */
   @pure
   def failedLintYieldsUndetermined(
     verdicts: Map[BigInt, Verdict],
@@ -246,8 +257,10 @@ object ChainStateKernel:
     result.isLeft
   }.ensuring(_ == true)
 
-  /** Law: a successful lint with empty requirements yields a report (`Right`)
-    * with all counts zero. */
+  /**
+   * Law: a successful lint with empty requirements yields a report (`Right`)
+   * with all counts zero.
+   */
   @pure
   def successfulLintYieldsReport(
     verdicts: Map[BigInt, Verdict],
@@ -259,10 +272,12 @@ object ChainStateKernel:
     result.isRight
   }.ensuring(_ == true)
 
-  /** Law: a successful lint with empty requirements yields a clean report
-    * (all counts zero). This is the undetermined-never-collapses invariant:
-    * the defect state is a clean report, and a failed lint produces Left,
-    * never a clean report. */
+  /**
+   * Law: a successful lint with empty requirements yields a clean report
+   * (all counts zero). This is the undetermined-never-collapses invariant:
+   * the defect state is a clean report, and a failed lint produces Left,
+   * never a clean report.
+   */
   @pure
   def cleanReportOnEmpty(
     verdicts: Map[BigInt, Verdict],
@@ -300,10 +315,12 @@ object ChainStateKernel:
 
   /** Law: isDischarged on an empty record list is false. */
   @pure
+  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
   def isDischargedEmpty(
     req: Requirement,
     baseline: BigInt,
     change: BigInt
-  ): Boolean = {
+  ): Boolean =
     !isDischarged(req, Nil(), baseline, change)
-  }.ensuring(_ == true)
+      .ensuring(_ == true)
+  // format: on

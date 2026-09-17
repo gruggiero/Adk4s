@@ -3,7 +3,12 @@ package org.sinemenda.probatio.cli
 import org.sinemenda.probatio.core.BannerOutput
 import org.sinemenda.probatio.core.ChainStateReport
 import org.sinemenda.probatio.core.CheckId
+import org.sinemenda.probatio.core.DriftScan
+import org.sinemenda.probatio.core.DriftScanResult
+import org.sinemenda.probatio.core.DriftWarning
+import org.sinemenda.probatio.core.FactRead
 import org.sinemenda.probatio.core.GatePayload
+import org.sinemenda.probatio.core.LintContext
 import org.sinemenda.probatio.core.LintReport
 import org.sinemenda.probatio.core.Verdict
 import upickle.default.*
@@ -90,8 +95,122 @@ object StdoutRenderer:
       val verdictLines: List[String] = report.verdicts.map { v =>
         s"${CheckId.asString(v.check)}: ${Verdict.asString(v.verdict)} — ${v.requirement}"
       }
-      val warningLines: List[String] = report.warnings.map(w => s"WARN ${w.code} line ${w.line}: ${w.message}")
+      val warningLines: List[String] = report.warnings.map { w =>
+        val atLine: String = w.line.fold("")(l => s" line $l")
+        s"WARN ${w.code}$atLine: ${w.message}"
+      }
       (verdictLines ++ warningLines).mkString("\n")
+
+  /**
+   * Render a LintContext as the CONTEXT block — byte-compatible with the
+   * predecessor `spec-lint.sh` `CONTEXT — repository facts` section:
+   * schema version, artifact-DAG status, install-root scan, instruction
+   * drift, registry, inventory, deterministic kit, and the check
+   * applicability lines.
+   *
+   * spec: spec-lint-engine — Requirement: The CLI emits the predecessor's context block before the findings
+   */
+  given StdoutRenderer[LintContext] with
+    def render(context: LintContext): String =
+      val header: List[String] = List(
+        "spec-lint: CONTEXT — repository facts. These decide each conditional check's",
+        "           APPLICABILITY. Compliance remains yours; applicability does not."
+      )
+      val schemaLine: List[String] = context.schemaVersion match
+        case FactRead.Present(v) =>
+          List(s"  schema                openspec/schemas/verified-scala3  v$v")
+        case FactRead.Unreadable(r) =>
+          List(s"  schema                openspec/schemas/verified-scala3  UNREADABLE — $r")
+        case FactRead.Absent => Nil
+      val schemaOpt: Option[Int] = context.schemaVersion match
+        case FactRead.Present(v) => Some(v)
+        case _ => // danger-scan:allow reject-to-None — Absent/Unreadable schema yields no version to compare
+          None
+      val drift: DriftScanResult = DriftScan.scan(schemaOpt, context.installRoots)
+      val driftLines: List[String] = drift.warnings.flatMap {
+        case DriftWarning.VersionMismatch(root, expected, found) =>
+          List(
+            s"  !! INSTRUCTION DRIFT: skill at $root is schema v$found, this schema is v$expected.",
+            s"     Checks added after v$found are NOT in the instructions you are following.",
+            "     Re-install (scanner/install-skills.sh) before trusting this report."
+          )
+        case DriftWarning.PreRenameStamp(root, expected, found) =>
+          val head: String = expected match
+            case Some(e) =>
+              s"  !! INSTRUCTION DRIFT: skill at $root carries a pre-rename stamp " +
+                s"(verified-scala3-schema/$found), this schema is v$e."
+            case None =>
+              s"  !! INSTRUCTION DRIFT: skill at $root carries a pre-rename stamp " +
+                s"(verified-scala3-schema/$found)."
+          List(
+            head,
+            "     Re-install (scanner/install-skills.sh) before trusting this report."
+          )
+        case DriftWarning.NoStampDeclared(root) =>
+          List(s"  !! skill $root/openspec-spec-lint declares no schema version — pre-v7 install")
+        case DriftWarning.Unreadable(root, reason) =>
+          List(s"  !! skill $root/openspec-spec-lint could not be read — $reason")
+      }
+      val noSkill: List[String] =
+        if drift.noSkillInstalled then List("  (no openspec-spec-lint skill installed in the searched roots)")
+        else Nil
+      val registryLines: List[String] = context.registry match
+        case FactRead.Present(n) =>
+          List(
+            s"  behavioural registry  openspec/concepts/             PRESENT ($n concepts)",
+            "    -> check 17 ALTITUDE **APPLIES**. \"N/A\" is not a valid verdict for it.",
+            "       F10 checks the structural half; W7 lists code-identifier candidates;",
+            "       reading the clause prose for behavioural altitude is still your job."
+          )
+        case FactRead.Absent =>
+          List(
+            "  behavioural registry  openspec/concepts/             ABSENT",
+            "    -> check 17 ALTITUDE is N/A (attested by this script, not assumed)."
+          )
+        case FactRead.Unreadable(r) =>
+          List(s"  behavioural registry  openspec/concepts/             UNREADABLE — $r")
+      val inventoryLines: List[String] = context.inventoryTypes match
+        case FactRead.Present(types) =>
+          val zeroRows: List[String] =
+            if types.isEmpty then
+              List(
+                "    !! parsed 0 type rows — the file exists but this script read nothing",
+                "       from it. Fix the table shape before trusting W7 silence."
+              )
+            else Nil
+          List(
+            s"  type inventory        openspec/concept-inventory.md  PRESENT (${types.length} typed rows)",
+            "    -> check 6 (reused concepts exist) **APPLIES**."
+          ) ++ zeroRows
+        case FactRead.Absent =>
+          List(
+            "  type inventory        openspec/concept-inventory.md  ABSENT",
+            "    -> check 6 is N/A; run the concept scanner before trusting reuse claims."
+          )
+        case FactRead.Unreadable(r) =>
+          List(s"  type inventory        openspec/concept-inventory.md  UNREADABLE — $r")
+      val profileLines: List[String] = context.profile match
+        case FactRead.Present(Some(kit)) =>
+          List(
+            "  capability profile    openspec/capability-profile.md PRESENT",
+            "    -> checks 3 (testable with detected stack) and 18 (CONCURRENCY) **APPLY**",
+            s"       deterministic test kit detected: $kit"
+          )
+        case FactRead.Present(None) =>
+          List(
+            "  capability profile    openspec/capability-profile.md PRESENT",
+            "    -> check 3 **APPLIES**. Check 18: no deterministic test kit detected —",
+            "       a concurrency requirement here is a capability gap, not an N/A."
+          )
+        case FactRead.Absent =>
+          List(
+            "  capability profile    openspec/capability-profile.md ABSENT",
+            "    -> run detect-capabilities first; checks 3 and 18 cannot be judged."
+          )
+        case FactRead.Unreadable(r) =>
+          List(s"  capability profile    openspec/capability-profile.md UNREADABLE — $r")
+      (header ++ schemaLine ++ driftLines ++ noSkill ++
+        registryLines ++ inventoryLines ++ profileLines).mkString("\n")
 
   /**
    * Render a GatePayload as JSON on stdout — byte-compatible with the

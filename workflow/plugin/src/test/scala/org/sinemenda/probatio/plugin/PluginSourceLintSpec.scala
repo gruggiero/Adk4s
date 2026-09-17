@@ -23,11 +23,12 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
   private def listScalaFiles(dirPath: String): List[File] = {
     val dir: File = new File(dirPath)
     if (!dir.exists) Nil
-    else dir.listFiles.flatMap { f =>
-      if (f.isDirectory) listScalaFiles(f.getAbsolutePath)
-      else if (f.getName.endsWith(".scala")) List(f)
-      else Nil
-    }.toList
+    else
+      dir.listFiles.flatMap { f =>
+        if (f.isDirectory) listScalaFiles(f.getAbsolutePath)
+        else if (f.getName.endsWith(".scala")) List(f)
+        else Nil
+      }.toList
   }
 
   private def fileContents(f: File): String =
@@ -54,9 +55,8 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
     for (f <- files) {
       val lines: List[String] = fileContents(f).linesIterator.toList
       // Check only non-comment lines for actual deprecated operator usage
-      val codeLines: List[String] = lines.filterNot(line =>
-        line.trim.startsWith("//") || line.trim.startsWith("*") || line.trim.startsWith("/*")
-      )
+      val codeLines: List[String] =
+        lines.filterNot(line => line.trim.startsWith("//") || line.trim.startsWith("*") || line.trim.startsWith("/*"))
       for (line <- codeLines) {
         assert(
           !line.contains("<<="),
@@ -77,15 +77,13 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
     for (f <- files) {
       val lines: List[String] = fileContents(f).linesIterator.toList
       // Check only non-comment lines for actual GlobalScope usage
-      val codeLines: List[String] = lines.filterNot(line =>
-        line.trim.startsWith("//") || line.trim.startsWith("*") || line.trim.startsWith("/*")
-      )
-      for (line <- codeLines) {
+      val codeLines: List[String] =
+        lines.filterNot(line => line.trim.startsWith("//") || line.trim.startsWith("*") || line.trim.startsWith("/*"))
+      for (line <- codeLines)
         assert(
           !line.contains("in GlobalScope"),
           s"${f.getName}: 'in GlobalScope' abuse found in line: $line"
         )
-      }
     }
   }
 

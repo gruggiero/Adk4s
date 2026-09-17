@@ -17,8 +17,6 @@ import org.sinemenda.probatio.core.RepositoryFacts
 import org.sinemenda.probatio.core.SessionId
 import org.sinemenda.probatio.core.StampFormat
 
-import java.io.ByteArrayOutputStream
-import java.io.PrintStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -61,24 +59,7 @@ final class LiveFactBannerSpec extends ProbatioCliSuite:
 
   /** Capture stdout and stderr produced by `thunk`. */
   private def captureBoth[A](thunk: => A): (String, String, A) =
-    val out: ByteArrayOutputStream = new ByteArrayOutputStream()
-    val err: ByteArrayOutputStream = new ByteArrayOutputStream()
-    val psOut: PrintStream         = new PrintStream(out, true, "UTF-8")
-    val psErr: PrintStream         = new PrintStream(err, true, "UTF-8")
-    val oldOut: PrintStream        = System.out
-    val oldErr: PrintStream        = System.err
-    System.setOut(psOut)
-    System.setErr(psErr)
-    val result: A =
-      bracket(
-        (),
-        { (_: Unit) =>
-          psOut.flush()
-          System.setOut(oldOut)
-          System.setErr(oldErr)
-        }
-      )(_ => thunk)
-    (out.toString("UTF-8"), err.toString("UTF-8"), result)
+    StdoutCapture.captureBoth(thunk)
 
   /** Capture stdout (stderr swallowed) produced by `thunk`. */
   private def capture[A](thunk: => A): (String, A) =

@@ -7,15 +7,24 @@ import org.sinemenda.probatio.core.ArtifactRef
 import org.sinemenda.probatio.core.ArtifactScan
 import org.sinemenda.probatio.core.ChainStateReport
 import org.sinemenda.probatio.core.ChainStateUndetermined
+import org.sinemenda.probatio.core.CheckId
+import org.sinemenda.probatio.core.CheckOutcome
 import org.sinemenda.probatio.core.DriftScan
 import org.sinemenda.probatio.core.FactRead
 import org.sinemenda.probatio.core.InstallRootScan
 import org.sinemenda.probatio.core.InstallRootState
+import org.sinemenda.probatio.core.LintReport
+import org.sinemenda.probatio.core.LintWarning
+import org.sinemenda.probatio.core.ObligationRow
 import org.sinemenda.probatio.core.RepositoryFacts
+import org.sinemenda.probatio.core.RequirementBlock
+import org.sinemenda.probatio.core.RequirementVerdict
 import org.sinemenda.probatio.core.RootBase
+import org.sinemenda.probatio.core.SpecDocument
 import org.sinemenda.probatio.core.StampFormat
 import org.sinemenda.probatio.core.UnresolvedEntry
 import org.sinemenda.probatio.core.UnresolvedReason
+import org.sinemenda.probatio.core.Verdict
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -435,17 +444,46 @@ object LiveFactFixtures:
       )
     )
 
+  /**
+   * Spec-5 contract: entries and reports are constructible only through the
+   * smart constructors. The generator derives counts from the reason mix so
+   * every generated report satisfies the report contract's cross-checks.
+   */
+  private def entryOr(spec: String, req: String, reason: UnresolvedReason): UnresolvedEntry =
+    UnresolvedEntry.of(spec, req, List(reason)) match
+      case Some(e) => e
+      case None    => ??? // unreachable: generated reasons are single non-empty values
+
+  private def reportOr(
+    total: Int,
+    bound: Int,
+    resolved: Int,
+    discharged: Int,
+    unresolved: List[UnresolvedEntry]
+  ): ChainStateReport =
+    ChainStateReport.fromCounts("c", "b", total, bound, resolved, discharged, unresolved, Nil) match
+      case Right(r) => r
+      case Left(_)  => ??? // unreachable: counts are derived from the reason mix
+
   private val genReport: Gen[ChainStateReport] =
     for
-      total      <- Gen.int(Range.linear(0, 12))
-      bound      <- Gen.int(Range.linear(0, total))
-      resolved   <- Gen.int(Range.linear(0, bound))
-      discharged <- Gen.int(Range.linear(0, resolved))
-      unresolved <- (for
-        req <- Gen.string(Gen.alpha, Range.linear(1, 12))
-        rs  <- genReason.list(Range.linear(1, 2))
-      yield UnresolvedEntry("s", req, rs)).list(Range.linear(0, total))
-    yield ChainStateReport("c", "b", total, bound, resolved, discharged, unresolved, Nil)
+      nEntries <- Gen.int(Range.linear(0, 12))
+      okCount  <- Gen.int(Range.linear(0, 12))
+      reasons  <- genReason.list(Range.singleton(nEntries))
+    yield
+      // Unique requirement names keep the no-duplicate-pair clause satisfied;
+      // one reason per entry makes the derived counts contract-consistent.
+      val unresolved: List[UnresolvedEntry] =
+        reasons.zipWithIndex.map((r, i) => entryOr("s", s"req-$i", r))
+      val total: Int = unresolved.length + okCount
+      val bound: Int = total - unresolved.count(_.reasons.contains(UnresolvedReason.Unbound))
+      val resolved: Int = bound - unresolved.count(e =>
+        e.reasons.contains(UnresolvedReason.Unresolved) || e.reasons.contains(UnresolvedReason.Unattributable)
+      )
+      val discharged: Int = resolved - unresolved.count(e =>
+        e.reasons.contains(UnresolvedReason.Undischarged) || e.reasons.contains(UnresolvedReason.Failed)
+      )
+      reportOr(total, bound, resolved, discharged, unresolved)
 
   private val genChainState: Gen[Either[ChainStateUndetermined, ChainStateReport]] =
     Gen.frequency1(
@@ -557,6 +595,76 @@ object LiveFactFixtures:
           Some(MutatedField.ActiveChanges)
         )
       )
+    )
+
+  /**
+   * Build a `LintReport` attributing `verdicts` — the cli-side mirror of
+   * probatio-core's `SpecLintFixtures.report` (cli tests do not see core
+   * test classes). Goes through `LintReport.fromRun` against a synthetic
+   * document — no test bypasses the smart constructor.
+   */
+  def lintReport(
+    verdicts: List[RequirementVerdict],
+    warnings: List[LintWarning],
+    applicability: Map[String, String],
+    lintSuccess: Boolean
+  ): LintReport =
+    val requirements: List[RequirementBlock] = verdicts.map { v =>
+      RequirementBlock(
+        title = v.requirement,
+        line = 1,
+        endLine = 2,
+        hasNormative = true,
+        negative = true,
+        scenarioCount = 1,
+        normativeText = ""
+      )
+    }
+    val coveredTitles: List[String] =
+      verdicts.collect { case v if v.verdict != Verdict.Unbound => v.requirement }
+    val rows: List[ObligationRow] = coveredTitles.distinct.map { t =>
+      ObligationRow(
+        line = 0,
+        fieldCount = 5,
+        source = s"Requirement: $t",
+        enforcement = "fixture check",
+        artifact = "",
+        raw = s"| obligation | Requirement: $t | fixture check | |"
+      )
+    }
+    val hasResolved: Boolean = verdicts.exists(_.verdict == Verdict.Resolved)
+    val artifactUnresolved: Option[Set[String]] =
+      if hasResolved then Some(verdicts.collect { case v if v.verdict == Verdict.Bound => v.requirement }.toSet)
+      else None
+    val requirementRows: Map[String, List[ObligationRow]] =
+      rows.groupBy(_.source.stripPrefix("Requirement: "))
+    val document: SpecDocument = SpecDocument(
+      name = "fixture",
+      lines = Vector.empty,
+      requirements = requirements,
+      properties = Nil,
+      temporals = Nil,
+      scenarios = Nil,
+      obligationRows = rows,
+      dataRowCount = rows.size,
+      bridgeRowCount = 0,
+      hasProofObligations = true,
+      formalContractsContentLines = 0,
+      hasBehavioralConcepts = false,
+      artifactRows = rows
+    )
+    val findings: List[CheckOutcome] =
+      warnings.map(CheckOutcome.Warn(_)) ++
+        (if lintSuccess then Nil
+         else List(CheckOutcome.Fail(CheckId.F7, None, "synthetic failure")))
+    LintReport.fromRun(
+      document,
+      findings,
+      applicability,
+      resolvedRows = rows,
+      unresolvableRows = Nil,
+      requirementRows = requirementRows,
+      artifactUnresolved = artifactUnresolved
     )
 
 end LiveFactFixtures

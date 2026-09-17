@@ -23,9 +23,9 @@ final class NativePackagingSpec extends ProbatioCliSuite:
 
   property("SHA-256 checksum round-trip: matching bytes verify, corrupted do not"):
     for
-      bytes       <- Gen.bytes(Range.linear(0, 256)).forAll
-      corrupt     <- Gen.boolean.forAll
-      flipOffset  <- Gen.int(Range.linear(0, math.max(0, bytes.length - 1))).forAll
+      bytes      <- Gen.bytes(Range.linear(0, 256)).forAll
+      corrupt    <- Gen.boolean.forAll
+      flipOffset <- Gen.int(Range.linear(0, math.max(0, bytes.length - 1))).forAll
     yield
       val expected: String = ChecksumVerifier.computeSha256(bytes)
       val actualBytes: Array[Byte] =
@@ -33,9 +33,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
           val copy: Array[Byte] = bytes.clone()
           copy(flipOffset) = (copy(flipOffset) ^ 0x01).toByte
           copy
-        else
-          bytes
-      val actual: String = ChecksumVerifier.computeSha256(actualBytes)
+        else bytes
+      val actual: String   = ChecksumVerifier.computeSha256(actualBytes)
       val matches: Boolean = actual == expected
       // When corrupt=true but bytes is empty, no bit can be flipped, so
       // corruption is impossible — matches is always true in that case.
@@ -60,7 +59,22 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       val sbom: Option[Sbom] =
         if !includeSbom then None
         else if validSbom then Some(Sbom.forRelease(version, deps))
-        else Some(Sbom(Sbom.spdxVersionValue, "SPDXRef-PROBATIO", "", version, "NOASSERTION", false, "", "NOASSERTION", "NOASSERTION", "NOASSERTION", Nil))
+        else
+          Some(
+            Sbom(
+              Sbom.spdxVersionValue,
+              "SPDXRef-PROBATIO",
+              "",
+              version,
+              "NOASSERTION",
+              false,
+              "",
+              "NOASSERTION",
+              "NOASSERTION",
+              "NOASSERTION",
+              Nil
+            )
+          )
       val manifest: ReleaseManifest = ReleaseManifest(
         version = version,
         artifacts = ReleaseManifest.expectedArtifacts,
@@ -68,7 +82,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
         sbom = sbom,
         builtFromCI = true
       )
-      val issues: List[String] = ReleaseValidator.validateSbom(manifest)
+      val issues: List[String]   = ReleaseValidator.validateSbom(manifest)
       val expectedValid: Boolean = includeSbom && validSbom && hasDeps
       Result.assert(issues.isEmpty == expectedValid)
 
@@ -85,10 +99,10 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       includeWindows    <- Gen.boolean.forAll
     yield
       val binaries: List[ReleaseArtifact] = List(
-        if includeLinux      then List(ReleaseArtifact.NativeBinary(Platform.LinuxX86_64))  else Nil,
-        if includeMacosArm   then List(ReleaseArtifact.NativeBinary(Platform.MacosAarch64)) else Nil,
-        if includeMacosIntel then List(ReleaseArtifact.NativeBinary(Platform.MacosX86_64))  else Nil,
-        if includeWindows    then List(ReleaseArtifact.NativeBinary(Platform.WindowsX86_64)) else Nil
+        if includeLinux then List(ReleaseArtifact.NativeBinary(Platform.LinuxX86_64)) else Nil,
+        if includeMacosArm then List(ReleaseArtifact.NativeBinary(Platform.MacosAarch64)) else Nil,
+        if includeMacosIntel then List(ReleaseArtifact.NativeBinary(Platform.MacosX86_64)) else Nil,
+        if includeWindows then List(ReleaseArtifact.NativeBinary(Platform.WindowsX86_64)) else Nil
       ).flatten
       val manifest: ReleaseManifest = ReleaseManifest(
         version = "v14.0.0",
@@ -97,7 +111,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
         sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
         builtFromCI = true
       )
-      val issues: List[String] = ReleaseValidator.validatePlatformCoverage(manifest)
+      val issues: List[String]      = ReleaseValidator.validatePlatformCoverage(manifest)
       val expectedComplete: Boolean = includeLinux && includeMacosArm && includeMacosIntel && !includeWindows
       Result.assert(issues.isEmpty == expectedComplete)
 
@@ -116,13 +130,16 @@ final class NativePackagingSpec extends ProbatioCliSuite:
         if checksumMatches then correctChecksum
         else "0" * 64 // guaranteed mismatch (all-zeros is not a valid SHA-256 for non-empty input)
       val result: ChecksumResult = ChecksumVerifier.verifyForExecution(
-        bytes, publishedChecksum, "probatio-linux-x86_64"
+        bytes,
+        publishedChecksum,
+        "probatio-linux-x86_64"
       )
       result match
         case ChecksumResult.Proceed =>
           Result.assert(checksumMatches)
         case ChecksumResult.Mismatch(_, expected, actual) =>
-          Result.assert(!checksumMatches)
+          Result
+            .assert(!checksumMatches)
             .and(Result.assert(expected == publishedChecksum))
             .and(Result.assert(actual == correctChecksum))
 
@@ -134,7 +151,10 @@ final class NativePackagingSpec extends ProbatioCliSuite:
   // spec: native-packaging — Scenario: gate uses native binary, never JAR, on a supported platform
   test("gate uses native binary on linux-x86_64 when binary is available"):
     val result: ResolutionResult = BinaryResolution.resolve(
-      "gate", Platform.LinuxX86_64, nativeBinaryAvailable = true, jarPath = "/tmp/probatio.jar"
+      "gate",
+      Platform.LinuxX86_64,
+      nativeBinaryAvailable = true,
+      jarPath = "/tmp/probatio.jar"
     )
     result match
       case ResolutionResult.NativeBinary(_) => ()
@@ -143,7 +163,10 @@ final class NativePackagingSpec extends ProbatioCliSuite:
   // spec: native-packaging — Scenario: gate falls back to JAR only on a platform with no native binary
   test("gate falls back to JAR on windows-x86_64 with warning"):
     val result: ResolutionResult = BinaryResolution.resolve(
-      "gate", Platform.WindowsX86_64, nativeBinaryAvailable = false, jarPath = "/tmp/probatio.jar"
+      "gate",
+      Platform.WindowsX86_64,
+      nativeBinaryAvailable = false,
+      jarPath = "/tmp/probatio.jar"
     )
     result match
       case ResolutionResult.JarFallback(path, warning) =>
@@ -153,7 +176,10 @@ final class NativePackagingSpec extends ProbatioCliSuite:
 
   test("gate on supported platform with native binary does not emit JAR fallback warning"):
     val result: ResolutionResult = BinaryResolution.resolve(
-      "gate", Platform.MacosAarch64, nativeBinaryAvailable = true, jarPath = "/tmp/probatio.jar"
+      "gate",
+      Platform.MacosAarch64,
+      nativeBinaryAvailable = true,
+      jarPath = "/tmp/probatio.jar"
     )
     result match
       case ResolutionResult.NativeBinary(_) => ()
@@ -164,7 +190,10 @@ final class NativePackagingSpec extends ProbatioCliSuite:
   // spec: native-packaging — Scenario: gate on supported platform without native binary is BLOCKED (adversarial, R8)
   test("gate on supported platform without installed native binary is Blocked, not JarFallback"):
     val result: ResolutionResult = BinaryResolution.resolve(
-      "gate", Platform.LinuxX86_64, nativeBinaryAvailable = false, jarPath = "/tmp/probatio.jar"
+      "gate",
+      Platform.LinuxX86_64,
+      nativeBinaryAvailable = false,
+      jarPath = "/tmp/probatio.jar"
     )
     result match
       case ResolutionResult.Blocked(reason) =>
@@ -176,7 +205,10 @@ final class NativePackagingSpec extends ProbatioCliSuite:
 
   test("once-per-ring tool on supported platform without native binary falls back to JAR"):
     val result: ResolutionResult = BinaryResolution.resolve(
-      "spec-lint", Platform.LinuxX86_64, nativeBinaryAvailable = false, jarPath = "/tmp/probatio.jar"
+      "spec-lint",
+      Platform.LinuxX86_64,
+      nativeBinaryAvailable = false,
+      jarPath = "/tmp/probatio.jar"
     )
     result match
       case ResolutionResult.JarFallback(path, warning) =>
@@ -188,7 +220,10 @@ final class NativePackagingSpec extends ProbatioCliSuite:
   // spec: native-packaging — Scenario: once-per-ring tool on JAR fallback emits exactly one warning (adversarial)
   test("once-per-ring tool on JAR fallback emits exactly one warning line"):
     val result: ResolutionResult = BinaryResolution.resolve(
-      "spec-lint", Platform.WindowsX86_64, nativeBinaryAvailable = false, jarPath = "/tmp/probatio.jar"
+      "spec-lint",
+      Platform.WindowsX86_64,
+      nativeBinaryAvailable = false,
+      jarPath = "/tmp/probatio.jar"
     )
     result match
       case ResolutionResult.JarFallback(_, warning) =>
@@ -219,11 +254,11 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       version = "v14.0.0",
       artifacts = ReleaseManifest.expectedArtifacts,
       checksums = Map(
-        "probatio-linux-x86_64" -> "abc123",
+        "probatio-linux-x86_64"  -> "abc123",
         "probatio-macos-aarch64" -> "def456",
-        "probatio-macos-x86_64" -> "ghi789",
-        "probatio-assembly.jar" -> "jar-hash",
-        "probatio-sources.jar" -> "src-hash"
+        "probatio-macos-x86_64"  -> "ghi789",
+        "probatio-assembly.jar"  -> "jar-hash",
+        "probatio-sources.jar"   -> "src-hash"
       ),
       sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
       builtFromCI = true
@@ -267,11 +302,13 @@ final class NativePackagingSpec extends ProbatioCliSuite:
 
   // spec: native-packaging — Scenario: checksum mismatch blocks first execution (adversarial)
   test("checksum mismatch blocks execution with expected and actual checksums"):
-    val bytes: Array[Byte] = Array(1, 2, 3, 4, 5).map(_.toByte)
+    val bytes: Array[Byte]      = Array(1, 2, 3, 4, 5).map(_.toByte)
     val correctChecksum: String = ChecksumVerifier.computeSha256(bytes)
-    val wrongChecksum: String = "0" * 64
+    val wrongChecksum: String   = "0" * 64
     val result: ChecksumResult = ChecksumVerifier.verifyForExecution(
-      bytes, wrongChecksum, "probatio-linux-x86_64"
+      bytes,
+      wrongChecksum,
+      "probatio-linux-x86_64"
     )
     result match
       case ChecksumResult.Mismatch(artifactName, expected, actual) =>
@@ -281,18 +318,20 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       case ChecksumResult.Proceed => fail("mismatch must block execution, not proceed")
 
   test("checksum match allows execution"):
-    val bytes: Array[Byte] = Array(1, 2, 3, 4, 5).map(_.toByte)
+    val bytes: Array[Byte]      = Array(1, 2, 3, 4, 5).map(_.toByte)
     val correctChecksum: String = ChecksumVerifier.computeSha256(bytes)
     val result: ChecksumResult = ChecksumVerifier.verifyForExecution(
-      bytes, correctChecksum, "probatio-linux-x86_64"
+      bytes,
+      correctChecksum,
+      "probatio-linux-x86_64"
     )
     result match
-      case ChecksumResult.Proceed  => ()
-      case other                   => fail(s"expected Proceed, got $other")
+      case ChecksumResult.Proceed => ()
+      case other                  => fail(s"expected Proceed, got $other")
 
   test("checksum with trailing whitespace still matches (checksum file edge case)"):
-    val bytes: Array[Byte] = Array(1, 2, 3).map(_.toByte)
-    val correctChecksum: String = ChecksumVerifier.computeSha256(bytes)
+    val bytes: Array[Byte]             = Array(1, 2, 3).map(_.toByte)
+    val correctChecksum: String        = ChecksumVerifier.computeSha256(bytes)
     val checksumWithWhitespace: String = correctChecksum + "\n"
     assert(ChecksumVerifier.verify(bytes, checksumWithWhitespace), "trailing whitespace should be trimmed")
 
@@ -301,7 +340,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
     val expected: List[ReleaseArtifact] = ReleaseManifest.expectedArtifacts
     val hasWindowsBinary: Boolean = expected.exists {
       case ReleaseArtifact.NativeBinary(Platform.WindowsX86_64) => true
-      case _ => false
+      case _                                                    => false
     }
     assert(!hasWindowsBinary, "windows-x86_64 must NOT have a native binary in expected artifacts")
 
@@ -317,8 +356,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
 
   // spec: native-packaging — Scenario: SBOM is present and parseable as SPDX JSON
   test("SBOM renders and parses as valid SPDX JSON"):
-    val sbom: Sbom = Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))
-    val json: String = Sbom.renderJson(sbom)
+    val sbom: Sbom                   = Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))
+    val json: String                 = Sbom.renderJson(sbom)
     val parsed: Either[String, Sbom] = Sbom.parseJson(json)
     parsed match
       case Right(parsedSbom) =>
@@ -328,17 +367,29 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       case Left(err) => fail(s"SBOM should parse as valid JSON: $err")
 
   test("SBOM with empty package name is invalid"):
-    val sbom: Sbom = Sbom(Sbom.spdxVersionValue, "SPDXRef-PROBATIO", "", "v14.0.0", "NOASSERTION", false, "", "NOASSERTION", "NOASSERTION", "NOASSERTION", List(SbomPackage("upickle", "4.4.3", "Maven")))
+    val sbom: Sbom = Sbom(
+      Sbom.spdxVersionValue,
+      "SPDXRef-PROBATIO",
+      "",
+      "v14.0.0",
+      "NOASSERTION",
+      false,
+      "",
+      "NOASSERTION",
+      "NOASSERTION",
+      "NOASSERTION",
+      List(SbomPackage("upickle", "4.4.3", "Maven"))
+    )
     val issues: List[String] = Sbom.validate(sbom, "v14.0.0")
     assert(issues.nonEmpty, "empty package name should be invalid")
 
   test("SBOM with empty dependency list is invalid"):
-    val sbom: Sbom = Sbom.forRelease("v14.0.0", Nil)
+    val sbom: Sbom           = Sbom.forRelease("v14.0.0", Nil)
     val issues: List[String] = Sbom.validate(sbom, "v14.0.0")
     assert(issues.nonEmpty, "empty dependency list should be invalid")
 
   test("SBOM with version mismatch is invalid"):
-    val sbom: Sbom = Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))
+    val sbom: Sbom           = Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))
     val issues: List[String] = Sbom.validate(sbom, "v14.1.0")
     assert(issues.nonEmpty, "version mismatch should be invalid")
 
@@ -379,7 +430,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
 
   test("no committed platform uses a cross-compile runner label"):
     Platform.committedNativePlatforms.foreach { p =>
-      val label: String = p.runnerLabel
+      val label: String           = p.runnerLabel
       val forbidden: List[String] = CompileNegative.forbiddenCrossCompilePatterns
       forbidden.foreach { pattern =>
         assert(!label.toLowerCase.contains(pattern.toLowerCase), s"$p runner label must not contain '$pattern'")

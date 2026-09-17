@@ -64,12 +64,40 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
   // spec: cli-wiring — Scenario: completion blocks when chain-state is unresolved
 
   test("gate completion blocks when chain-state has unresolved obligations"):
-    // The wired entrypoint should block (exit 1) when chain-state is unresolved.
-    // Create a temp ledger file with no records (nothing discharged).
-    // With no requirements parsed, chain-state reports zero unresolved —
-    // the gate should return Ran(0) (trivially clean). The blocking behavior
-    // is verified by the core chain-state logic below.
+    // A real change dir: one spec whose requirement is bound and resolved
+    // (a mapped obligation naming a tracked artifact) but has no ledger
+    // evidence — undischarged, so completion must block with a Finding.
     withTempDir("gate-test-ledger") { (tempDir: java.nio.file.Path) =>
+      val changeDir: java.nio.file.Path = tempDir.resolve("test-change")
+      val specDir: java.nio.file.Path   = changeDir.resolve("specs").resolve("only")
+      java.nio.file.Files.createDirectories(specDir)
+      java.nio.file.Files.writeString(
+        specDir.resolve("spec.md"),
+        """# Spec: Fixture
+          |
+          |## ADDED Requirements
+          |
+          |### Requirement: Solo Req
+          |
+          |The system SHALL do the thing named Solo Req.
+          |
+          |**Given** a precondition
+          |**When** an action
+          |**Then** an observable outcome
+          |
+          |#### Scenario: happy path
+          |
+          |**Given** a specific setup
+          |**When** a specific action
+          |**Then** a specific assertion
+          |
+          |## Proof Obligations
+          |
+          || Obligation | Source | Enforcement | Artifact |
+          ||---|---|---|---|
+          || obl one | Requirement: Solo Req | manual | `build.sbt` |
+          |""".stripMargin
+      )
       val tempFile: java.nio.file.Path = tempDir.resolve("ledger.jsonl")
       java.nio.file.Files.write(tempFile, Array.emptyByteArray)
       val outcome: Outcome[Int] = GateCmd.run(
@@ -78,36 +106,49 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
           "completion",
           "--change",
           "test-change",
+          "--change-dir",
+          changeDir.toString,
           "--baseline",
           "abc1234",
           "--ledger-file",
           tempFile.toString
         )
       )
-      // Verify the core chain-state logic detects unresolved obligations
-      // when requirements exist but are not discharged:
+      outcome match
+        case Outcome.Finding(_) => () // unresolved obligations block completion
+        case Outcome.Ran(n)     => fail(s"completion with undischarged obligations should block, got Ran($n)")
+        case Outcome.Undetermined(reason) =>
+          fail(s"completion should be determinable, got undetermined: $reason")
+
+      // The same shape through the pure kernel: bound + resolved + no rows
+      // → undischarged, an unresolved entry.
       val req: ChainState.Requirement = ChainState.Requirement("test-spec", "undischarged")
-      val lint: LintReport = LintReport(
+      val lint: LintReport = LiveFactFixtures.lintReport(
         verdicts = List(RequirementVerdict("undischarged", Verdict.Resolved, CheckId.F9)),
         warnings = Nil,
         applicability = Map.empty,
         lintSuccess = true
       )
       val ledger: Ledger.LedgerData = Ledger.fromRecords(Nil)
+      val obligation: ExtractedObligation = ExtractedObligation(
+        spec = "test-spec",
+        line = 20,
+        obligation = "obl one",
+        artifact = "build.sbt",
+        artifacts = List("build.sbt"),
+        requirementClaims = List("undischarged"),
+        unmappable = false
+      )
+      val extracted: RequirementSet =
+        RequirementSet(List("test-spec"), List(req), List(obligation), FactSource.Degraded)
+      val lints: Map[String, Outcome[LintReport]] = Map("test-spec" -> Outcome.Ran(lint))
+      val noForgive: (String, String) => Boolean  = (_, _) => false
       val chainResult: Either[ChainStateUndetermined, ChainStateReport] =
-        ChainState.compute(lint, ledger, List(req), "abc1234", "test-change")
+        ChainState.compute(lints, ledger, extracted, Map.empty, "abc1234", "abc1234", "test-change", noForgive)
       chainResult match
         case Right(report) =>
           assert(report.unresolved.nonEmpty, "should have unresolved obligations")
           assert(report.discharged < report.total, "should not be fully discharged")
-          // The gate with no requirements parsed returns Ran(0) — trivially clean.
-          // When requirements are parsed (future wiring), the gate would block.
-          // For now, verify the gate delegates to chain-state and doesn't crash.
-          outcome match
-            case Outcome.Ran(0)               => () // expected — no reqs parsed → trivially clean
-            case Outcome.Ran(n)               => fail(s"completion should exit 0, got $n")
-            case Outcome.Finding(msg)         => fail(s"completion with no reqs should not block: $msg")
-            case Outcome.Undetermined(reason) => fail(s"completion should not be undetermined: $reason")
         case Left(u) => fail(s"chain-state should be determinable: $u")
     }
 

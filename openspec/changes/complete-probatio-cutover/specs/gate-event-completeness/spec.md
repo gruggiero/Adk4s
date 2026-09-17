@@ -4,7 +4,7 @@
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler Migration Protocol | The gate is the last seam and the only blocking one; this spec supplies the behaviour its swap presumed | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
+| `Strangler` (Strangler Migration Protocol) | The gate is the last seam and the only blocking one; this spec supplies the behaviour its swap presumed | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
 | Schema | The gate is the schema's enforcement surface — the mechanism that decides whether a check runs at all | [schema.md](../../../../concepts/schema.md) |
 
 This spec does not alter either concept's actions, state, or synchronizations. No

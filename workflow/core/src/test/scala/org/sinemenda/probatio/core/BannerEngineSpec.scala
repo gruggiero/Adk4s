@@ -30,6 +30,31 @@ final class BannerEngineSpec extends ProbatioSuite:
   private def changes(cs: ActiveChangeWithChainState*): FactRead[List[ActiveChangeWithChainState]] =
     FactRead.Present(cs.toList)
 
+  /**
+   * Build an unresolved entry through the spec-5 smart constructor; every
+   * fixture in this spec is contract-valid by construction.
+   */
+  private def entryOf(spec: String, req: String, reason: UnresolvedReason): UnresolvedEntry =
+    UnresolvedEntry.of(spec, req, List(reason)).getOrElse(fail(s"unrepresentable entry: $spec/$req"))
+
+  /**
+   * Build a measured report through the spec-5 smart constructor; fixtures
+   * must satisfy the report contract's count cross-checks.
+   */
+  private def reportOf(
+    change: String,
+    baseline: String,
+    total: Int,
+    bound: Int,
+    resolved: Int,
+    discharged: Int,
+    unresolved: List[UnresolvedEntry],
+    unmappedObligations: List[UnmappedObligation]
+  ): ChainStateReport =
+    ChainStateReport
+      .fromCounts(change, baseline, total, bound, resolved, discharged, unresolved, unmappedObligations)
+      .getOrElse(fail("fixture report violates the report contract"))
+
   // ── Scenario: identical inputs produce byte-identical output
   // spec: port-scanner-to-probatio/probatio-core — Scenario: identical inputs produce byte-identical output
   test("identical inputs produce byte-identical output"):
@@ -74,14 +99,18 @@ final class BannerEngineSpec extends ProbatioSuite:
               )
             ),
             chainState = Right(
-              ChainStateReport(
+              reportOf(
                 change = "port-scanner-to-probatio",
                 baseline = "abc1234",
-                total = 12,
-                bound = 10,
-                resolved = 8,
-                discharged = 5,
-                unresolved = List(UnresolvedEntry("s", "R3", List(UnresolvedReason.Unbound))),
+                total = 5,
+                bound = 4,
+                resolved = 3,
+                discharged = 2,
+                unresolved = List(
+                  entryOf("s", "R3", UnresolvedReason.Unbound),
+                  entryOf("s", "R4", UnresolvedReason.Unresolved),
+                  entryOf("s", "R5", UnresolvedReason.Undischarged)
+                ),
                 unmappedObligations = List.empty
               )
             )
@@ -240,14 +269,18 @@ final class BannerEngineSpec extends ProbatioSuite:
               )
             ),
             chainState = Right(
-              ChainStateReport(
+              reportOf(
                 change = "port-scanner-to-probatio",
                 baseline = "abc1234",
-                total = 12,
-                bound = 10,
-                resolved = 8,
-                discharged = 5,
-                unresolved = List(UnresolvedEntry("s", "R3", List(UnresolvedReason.Unbound))),
+                total = 5,
+                bound = 4,
+                resolved = 3,
+                discharged = 2,
+                unresolved = List(
+                  entryOf("s", "R3", UnresolvedReason.Unbound),
+                  entryOf("s", "R4", UnresolvedReason.Unresolved),
+                  entryOf("s", "R5", UnresolvedReason.Undischarged)
+                ),
                 unmappedObligations = List.empty
               )
             )
@@ -260,11 +293,11 @@ final class BannerEngineSpec extends ProbatioSuite:
     assert(output.payload.contains("proposal.md"), "banner must contain artifact name")
     assert(output.payload.contains("design.md"), "banner must contain artifact name")
     assert(output.payload.contains("implementation-order.md"), "banner must contain next artifact")
-    assert(output.payload.contains("total 12"), "banner must contain total count")
-    assert(output.payload.contains("bound 10"), "banner must contain bound count")
-    assert(output.payload.contains("resolved 8"), "banner must contain resolved count")
-    assert(output.payload.contains("discharged 5"), "banner must contain discharged count")
-    assert(output.payload.contains("unresolved 1"), "banner must contain unresolved count")
+    assert(output.payload.contains("total 5"), "banner must contain total count")
+    assert(output.payload.contains("bound 4"), "banner must contain bound count")
+    assert(output.payload.contains("resolved 3"), "banner must contain resolved count")
+    assert(output.payload.contains("discharged 2"), "banner must contain discharged count")
+    assert(output.payload.contains("unresolved 3"), "banner must contain unresolved count")
 
   // ── Mutation-killing: banner with undetermined chain state contains undetermined
   test("banner with undetermined chain state contains undetermined"):
@@ -519,14 +552,14 @@ final class BannerEngineSpec extends ProbatioSuite:
             name = "my-change",
             artifacts = FactRead.Present(ArtifactScan(List("a.md"), None)),
             chainState = Right(
-              ChainStateReport(
+              reportOf(
                 change = "my-change",
                 baseline = "abc1234",
                 total = 1,
                 bound = 0,
                 resolved = 0,
                 discharged = 0,
-                unresolved = List.empty,
+                unresolved = List(entryOf("s", "R1", UnresolvedReason.Unbound)),
                 unmappedObligations = List.empty
               )
             )
@@ -547,15 +580,17 @@ final class BannerEngineSpec extends ProbatioSuite:
             name = "c",
             artifacts = FactRead.Present(ArtifactScan(List("a.md"), None)),
             chainState = Right(
-              ChainStateReport(
+              reportOf(
                 change = "c",
                 baseline = "abc1234",
                 total = 2,
-                bound = 0,
+                bound = 1,
                 resolved = 0,
                 discharged = 0,
-                unresolved =
-                  List(UnresolvedEntry("s", "R1", List(UnresolvedReason.Unbound, UnresolvedReason.Unresolved))),
+                unresolved = List(
+                  entryOf("s", "R1", UnresolvedReason.Unbound),
+                  entryOf("s", "R2", UnresolvedReason.Unresolved)
+                ),
                 unmappedObligations = List.empty
               )
             )
@@ -565,14 +600,9 @@ final class BannerEngineSpec extends ProbatioSuite:
     )
     val output: BannerOutput = BannerEngine.render(inputs)
     assert(output.payload.contains("R1"), "banner must contain requirement R1")
+    assert(output.payload.contains("R2"), "banner must contain requirement R2")
     assert(output.payload.contains("unbound"), "banner must contain reason 'unbound'")
     assert(output.payload.contains("unresolved"), "banner must contain reason 'unresolved'")
-    // The comma separator between reasons is in the unresolved entry line:
-    // "    R1 (unbound,unresolved)" — the predecessor's join(",") form
-    assert(
-      output.payload.contains("unbound,unresolved"),
-      "banner must contain comma-separated reasons in unresolved entry"
-    )
 
   // ── Mutation-killing: drift warning names the root and both versions
   test("banner drift warning names root, expected and found versions"):

@@ -16,22 +16,35 @@ final class ExitCodeMappingSpec extends ProbatioPluginSuite {
   // spec: sbt-plugin — Property: exit-code-mapping-distinct
   property("exit-code-mapping-distinct: exit 1 and 2 produce distinguishable messages") {
     for {
-      tool    <- Gen.element1("spec-lint", "chain-state", "checkpoint", "ledger").forAll
+      tool     <- Gen.element1("spec-lint", "chain-state", "checkpoint", "ledger").forAll
       findings <- Gen.int(linear(0, 100)).forAll
-      reason  <- Gen.string(Gen.alphaNum, linear(1, 80)).forAll
+      reason   <- Gen.string(Gen.alphaNum, linear(1, 80)).forAll
     } yield {
       val msg1: String = ExitCodeMapping.findingMessage(tool, findings, s"$findings findings")
       val msg2: String = ExitCodeMapping.undeterminedMessage(tool, reason)
-      Result.assert(msg1.contains("reported"))
+      Result
+        .assert(msg1.contains("reported"))
         .log(s"exit-1 message missing 'reported': $msg1")
-        .and(Result.assert(msg1.contains("finding(s)"))
-          .log(s"exit-1 message missing 'finding(s)': $msg1"))
-        .and(Result.assert(msg1.contains(s"reported $findings"))
-          .log(s"exit-1 message missing count N='reported $findings': $msg1"))
-        .and(Result.assert(msg2.contains("could not determine"))
-          .log(s"exit-2 message missing 'could not determine': $msg2"))
-        .and(Result.assert(msg1 != msg2)
-          .log(s"messages should be distinguishable:\n  msg1=$msg1\n  msg2=$msg2"))
+        .and(
+          Result
+            .assert(msg1.contains("finding(s)"))
+            .log(s"exit-1 message missing 'finding(s)': $msg1")
+        )
+        .and(
+          Result
+            .assert(msg1.contains(s"reported $findings"))
+            .log(s"exit-1 message missing count N='reported $findings': $msg1")
+        )
+        .and(
+          Result
+            .assert(msg2.contains("could not determine"))
+            .log(s"exit-2 message missing 'could not determine': $msg2")
+        )
+        .and(
+          Result
+            .assert(msg1 != msg2)
+            .log(s"messages should be distinguishable:\n  msg1=$msg1\n  msg2=$msg2")
+        )
     }
   }
 
@@ -48,7 +61,7 @@ final class ExitCodeMappingSpec extends ProbatioPluginSuite {
     val result: Either[String, Unit] = ExitCodeMapping.mapExitCode("spec-lint", 1, "3 findings")
     assert(result.isLeft, s"exit 1 should map to failure, got $result")
     val msg: String = result match {
-      case Left(m) => m
+      case Left(m)  => m
       case Right(_) => fail("expected Left, got Right")
     }
     assert(msg.contains("probatio spec-lint"), s"message should name the tool: $msg")
@@ -63,7 +76,7 @@ final class ExitCodeMappingSpec extends ProbatioPluginSuite {
     val result: Either[String, Unit] = ExitCodeMapping.mapExitCode("chain-state", 2, "ledger unreadable")
     assert(result.isLeft, s"exit 2 should map to failure, got $result")
     val msg: String = result match {
-      case Left(m) => m
+      case Left(m)  => m
       case Right(_) => fail("expected Left, got Right")
     }
     assert(msg.contains("probatio chain-state"), s"message should name the tool: $msg")
@@ -103,6 +116,9 @@ final class ExitCodeMappingSpec extends ProbatioPluginSuite {
   // Edge case from spec: exit code 2 with empty reason
   test("exit 2 with empty reason still says 'could not determine'") {
     val msg: String = ExitCodeMapping.undeterminedMessage("chain-state", "")
-    assert(msg.contains("could not determine"), s"exit-2 with empty reason should still say 'could not determine': $msg")
+    assert(
+      msg.contains("could not determine"),
+      s"exit-2 with empty reason should still say 'could not determine': $msg"
+    )
   }
 }

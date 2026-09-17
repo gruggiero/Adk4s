@@ -114,26 +114,29 @@ object LedgerValidatorKernel:
     case object TimestampPathSeparator extends Violation:
       def clauseIndex: BigInt = 12
 
-    /** Clause 13: optional field type invalid (sha256/digest not string,
-      * wallTime not integer).
-      *
-      * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
-      */
+    /**
+     * Clause 13: optional field type invalid (sha256/digest not string,
+     * wallTime not integer).
+     *
+     * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
+     */
     case object OptionalFieldTypeInvalid extends Violation:
       def clauseIndex: BigInt = 13
 
-    /** Clause 14: observer provenance — source present but not "ambient".
-      *
-      * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
-      */
+    /**
+     * Clause 14: observer provenance — source present but not "ambient".
+     *
+     * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
+     */
     case object ObserverProvenanceInvalid extends Violation:
       def clauseIndex: BigInt = 14
 
-    /** Clause 15: session provenance — R8 rows missing session, or any row
-      * with session that is not a non-empty string.
-      *
-      * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
-      */
+    /**
+     * Clause 15: session provenance — R8 rows missing session, or any row
+     * with session that is not a non-empty string.
+     *
+     * spec: provenance-validation — Requirement: The validator SHALL check all 15 contract clauses, not 12
+     */
     case object SessionProvenanceInvalid extends Violation:
       def clauseIndex: BigInt = 15
 
@@ -220,51 +223,36 @@ object LedgerValidatorKernel:
     sessionProvenanceValid: Boolean
   ): Either[Violation, ValidRecord] = {
     // Clause 1: v must be a positive integer
-    if !isPositive(v) then
-      Left(Violation.VersionInvalid)
+    if !isPositive(v) then Left(Violation.VersionInvalid)
     // Clause 2: ts must be non-empty and valid ISO-8601
-    else if !isNonEmpty(ts) || !tsValidIso then
-      Left(Violation.TimestampInvalid)
+    else if !isNonEmpty(ts) || !tsValidIso then Left(Violation.TimestampInvalid)
     // Clause 3: change must be non-empty
-    else if !isNonEmpty(change) then
-      Left(Violation.ChangeInvalid)
+    else if !isNonEmpty(change) then Left(Violation.ChangeInvalid)
     // Clause 4: spec must be non-empty
-    else if !isNonEmpty(spec) then
-      Left(Violation.SpecInvalid)
+    else if !isNonEmpty(spec) then Left(Violation.SpecInvalid)
     // Clause 5: ring must be a valid Ring
-    else if !isValidRing(ring) then
-      Left(Violation.RingOutsideDomain)
+    else if !isValidRing(ring) then Left(Violation.RingOutsideDomain)
     // Clause 6: obligation must be non-empty
-    else if !isNonEmpty(obligation) then
-      Left(Violation.ObligationEmpty)
+    else if !isNonEmpty(obligation) then Left(Violation.ObligationEmpty)
     // Clause 7: artifact must be non-empty
-    else if !isNonEmpty(artifact) then
-      Left(Violation.ArtifactEmpty)
+    else if !isNonEmpty(artifact) then Left(Violation.ArtifactEmpty)
     // Clause 8: command must be non-empty
-    else if !isNonEmpty(command) then
-      Left(Violation.CommandEmpty)
+    else if !isNonEmpty(command) then Left(Violation.CommandEmpty)
     // Clause 9: exit must be an integer
-    else if !exitIsInteger then
-      Left(Violation.ExitNotInteger)
+    else if !exitIsInteger then Left(Violation.ExitNotInteger)
     // Clause 10: baseline must be valid hex (non-empty)
-    else if !isNonEmpty(baseline) || !baselineValidHex then
-      Left(Violation.BaselineInvalid)
+    else if !isNonEmpty(baseline) || !baselineValidHex then Left(Violation.BaselineInvalid)
     // Clause 11: artifact must not contain path separators
-    else if !artifactNoSep then
-      Left(Violation.ArtifactPathSeparator)
+    else if !artifactNoSep then Left(Violation.ArtifactPathSeparator)
     // Clause 12: ts must not contain path separators
-    else if !tsNoSep then
-      Left(Violation.TimestampPathSeparator)
+    else if !tsNoSep then Left(Violation.TimestampPathSeparator)
     // Clause 13: optional fields must have valid types when present
-    else if !optFieldsValidType then
-      Left(Violation.OptionalFieldTypeInvalid)
+    else if !optFieldsValidType then Left(Violation.OptionalFieldTypeInvalid)
     // Clause 14: observer provenance — source must be "ambient" when present
-    else if !observerProvenanceValid then
-      Left(Violation.ObserverProvenanceInvalid)
+    else if !observerProvenanceValid then Left(Violation.ObserverProvenanceInvalid)
     // Clause 15: session provenance — R8 requires session, all rows require
     // non-empty string when present
-    else if !sessionProvenanceValid then
-      Left(Violation.SessionProvenanceInvalid)
+    else if !sessionProvenanceValid then Left(Violation.SessionProvenanceInvalid)
     // All 15 clauses passed — extract the Ring and construct the record
     else
       ring match
@@ -310,9 +298,23 @@ object LedgerValidatorKernel:
     sessionProvenanceValid: Boolean
   ): Boolean = {
     val result: Either[Violation, ValidRecord] = validate(
-      v, ts, tsValidIso, tsNoSep, change, spec, ring,
-      obligation, artifact, artifactNoSep, command, exit, exitIsInteger,
-      baseline, baselineValidHex, optFieldsValidType, observerProvenanceValid,
+      v,
+      ts,
+      tsValidIso,
+      tsNoSep,
+      change,
+      spec,
+      ring,
+      obligation,
+      artifact,
+      artifactNoSep,
+      command,
+      exit,
+      exitIsInteger,
+      baseline,
+      baselineValidHex,
+      optFieldsValidType,
+      observerProvenanceValid,
       sessionProvenanceValid
     )
     result.isLeft || result.isRight
@@ -323,9 +325,11 @@ object LedgerValidatorKernel:
    * `Right` simultaneously.
    */
   @pure
-  def mutualExclusivityLaw(result: Either[Violation, ValidRecord]): Boolean = {
+  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
+  def mutualExclusivityLaw(result: Either[Violation, ValidRecord]): Boolean =
     !(result.isLeft && result.isRight)
-  }.ensuring(_ == true)
+      .ensuring(_ == true)
+  // format: on
 
   /**
    * Law: If all 15 clauses pass, `validate` returns `Right` with a
@@ -366,15 +370,29 @@ object LedgerValidatorKernel:
         optFieldsValidType && observerProvenanceValid && sessionProvenanceValid
     )
     validate(
-      v, ts, tsValidIso, tsNoSep, change, spec, ring,
-      obligation, artifact, artifactNoSep, command, exit, exitIsInteger,
-      baseline, baselineValidHex, optFieldsValidType, observerProvenanceValid,
+      v,
+      ts,
+      tsValidIso,
+      tsNoSep,
+      change,
+      spec,
+      ring,
+      obligation,
+      artifact,
+      artifactNoSep,
+      command,
+      exit,
+      exitIsInteger,
+      baseline,
+      baselineValidHex,
+      optFieldsValidType,
+      observerProvenanceValid,
       sessionProvenanceValid
     ) match
       case Right(rec) =>
         rec.v == v && rec.ts == ts && rec.change == change && rec.spec == spec &&
-          rec.obligation == obligation && rec.artifact == artifact &&
-          rec.command == command && rec.exit == exit && rec.baseline == baseline
+        rec.obligation == obligation && rec.artifact == artifact &&
+        rec.command == command && rec.exit == exit && rec.baseline == baseline
       case Left(_) => false
   }.ensuring(_ == true)
 
@@ -386,11 +404,27 @@ object LedgerValidatorKernel:
   def clause1VersionInvalid(v: BigInt): Boolean = {
     require(v <= 0)
     validate(
-      v, BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      v,
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.VersionInvalid) => true
-      case _                              => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -401,11 +435,27 @@ object LedgerValidatorKernel:
   def clause2TimestampInvalid(ts: BigInt, tsValidIso: Boolean): Boolean = {
     require(ts == 0 || !tsValidIso)
     validate(
-      BigInt(1), ts, tsValidIso, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      ts,
+      tsValidIso,
+      true,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.TimestampInvalid) => true
-      case _                                 => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -416,11 +466,27 @@ object LedgerValidatorKernel:
   def clause3ChangeInvalid(change: BigInt): Boolean = {
     require(change == 0)
     validate(
-      BigInt(1), BigInt(1), true, true, change, BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      change,
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.ChangeInvalid) => true
-      case _                             => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -430,11 +496,27 @@ object LedgerValidatorKernel:
   def clause4SpecInvalid(spec: BigInt): Boolean = {
     require(spec == 0)
     validate(
-      BigInt(1), BigInt(1), true, true, BigInt(1), spec, Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      spec,
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.SpecInvalid) => true
-      case _                           => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -445,11 +527,27 @@ object LedgerValidatorKernel:
   def clause5RingOutsideDomain(ring: Option[Ring]): Boolean = {
     require(ring.isEmpty)
     validate(
-      BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), ring,
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      BigInt(1),
+      ring,
+      BigInt(1),
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.RingOutsideDomain) => true
-      case _                                 => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -460,11 +558,27 @@ object LedgerValidatorKernel:
   def clause6ObligationEmpty(obligation: BigInt): Boolean = {
     require(obligation == 0)
     validate(
-      BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      obligation, BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      obligation,
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.ObligationEmpty) => true
-      case _                               => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -475,11 +589,27 @@ object LedgerValidatorKernel:
   def clause7ArtifactEmpty(artifact: BigInt): Boolean = {
     require(artifact == 0)
     validate(
-      BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), artifact, true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      artifact,
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.ArtifactEmpty) => true
-      case _                             => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -490,11 +620,27 @@ object LedgerValidatorKernel:
   def clause8CommandEmpty(command: BigInt): Boolean = {
     require(command == 0)
     validate(
-      BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, command, BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      true,
+      command,
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.CommandEmpty) => true
-      case _                            => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -505,11 +651,27 @@ object LedgerValidatorKernel:
   def clause9ExitNotInteger(exitIsInteger: Boolean): Boolean = {
     require(!exitIsInteger)
     validate(
-      BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), exitIsInteger, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      exitIsInteger,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.ExitNotInteger) => true
-      case _                              => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -520,11 +682,27 @@ object LedgerValidatorKernel:
   def clause10BaselineInvalid(baseline: BigInt, baselineValidHex: Boolean): Boolean = {
     require(baseline == 0 || !baselineValidHex)
     validate(
-      BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, baseline, baselineValidHex, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      baseline,
+      baselineValidHex,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.BaselineInvalid) => true
-      case _                               => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -535,11 +713,27 @@ object LedgerValidatorKernel:
   def clause11ArtifactPathSeparator(artifactNoSep: Boolean): Boolean = {
     require(!artifactNoSep)
     validate(
-      BigInt(1), BigInt(1), true, true, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), artifactNoSep, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      true,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      artifactNoSep,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.ArtifactPathSeparator) => true
-      case _                                     => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**
@@ -550,11 +744,27 @@ object LedgerValidatorKernel:
   def clause12TimestampPathSeparator(tsNoSep: Boolean): Boolean = {
     require(!tsNoSep)
     validate(
-      BigInt(1), BigInt(1), true, tsNoSep, BigInt(1), BigInt(1), Some(Ring.R0),
-      BigInt(1), BigInt(1), true, BigInt(1), BigInt(0), true, BigInt(1), true, true, true, true
+      BigInt(1),
+      BigInt(1),
+      true,
+      tsNoSep,
+      BigInt(1),
+      BigInt(1),
+      Some(Ring.R0),
+      BigInt(1),
+      BigInt(1),
+      true,
+      BigInt(1),
+      BigInt(0),
+      true,
+      BigInt(1),
+      true,
+      true,
+      true,
+      true
     ) match
       case Left(Violation.TimestampPathSeparator) => true
-      case _                                      => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
+      case _ => false // danger-scan:allow type-rejection — wrong violation variant returns false, never a valid value
   }.ensuring(_ == true)
 
   /**

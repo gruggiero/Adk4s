@@ -9,6 +9,7 @@ import org.sinemenda.probatio.core.DriftScan
 import org.sinemenda.probatio.core.FactRead
 import org.sinemenda.probatio.core.InstallRootScan
 import org.sinemenda.probatio.core.InstallRootState
+import org.sinemenda.probatio.core.LintContext
 import org.sinemenda.probatio.core.RepositoryFacts
 import org.sinemenda.probatio.core.RootBase
 import org.sinemenda.probatio.core.StampFormat
@@ -93,6 +94,64 @@ object RepositoryFactsReader:
       installRoots = scanInstallRoots(repoRoot, userHome),
       activeChanges = readActiveChanges(repoRoot, dag, env, baseline)
     )
+
+  /**
+   * Read the spec-lint applicability context — the same facts the banner
+   * reads (schema version, registry, inventory, profile, install roots)
+   * plus the registry `# Concept:` headings and inventory type names the
+   * W7 type-scan needs. Every fact is a `FactRead`; `Unreadable`
+   * propagates so the engine can report could-not-determine rather than
+   * silently linting on fabricated absence.
+   *
+   * spec: spec-lint-engine — Requirement: Applicability facts are read from the repository at the I/O boundary and passed to the engine as data
+   */
+  def readLintContext(repoRoot: Path, userHome: Path): LintContext =
+    val schemaContent: FactRead[String] =
+      readText(repoRoot.resolve(schemaRel))
+    val schemaVersion: FactRead[Int] = schemaContent match
+      case FactRead.Present(text) => schemaVersionOf(text)
+      case FactRead.Absent        => FactRead.Absent
+      case FactRead.Unreadable(r) => FactRead.Unreadable(r)
+    LintContext(
+      schemaVersion = schemaVersion,
+      registry = readRegistry(repoRoot),
+      registryConcepts = readRegistryConcepts(repoRoot),
+      inventoryTypes = readInventoryTypes(repoRoot),
+      profile = readProfile(repoRoot),
+      installRoots = scanInstallRoots(repoRoot, userHome)
+    )
+
+  /**
+   * The registry's `# Concept:` headings — the predecessor's
+   * `grep -h '^# Concept:'` over the top-level markdown documents in
+   * `openspec/concepts/`, each stripped to its title text, sorted and
+   * deduplicated. A directory that exists but cannot be scanned is
+   * `Unreadable`, never `Absent`.
+   */
+  private def readRegistryConcepts(repoRoot: Path): FactRead[List[String]] =
+    val dir: Path = repoRoot.resolve("openspec/concepts")
+    if !Files.isDirectory(dir) then FactRead.Absent
+    else
+      try
+        val docs: List[Path] = Using.resource(Files.list(dir)) { stream =>
+          stream
+            .iterator()
+            .asScala
+            .toList
+            .filter((p: Path) => Files.isRegularFile(p) && p.getFileName.toString.endsWith(".md"))
+        }
+        val headings: List[String] = docs
+          .flatMap(p => Files.readString(p, StandardCharsets.UTF_8).linesIterator)
+          // `grep -h '^# Concept: '` — the space after the colon is required;
+          // `# Concept:Foo` is not a concept heading.
+          .filter(_.startsWith("# Concept: "))
+          .map(_.replaceFirst("^# Concept: *", "").replaceAll("[ \t]+$", ""))
+          .sorted
+          .distinct
+        FactRead.Present(headings)
+      catch
+        case NonFatal(e) => // danger-scan:allow degraded-fact — the scan failure IS the fact: Unreadable, not swallowed
+          FactRead.Unreadable(s"could not scan $dir: ${e.getMessage}")
 
   // ── file primitives ───────────────────────────────────────────────────
 
@@ -202,6 +261,17 @@ object RepositoryFactsReader:
    * deduplicated.
    */
   private def readInventory(repoRoot: Path): FactRead[Int] =
+    readInventoryTypes(repoRoot) match
+      case FactRead.Present(types) => FactRead.Present(types.length)
+      case FactRead.Absent         => FactRead.Absent
+      case FactRead.Unreadable(r)  => FactRead.Unreadable(r)
+
+  /**
+   * The inventory's type names — the same extraction as `readInventory`
+   * but returning the deduplicated, sorted name list the W7 type scan
+   * needs (the predecessor's `sort -u` side of the `comm -23`).
+   */
+  private def readInventoryTypes(repoRoot: Path): FactRead[List[String]] =
     readText(repoRoot.resolve("openspec/concept-inventory.md")) match
       case FactRead.Present(text) =>
         val cells: List[String] = text.linesIterator
@@ -211,12 +281,12 @@ object RepositoryFactsReader:
             if fields.length > 1 then Some(fields(1)) else None
           }
           .toList
-        val valid: Int = cells
+        val types: List[String] = cells
           .map(c => c.replace("`", "").trim.replaceAll("\\[.*", ""))
           .filter(c => c.matches("[A-Z][A-Za-z0-9_]*") && c != "Type")
           .distinct
-          .length
-        FactRead.Present(valid)
+          .sorted
+        FactRead.Present(types)
       case FactRead.Absent        => FactRead.Absent
       case FactRead.Unreadable(r) => FactRead.Unreadable(r)
 
@@ -465,7 +535,8 @@ object RepositoryFactsReader:
                       case _ => None // danger-scan:allow type-rejection — non-string maps to None, never a valid reason
                     })
                   case _ => None // danger-scan:allow type-rejection — non-array maps to None, never a valid entry
-              yield UnresolvedEntry(sp, req, rss)
+                entry <- UnresolvedEntry.of(sp, req, rss)
+              yield entry
             })
           case _ => Some(Nil) // danger-scan:allow absent-key — no unresolved key means empty (jq parity)
       val unmapped: Option[List[UnmappedObligation]] =
@@ -492,18 +563,21 @@ object RepositoryFactsReader:
         d  <- num("discharged")
         u  <- unresolved
         um <- unmapped
-      yield ChainStateReport(
-        str("change").getOrElse(name),
-        str("baseline").getOrElse(
-          "unknown"
-        ), // danger-scan:allow jq-parity — a report lacking baseline displays "unknown" (predecessor `// "unknown"`)
-        t,
-        b,
-        r,
-        d,
-        u,
-        um
-      )
+        report <- ChainStateReport
+          .fromCounts(
+            str("change").getOrElse(name),
+            str("baseline").getOrElse(
+              "unknown"
+            ), // danger-scan:allow jq-parity — a report lacking baseline displays "unknown" (predecessor `// "unknown"`)
+            t,
+            b,
+            r,
+            d,
+            u,
+            um
+          )
+          .toOption
+      yield report
     catch
       case NonFatal(_) => // danger-scan:allow degraded-fact — a contract-violating report is undetermined
         None

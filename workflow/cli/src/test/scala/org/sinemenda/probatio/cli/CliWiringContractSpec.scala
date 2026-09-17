@@ -63,22 +63,24 @@ final class CliWiringContractSpec extends ProbatioCliSuite:
 
   test("StdoutRenderer[ChainStateReport] is summonable"):
     val renderer: StdoutRenderer[ChainStateReport] = summon[StdoutRenderer[ChainStateReport]]
-    val report: ChainStateReport = ChainStateReport(
-      change = "test",
-      baseline = "abc123",
-      total = 1,
-      bound = 1,
-      resolved = 1,
-      discharged = 1,
-      unresolved = Nil,
-      unmappedObligations = Nil
-    )
+    val report: ChainStateReport = ChainStateReport
+      .fromCounts(
+        change = "test",
+        baseline = "abc123",
+        total = 1,
+        bound = 1,
+        resolved = 1,
+        discharged = 1,
+        unresolved = Nil,
+        unmappedObligations = Nil
+      )
+      .getOrElse(fail("fixture report violates the report contract"))
     val rendered: String = renderer.render(report)
     assert(rendered != null, "renderer must return a non-null string")
 
   test("StdoutRenderer[LintReport] is summonable"):
     val renderer: StdoutRenderer[LintReport] = StdoutRenderer[LintReport]
-    val report: LintReport = LintReport(
+    val report: LintReport = LiveFactFixtures.lintReport(
       verdicts = Nil,
       warnings = Nil,
       applicability = Map.empty,
@@ -97,13 +99,13 @@ final class CliWiringContractSpec extends ProbatioCliSuite:
 
   test("StdoutRenderer[BannerOutput] is summonable"):
     val renderer: StdoutRenderer[BannerOutput] = StdoutRenderer[BannerOutput]
-    val banner: BannerOutput = BannerOutput(lines = List("line1"), payload = "line1")
-    val rendered: String = renderer.render(banner)
+    val banner: BannerOutput                   = BannerOutput(lines = List("line1"), payload = "line1")
+    val rendered: String                       = renderer.render(banner)
     assert(rendered != null, "renderer must return a non-null string")
 
   test("StdoutRenderer.apply summons the same instance as summon"):
-    val viaApply: StdoutRenderer[ChainStateReport]   = StdoutRenderer.apply[ChainStateReport]
-    val viaSummon: StdoutRenderer[ChainStateReport]  = summon[StdoutRenderer[ChainStateReport]]
+    val viaApply: StdoutRenderer[ChainStateReport]  = StdoutRenderer.apply[ChainStateReport]
+    val viaSummon: StdoutRenderer[ChainStateReport] = summon[StdoutRenderer[ChainStateReport]]
     assert(viaApply == viaSummon, "apply and summon should return the same instance")
 
   // ── SubcommandWiring — I/O adapter signatures

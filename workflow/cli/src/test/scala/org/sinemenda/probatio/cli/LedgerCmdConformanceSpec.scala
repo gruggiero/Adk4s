@@ -41,8 +41,8 @@ final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
 
   test("ledger append missing --change is rejected with Finding naming the missing field"):
     val record: ujson.Value = ujson.Obj(
-      "v"          -> ujson.Num(1),
-      "ts"         -> ujson.Str("2026-08-26T12:00:00Z"),
+      "v"  -> ujson.Num(1),
+      "ts" -> ujson.Str("2026-08-26T12:00:00Z"),
       // change deliberately omitted
       "spec"       -> ujson.Str("test-spec"),
       "ring"       -> ujson.Str("R0"),
@@ -91,7 +91,7 @@ final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
     outcome match
       case Outcome.Undetermined(reason) => assert(reason.contains("UNDETERMINED") || reason.nonEmpty)
       case Outcome.Ran(_)               => fail("ledger read on nonexistent file returned Ran — should be Undetermined")
-      case Outcome.Finding(_)           => fail("ledger read on nonexistent file returned Finding — should be Undetermined")
+      case Outcome.Finding(_) => fail("ledger read on nonexistent file returned Finding — should be Undetermined")
 
   // ── Scenario: The run action observes the command exit code
   // spec: cli-wiring — Scenario: The run action observes the command exit code
@@ -102,15 +102,31 @@ final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
     // itself succeeded; the observed exit is recorded, not reflected).
     // This test is RED until the run action is wired.
     val outcome: Outcome[Int] = LedgerCmd.run(
-      Array("run", "--file", "/tmp/test-ledger.jsonl", "--change", "test", "--spec", "test-spec",
-        "--ring", "R0", "--obligation", "test", "--artifact", "Test.scala", "--baseline", "abc1234",
-        "--", "true")
+      Array(
+        "run",
+        "--file",
+        "/tmp/test-ledger.jsonl",
+        "--change",
+        "test",
+        "--spec",
+        "test-spec",
+        "--ring",
+        "R0",
+        "--obligation",
+        "test",
+        "--artifact",
+        "Test.scala",
+        "--baseline",
+        "abc1234",
+        "--",
+        "true"
+      )
     )
     // The run action should succeed (exit 0) regardless of the observed command's exit.
     outcome match
-      case Outcome.Ran(0)              => () // expected — run succeeded
-      case Outcome.Ran(n)              => fail(s"run should exit 0, got $n")
-      case Outcome.Finding(msg)        => fail(s"run should not produce Finding: $msg")
+      case Outcome.Ran(0)               => () // expected — run succeeded
+      case Outcome.Ran(n)               => fail(s"run should exit 0, got $n")
+      case Outcome.Finding(msg)         => fail(s"run should not produce Finding: $msg")
       case Outcome.Undetermined(reason) => fail(s"run should not produce Undetermined: $reason")
 
   // ── Property: ledger-append-contract-conformance
@@ -143,10 +159,8 @@ final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
         "baseline"   -> ujson.Str(baseline)
       )
       // Add session for R8 rows
-      if ring == "R8" && session.nonEmpty then
-        baseRecord.value("session") = ujson.Str(session)
-      else if ring == "R8" then
-        baseRecord.value("session") = ujson.Str("default-session")
+      if ring == "R8" && session.nonEmpty then baseRecord.value("session") = ujson.Str(session)
+      else if ring == "R8" then baseRecord.value("session") = ujson.Str("default-session")
 
       val validationResult: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(baseRecord)
       // The validator and the contract should agree:
@@ -159,9 +173,10 @@ final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
       //   - ring is in the closed domain
       //   - baseline is lowercase hex 7-40
       //   - R8 rows have session
-      val ringValid: Boolean = Ring.fromString(ring).isDefined
+      val ringValid: Boolean     = Ring.fromString(ring).isDefined
       val baselineValid: Boolean = baseline.matches("^[0-9a-f]{7,40}$")
-      val r8SessionOk: Boolean = ring != "R8" || session.nonEmpty || baseRecord.value.contains("session")
-      val contractAccepts: Boolean = ringValid && baselineValid && r8SessionOk && change.nonEmpty && spec.nonEmpty && obligation.nonEmpty && artifact.nonEmpty && command.nonEmpty
+      val r8SessionOk: Boolean   = ring != "R8" || session.nonEmpty || baseRecord.value.contains("session")
+      val contractAccepts: Boolean =
+        ringValid && baselineValid && r8SessionOk && change.nonEmpty && spec.nonEmpty && obligation.nonEmpty && artifact.nonEmpty && command.nonEmpty
 
       Result.diff(validatorAccepts, contractAccepts)(_ == _)

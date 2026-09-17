@@ -405,9 +405,11 @@ object BannerEngineKernel:
    * Law: the empty fact vector emits the empty claim vector.
    */
   @pure
+  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
   def bannerClaimsEmpty: Boolean =
     bannerClaims(Nil()).isEmpty
       .ensuring(_ == true)
+  // format: on
 
   /**
    * Law: a lone unreadable fact (`-1`) is claimed unreadable — never

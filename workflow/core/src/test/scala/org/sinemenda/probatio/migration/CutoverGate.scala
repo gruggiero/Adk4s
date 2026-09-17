@@ -61,9 +61,11 @@ object CutoverGate:
  * spec: cutover-gate — Requirement: The gate's decision and its evidence are recorded before the swap proceeds
  */
 final case class GateRecord(verdict: CutoverVerdict, evidence: DifferentialResult):
-  /** True iff this record authorises a swap (the verdict is Proceed AND
-    * the record carries per-file evidence — a decision without a
-    * recorded comparison is not actionable). */
+  /**
+   * True iff this record authorises a swap (the verdict is Proceed AND
+   * the record carries per-file evidence — a decision without a
+   * recorded comparison is not actionable).
+   */
   def authorisesSwap: Boolean = hasEvidence && (verdict match
     case CutoverVerdict.Proceed   => true
     case CutoverVerdict.Revert(_) => false

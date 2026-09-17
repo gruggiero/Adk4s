@@ -4,7 +4,7 @@
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler Migration Protocol | The shim's target is what the protocol swaps to; this spec makes that target the artifact the packaging requirement names | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
+| `Strangler` (Strangler Migration Protocol) | The shim's target is what the protocol swaps to; this spec makes that target the artifact the packaging requirement names | [strangler-migration-protocol.md](../../../../concepts/strangler-migration-protocol.md) |
 
 This spec does not alter the concept's actions, state, or synchronizations. No
 concept file update is required.

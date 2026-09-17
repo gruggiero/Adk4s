@@ -17,8 +17,10 @@ final class CutoverRevertSpec extends ProbatioSuite:
 
   import SeamTypes.*
 
-  /** Cover thresholds are stable at 500 tests — the default 100 can
-    * fluctuate ±5% on edge-case classes, causing flaky cover failures. */
+  /**
+   * Cover thresholds are stable at 500 tests — the default 100 can
+   * fluctuate ±5% on edge-case classes, causing flaky cover failures.
+   */
   private val coverConfig: PropertyConfig => PropertyConfig =
     _.copy(testLimit = SuccessCount(500))
 
@@ -55,7 +57,11 @@ final class CutoverRevertSpec extends ProbatioSuite:
     for h <- genSwapHistory.forAll
         .cover(10, "empty-prefix", (h: SwapHistory) => h.swappedSeams.isEmpty)
         .cover(15, "full-prefix", (h: SwapHistory) => h.swappedSeams.size == ToolId.swapOrder.length)
-        .cover(60, "partial-prefix", (h: SwapHistory) => h.swappedSeams.nonEmpty && h.swappedSeams.size < ToolId.swapOrder.length)
+        .cover(
+          60,
+          "partial-prefix",
+          (h: SwapHistory) => h.swappedSeams.nonEmpty && h.swappedSeams.size < ToolId.swapOrder.length
+        )
     yield
       val after: SeamConfiguration = revertToPredecessor(h.swappedSeams)
       Result
@@ -114,8 +120,8 @@ final class CutoverRevertSpec extends ProbatioSuite:
   // Hedgehog cover: empty-prefix ≥ 10%, full-prefix ≥ 15%, partial-prefix ≥ 60%.
   def genSwapHistory: Gen[SwapHistory] =
     Gen.frequency1(
-      2 -> Gen.constant(SwapHistory(Set.empty)),
-      3 -> Gen.constant(SwapHistory(ToolId.swapOrder.toSet)),
+      2  -> Gen.constant(SwapHistory(Set.empty)),
+      3  -> Gen.constant(SwapHistory(ToolId.swapOrder.toSet)),
       10 -> genPartialSwapHistory
     )
 

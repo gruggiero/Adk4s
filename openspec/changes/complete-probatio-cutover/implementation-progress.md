@@ -468,24 +468,746 @@ count-less (`PRESENT` only), so its code is drawn from the boolean domain
 
 ## Spec 4: spec-lint-engine
 
-### Status: PENDING
+### Status: RINGS COMPLETE — checkpoint written, AWAITING HUMAN VALIDATION
+
+### Baseline
+- SHA: `271a7560f494fbafd4555bc1e3c335c2890e9e92` (tracked tree clean;
+  untracked docs files only — same tolerance as spec 3)
+- Date: 2026-09-16
+
+### Step 0 — Baseline + concept check
+- **Gate installation**: `workflow/cli/target/native-image/probatio gate
+  --check-installed --repo .` → `{"installed":true,"last_run":"2026-09-16T10:07:37Z","event":"session-start"}`.
+  (The `bin/probatio` JAR shim still cannot dispatch — spec-1 Known
+  Limitation; the native image is the working artifact.)
+- **Inventory snapshot**: `inventory-snapshots/spec-lint-engine-before.md`
+  written by `scanner/scan.sh` (9 opaque types, 115 sealed types, 442 case
+  classes, 18 service traits, 62 smithy models, 326 generators).
+- **Registry gate (BLOCKING)**: `registry-check.sh` initially FAILED on a
+  pre-existing parse hole — every spec in this change cites
+  `Strangler Migration Protocol` / `Conformance Property-Test Contract` as
+  bare multi-word Concept cells, which the checker's ref extraction cannot
+  parse (whole-cell bare-name rule). `cutover-gate` had *no* parseable row
+  and tripped `SPEC ... NO reference parsed`; the other eight specs each
+  passed only because their `Schema` row parses — every multi-word citation
+  was silently unverified. **Fix applied (change artifacts, not code)**:
+  all 8 bare multi-word cells across the change's specs rewritten to the
+  canonical backticked registry token — `` `Strangler` (Strangler
+  Migration Protocol) `` / `` `Conformance` (Conformance Property-Test
+  Contract) `` — so each citation is now checked. Result: **OK** (803
+  implementation-map tokens verified, 15 spec concept references checked,
+  5 pre-existing WEAK bindings in `graph.md`/`tools-node.md` — warnings,
+  not failures).
+- **Concepts Used (from inventory)**: all 9 resolve —
+  `LintReport`/`RequirementVerdict`/`Verdict`/`CheckId`/`LintWarning` in
+  `workflow/core/.../LintReport.scala`; `Outcome` in `Outcome.scala`;
+  `DriftScan` in `DriftScan.scala` (six-root `InstallRoots`, spec 3);
+  `StdoutRenderer`/`SubcommandWiring` in `workflow/cli`. `RepositoryFacts`
+  (spec 3) present; `LintContext` is spec 4's own projection of it.
+- **Concepts Used (behavioral)**: `Strangler` verified — the Gate action's
+  parity predicate is realized (`CutoverGate.decide` /
+  `OracleGreenGate`); `Schema` resolves to `concepts/schema.md` — NOTE:
+  that file documents the adk4s `Schema[A]` typeclass, not the
+  verified-scala3 *workflow* schema the spec means. The spec relies on no
+  action/state of either file (declared: no alteration), so the citation
+  is a name-level reference only; recorded here, not blocking.
+- **Proof Obligations table**: complete — 12 rows; all 4 requirements named
+  by exact title; all 4 properties bound; all 3 compile-negatives bound;
+  every `Property:`/`Scenario:`/`Compile-Negative:` source names a heading
+  that exists (passes its own F6/F7/F8 discipline).
+- **Public-type-change impact scan**: not applicable — no existing public
+  type's variant set changes (`CheckOutcome`, `ObligationSource` are NEW
+  enums). `LintReport`'s constructor NARROWS (goes private per the
+  smart-constructor compile-negative): every construction site becomes a
+  compile error under R0 — enumerated: `SubcommandEntrypoints.scala` ×4
+  (L340, L476, L547, L951 fabricate `lintSuccess = true` reports today)
+  plus test sites (`LintReportSpec`, `ChainStateSpec`,
+  `VerifiedKernelBridgeSpec`, `GateBannerCompatSpec`,
+  `ChainStateCmdConformanceSpec`, `CliWiringContractSpec`). No catch-all
+  match is affected.
+- **MUST-CONFIRM**: none outstanding — spec-lint.md records the judgment
+  that F1–F10/W1–W7 semantics bind by parity (source is in-repo:
+  `scanner/spec-lint.sh.predecessor.bak`, 605 lines, read in full).
+- **Corpus source for the parity property**: the bats suites build spec
+  documents programmatically (heredoc builders in `chain-state.bats` et
+  al. — `spec_header`/`req_block`/`po_header` + per-shape builders);
+  `tests/fixtures/` holds no spec.md files. Corpus = extracted builder
+  shapes + every spec.md under `openspec/specs/` and `openspec/changes/`.
+- **Ring 3 acceptance files** (per tasks.md): `workflow-hygiene.bats` and
+  `fact-extraction.bats` at parity under `probatioOracleDiff`.
+
+### Step 1 — Typed contract (compiled; awaiting human review)
+
+Compiled under the real module classpaths —
+`sbt "probatio-core/Test/compile" "probatio-cli/Test/compile"` → success,
+`-Werror` clean (all pre-existing tests migrated and recompiled).
+
+**New production types** (signatures + `???` bodies; behavior is Step 3):
+- `core/SpecDocument.scala` — `SpecDocument` (name, lines, requirements,
+  properties, temporals, scenarios, `obligationRows` = evaluated rows,
+  `dataRowCount` = the W2 denominator, section flags), `RequirementBlock`
+  (title/line/endLine/hasNormative/negative/scenarioCount/normativeText),
+  `PropertyBlock`, `TemporalBlock`, `ScenarioHeading`, `ObligationRow`
+  (line, fieldCount = awk `NF`, source/enforcement/artifact cells, raw).
+- `core/CheckOutcome.scala` — `enum CheckOutcome`: `Pass(check)`,
+  `Fail(check, line: Option[Int], message)`, `Warn(LintWarning)`. Document-
+  level findings carry `line = None`; a check that did not run produces
+  no `Pass` (the run reports `Outcome.Undetermined` instead).
+- `core/LintContext.scala` — `LintContext(schemaVersion, registry,
+  registryConcepts, inventoryTypes, profile, installRoots)` — every fact
+  a `FactRead`; `hasRegistry` gates F10/W7; `codeIdentifiers` =
+  inventory ∖ `# Concept:` headings (the predecessor's `comm -23`).
+- `core/SpecLintEngine.scala` — `enum ObligationSource`:
+  `ByTitle(index)` / `ByOrdinal(index)` / `Typed(kind, name)` /
+  `Unresolvable(cell)`. `SpecLintEngine.lint(document, context,
+  checkArtifacts: Boolean, artifactTracked: String => Boolean):
+  Outcome[LintReport]` — the `--artifacts` decision and the tracked-file
+  predicate are explicit, defaultless parameters (the flag cannot be
+  silently dropped; the engine performs no I/O). `obligationSources`
+  exposes the row-resolution algebra for the parity/conservation
+  properties; `reachabilityFold(Int, List[Int]) => (List[Int], Int)` is
+  the fold `SpecLintKernel` mirrors under Stainless (Ring 6).
+- `core/SpecDocumentParser.scala` — `parse(name, source): SpecDocument`,
+  pure and total.
+
+**`LintReport` rebuilt** (`core/LintReport.scala`): `final class`,
+private constructor. Construction routes: `LintReport.fromRun(document,
+findings, applicability, resolvedRows, unresolvableRows,
+requirementRows, artifactUnresolved: Option[Set[String]])` — verdicts
+are *derived* from the document's requirements, never supplied
+(`Unbound`→F7; `Bound`→F9 when the artifact check held it back, F7 when
+it did not run; `Resolved`→F9); the JSON reader (wire data);
+`LintReport.empty`. `lintSuccess` is a derived `def` over findings;
+`warnings`/`failures` are projections of the ordered finding stream.
+`LintWarning.line` widened to `Option[Int]` (W2/W4/W6 carry no line).
+Every former construction site migrated: production stubs →
+`LintReport.empty`; test fabrications → `SpecLintFixtures.report`
+(core test scope) / `LiveFactFixtures.lintReport` (cli test scope —
+cli has no `test->test` visibility, so a mirrored helper), which build
+through `fromRun` against a synthetic document.
+
+**CLI skeletons**: `RepositoryFactsReader.readLintContext(repoRoot,
+userHome): LintContext` (`???`) — reads registry headings + inventory
+names alongside the spec-3 fact helpers; `given
+StdoutRenderer[LintContext]` (`???`) — renders the predecessor's
+CONTEXT block. `SpecLintCmd.run(args): Outcome[Int]` signature pinned;
+the stub body is Step 3.
+
+**Contract files**: `core/.../SpecLintEngineTypeContract.scala` (all
+signature pins above) and `cli/.../SpecLintCliTypeContract.scala`
+(`SpecLintCmd.run`, `readLintContext`, both renderers).
+`core/.../SpecLintEngineSpec.scala` created with the compile-negatives
+that already pass: `LintReport(...)`/`new LintReport(...)`/
+`.lintSuccess =` rejected; `lint(Path, ...)` rejected; `lint(???, ???)`
+and `lint(???, ???, ???)` rejected (context + artifacts decision are
+mandatory); a source scan asserting the engine/parser files contain no
+`java.nio.file`/`java.io.File`/`System.getenv`/`scala.io.`/
+`sys.process`/`ProcessBuilder` tokens.
+
+**Design decisions for review**:
+1. `LintContext` is a *reader-supplied* record, not a field-projection
+   of `RepositoryFacts` — `RepositoryFacts` is untouched (spec 3's
+   validated surface preserved); the same reader produces both.
+2. Any `Unreadable` `FactRead` in the context makes `lint` return
+   `Outcome.Undetermined` naming the fact — stricter than the
+   predecessor (which read `-d`/`-f` presence only), per Requirement 2.
+   Install-root `Unreadable` states stay drift findings (spec-3
+   semantics), not run-blockers.
+3. `SpecDocument.obligationRows` contains only rows the predecessor's
+   `check_source` evaluates (≥4 fields, non-empty non-comment Source);
+   the raw data-row count is kept separately for W2. This makes the
+   spec's conservation property (`resolvedRows + unresolvableRows ==
+   obligationRows.size`) hold exactly.
+4. An out-of-range ordinal (`Requirement 9` in a 3-requirement spec)
+   resolves `Unresolvable` — it covers no requirement — but emits the
+   predecessor's "cites Requirement N but the spec has M" F6, not the
+   "no resolvable reference" form (parity of (id, line) preserved).
+5. Finding emission order is the predecessor's: per-line W7-then-W1 and
+   per-row F6/F8 in document order, block-flush findings (F1/F2-or-W3/
+   F3/F5) at the heading that closes the block, END-batch (F4, F10, W2,
+   F7s, W6, W4, W5s), then F9s. Order is cosmetic — parity compares
+   (id, line) sets — but the port keeps it anyway.
+6. `LintReport` JSON gains `findings`/`resolvedRows`/`unresolvableRows`/
+   `requirementRows`; `warnings`/`lintSuccess` become derived (the wire
+   keeps verdicts + findings + applicability). `SpecLintCmd` gets no
+   `--repo` flag — the predecessor resolves context via
+   `git rev-parse --show-toplevel` from cwd, so the port does the same.
+
+**Check conditions verified against the predecessor** (lines 466–497,
+`check_source` at 405–464, `alt_scan` at 231–258):
+`F4: n_reqs>0 && !has_po` · `F10: has_registry && n_reqs>0 &&
+!has_concepts` · `W2: has_po && po_rows < n_reqs` · `F7: has_po`, one
+per uncovered requirement · `W6: fc_content > 2 && has_po &&
+bridge_rows == 0` (bridge rows counted over ALL data rows, before
+source-check early-returns — `SpecDocument.bridgeRowCount`) ·
+`W4: ordinal_refs > 0` · `W5: has_po && claims_impossible(norm_text) &&
+covered && req_strength == 0` — `req_strength[i]` is the max of
+`is_strong(enforcement)` (`type system|type-level|opaque|smart
+constructor|unrepresentable|compile-negative|assertdoesnotcompile|
+compileerrors|exhaustiv|sealed` → 1; `tier-justified` → 2) over the
+rows covering requirement i — the engine derives it from
+`ObligationRow.enforcement`, no report field needed · `W1` fires per
+body line (raw line text incl. indentation, inside any open
+requirement incl. its `#### Scenario:` headings and non-matching
+`### ` lines) · `W7` gated on `has_registry`, per backtick token,
+deduped by token across the whole document (`alt_seen`) · `F8` splits
+sources on literal ` + `; only `Property|Properties|Scenario|
+Scenarios` parts are existence-checked, bidirectionally, and names
+shorter than 4 chars are never checked (`named_exists` returns 1) ·
+`F9` reads only the 4th data column (`nf >= 5` guard), skips
+whitespace-bearing tokens, and treats a token as code-shaped iff its
+extension-stripped base matches `*[A-Z]*Spec|Test|Suite|Properties|
+TypeContract` or contains `/`, resolved via `git ls-files -- "*base*"`.
+
+### Step 2 — Test oracle (compiled; polarity run recorded)
+
+All oracle sources compile under the real classpaths —
+`sbt "probatio-core/Test/compile" "probatio-cli/Test/compile"` → success,
+`-Werror` clean. Polarity run confirms every behavioral test fails on the
+`???` skeletons (`NotImplementedError` at `SpecDocumentParser.parse`,
+`SpecLintEngine.lint`, `reachabilityFold`, `readLintContext`,
+`StdoutRenderer[LintContext].render`, and the `SpecLintCmd` arg-parse
+rejections of the predecessor invocation forms) — never on a harness
+error. The Step-1 compile-negatives remain green.
+
+**Oracle files** (written from spec + Step 1 contract only):
+
+- `core/.../SpecLintEngineSpec.scala` — parser pinpoints (block
+  extraction with 1-based source lines, per-block facts, the
+  evaluated-rows/`dataRowCount` partition, section flags and
+  `bridgeRowCount`), the `obligationSources` algebra (ByTitle/ByOrdinal/
+  Typed/Unresolvable, combined-source cells, out-of-range ordinals), one
+  pinpoint per check F1–F10 and warning W1–W7 with line assertions where
+  the predecessor emits one, the spec's named scenarios (clean document;
+  uncovered requirement → F7 at its line; unresolvable source → F6 + the
+  row in `unresolvableRows` and no coverage; dangling typed reference →
+  F8; Unreadable fact → `Outcome.Undetermined`; absent registry → F10
+  inapplicable AND `applicability` records the N/A), `reachabilityFold`
+  examples, and the two Hedgehog properties (`reachability-is-total`,
+  `unmatched-rows-are-reported-never-dropped`, 200 cases) over
+  `genSpecDocument`.
+- `core/.../SpecLintParitySpec.scala` — `verdict-parity-with-predecessor`
+  (150 cases): the predecessor `.bak` script is the model, run as a real
+  `bash` subprocess once per corpus document with `--artifacts`; corpus =
+  every `spec.md` under `openspec/` + 18 ported bats builder shapes and
+  targeted check fixtures; the run's own `LintContext` replicates the
+  predecessor's fact extraction. Findings compare as `(FAIL|WARN) id
+  line message` strings — exact equality including emission order.
+  Harness verified: corpus construction completes and the finding regex
+  matches the predecessor's `  FAIL F7 line N: …` / `  WARN WN: …` output
+  verbatim.
+- `core/.../SpecLintFixtures.scala` — extended: `absentContext`,
+  `registryContext`, the bats text builders (`specHeader`, `reqBlock`,
+  `poHeader`), and `genSpecDocument` (0–8 requirements, source cells
+  drawn from the full predecessor grammar incl. dangling typed and
+  out-of-range ordinals, PO section ~85% present).
+- `cli/.../SpecLintCmdSpec.scala` — the invocation-forms oracle:
+  positional change directory → Ran(0) + `1 spec file(s)` summary;
+  `--context-only` → CONTEXT block, no lint loop, exit 0; nonexistent
+  target → `Outcome.Undetermined` naming the path (predecessor exit 2);
+  `--artifacts` surfaces F9 for an unresolvable code-shaped token and is
+  absent without the flag; `--format json` emits the predecessor's JSON
+  finding-array shape (`check`/`verdict`/`requirement`/`reason`/`line`/
+  `artifact`). Plus the `StdoutRenderer[LintContext]` pins: CONTEXT
+  block, PRESENT/ABSENT registry lines, check-17 APPLIES/N/A, drift line
+  naming both versions, and the "no skill installed" line. The
+  built-artifact scenario runs `probatio spec-lint --context-only` from a
+  repository subdirectory and requires PRESENT — it fails rather than
+  skips when the native image is absent.
+- `cli/.../RepositoryFactsSpec.scala` — `applicability-reflects-repository`
+  property (200 cases over `genRepoShape`/`withMaterialised`):
+  `readLintContext`'s schemaVersion/registry/registryConcepts/
+  inventoryTypes/profile/installRoots equal the materialised repository
+  state (expected-value projection reusing the spec-3 helpers), plus
+  scenarios: present registry reported present with count + headings,
+  present registry never Absent, older stamp → `VersionMismatch` drift
+  warning, unreadable registry dir → `Unreadable` never `Absent`.
+
+**Oracle polarity (expected RED on skeletons)**:
+
+| Suite | Result |
+|---|---|
+| `SpecLintEngineSpec` | 33 RED (all `NotImplementedError` on `???`), 7 GREEN (Step-1 compile-negatives) |
+| `SpecLintParitySpec` | 1 RED (`???` at `parse`; corpus + subprocess harness verified working) |
+| `SpecLintCmdSpec` | 8 RED (arg-parse rejections / `???` renderer — the skeleton accepts only `--change`/`--spec`) |
+| `RepositoryFactsSpec` | 5 RED (`readLintContext` `???`), 20 GREEN (spec-3 oracle unchanged) |
+
+### Step 3 — Implementation (compiled; all oracle suites green)
+
+All production code compiles under `-Werror` + WartRemover and every
+Step-2 oracle suite is GREEN:
+
+| Suite | Result |
+|---|---|
+| `SpecLintEngineSpec` | 40/40 GREEN — all parser pinpoints, F1–F10/W1–W7 pinpoints, named scenarios, both properties (200 cases each) |
+| `SpecLintParitySpec` | GREEN — 150/150 cases byte-parity with the predecessor subprocess (id + line + message + emission order), `--artifacts` against real `git ls-files` |
+| `SpecLintCmdSpec` | 8/8 GREEN — positional dir, `--context-only`, missing target → `Undetermined`, `--artifacts` F9, `--format json`, both CONTEXT renderer pins, native artifact from a repo subdirectory |
+| `RepositoryFactsSpec` | 25/25 GREEN — `applicability-reflects-repository` property (200 materialised shapes) + all scenarios |
+
+**Implemented**: `SpecDocumentParser.parse` (the awk main-scan port —
+immutable `Acc` fold over `linesIterator`, block flush at the closing
+heading, separate PO-region tracking for `obligationRows` vs
+`artifactRows`, `bridgeRowCount` over all data rows); `SpecLintEngine`
+(`obligationSources` — ordinal in-range `ByOrdinal`, title-prefix
+`ByTitle`, `Property|Properties|Scenario|Scenarios` `Typed`, else
+`Unresolvable`; `reachabilityFold`; `lint` emitting the predecessor's
+full finding order via per-row `RowScan` so every evaluated row is
+conserved exactly once); `RepositoryFactsReader.readLintContext`
+(reusing `readText`/`schemaVersionOf`/`readRegistry`/`readProfile`/
+`scanInstallRoots` + new `readRegistryConcepts`/`readInventoryTypes`);
+`StdoutRenderer[LintContext]` (the CONTEXT block, drift lines mapped
+from `DriftScan.scan` warnings); `SpecLintCmd` (the predecessor's arg
+loop verbatim — `--artifacts`/`--context-only`/`--format` consumed
+positionless, bare `json` selects JSON, last positional wins; CONTEXT
+before findings in text mode, suppressed in JSON mode incl.
+`--context-only --format json` emitting nothing; `<target>/specs/` then
+`<target>/openspec/changes/` discovery with `archive/` excluded; exit
+0/1/2 mapped to `Ran`/`Finding`/`Undetermined`).
+
+**Oracle fixes** (Step 3f — two test-side mistakes found during
+implementation): `| short | row |` has `NF=4` so the predecessor *does*
+evaluate it — the fixture now uses `| short |` (NF=3); `Property:
+sorted-nes` is NOT dangling (the predecessor's `named_exists` is
+bidirectional-substring: `sorted-nes` ⊂ `sorted-ness`) — both the
+pinpoint and the parity corpus now use `Property: missing-widget`.
+Hedgehog coverage: `genSpecDocument` source-cell weights rebalanced and
+`nRows` switched to `Range.constant` (linear ranges scale with hedgehog
+size, starving early samples); the parity property now samples
+class-aware (fails/clean/warns-only at 50/30/20) because the fixed
+corpus is findings-skewed.
+
+**Pre-existing defect fixed**: `NonGoalsGuardSpec`'s verdict-stability
+property crashed (`fixtures(0)` on an empty list — it pointed at the
+pre-rename change dir `port-scanner-to-probatio`) and was doubly
+vacuous (the `spec-lint.sh` shim already execs the probatio binary, and
+a bare `spec.md` path always yields exit 2). Now points at
+`complete-probatio-cutover/specs`, wraps each fixture in a temp
+`specs/spec.md` change dir, and compares the predecessor `.bak` arm
+against the native `probatio spec-lint` arm — the guard R-X1 waited
+for. 18/18 green.
+
+**`probatioOracleDiff`**: VERDICT PROCEED — no file worse than the
+predecessor control across all 17 bats files (run during the
+`probatio-core/test` sweep).
+
+### Ring 8 — fresh-context adversarial review (disposition of findings)
+
+The fresh-context review compared every requirement against the diff and
+flagged candidate parity divergences. Each was verified against
+`spec-lint.sh.predecessor.bak` line-by-line:
+
+| Finding | Verdict | Resolution |
+|---|---|---|
+| Source rows resolve against the whole document | REAL DEFECT | The predecessor's `check_source` runs inline during the scan — `req_titles`/`prop_titles`/`scen_titles` are live, so a row resolves only headings declared ABOVE it. Fixed: `obligationSources`/`namedExists` filter `_.line < row.line`; the F6 "spec has N" message names the live count. Fixture: `po-before-requirements`, `typed-source-declared-later`. |
+| `normativeRe` excludes digit adjacency | REAL DEFECT | Predecessor class is `[^A-Za-z]` (not `[^[:alnum:]]`): `SHALL2`/`9MUST` count as normative. Fixed. Fixture: `normative-digit-adjacent`. |
+| Empty-title blocks scanned/checked | REAL DEFECT | `req_name == ""` conflates "no open block" and "empty title" — body scans and `flush_*` checks skip empty-title blocks, but `n_reqs` still counts them (F4/W2 denominators, F7 loop, ordinal coverage). Fixed in parser (body scans gated on `title.nonEmpty`) and engine (flush checks + W1 gated). Fixtures: `empty-title-requirement`, `empty-title-property-temporal`. |
+| `headingTitle` off-by-one | FALSE POSITIVE | `substring(prefix.length + 1)` with the length guard is already `substr($0, 18)` verbatim. |
+| `# Concept:Foo` read as a concept | REAL DEFECT | Predecessor greps `'^# Concept: '` — the space is required. Fixed in `readRegistryConcepts`; regression test in `RepositoryFactsSpec`. |
+| F6 hint line dropped | REAL DEFECT | The `(use "Requirement: <exact title>", …)` hint is part of the findings stream (not a FAIL/WARN line — absent from JSON). Now emitted in text mode after the generic F6. Pin in `SpecLintCmdSpec`. |
+| Nested `specs/x/spec.md` not discovered | REAL DEFECT | `find … -path '*/specs/*'` requires a `specs` path component anywhere; the port required it to be the direct parent. Fixed in `specFiles`; pin in `SpecLintCmdSpec`. |
+| `PreRenameStamp` reported unconditionally | INTENTIONAL | Spec 3 (live-fact-banner) mandates "a pre-rename stamp is treated as drift with a migration message" — the rename is a fact of the document, not a version comparison. Documented divergence carried into the CONTEXT block. |
+| `Outcome.Ran(Int)` payload ignored, `LintReport.empty` public | ACCEPTED | Noted; not parity-affecting (exit conversion discards the payload by design; `empty` is used only for the no-documents case). |
+
+All fixes verified by re-running the full parity property — 150/150
+cases including the five new adversarial corpus fixtures match the
+predecessor's findings exactly.
+
+### Verification Ring Results
+
+| Ring | Result | Evidence |
+|---|---|---|
+| Ring 0 — compile + exhaustiveness | PASS | `probatio-core` + `probatio-cli` compile under `-Werror`; the `CheckOutcome.Pass` exhaustiveness escalation fired at the finding-rendering match and was handled with an explicit defensive case; Step-1 compile-negatives (`LintReport(...)` / `.lintSuccess =` / `lint(Path,…)` / arity-rejections) all still rejected |
+| Ring 1 — scalafmt + scalafix + danger-scan | PASS | scalafmt applied; scalafix clean except 4 pre-existing baseline hits in untouched files (`GrantWaiver`/`PredecessorCheck` doc comments, `EntrypointContractSpec:332` `finally` — same tolerance as specs 1–3); all 14 danger-scan hits justified with inline `danger-scan:allow` on the flagged line (every catch-all rejects to `None`/`Nil`/`false` — the safe direction). NOTE: scalafmt's `RedundantBraces` reflows `.ensuring` postconditions in the verified kernels; `// format: off/on` markers protect the four affected law methods |
+| Ring 2 — dependency lint + purity | PASS | `probatio-core/dependencyLint` clean; purity compile-negative (no `java.nio.file`/`java.io.File`/`System.getenv`/`scala.io.`/`sys.process` tokens in engine/parser sources) green in `SpecLintEngineSpec` |
+| Ring 3 — scenario/property + differential parity | PASS | Full sweep: `probatio-core` 356/356 (4 ignored), `probatio-cli` 311/311. `SpecLintParitySpec` 150/150 byte-parity incl. 5 adversarial fixtures. `probatioOracleDiff` complete over all 17 bats files: `hasRegression=false`, VERDICT PROCEED. Suite-isolation fix: three specs race on global `System.out`/`System.err` under `fork=false` — shared `StdoutCapture` lock serializes captures and `probatio-cli` `Test / parallelExecution := false` closes the residual window (non-capturing suites writing through the swapped stream); 311/311 after |
+| Ring 5 — Stryker4s mutation testing | PASS — 95.65% total / 96.59% covered (threshold: high 90) | `stryker4s.conf` retargeted to `SpecLintEngine`/`SpecDocumentParser`/`CheckOutcome` under `SpecLintEngineSpec`+`SpecLintParitySpec`. 410 mutants. First run 82.85% → survivor analysis split killable vs equivalent; 26 pinpoint tests added (artifact `nf>=5` field count, `inPo` reset on requirement headings, normative accumulation, W7 heading exclusion/dedup/scan-boundaries, short typed sources, F6 ordinals + visible-requirement counts, F7 attribution, F5 temporals, formal-contract blank/comment, five-field artifact rows, below-row scenario resolution, F1 message text). Final run: 15 survived + 4 NoCoverage, all dispositioned equivalent/unreachable: `nf>=5` variants (fields(4) of an nf=5 row is the split's trailing `""` — same value either way), `line < row.line`→`<=` ×2 (a heading cannot share a row's line), `hasPo`→true (coveredIdx nonempty implies hasPo), `n > nReqs`→`>=` (equality caught by the first guard), `t=="Requirement"`→true (`ordinalFragment` normalizes both spellings), `codeIds.nonEmpty`→true (empty-set contains is already false), `startsWith("Scenario")`/`"Scenario"`/`else true` (only Scenario/Scenarios kinds reach the arm — `typedPartRe` produces nothing else), 4×`"UNREADABLE"`→`""` NoCoverage (dead under the `Undetermined` early-return). Report at `workflow/core/target/stryker4s-report/` |
+| Ring 6 — Stainless + bridge | PASS — 261/261 VCs valid | `SpecLintKernel` PureScala mirror of `reachabilityFold` (`uncoveredFrom` + `complementComplete` inductive lemma); `SpecLintBridgeSpec` 2/2 (shipped fold agrees with kernel over generated target vectors). First Stainless run stalled on an un-dischargeable cross-recursion VC (the documented no-per-VC-timeout trap — killed, kernel restructured so the invariant is `uncoveredFrom`'s own postcondition and completeness is a separate inductive lemma); second run: 260 valid + 1 invalid (`n - i` measure when `i > n` — precondition tightened to `i <= n`, all callers satisfy); final: **261/261 valid, 0 invalid, 0 unknown**. Scalafmt incident: `RedundantBraces` detached `.ensuring` in 4 kernels → "Unexpected `ensuring`" extraction errors; `format: off/on` markers added, re-verified green |
+| Ring 8 — fresh-context adversarial review | PASS — 6 real defects fixed | See disposition table above: live-state row resolution (`line < row.line`), `normativeRe` digit adjacency, empty-title block gating, `# Concept: ` required space, F6 hint line, nested `specs/` discovery; 1 false positive (`headingTitle`), 1 intentional divergence (`PreRenameStamp` per spec 3), 1 accepted note. Native image rebuilt post-fix (`probatio-cli/nativeImage`, `--no-fallback -O1`); `SpecLintCmdSpec` 10/10 + `NonGoalsGuardSpec` 18/18 re-run against the fresh binary |
+
+### Concept Delta
+
+`openspec/concept-inventory.md` updated: 12 new rows (`SpecDocument`,
+`RequirementBlock`, `PropertyBlock`, `TemporalBlock`, `ScenarioHeading`,
+`ObligationRow`, `ObligationSource`, `CheckOutcome`, `LintContext`,
+`SpecLintEngine`, `RepositoryFactsReader.readLintContext`,
+`StdoutRenderer[LintContext]`/`SpecLintCmd`) plus in-place annotations on
+the 4 reshaped rows (`LintReport` private constructor + derived
+`lintSuccess`, `LintWarning.line` widened to `Option[Int]`). Per the
+spec's concept-registry clause, no `openspec/concepts/` file changes.
+
+### Known Limitations
+
+- `SpecLintCmd` has no `--repo` flag (predecessor resolves context via
+  `git rev-parse --show-toplevel` from cwd — parity decision, Step-1
+  decision 6).
+- JSON `LintReport` gained `findings`/`resolvedRows`/`unresolvableRows`/
+  `requirementRows`; the schema is the port's own wire format, not a
+  predecessor-compat boundary.
+- The `Outcome.Ran(Int)` payload is discarded at the exit conversion
+  (Ring-8 accepted note).
+- `probatio-cli` tests run with `Test / parallelExecution := false` —
+  required while any suite mutates global streams.
 
 ### Step Progress
-- [ ] Step 1 — Typed contract (human gate)
-- [ ] Step 2 — Test oracle (human gate)
-- [ ] Step 3 — Implementation
-- [ ] Ring 0–6, 8 + concept-delta + checkpoint
+- [x] Step 0 — Baseline + concept check
+- [x] Step 1 — Typed contract (human gate) — APPROVED
+- [x] Step 2 — Test oracle (human gate) — APPROVED
+- [x] Step 3 — Implementation
+- [x] Ring 0–6, 8 + concept-delta — COMPLETE (see table; checkpoint below)
 
 ---
 
 ## Spec 5: chain-state-attribution
 
-### Status: PENDING
+### Status: IN PROGRESS — Step 3 implemented, all oracle + legacy suites green, AWAITING HUMAN REVIEW
+
+### Baseline
+- SHA: `271a7560f494fbafd4555bc1e3c335c2890e9e92` — same commit as spec
+  4's baseline; spec-4's implementation is uncommitted on
+  `probatio/porting` and is part of this spec's baseline tree state
+  (47 tracked modifications + spec-4's new files).
+- Date: 2026-09-16
+
+### Step 0 — Baseline + concept check
+- **Gate installation**: `probatio gate --check-installed --repo .` →
+  `{"installed":true,"last_run":"2026-09-16T20:52:10Z",...}`.
+- **Inventory snapshot**: `inventory-snapshots/chain-state-attribution-before.md`
+  (9 opaque types, 117 sealed types, 449 case classes, 18 service
+  traits, 62 smithy models, 337 generators — +7 case classes vs the
+  spec-4 snapshot, i.e. spec-4's new types).
+- **Registry gate**: `registry-check.sh` → **OK** (803
+  implementation-map tokens verified, 15 spec concept references
+  checked, the same 5 pre-existing WEAK bindings in `graph.md`/
+  `tools-node.md` — warnings, not failures).
+- **Concepts Used (from inventory)**: all 16 resolve — `ChainState`/
+  `ChainState.Requirement` in `core/ChainState.scala`;
+  `ChainStateReport`/`ChainStateUndetermined`/`UnresolvedEntry`/
+  `UnresolvedReason`/`UnmappedObligation` in `core/ChainStateReport.scala`;
+  `LintReport`/`RequirementVerdict`/`Verdict` in `core/LintReport.scala`;
+  `Ledger.LedgerData`/`LedgerRecord` in `core/Ledger*.scala`; `Ring` in
+  `core/Ring.scala`; `Outcome` in `core/Outcome.scala`; `SpecDocument`/
+  `ObligationRow`/`ObligationSource` delivered by spec 4.
+- **Concepts Used (behavioral)**: `Schema` + `Strangler` — both
+  verified under spec 4's gate fix (backticked canonical tokens); no
+  action/state reliance beyond the verdict parity predicate.
+- **Proof Obligations table**: 15 rows; every requirement and scenario
+  named by exact title; the Ring-4 row cites the real contract checker
+  `scanner/chain-state-report-contract.jq`; the Ring-3 row cites
+  `tests/chain-state.bats` + `tests/discharge-fidelity.bats`.
+- **Transitive extractor probe**: `python3` present;
+  `openspec-graph.py export --change-dir …/complete-probatio-cutover`
+  succeeds and produces `.obligations` — the Graph path is exercisable
+  in this environment; the Degraded path must be exercised by explicit
+  failure injection in the oracle.
+- **Public-type-change impact scan**:
+  - `ChainState.compute` parameter changes `List[Requirement]` →
+    `RequirementSet`: **3 production call sites, all passing `Nil`**
+    (the defect itself) — `SubcommandEntrypoints.scala` L345
+    (completion tier-A), L782 (`ChainStateCmd.run`), L1186
+    (`checkpoint` marker path). Test call sites: `ChainStateSpec`
+    (~20), `VerifiedKernelBridgeSpec`, `CliWiringContract(Spec)`,
+    `LiveFactFixtures`, `GateBannerCompatSpec`, migration specs.
+  - `ChainStateReport`/`UnresolvedEntry` constructors narrow to smart
+    constructors: production construction at `ChainState.scala` L89/L93
+    (internally — unaffected) and `RepositoryFactsReader.scala`
+    L538/L565 (JSON parseReport — wire data; must route through the
+    smart constructor or a wire-only reader).
+  - `UnresolvedReason.Unattributable` becomes REACHABLE — every match
+    on the enum must handle it (Ring 0 exhaustiveness escalation);
+    `asString`/`fromString` already cover it.
+- **Predecessor semantics read in full** (`chain-state.sh.predecessor.
+  bak`, 751 lines): two extraction paths (Graph via `openspec-graph.py`
+  subprocess + `spec-lint --format json`; Degraded via awk row parsing
+  + spec-lint prose regex) selected by python3/export availability;
+  the `unattributable` reason exists ONLY in degraded mode (graph mode
+  emits `unresolved` for a bound title with no mapped obligations);
+  per-spec baseline map parsed from `implementation-progress.md`
+  (`## Spec N` sections + `### Baseline` + `SHA \`…\``) drives per-spec
+  `--forgive-unchanged` ledger reads; spec-lint run-completion is
+  verified by summary-shape/file-count cross-check, not just exit
+  code; report assembly is jq-owned with a self-check against
+  `chain-state-report-contract.jq` (incl. the count↔reasons
+  cross-consistency clauses); exit 2 paths always emit the
+  undetermined JSON report on stdout AND the single `UNDETERMINED —`
+  stderr line.
+- **MUST-CONFIRM**: none outstanding — spec-lint.md check 16 records
+  no externally-sourced table.
+- **Ring 3/4 acceptance**: `chain-state.bats` (baseline: 6 predecessor
+  failures vs 17 ported) + `discharge-fidelity.bats` (0 vs 6);
+  `chain-state-report-contract.jq` conforms against the port's output
+  for every fixture (`unmapped_obligations` present when empty).
+
+### Step 1 — Typed contract (compiled 2026-09-17; awaiting human review)
+
+Compiled under the real module classpaths —
+`sbt "probatio-core/Test/compile" "probatio-cli/Test/compile"` → success,
+`-Werror` clean (all pre-existing tests migrated and recompiled; tests that
+invoke `ChainState.compute` are expected RED until Step 3 — the body is
+`???`).
+
+**New/changed type surface**:
+
+| Type | Shape |
+|------|-------|
+| `core/RequirementExtractor.scala` (new) | `enum FactSource { Graph, Degraded }` + `asString`; `ExtractedObligation(spec, line, obligation, artifact, artifacts, requirementClaims, unmappable)` — normalised obligation row, `unmappable` evaluated per-path at extraction time; `RequirementSet(specNames, requirements, obligations, source)` + `empty` + `isEmpty`; `RequirementExtractor.NamedSpec(name, document)`; `extract(specs, graphExport: Option[ujson.Value]): RequirementSet` (`???`) |
+| `core/ChainState.scala` | `compute(lints: Map[String, Outcome[LintReport]], ledger: Ledger.LedgerData, reqs: RequirementSet, specBaselines: Map[String, String], baseline: String, change: String, artifactUnchanged: (String, String) => Boolean)` — `???` body. Per-spec lint outcomes (missing/failed → undetermined), unfiltered ledger (manual-row eligibility and baseline filtering move INSIDE the kernel), injected pure forgiveness predicate |
+| `core/ChainStateReport.scala` | `UnresolvedEntry` / `ChainStateReport` → `final case class` + `private` ctor + sealed `copy` (`@nowarn`-suppressed private `copy` defs defeat the compiler-generated backdoor). `UnresolvedEntry.of(...): Option` rejects empty names / empty or repeated reasons; `ChainStateReport.fromCounts(...): Either[String, _]` enforces every jq-checkable clause — monotone counts, `unresolved.length == total - discharged`, unique (spec, requirement) pairs, count↔reason cross-consistency. Both `ReadWriter`s route reads through the smart constructors |
+| `cli/RepositoryFactsReader.scala` | `parseReport` builds entries via `UnresolvedEntry.of` and reports via `fromCounts(...).toOption` — a contract-violating wire report reads as `None` (undetermined), never as a coerced report |
+| `cli/SubcommandEntrypoints.scala` | 3 `compute` call sites migrated to the new arity — chain-state command (L~782), gate completion (L~345), checkpoint path (L~1186). **Contract-phase placeholders**: `RequirementExtractor.extract(Nil, None)`, `Map.empty` lints/baselines, `noForgive`. All replaced by real extraction in Step 3 |
+
+**Contract files**:
+- `core/.../ChainStateAttributionTypeContract.scala` — signature pins for
+  `FactSource`, `RequirementSet`, `ExtractedObligation`, `NamedSpec`,
+  `extract`, `compute`, `of`, `fromCounts`, field projections + 6
+  evaluation tests.
+- `core/.../ChainStateAttributionSpec.scala` — Step-1 scope: 7
+  compile-negative tests (`compute(..., Nil, ...)`, `compute(...,
+  List[Requirement], ...)`, the old 5-arg call, direct
+  `UnresolvedEntry`/`ChainStateReport` construction, `.copy` weakening
+  through both sealed copies). Scenario/property oracle lands in Step 2.
+
+**Migrations**: `ChainStateSpec` (reqSet/okLints/failedLints/noForgive
+helpers; all ~20 call sites), `VerifiedKernelBridgeSpec` (production calls
+migrated; kernel-side `modelCompute` keeps the old kernel signature — the
+kernel extension lands with Step 3/Ring 6), `GateBannerCompatSpec`,
+`ChainStateCmdConformanceSpec` (2 compute calls + the conformance property
+generator rewritten valid-by-construction: counts derived from the reason
+mix), `BannerEngineSpec` (4 fixtures re-pointed to contract-valid reports;
+`entryOf`/`reportOf` helpers), `CliWiringContractSpec`, `CliConformanceSpec`
+(52/52/52/17 fixture now carries its 35 undischarged entries; the jq
+property derives counts from entry count + okCount), `LiveFactFixtures`
+(`genReport` rewritten valid-by-construction; pattern-matched unwraps — no
+`.get`/`throw` under warts).
+
+**Design notes for review**:
+- `fromCounts` returns `Either[String, _]` — `Left` names the violated
+  contract clause, mirroring the jq checker's `fail` messages.
+- The wire codec distinguishes absent key (→ empty, jq parity) from
+  present-but-wrong-shape (→ reject) — a malformed `unresolved` no longer
+  silently parses as `[]`.
+- `copy` sealing required `@scala.annotation.nowarn("msg=unused private
+  member")`: `cat=unused` does not cover `unused-privates`/`unused-params`
+  under this scalac; verified experimentally.
+- Known divergence queued for Step 3 (found during Step-0 predecessor
+  read): the old `compute` filtered `r.ring != Ring.Manual` — the
+  predecessor discharges on `--ring manual` rows (`discharge-fidelity.bats`
+  fixture). The new kernel must NOT exclude manual rows.
+- `ChainStateKernel` extension (unattributable/exact-complement clause) and
+  the `ChainStateBridgeSpec` bridge land in Step 3 / Ring 6.
+
+### Step 2 — Test oracle (polarity run 2026-09-17)
+
+Oracle files (written from spec + Step-1 contract only, before
+implementation — `extract`/`compute` bodies are `???`):
+
+- `core/.../ChainStateAttributionSpec.scala` — extended: 15 scenario
+  tests + 3 properties (`counts-are-consistent`,
+  `unattributable-is-reachable-and-never-discharged`,
+  `obligation-rows-are-conserved`) on top of the 7 Step-1
+  compile-negatives. Fixtures encode spec-lint's LOOSE binding
+  (`requirementRows` = ByTitle OR ByOrdinal) against the extractor's
+  exact-title claims — the reachable-but-unattributable shape is
+  constructive, not filtered. Graph-vs-degraded `unattributable`/`unresolved`
+  split pinned (D5).
+- `cli/.../ChainStateCmdSpec.scala` (new) — 9 scenario tests + the
+  `empty-is-not-unreadable` property pair-generator (readable empty
+  ledger vs corrupt ledger at zero requirements → different exit status).
+  Covers: no-readable-specs → undetermined; genuinely-empty → clean zero;
+  graph names the extractor; degraded announces the fallback; a fallback
+  never presented as the extractor (per-line check — `graph` may only
+  appear in degraded context); single-marker diagnostic (the
+  `UNDETERMINED — UNDETERMINED —` defect pinned: exactly one marker in
+  stderr, zero in the report's reason); undetermined report still on
+  stdout with null counts; `unmapped_obligations > 0` → exit 1 even at
+  zero unresolved; `--format`/`--spec`/`--artifacts`/`--forgive-unchanged`
+  acceptance.
+- `cli/.../ChainStateParitySpec.scala` (new) —
+  `verdict-parity-with-predecessor`: the predecessor script is the model,
+  run as a `bash` subprocess over a 16-fixture corpus ({0,1,3} spec docs
+  × {0,1,5} requirements × {empty, matching, stale-baseline, corrupt}
+  ledgers, plus ordinal/dangling/combined adversarial shapes); both arms
+  forced DEGRADED via `OPENSPEC_ROOT` → a dir without `openspec/` (the
+  bats `report_of` mechanism). Predecessor's spec-lint calls route
+  through `SPEC_LINT_OVERRIDE` to a wrapper exec'ing the native image
+  (never the broken `bin/probatio` jar launcher — its
+  `sun.java.command`-based dispatch reads the jar filename as the
+  subcommand). Undetermined reports compare on {change, baseline,
+  undetermined} only — reason text is implementation-specific.
+  Class-aware bucket sampling for the spec's cover thresholds
+  (clean ≥20% / has-unresolved ≥30% / undetermined ≥20% / has-unmapped
+  ≥10%).
+- `cli/.../ChainStateCmdConformanceSpec.scala` — extended: 3 new tests
+  (the `unmapped_obligations` field present when empty; rendered report +
+  rendered undetermined report satisfy `chain-state-report-contract.jq`
+  via `jq -e -f` — Ring 4 contract-conformance, GREEN today since they
+  exercise the renderer, not `???`).
+
+**Contract seam added**: `ChainStateCmd.run(args, env)` — the
+`CheckInstalledCmd` overload pattern; `run(args)` delegates with
+`sys.env`. `env` is `@annotation.unused` until Step 3; the oracle pins
+`OPENSPEC_ROOT` (predecessor's own contract) + `PROBATIO_SCANNER_DIR`
+(port seam naming where `openspec-graph.py` lives) as the extraction-path
+selectors.
+
+**ORACLE POLARITY** (recorded):
+
+| Suite | Pass | Fail | Notes |
+|-------|------|------|-------|
+| `ChainStateAttributionSpec` | 7 | 18 | compile-negatives GREEN; every scenario/property RED on `NotImplementedError` from `???` |
+| `ChainStateCmdSpec` | 1 | 9 | undetermined-report emission already GREEN (pre-existing correct surface); rest RED |
+| `ChainStateParitySpec` | 0 | 1 | corpus materialised + predecessor arm ran clean for all 16 fixtures; RED on `???` in the port |
+| `ChainStateCmdConformanceSpec` | 5 | 2 | all 3 new contract tests GREEN; the 2 compute calls RED on `???` |
+
+**Notable findings for Step 3** (recorded during oracle construction):
+- The predecessor exits 1 when `unmapped_obligations > 0` even at zero
+  unresolved — the current port checks only `unresolved.isEmpty`.
+- `spec_name = basename(dirname(spec.md))` — spec dirs, not file stems.
+- The bats oracle runs the DEGRADED arm exclusively (`OPENSPEC_ROOT`
+  pointed outside the fixture); graph-mode coverage needs a fixture
+  tree with `openspec/` + a locatable `openspec-graph.py`.
+- `bin/probatio` (jar launcher) is currently broken — `java -jar` puts
+  the jar filename in `sun.java.command` argv0, which multicall dispatch
+  rejects. The native image works; the parity harness routes
+  `SPEC_LINT_OVERRIDE` around it. Whether `bin/probatio` should be the
+  native binary or a `probatio`-named jar is a Step-3/9 question.
+- `find "$CHANGE_DIR/specs" -name spec.md` — chain-state's own discovery
+  recurses ALL spec.md under `<change-dir>/specs/` (no `*/specs/*`
+  component rule — that rule is spec-lint's, different tool).
+
+### Step 3 — Implementation (2026-09-17; all suites green)
+
+**3a — `RequirementExtractor.extract`** (`core/RequirementExtractor.scala`):
+graph path parses `openspec-graph.py export` JSON (`.obligations` with
+per-row `artifacts`/`claims` — `unmappable` = a row whose claims are
+empty, mirroring the predecessor's `sources == []` check, not its F9
+gate); degraded path parses `ObligationRow`s from `SpecDocument`
+(exact `Requirement: <title>` sources → `requirementClaims`; ordinal /
+unparseable sources → `unmappable = true`; `—` artifact token → empty
+artifact). Malformed/absent graph export → degraded `FactSource`; a
+usable export → `FactSource.Graph`.
+
+**3b — `ChainState.compute`** (`core/ChainState.scala`): full
+requirement-level verdict precedence —
+`unbound` (F7) → `unattributable` (degraded-only: lint-bound, zero
+exact-title obligations) → `unresolved` (any mapped obligation in the
+F9 set, or graph-mode bound-with-no-mapped-obligations) → `failed`
+(every obligation has ≥1 ledger row, none green) → `undischarged` (≥1
+obligation has no rows) → discharged (every obligation has ≥1 green
+row). Ledger matching is (change, effective-baseline, obligation-text)
+on the UNFILTERED record list — manual-ring rows count as evidence
+(the Step-1-recorded `Ring.Manual` exclusion defect is fixed). The
+kernel now takes TWO baseline params: `baseline` = raw
+`EFFECTIVE_BASELINE` echoed into the report; `resolvedBaseline` = the
+`git rev-parse`-resolved staleness filter (predecessor's
+`full_effective`) — these are different values whenever the effective
+baseline is a short SHA or symbolic ref. Per-spec baselines override
+the effective baseline per spec, then resolve. Stale rows survive only
+when `artifactUnchanged(artifact, rowBaseline)` holds (the injected
+predicate; the production wiring supplies `git diff --quiet <base>
+HEAD -- <artifact>` under the ledger's repo root). Finding-bearing
+obligations that attribute to no requirement land in
+`unmapped_obligations` — graph mode takes the row's own artifact;
+degraded mode recovers the artifact token from the F9 message text.
+Lint outcomes are per-spec: a missing spec, `Outcome.Undetermined`, or
+`Outcome.Finding` → `Left(ChainStateUndetermined)` carrying the
+underlying lint reason. `RequirementSet` with empty `specNames` skips
+lint consultation entirely (no spec was read); non-empty `specNames`
+with zero requirements still consults lint (a read spec with no
+requirements is a measurement). Assembled via `fromCounts` — a
+`Left` maps to undetermined with an internal-error reason.
+
+**3c — `ChainStateCmd` + wiring** (`cli/SubcommandEntrypoints.scala`,
+`cli/SubcommandWiring.scala`, `cli/SpecLintCmd.scala`): real
+`prepareInputs` — discovers `spec.md` recursively under
+`<change-dir>/specs` (parity with `find -name spec.md`), parses each
+via `SpecDocumentParser`, resolves per-spec baselines from
+`implementation-progress.md` (`## Spec N:` sections, `SHA:` lines),
+computes `EFFECTIVE_BASELINE` and its `git rev-parse` resolution with
+the predecessor's cwd semantics (`cd ""` is a no-op → falls back to
+the process cwd; unresolvable ref yields the doubled-echo value that
+matches nothing). Attempts `openspec-graph.py export` (located under
+`OPENSPEC_ROOT` / `PROBATIO_SCANNER_DIR` / repo-root candidates) then
+`RequirementExtractor.extract`; runs `SpecLintEngine.lint` per spec
+with artifact checking (`git ls-files` under repoRoot — the
+predecessor resolves it from the CALLER's cwd); supplies the
+Git-backed forgiveness predicate; parses `--change-dir`/`--change`/
+`--baseline`/`--ledger-file`/`--spec`/`--format`/`--artifacts`/
+`--forgive-unchanged`. `unmapped_obligations > 0` → exit 1 even at
+zero unresolved. **Marker fix**: `readLedgerFile` now stores bare
+reason text (the `UNDETERMINED —` prefix moved to the emitters —
+`LedgerCmd` emitters updated to prepend it); the
+`UNDETERMINED — UNDETERMINED —` double-marker is gone. `SpecLintCmd`'s
+`gitOut`/`repoRootFor` helpers widened to `private[cli]` for reuse.
+
+**Defects found + fixed during implementation**:
+- `ujson.read` wraps parse errors in
+  `upickle.core.TraceVisitor$TraceException`, not `ujson.ParseException`
+  — the corrupt-ledger path escaped as an exception instead of a named
+  `Left`; `readLedgerFile` now catches `NonFatal` into
+  `Left("ledger read exited 2; ...")`. Empty readable ledger stays a
+  valid zero (`empty-is-not-unreadable` green).
+- Baseline resolution: the port originally compared the literal
+  `--baseline` string; the predecessor always `git rev-parse`s the
+  effective baseline before the ledger staleness filter — a fixture
+  ledger row stamped with the real short SHA `00d3de1` reads as STALE
+  to the predecessor (resolved → `00d3de1aa49…`) but matched the port.
+  Split into the raw/reported vs resolved/filter pair above;
+  `ChainStateParitySpec` parity restored.
+- Hedgehog `Gen.element1(0, List(1,2))` picks between `0` and the
+  WHOLE list — not a scalar alternative; replaced with
+  `Gen.element(0, List(1,2))` (3 sites). Fixed the
+  `all-discharged` coverage failure in `counts-are-consistent`.
+- `ChainStateParitySpec` bucket weights sat AT the cover thresholds
+  (10%/10% has-unmapped with a single unmapped fixture → ~50% flake at
+  n=120). Rebalanced to (25,30,25,20) with covers (15,30,15,10) —
+  every class now ~3σ above its threshold. (Not a parity defect: the
+  earlier focused pass and the full-suite pass both show report+exit
+  equality across all drawn fixtures.)
+
+**Legacy-suite migrations** (pre-spec-5 fixtures updated to the new
+semantics — no production changes):
+- `ChainStateSpec` — `noReqs` now means "a read spec with zero
+  requirements" (`specNames = List("s")`) so lint is still consulted;
+  discharge/baseline/staleness fixtures carry explicit
+  `ExtractedObligation`s; bound-but-unmapped fixtures renamed to the
+  `Unattributable` reason.
+- `VerifiedKernelBridgeSpec` — same `noReqs` fix (failed-lint Left
+  needs the spec name present).
+- `GateBannerCompatSpec` — gate-completion test rewritten to exercise
+  the REAL wiring: temp change-dir with a spec whose requirement is
+  bound + resolved + no ledger rows → `Outcome.Finding` (blocks);
+  plus the same shape through `compute` (undischarged → unresolved).
+- `ChainStateCmdConformanceSpec` — two fixtures given mapped
+  obligations (empty obligations → `Unattributable` under the new
+  semantics, not the intended discharged/undischarged).
+- `RepositoryFactsSpec` — the stub's wire report rebalanced to a
+  contract-valid shape (`unbound` entry at `bound == total` violates
+  `fromCounts`' cross-consistency; now `undischarged`).
+
+**Test evidence** (2026-09-17):
+
+| Suite | Result |
+|-------|--------|
+| `ChainStateAttributionSpec` | 25/25 |
+| `ChainStateAttributionTypeContract` | 6/6 |
+| `ChainStateCmdSpec` | 10/10 |
+| `ChainStateCmdConformanceSpec` | 7/7 |
+| `ChainStateParitySpec` | 1/1 property (120 cases; report+exit parity on every drawn fixture) |
+| `probatio-core/test` (full) | 414/414 (4 ignored) |
+| `probatio-cli/test` (full) | 325/325 |
+
+Compile clean under `-Werror` post-scalafmt (probatio-core +
+probatio-cli, main + test).
+
+**Deferred to Ring 6**: `ChainStateKernel` extension
+(unattributable/exact-complement clause) and the `ChainStateBridgeSpec`
+bridge — `VerifiedKernelBridgeSpec` currently bridges the OLD kernel
+shape only.
 
 ### Step Progress
-- [ ] Step 1 — Typed contract (human gate)
-- [ ] Step 2 — Test oracle (human gate)
-- [ ] Step 3 — Implementation
+- [x] Step 1 — Typed contract (human gate) — APPROVED
+- [x] Step 2 — Test oracle (human gate) — APPROVED
+- [x] Step 3 — Implementation — all suites green; AWAITING APPROVAL
 - [ ] Ring 0–6, 8 + concept-delta + checkpoint
 
 ---

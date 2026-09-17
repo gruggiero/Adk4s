@@ -3,14 +3,15 @@ package org.sinemenda.probatio.migration
 import hedgehog.*
 import org.sinemenda.probatio.cli.ProbatioCliSuite
 
-/** Swap-order enforcement tests (R-M3).
-  *
-  * Hook shims are swapped in dependency order: purest tools first, gate
-  * last. A shim SHALL NOT be swapped before every subcommand it dispatches
-  * has a green oracle run against the ported binary.
-  *
-  * spec: migration-protocol — Requirement: Hook shims are swapped in dependency order after oracle clearance
-  */
+/**
+ * Swap-order enforcement tests (R-M3).
+ *
+ * Hook shims are swapped in dependency order: purest tools first, gate
+ * last. A shim SHALL NOT be swapped before every subcommand it dispatches
+ * has a green oracle run against the ported binary.
+ *
+ * spec: migration-protocol — Requirement: Hook shims are swapped in dependency order after oracle clearance
+ */
 final class SwapOrderSpec extends ProbatioCliSuite:
 
   import MigrationTypes.*
@@ -19,7 +20,7 @@ final class SwapOrderSpec extends ProbatioCliSuite:
   // spec: migration-protocol — Scenario: Ledger and chain-state shims swap first
   test("swap order: ledger and chain-state shims swap before all others"):
     val swapOrder: List[ToolId] = ToolId.swapOrder
-    val firstTwo: List[ToolId] = List(ToolId.ChainState, ToolId.SpecLint)
+    val firstTwo: List[ToolId]  = List(ToolId.ChainState, ToolId.SpecLint)
     // The first two entries in swapOrder must be ChainState and SpecLint
     // (the purest, best-covered tools), in that order.
     assert(
@@ -31,7 +32,7 @@ final class SwapOrderSpec extends ProbatioCliSuite:
   // spec: migration-protocol — Scenario: Gate shim swaps last
   test("swap order: gate shim is the final swap"):
     val swapOrder: List[ToolId] = ToolId.swapOrder
-    val lastTool: ToolId = swapOrder.apply(swapOrder.length - 1)
+    val lastTool: ToolId        = swapOrder.apply(swapOrder.length - 1)
     assert(
       lastTool == ToolId.Gate,
       s"expected last = Gate, got $lastTool"
@@ -57,34 +58,31 @@ final class SwapOrderSpec extends ProbatioCliSuite:
     // For each tool in the swap order, it can only be swapped if all
     // tools before it in the order have been ported. This is the
     // compile-negative: a swap is REFUSED if prerequisites aren't met.
-    val allTools: List[ToolId] = ToolId.swapOrder
+    val allTools: List[ToolId]     = ToolId.swapOrder
     val emptyState: MigrationState = MigrationState(Set.empty)
     // The first tool CAN be swapped (no prerequisites)
-    assert(canSwap(emptyState, allTools(0)),
-      "first tool in swap order must be swappable with empty state")
+    assert(canSwap(emptyState, allTools(0)), "first tool in swap order must be swappable with empty state")
     // Every other tool CANNOT be swapped with empty state
     allTools.drop(1).foreach { tool =>
-      assert(!canSwap(emptyState, tool),
-        s"$tool must not be swappable before its prerequisites are ported")
+      assert(!canSwap(emptyState, tool), s"$tool must not be swappable before its prerequisites are ported")
     }
 
   // ── Property: swap-order-respects-dependencies
   // For every migration state, the set of swappable tools is exactly the
   // prefix of the swap order that has been fully ported.
   property("swap-order-respects-dependencies"):
-    for
-      portedCount <- Gen.int(Range.linear(0, ToolId.swapOrder.length)).forAll
+    for portedCount <- Gen.int(Range.linear(0, ToolId.swapOrder.length)).forAll
     yield
-      val ported: Set[ToolId] = ToolId.swapOrder.take(portedCount).toSet
+      val ported: Set[ToolId]   = ToolId.swapOrder.take(portedCount).toSet
       val state: MigrationState = MigrationState(ported)
       // The next tool in the order (if any) should be swappable
       val nextIdx: Int = portedCount
       if nextIdx < ToolId.swapOrder.length then
         val nextTool: ToolId = ToolId.swapOrder(nextIdx)
-        Result.assert(canSwap(state, nextTool))
+        Result
+          .assert(canSwap(state, nextTool))
           .log(s"next tool $nextTool should be swappable after $portedCount tools ported")
-      else
-        Result.success
+      else Result.success
 
   // ── Helper: determine if a tool can be swapped given the migration state
   // A tool can be swapped only if ALL tools before it in the swap order

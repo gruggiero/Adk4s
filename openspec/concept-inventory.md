@@ -576,7 +576,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `CheckId` | enum (F1–F10) | `org.sinemenda.probatio.core` | shipped |
 | `RequirementVerdict` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `LintWarning` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `LintReport` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `LintReport` | final class, private constructor (verdicts, findings: List[CheckOutcome], applicability, resolvedRows, unresolvableRows, requirementRows — `lintSuccess` derived from findings) | `org.sinemenda.probatio.core` | shipped; re-shaped by `spec:complete-probatio-cutover/spec-lint-engine` |
 | `HookSpecificOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `GatePayload` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `InstallRootScan` | final case class (rootPath, state: InstallRootState — four-state root read, was a two-field stamp record) | `org.sinemenda.probatio.core` | shipped; modified by `spec:complete-probatio-cutover/live-fact-banner` |
@@ -601,7 +601,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `FlagHelp` | final case class (name, description, default) | `org.sinemenda.probatio.cli` | shipped |
 | `ExitCodeDoc` | final case class (code, label, condition) | `org.sinemenda.probatio.cli` | shipped |
 | `CliErrorRender` | object (render: CliError → String) | `org.sinemenda.probatio.cli` | shipped |
-| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `ReconcileCmd` / `DangerScanCmd` / `MetalsCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints; 6 unported entrypoints removed: RegistryCheckCmd, ScanCmd, RemovalAuditCmd, ImpactScanCmd, ConceptScannerCmd, GraphCmd) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
+| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `ReconcileCmd` / `DangerScanCmd` / `MetalsCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints; 6 unported entrypoints removed: RegistryCheckCmd, ScanCmd, RemovalAuditCmd, ImpactScanCmd, ConceptScannerCmd, GraphCmd; SpecLintCmd implemented by spec-lint-engine: positional change-dir, `--context-only`, `--artifacts`, `--format json`, nested `specs/` discovery) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract`; SpecLintCmd implemented by `spec:complete-probatio-cutover/spec-lint-engine` |
 
 ### port-scanner-to-probatio change — sbt-plugin spec concepts
 
@@ -744,7 +744,7 @@ The following concepts were introduced by `spec:complete-probatio-porting/cli-wi
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
 | `CliContext` | final case class (repoRoot, changeDir, ledgerFile, gitDir: String; escapeHatch: Boolean) — resolved paths + env-var overrides read once at entrypoint start | `org.sinemenda.probatio.cli` | shipped |
-| `StdoutRenderer[A]` | trait (render(value: A): String) — typeclass for byte-compatible stdout rendering; given instances for ChainStateReport, ChainStateUndetermined, LintReport, GatePayload, BannerOutput | `org.sinemenda.probatio.cli` | shipped |
+| `StdoutRenderer[A]` | trait (render(value: A): String) — typeclass for byte-compatible stdout rendering; given instances for ChainStateReport, ChainStateUndetermined, LintReport, GatePayload, BannerOutput, LintContext | `org.sinemenda.probatio.cli` | shipped; +LintContext instance by `spec:complete-probatio-cutover/spec-lint-engine` |
 | `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int] | `org.sinemenda.probatio.cli` | shipped |
 
 ### complete-probatio-cutover change — live-fact-banner spec concepts
@@ -763,7 +763,7 @@ The following concepts were introduced by `spec:complete-probatio-cutover/live-f
 | `InstallRootState` | enum (Absent, PresentNoStamp, Stamped(version, StampFormat), Unreadable(reason)) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
 | `SessionId` | opaque type over String (fromRaw, resolve with signal-priority, `.raw`, `.encoded` — lossless base64url, injective) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
 | `HeartbeatRecord` | final case class (ts, event, format) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
-| `RepositoryFactsReader` | object (`read(repoRoot, userHome, env): RepositoryFacts` — the single fact-reading seam; total: failures are data, never thrown) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `RepositoryFactsReader` | object (`read(repoRoot, userHome, env): RepositoryFacts` + `readLintContext(repoRoot, userHome): LintContext` — the single fact-reading seam; total: failures are data, never thrown) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner`; +`readLintContext` by `spec:complete-probatio-cutover/spec-lint-engine` |
 | `GateStateDir` | final case class (path: Path) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
 | `GateStateDirReader` | object (resolve via `git rev-parse --absolute-git-dir`, fingerprint `fp-<SessionId.encoded>` read/write, heartbeat read/write; all ops fail-open) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
 | `BannerEngineKernel.bannerClaims` | Ring 6 contract (`facts: List[BigInt] => List[BigInt]` — emitted claims equal fact codes; `-1` unreadable, `0` absent, `n>0` present-with-count) + helpers (`allFactCodesValid`, `claimsMatchFacts`, `noUnreadableClaimedAbsent`, `claimFor`) and five fixed-size law lemmas | `org.sinemenda.probatio.verified` | `spec:complete-probatio-cutover/live-fact-banner` |
@@ -773,3 +773,30 @@ Existing rows modified by this spec (annotated in place above): `BannerInputs`
 chain state), `InstallRootScan` (four-state root read), `DriftWarning`
 (+NoStampDeclared, +Unreadable), `DriftScan.installRoots` (three-root list →
 six-root `InstallRoots` record).
+
+### complete-probatio-cutover change — spec-lint-engine spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/spec-lint-engine`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `SpecDocument` | final case class (name, lines: Vector[String], requirements, properties, temporals, scenarios, obligationRows, dataRowCount, bridgeRowCount, hasProofObligations, formalContractsContentLines, hasBehavioralConcepts, artifactRows) — the parsed spec as immutable data | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `RequirementBlock` | final case class (title, line, endLine, hasNormative, negative, scenarioCount, normativeText) — `line`/`endLine` bracket the block for body rescans and live-visibility filtering | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `PropertyBlock` | final case class (title, line, endLine, hasGeneratorStrategy) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `TemporalBlock` | final case class (title, line, endLine, hasTriggerEvent, hasResponseEvent) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `ScenarioHeading` | final case class (title, line) — `#### Scenario:` headings wherever they appear; F8 source resolution target | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `ObligationRow` | final case class (line, fieldCount, source, enforcement, artifact, raw) derives ReadWriter — one evaluated proof-obligation table row; skipped rows (empty/comment source, `NF < 4`) never appear here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `ObligationSource` | enum (ByTitle(requirementIndex), ByOrdinal(requirementIndex), Typed(kind, name), Unresolvable(cell)) — the predecessor `check_source` resolution algebra as a closed type | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SpecDocumentParser` | object (`parse(name, lines): SpecDocument` — pure port of the predecessor awk scan: heading dispatch, live-state block tracking, empty-title gating, artifact-row tracking under `## `-only section flags) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SpecLintEngine` | object (`lint(document, context, artifactTracked): LintReport` — pure total function emitting F1–F10/W1–W7 in predecessor order; `obligationSources`, `reachabilityFold` exposed for verification) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `CheckOutcome` | enum derives ReadWriter (Pass(check), Fail(check, line, message), Warn(warning)) — the emitted finding stream, predecessor emission order | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `LintContext` | final case class (schemaVersion/registry/registryConcepts/inventoryTypes/profile: FactRead, installRoots) — injected repository facts; `hasRegistry` gates F10/W7, `codeIdentifiers` is the predecessor `comm -23` | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SpecLintKernel` | object — Ring 6 mirror of `reachabilityFold` (`numRequirements, rowTargets: List[BigInt] => (unenforced, unresolvableCount)`): `uncoveredFrom` same-shaped soundness postcondition + `uncoveredComplete` inductive lemma + four fixed-size law lemmas | `org.sinemenda.probatio.core` (verified/probatio) | `spec:complete-probatio-cutover/spec-lint-engine` |
+
+Existing rows modified by this spec (annotated in place above): `LintReport`
+(re-shaped — verdicts + finding stream + applicability + resolvedRows/
+unresolvableRows/requirementRows; `lintSuccess` derived from findings),
+`RepositoryFactsReader` (+`readLintContext`), `StdoutRenderer` (+given
+instance for `LintContext`), `SpecLintCmd` (skeleton → real implementation:
+positional change-dir, `--context-only`, `--artifacts`, `--format json`,
+nested `specs/` discovery).
