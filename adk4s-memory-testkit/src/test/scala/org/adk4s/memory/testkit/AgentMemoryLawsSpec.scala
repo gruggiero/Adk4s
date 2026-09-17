@@ -7,12 +7,7 @@ import cats.syntax.traverse.toTraverseOps
 import hedgehog.Gen
 import hedgehog.Syntax
 import hedgehog.munit.HedgehogSuite
-import org.adk4s.memory.{
-  AgentMemory,
-  Episode,
-  InMemoryAgentMemory,
-  SourceType
-}
+import org.adk4s.memory.{ AgentMemory, Episode, InMemoryAgentMemory, SourceType }
 
 // Test oracle for spec:memory-testkit.
 // Tests written from the spec + approved typed contract ONLY, before
@@ -23,9 +18,10 @@ class AgentMemoryLawsSpec extends HedgehogSuite:
 
   private val laws: AgentMemoryLaws = AgentMemoryLaws(indexesContent = true)
 
-  /** Real munit assertions (Hedgehog's assert/assertEquals are no-ops in test
-    * blocks — see spec 1 Ring 5 notes).
-    */
+  /**
+   * Real munit assertions (Hedgehog's assert/assertEquals are no-ops in test
+   * blocks — see spec 1 Ring 5 notes).
+   */
   private def assertM(cond: => Boolean)(implicit loc: munit.Location): Unit =
     withMunitAssertions(a => a.assert(cond))
 
@@ -33,8 +29,8 @@ class AgentMemoryLawsSpec extends HedgehogSuite:
     withMunitAssertions(a => a.assert(cond, clue))
 
   private def assertEqualsM[A, B](obtained: A, expected: B)(implicit
-      ev: B <:< A,
-      loc: munit.Location
+    ev: B <:< A,
+    loc: munit.Location
   ): Unit =
     withMunitAssertions(a => a.assertEquals(obtained, expected))
 
@@ -171,11 +167,10 @@ class AgentMemoryLawsSpec extends HedgehogSuite:
     // spec: memory-testkit — Property: laws-pass-for-known-good-inmemory
     // Deterministic (no generator) — run the assertion once.
     for
-      _  <- Gen.constant(()).forAll
+      _ <- Gen.constant(()).forAll
       ok = (for
         mem <- InMemoryAgentMemory.create[IO]
         ok  <- AgentMemoryLaws(indexesContent = true).all(mem)
       yield ok).unsafeRunSync()
-    yield
-      ok ==== true
+    yield ok ==== true
   }

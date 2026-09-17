@@ -9,8 +9,8 @@ class AgentEventEmitterTest extends CatsEffectSuite:
     for
       emitter <- AgentEventEmitter.create()
       event = AgentEvent.MessageOutput(RunPath.of("agent"), "hello", "assistant")
-      _ <- emitter.emit(event)
-      _ <- emitter.complete
+      _      <- emitter.emit(event)
+      _      <- emitter.complete
       events <- emitter.subscribe.compile.toList
     yield
       assertEquals(events.length, 1)
@@ -25,9 +25,9 @@ class AgentEventEmitterTest extends CatsEffectSuite:
     for
       emitter <- AgentEventEmitter.create()
       scoped = emitter.scoped(RunStep("parent"))
-      event = AgentEvent.MessageOutput(RunPath.of("child"), "msg", "assistant")
-      _ <- scoped.emit(event)
-      _ <- emitter.complete
+      event  = AgentEvent.MessageOutput(RunPath.of("child"), "msg", "assistant")
+      _      <- scoped.emit(event)
+      _      <- emitter.complete
       events <- emitter.subscribe.compile.toList
     yield
       assertEquals(events.length, 1)
@@ -38,11 +38,11 @@ class AgentEventEmitterTest extends CatsEffectSuite:
   test("multiple events are delivered in order") {
     for
       emitter <- AgentEventEmitter.create()
-      _ <- emitter.emit(AgentEvent.TokenDelta(RunPath.empty, "a"))
-      _ <- emitter.emit(AgentEvent.TokenDelta(RunPath.empty, "b"))
-      _ <- emitter.emit(AgentEvent.TokenDelta(RunPath.empty, "c"))
-      _ <- emitter.complete
-      events <- emitter.subscribe.compile.toList
+      _       <- emitter.emit(AgentEvent.TokenDelta(RunPath.empty, "a"))
+      _       <- emitter.emit(AgentEvent.TokenDelta(RunPath.empty, "b"))
+      _       <- emitter.emit(AgentEvent.TokenDelta(RunPath.empty, "c"))
+      _       <- emitter.complete
+      events  <- emitter.subscribe.compile.toList
     yield
       assertEquals(events.length, 3)
       val deltas: List[String] = events.collect { case td: AgentEvent.TokenDelta => td.delta }
@@ -52,8 +52,8 @@ class AgentEventEmitterTest extends CatsEffectSuite:
   test("complete terminates the stream") {
     for
       emitter <- AgentEventEmitter.create()
-      _ <- emitter.emit(AgentEvent.MessageOutput(RunPath.empty, "one", "user"))
-      _ <- emitter.complete
-      events <- emitter.subscribe.compile.toList
+      _       <- emitter.emit(AgentEvent.MessageOutput(RunPath.empty, "one", "user"))
+      _       <- emitter.complete
+      events  <- emitter.subscribe.compile.toList
     yield assertEquals(events.length, 1)
   }

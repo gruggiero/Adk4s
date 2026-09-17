@@ -180,8 +180,9 @@ final class AgentRunner(
           case None =>
             IO.pure(RunResult.Failed(CheckpointNotFoundError(checkpointId)))
           case Some(data) =>
-            val json: String          = new String(data, "UTF-8")
-            val cp: CheckpointStateV2 = upickle.default.read[CheckpointStateV2](json)(using CheckpointStateV2.readWriter)
+            val json: String = new String(data, "UTF-8")
+            val cp: CheckpointStateV2 =
+              upickle.default.read[CheckpointStateV2](json)(using CheckpointStateV2.readWriter)
             // Restore harness state from checkpoint
             HarnessState.restore(cells, cp.harnessState) match
               case Left(decodeError) =>

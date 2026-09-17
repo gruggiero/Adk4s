@@ -84,7 +84,11 @@ object Generators:
     Gen
       .string(Gen.alpha, Range.linear(1, 3))
       .list(Range.linear(0, 8))
-      .map(_.zipWithIndex.map((prefix, i) => StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), s"c$prefix", 0)))
+      .map(
+        _.zipWithIndex.map((prefix, i) =>
+          StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), s"c$prefix", 0)
+        )
+      )
 
   /**
    * Generates a `HarnessState` from a list of Int cells with generated values.
@@ -97,7 +101,11 @@ object Generators:
       cells <- Gen
         .string(Gen.alpha, Range.linear(1, 3))
         .list(Range.linear(0, cellCount))
-        .map(_.zipWithIndex.map((prefix, i) => StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), s"c$prefix", 0)))
+        .map(
+          _.zipWithIndex.map((prefix, i) =>
+            StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), s"c$prefix", 0)
+          )
+        )
       values <- Gen.int(Range.linear(-1000, 1000)).list(Range.linear(0, cells.length))
     yield
       val state: HarnessState = cells.zip(values).foldLeft(HarnessState.empty) { (acc, pair) =>

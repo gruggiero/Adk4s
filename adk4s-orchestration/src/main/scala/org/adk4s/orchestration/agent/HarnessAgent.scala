@@ -68,10 +68,11 @@ final class HarnessAgent[F[_]: Async](val config: HarnessAgent.Config[F]):
   val name: String        = config.name
   val description: String = config.description
 
-  /** Refine maxSteps to Positive, lifting the error into F via Async.raiseError.
-    *
-    * spec: add-iron-refined-types/react-agent — Requirement: maxSteps is refined to Positive at the internal boundary
-    */
+  /**
+   * Refine maxSteps to Positive, lifting the error into F via Async.raiseError.
+   *
+   * spec: add-iron-refined-types/react-agent — Requirement: maxSteps is refined to Positive at the internal boundary
+   */
   private def refineMaxSteps(maxSteps: Int): F[Int] =
     maxSteps.refineEither[Positive] match
       case Right(_) => Async[F].pure(maxSteps)

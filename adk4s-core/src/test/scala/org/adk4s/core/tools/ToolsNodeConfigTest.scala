@@ -9,7 +9,7 @@ import munit.CatsEffectSuite
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.component.Tool
 import org.adk4s.core.error.ConfigError
-import ujson.{Str, Value}
+import ujson.{ Str, Value }
 
 class ToolsNodeConfigTest extends CatsEffectSuite:
 
@@ -19,7 +19,10 @@ class ToolsNodeConfigTest extends CatsEffectSuite:
 
     assertEquals(config.tools.length, 1)
     assert(config.tools.headOption.getOrElse(fail("expected non-empty list")).isRight)
-    assertEquals(config.tools.headOption.getOrElse(fail("expected non-empty list")).map(_.info.name), Right("test_tool"))
+    assertEquals(
+      config.tools.headOption.getOrElse(fail("expected non-empty list")).map(_.info.name),
+      Right("test_tool")
+    )
   }
 
   test("builder adds ADK4S tool") {
@@ -33,9 +36,7 @@ class ToolsNodeConfigTest extends CatsEffectSuite:
   }
 
   test("builder sets sequential execution") {
-    val config: ToolsNodeConfig = ToolsNodeConfig.builder
-      .sequential
-      .build
+    val config: ToolsNodeConfig = ToolsNodeConfig.builder.sequential.build
 
     assert(config.executeSequentially)
   }
@@ -138,18 +139,18 @@ class ToolsNodeConfigIronSpec extends HedgehogSuite:
     // spec: add-iron-refined-types/tools-node — Property: maxConcurrency refineEither round-trips
     val gen: Gen[Int] = Gen.int(Range.linear(1, 100))
     for n <- gen.forAll
-      yield
-        val result: Either[ConfigError, ToolsNodeConfigBuilder] =
-          ToolsNodeConfig.builder.parallelEither(n)
-        result.map { (b: ToolsNodeConfigBuilder) => b.build.maxConcurrency } ==== Right(n)
+    yield
+      val result: Either[ConfigError, ToolsNodeConfigBuilder] =
+        ToolsNodeConfig.builder.parallelEither(n)
+      result.map((b: ToolsNodeConfigBuilder) => b.build.maxConcurrency) ==== Right(n)
   }
 
   property("maxConcurrency parallelEither rejects zero and negatives") {
     // spec: add-iron-refined-types/tools-node — Property: maxConcurrency rejects zero and negatives
     val gen: Gen[Int] = Gen.int(Range.linear(-100, 0))
     for n <- gen.forAll
-      yield
-        val result: Either[ConfigError, ToolsNodeConfigBuilder] =
-          ToolsNodeConfig.builder.parallelEither(n)
-        result.isLeft ==== true
+    yield
+      val result: Either[ConfigError, ToolsNodeConfigBuilder] =
+        ToolsNodeConfig.builder.parallelEither(n)
+      result.isLeft ==== true
   }

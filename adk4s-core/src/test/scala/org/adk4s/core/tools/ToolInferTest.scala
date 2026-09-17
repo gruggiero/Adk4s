@@ -32,7 +32,7 @@ class ToolInferTest extends CatsEffectSuite:
 
   test("schemaFor handles optional fields") {
     val schema: ujson.Value = ToolInfer.schemaFor[SearchArgs]
-    val props: ujson.Value = schema("properties")
+    val props: ujson.Value  = schema("properties")
     assertEquals(props("query")("type").str, "string")
     assertEquals(props("maxResults")("type").str, "integer")
     val required: List[String] = schema("required").arr.map(_.str).toList
@@ -52,63 +52,49 @@ class ToolInferTest extends CatsEffectSuite:
 
     val input: ujson.Value = ujson.Obj(
       "destination" -> "Tokyo",
-      "passengers" -> 2,
-      "premium" -> true
+      "passengers"  -> 2,
+      "premium"     -> true
     )
-    tool.run(input).map { (result: ujson.Value) =>
-      assertEquals(result.str, "Booked 2 to Tokyo, premium=true")
-    }
+    tool.run(input).map((result: ujson.Value) => assertEquals(result.str, "Booked 2 to Tokyo, premium=true"))
   }
 
   test("infer tool handles decode errors gracefully") {
     val tool: org.adk4s.core.component.InvokableTool[IO] = ToolInfer.infer[BookingArgs](
       "book_trip",
       "Book a trip"
-    ) { (_: BookingArgs) =>
-      IO.pure(Right(ujson.Str("ok")))
-    }
+    )((_: BookingArgs) => IO.pure(Right(ujson.Str("ok"))))
     // Missing required field
     val badInput: ujson.Value = ujson.Obj("destination" -> "Tokyo")
-    tool.run(badInput).attempt.map { (result: Either[Throwable, ujson.Value]) =>
-      assert(result.isLeft)
-    }
+    tool.run(badInput).attempt.map((result: Either[Throwable, ujson.Value]) => assert(result.isLeft))
   }
 
   test("infer tool with optional fields decodes correctly") {
     val tool: org.adk4s.core.component.InvokableTool[IO] = ToolInfer.infer[SearchArgs](
       "search",
       "Search for items"
-    ) { (args: SearchArgs) =>
-      IO.pure(Right(ujson.Str(s"query=${args.query}, max=${args.maxResults.getOrElse(-1)}")))
-    }
+    )((args: SearchArgs) => IO.pure(Right(ujson.Str(s"query=${args.query}, max=${args.maxResults.getOrElse(-1)}"))))
 
     // With optional field present
     val input1: ujson.Value = ujson.Obj("query" -> "cats", "maxResults" -> 10)
-    tool.run(input1).map { (result: ujson.Value) =>
-      assertEquals(result.str, "query=cats, max=10")
-    }
+    tool.run(input1).map((result: ujson.Value) => assertEquals(result.str, "query=cats, max=10"))
   }
 
   test("infer tool with optional field absent") {
     val tool: org.adk4s.core.component.InvokableTool[IO] = ToolInfer.infer[SearchArgs](
       "search",
       "Search for items"
-    ) { (args: SearchArgs) =>
-      IO.pure(Right(ujson.Str(s"query=${args.query}, max=${args.maxResults.getOrElse(-1)}")))
-    }
+    )((args: SearchArgs) => IO.pure(Right(ujson.Str(s"query=${args.query}, max=${args.maxResults.getOrElse(-1)}"))))
 
     // Without optional field
     val input2: ujson.Value = ujson.Obj("query" -> "dogs")
-    tool.run(input2).map { (result: ujson.Value) =>
-      assertEquals(result.str, "query=dogs, max=-1")
-    }
+    tool.run(input2).map((result: ujson.Value) => assertEquals(result.str, "query=dogs, max=-1"))
   }
 
   test("schema includes parameters in tool info") {
     val tool: org.adk4s.core.component.InvokableTool[IO] = ToolInfer.infer[BookingArgs](
       "book",
       "Book"
-    ) { (_: BookingArgs) => IO.pure(Right(ujson.Null)) }
+    )((_: BookingArgs) => IO.pure(Right(ujson.Null)))
 
     val params: ujson.Value = tool.info.parameters
     assertEquals(params("type").str, "object")

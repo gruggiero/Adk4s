@@ -10,7 +10,7 @@ import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.tools.ToolInput
 import org.adk4s.core.tools.ToolOutput
 import org.adk4s.core.tools.ToolsNode
-import org.adk4s.core.types.{NodeKey, Reserved, given}
+import org.adk4s.core.types.{ NodeKey, Reserved, given }
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOForkNode
 import org.adk4s.orchestration.wiograph.WIOGraph

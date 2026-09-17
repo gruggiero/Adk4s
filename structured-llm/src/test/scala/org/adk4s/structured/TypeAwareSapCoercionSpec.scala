@@ -16,13 +16,13 @@ class TypeAwareSapCoercionSpec extends HedgehogSuite:
   // ── Types for testing ──────────────────────────────────────────────────
 
   given s4sInt: Smithy4sSchema[Int] = smithy4s.Schema.int
-  given schemaInt: Schema[Int] = Schema.instance("integer Integer")(using s4sInt)
+  given schemaInt: Schema[Int]      = Schema.instance("integer Integer")(using s4sInt)
 
   given s4sString: Smithy4sSchema[String] = smithy4s.Schema.string
-  given schemaString: Schema[String] = Schema.instance("string String")(using s4sString)
+  given schemaString: Schema[String]      = Schema.instance("string String")(using s4sString)
 
   given s4sBool: Smithy4sSchema[Boolean] = smithy4s.Schema.boolean
-  given schemaBool: Schema[Boolean] = Schema.instance("boolean Boolean")(using s4sBool)
+  given schemaBool: Schema[Boolean]      = Schema.instance("boolean Boolean")(using s4sBool)
 
   given s4sListString: Smithy4sSchema[List[String]] =
     smithy4s.Schema.list(smithy4s.Schema.string)
@@ -49,7 +49,7 @@ class TypeAwareSapCoercionSpec extends HedgehogSuite:
     val intGen: Gen[Int] = Gen.int(Range.linear(-10000, 10000))
     intGen.forAll.map { (n: Int) =>
       val strVal: JsonishValue = JsonishValue.Str(n.toString, CompletionState.Complete)
-      val (json, flags) = TypeCoercer.coerceToJson(strVal)
+      val (json, flags)        = TypeCoercer.coerceToJson(strVal)
       // The coerced JSON should be a quoted string — smithy4s will handle the actual coercion
       // For now we verify the value is preserved in the JSON
       json.contains(n.toString) ==== true
@@ -62,15 +62,17 @@ class TypeAwareSapCoercionSpec extends HedgehogSuite:
 
   property("CoercionScore.Zero is less than any non-zero score") {
     val flagsGen: Gen[Vector[CoercionFlag]] =
-      Gen.list(
-        Gen.element1(
-          CoercionFlag.StringToInt,
-          CoercionFlag.StringToBool,
-          CoercionFlag.SingleToArray,
-          CoercionFlag.CaseInsensitive
-        ),
-        Range.linear(1, 5)
-      ).map(_.toVector)
+      Gen
+        .list(
+          Gen.element1(
+            CoercionFlag.StringToInt,
+            CoercionFlag.StringToBool,
+            CoercionFlag.SingleToArray,
+            CoercionFlag.CaseInsensitive
+          ),
+          Range.linear(1, 5)
+        )
+        .map(_.toVector)
     flagsGen.forAll.map { (flags: Vector[CoercionFlag]) =>
       val score: CoercionScore = CoercionScore.fromFlags(flags)
       CoercionScore.Zero < score ==== true
@@ -208,7 +210,7 @@ class TypeAwareSapCoercionSpec extends HedgehogSuite:
   }
 
   test("JsonishParser.parse preserves apostrophes in string values") {
-    val input: String = """{"name": "it's fine, isn't it"}"""
+    val input: String        = """{"name": "it's fine, isn't it"}"""
     val parsed: JsonishValue = JsonishParser.parse(input)
     parsed match
       case JsonishValue.Obj(fields, _) =>
@@ -220,7 +222,7 @@ class TypeAwareSapCoercionSpec extends HedgehogSuite:
   }
 
   test("JsonishParser.parse handles markdown fences") {
-    val input: String = "```json\n{\"name\": \"John\"}\n```"
+    val input: String        = "```json\n{\"name\": \"John\"}\n```"
     val parsed: JsonishValue = JsonishParser.parse(input)
     parsed match
       case JsonishValue.Obj(fields, _) =>
@@ -232,7 +234,7 @@ class TypeAwareSapCoercionSpec extends HedgehogSuite:
   }
 
   test("JsonishParser.parse strips comments") {
-    val input: String = """{"name": "John", /* comment */ "age": 42}"""
+    val input: String        = """{"name": "John", /* comment */ "age": 42}"""
     val parsed: JsonishValue = JsonishParser.parse(input)
     parsed match
       case JsonishValue.Obj(fields, _) =>
@@ -241,13 +243,13 @@ class TypeAwareSapCoercionSpec extends HedgehogSuite:
   }
 
   test("JsonishParser.repair fixes trailing commas") {
-    val input: String = """{"name": "test",}"""
+    val input: String    = """{"name": "test",}"""
     val repaired: String = JsonishParser.repair(input)
     assertEquals(repaired, """{"name": "test"}""")
   }
 
   test("JsonishParser.repair fixes single-quoted strings") {
-    val input: String = """{'name': 'test'}"""
+    val input: String    = """{'name': 'test'}"""
     val repaired: String = JsonishParser.repair(input)
     assertEquals(repaired, """{"name": "test"}""")
   }

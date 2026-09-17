@@ -30,8 +30,7 @@ class RetryPoliciesSpec extends HedgehogSuite:
       val counter: IO[Int] = IO.ref(0).flatMap { ref =>
         val operation: IO[String] = ref.update(_ + 1) *>
           IO.raiseError[String](StructuredLLMError.ParseFailed(List.empty, "fail"))
-        Retry.withRetry[IO, String](maxAttempts, 0.seconds, RetryTrigger.All)(operation)
-          .attempt *> ref.get
+        Retry.withRetry[IO, String](maxAttempts, 0.seconds, RetryTrigger.All)(operation).attempt *> ref.get
       }
       val attempts: Int = counter.unsafeRunSync()
       attempts ==== maxAttempts
@@ -48,11 +47,12 @@ class RetryPoliciesSpec extends HedgehogSuite:
     successGen.forAll.map { (value: String) =>
       val counter: IO[Int] = IO.ref(0).flatMap { ref =>
         val operation: IO[String] = ref.update(_ + 1) *> IO.pure(value)
-        Retry.withRetry[IO, String](5, 0.seconds, RetryTrigger.All)(operation)
+        Retry
+          .withRetry[IO, String](5, 0.seconds, RetryTrigger.All)(operation)
           .map(_ => ()) *> ref.get
       }
       val attempts: Int = counter.unsafeRunSync()
-      (attempts ==== 1)
+      attempts ==== 1
     }
   }
 
@@ -90,12 +90,11 @@ class RetryPoliciesSpec extends HedgehogSuite:
 
   test("LLM error does not retry when trigger is ParseFailure only") {
     val dummyError: org.llm4s.error.LLMError = UnknownError("test error", new Exception("test"))
-    val dummyPrompt: Prompt = Prompt.empty
+    val dummyPrompt: Prompt                  = Prompt.empty
     val counter: IO[Int] = IO.ref(0).flatMap { ref =>
       val operation: IO[String] = ref.update(_ + 1) *>
         IO.raiseError[String](StructuredLLMError.LLMCallFailed(dummyError, dummyPrompt))
-      Retry.withRetry[IO, String](3, 0.seconds, RetryTrigger.ParseFailure)(operation)
-        .attempt *> ref.get
+      Retry.withRetry[IO, String](3, 0.seconds, RetryTrigger.ParseFailure)(operation).attempt *> ref.get
     }
     val attempts: Int = counter.unsafeRunSync()
     assertEquals(attempts, 1)

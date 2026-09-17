@@ -4,7 +4,7 @@ import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.core.runnable.Runnable
 import org.adk4s.core.tools.{ StructuredToolCall, ToolSchema, TypedTool }
-import org.adk4s.core.types.{NodeKey, Reserved, given}
+import org.adk4s.core.types.{ NodeKey, Reserved, given }
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError

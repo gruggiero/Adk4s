@@ -11,12 +11,14 @@ class ChatModelSpec extends CatsEffectSuite:
 
   test("Generate completion from conversation") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ChatModel.fromLlm4s[IO](mockClient)
+    val model      = ChatModel.fromLlm4s[IO](mockClient)
 
-    val conversation = Conversation(List(
-      SystemMessage("You are a helpful assistant"),
-      UserMessage("Hello")
-    ))
+    val conversation = Conversation(
+      List(
+        SystemMessage("You are a helpful assistant"),
+        UserMessage("Hello")
+      )
+    )
 
     val result = model.generate(conversation).attempt.unsafeRunSync()
 
@@ -25,7 +27,7 @@ class ChatModelSpec extends CatsEffectSuite:
 
   test("Stream completion chunks") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ChatModel.fromLlm4s[IO](mockClient)
+    val model      = ChatModel.fromLlm4s[IO](mockClient)
 
     val conversation = Conversation(List(UserMessage("Tell me a story")))
 
@@ -36,19 +38,19 @@ class ChatModelSpec extends CatsEffectSuite:
 
   test("Stream content only") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ChatModel.fromLlm4s[IO](mockClient)
+    val model      = ChatModel.fromLlm4s[IO](mockClient)
 
     val conversation = Conversation(List(UserMessage("Stream content")))
 
     val content = model.streamContent(conversation).compile.toList.unsafeRunSync()
 
     assert(content.nonEmpty, "Should have content")
-    }
+  }
 
   test("Apply custom configuration") {
-    val config = ChatModelConfig(temperature = Some(0.7), maxTokens = Some(1000))
+    val config     = ChatModelConfig(temperature = Some(0.7), maxTokens = Some(1000))
     val mockClient = new ComponentMockLLMClient()
-    val model = ChatModel.fromLlm4s[IO](mockClient, config)
+    val model      = ChatModel.fromLlm4s[IO](mockClient, config)
 
     val conversation = Conversation(List(UserMessage("Test")))
 
@@ -60,7 +62,7 @@ class ChatModelSpec extends CatsEffectSuite:
 
   test("Create ChatModel from LLM4S client") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ChatModel.fromLlm4s[IO](mockClient)
+    val model      = ChatModel.fromLlm4s[IO](mockClient)
 
     val conversation = Conversation(List(UserMessage("Test")))
 
@@ -71,11 +73,11 @@ class ChatModelSpec extends CatsEffectSuite:
 
   test("WithConfig returns new model") {
     val baseConfig = ChatModelConfig(temperature = Some(0.5))
-    val newConfig = ChatModelConfig(temperature = Some(0.9))
+    val newConfig  = ChatModelConfig(temperature = Some(0.9))
     val mockClient = new ComponentMockLLMClient()
 
     val baseModel = ChatModel.fromLlm4s[IO](mockClient, baseConfig)
-    val newModel = baseModel.withConfig(newConfig)
+    val newModel  = baseModel.withConfig(newConfig)
 
     val conversation = Conversation(List(UserMessage("Test")))
 

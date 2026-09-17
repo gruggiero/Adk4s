@@ -79,7 +79,7 @@ class StructuredToolCallTest extends CatsEffectSuite:
       "type" -> "object",
       "properties" -> ujson.Obj(
         "location" -> ujson.Obj("type" -> "string"),
-        "unit" -> ujson.Obj("type" -> "string")
+        "unit"     -> ujson.Obj("type" -> "string")
       ),
       "required" -> ujson.Arr("location", "unit")
     ),
@@ -87,20 +87,26 @@ class StructuredToolCallTest extends CatsEffectSuite:
   )(
     decoder = json =>
       for
-        location <- json.obj.get("location").toRight(
-          ToolSchemaError.MissingRequiredField("location", "")
-        ).flatMap { v =>
-          v.strOpt.toRight(
-            ToolSchemaError.TypeMismatch("string", v, "location")
+        location <- json.obj
+          .get("location")
+          .toRight(
+            ToolSchemaError.MissingRequiredField("location", "")
           )
-        }
-        unit <- json.obj.get("unit").toRight(
-          ToolSchemaError.MissingRequiredField("unit", "")
-        ).flatMap { v =>
-          v.strOpt.toRight(
-            ToolSchemaError.TypeMismatch("string", v, "unit")
+          .flatMap { v =>
+            v.strOpt.toRight(
+              ToolSchemaError.TypeMismatch("string", v, "location")
+            )
+          }
+        unit <- json.obj
+          .get("unit")
+          .toRight(
+            ToolSchemaError.MissingRequiredField("unit", "")
           )
-        }
+          .flatMap { v =>
+            v.strOpt.toRight(
+              ToolSchemaError.TypeMismatch("string", v, "unit")
+            )
+          }
       yield WeatherRequest(location, unit),
     encoder = req => ujson.Obj("location" -> req.location, "unit" -> req.unit)
   )
@@ -109,9 +115,9 @@ class StructuredToolCallTest extends CatsEffectSuite:
     jsonSchema = ujson.Obj(
       "type" -> "object",
       "properties" -> ujson.Obj(
-        "location" -> ujson.Obj("type" -> "string"),
+        "location"    -> ujson.Obj("type" -> "string"),
         "temperature" -> ujson.Obj("type" -> "number"),
-        "unit" -> ujson.Obj("type" -> "string")
+        "unit"        -> ujson.Obj("type" -> "string")
       ),
       "required" -> ujson.Arr("location", "temperature", "unit")
     ),
@@ -119,51 +125,60 @@ class StructuredToolCallTest extends CatsEffectSuite:
   )(
     decoder = json =>
       for
-        location <- json.obj.get("location").toRight(
-          ToolSchemaError.MissingRequiredField("location", "")
-        ).flatMap { v =>
-          v.strOpt.toRight(
-            ToolSchemaError.TypeMismatch("string", v, "location")
+        location <- json.obj
+          .get("location")
+          .toRight(
+            ToolSchemaError.MissingRequiredField("location", "")
           )
-        }
-        temperature <- json.obj.get("temperature").toRight(
-          ToolSchemaError.MissingRequiredField("temperature", "")
-        ).flatMap { v =>
-          v.numOpt.toRight(
-            ToolSchemaError.TypeMismatch("number", v, "temperature")
+          .flatMap { v =>
+            v.strOpt.toRight(
+              ToolSchemaError.TypeMismatch("string", v, "location")
+            )
+          }
+        temperature <- json.obj
+          .get("temperature")
+          .toRight(
+            ToolSchemaError.MissingRequiredField("temperature", "")
           )
-        }
-        unit <- json.obj.get("unit").toRight(
-          ToolSchemaError.MissingRequiredField("unit", "")
-        ).flatMap { v =>
-          v.strOpt.toRight(
-            ToolSchemaError.TypeMismatch("string", v, "unit")
+          .flatMap { v =>
+            v.numOpt.toRight(
+              ToolSchemaError.TypeMismatch("number", v, "temperature")
+            )
+          }
+        unit <- json.obj
+          .get("unit")
+          .toRight(
+            ToolSchemaError.MissingRequiredField("unit", "")
           )
-        }
+          .flatMap { v =>
+            v.strOpt.toRight(
+              ToolSchemaError.TypeMismatch("string", v, "unit")
+            )
+          }
       yield WeatherResult(location, temperature, unit),
     encoder = res => ujson.Obj("location" -> res.location, "temperature" -> res.temperature, "unit" -> res.unit)
   )
 
   test("4.1 Decode valid arguments successfully") {
-    val json = ujson.Obj("location" -> "San Francisco", "unit" -> "celsius")
+    val json   = ujson.Obj("location" -> "San Francisco", "unit" -> "celsius")
     val result = summon[ToolSchema[WeatherRequest]].decoder(json)
     assert(result == Right(WeatherRequest("San Francisco", "celsius")))
   }
 
   test("4.1 Decode arguments with missing required field fails") {
-    val json = ujson.Obj("location" -> "San Francisco")
+    val json   = ujson.Obj("location" -> "San Francisco")
     val result = summon[ToolSchema[WeatherRequest]].decoder(json)
     assert(result.isLeft)
   }
 
   test("4.1 Decode arguments with invalid type fails") {
-    val json = ujson.Obj("location" -> "San Francisco", "unit" -> 123)
+    val json   = ujson.Obj("location" -> "San Francisco", "unit" -> 123)
     val result = summon[ToolSchema[WeatherRequest]].decoder(json)
     assert(result.isLeft)
     result match
       case Left(_: ToolSchemaError.TypeMismatch) => ()
-      case Left(other) => fail(s"Expected TypeMismatch error, got $other")
-      case Right(_) => fail("Expected TypeMismatch error")
+      case Left(other)                           => fail(s"Expected TypeMismatch error, got $other")
+      case Right(_)                              => fail("Expected TypeMismatch error")
   }
 
   test("4.2 Encode typed value to JSON") {
@@ -172,19 +187,19 @@ class StructuredToolCallTest extends CatsEffectSuite:
   }
 
   test("4.2 Decode valid result successfully") {
-    val json = ujson.Obj("location" -> "San Francisco", "temperature" -> 22.5, "unit" -> "celsius")
+    val json   = ujson.Obj("location" -> "San Francisco", "temperature" -> 22.5, "unit" -> "celsius")
     val result = summon[ToolSchema[WeatherResult]].decoder(json)
     assert(result == Right(WeatherResult("San Francisco", 22.5, "celsius")))
   }
 
   test("4.2 Decode result with invalid JSON fails") {
-    val json = ujson.Obj("location" -> "San Francisco", "temperature" -> "hot", "unit" -> "celsius")
+    val json   = ujson.Obj("location" -> "San Francisco", "temperature" -> "hot", "unit" -> "celsius")
     val result = summon[ToolSchema[WeatherResult]].decoder(json)
     assert(result.isLeft)
     result match
       case Left(_: ToolSchemaError.TypeMismatch) => ()
-      case Left(other) => fail(s"Expected TypeMismatch error, got $other")
-      case Right(_) => fail("Expected TypeMismatch error")
+      case Left(other)                           => fail(s"Expected TypeMismatch error, got $other")
+      case Right(_)                              => fail("Expected TypeMismatch error")
   }
 
   test("3.2 Create StructuredToolFunction") {
@@ -249,7 +264,7 @@ class StructuredToolCallTest extends CatsEffectSuite:
     assertEquals(wrapper.description, "Get weather for location")
 
     val validArgs = ujson.Obj("location" -> "Rome", "unit" -> "celsius")
-    val result = wrapper.execute(validArgs)
+    val result    = wrapper.execute(validArgs)
     assert(result.isRight)
     result match
       case Right(json) =>
@@ -270,8 +285,8 @@ class StructuredToolCallTest extends CatsEffectSuite:
       handler = req => WeatherResult(req.location, 22.5, req.unit)
     )
 
-    val wrapper = structuredFunc.toToolWrapper
+    val wrapper     = structuredFunc.toToolWrapper
     val invalidArgs = ujson.Obj("location" -> "Rome") // missing "unit"
-    val result = wrapper.execute(invalidArgs)
+    val result      = wrapper.execute(invalidArgs)
     assert(result.isLeft)
   }

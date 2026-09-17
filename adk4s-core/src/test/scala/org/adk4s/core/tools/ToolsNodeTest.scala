@@ -6,15 +6,14 @@ import munit.CatsEffectSuite
 import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.component.Tool
 import org.llm4s.llmconnect.model.ToolCall
-import ujson.{Num, Obj, Str, Value}
+import ujson.{ Num, Obj, Str, Value }
 
 class ToolsNodeTest extends CatsEffectSuite:
 
   test("executeTool runs ADK4S tool") {
-    val tool: InvokableTool[IO] = Tool.invokable[IO]("double", "Double tool", (args: Value) =>
-      Right(Num(args.obj("value").num * 2))
-    )
-    val node: ToolsNode = ToolsNode.fromAdkTools(List(tool))
+    val tool: InvokableTool[IO] =
+      Tool.invokable[IO]("double", "Double tool", (args: Value) => Right(Num(args.obj("value").num * 2)))
+    val node: ToolsNode  = ToolsNode.fromAdkTools(List(tool))
     val input: ToolInput = ToolInput("double", """{"value":5}""", "call_1")
 
     node.executeTool(input).map { (result: ToolOutput) =>
@@ -27,7 +26,7 @@ class ToolsNodeTest extends CatsEffectSuite:
 
   test("executeFromToolCalls converts and executes") {
     val tool: InvokableTool[IO] = Tool.invokable[IO]("echo", "Echo tool", (_: Value) => Right(Str("echo result")))
-    val node: ToolsNode = ToolsNode.fromAdkTools(List(tool))
+    val node: ToolsNode         = ToolsNode.fromAdkTools(List(tool))
 
     val calls: List[ToolCall] = List(
       ToolCall("call_1", "echo", Obj("value" -> Str("test")))
@@ -41,7 +40,7 @@ class ToolsNodeTest extends CatsEffectSuite:
   }
 
   test("unknown tool without handler returns error") {
-    val node: ToolsNode = ToolsNode.fromAdkTools(List.empty)
+    val node: ToolsNode  = ToolsNode.fromAdkTools(List.empty)
     val input: ToolInput = ToolInput("unknown", "{}", "call_1")
 
     node.executeTool(input).map { (result: ToolOutput) =>
@@ -56,7 +55,7 @@ class ToolsNodeTest extends CatsEffectSuite:
       .withUnknownHandler(handler)
       .build
 
-    val node: ToolsNode = ToolsNode(config)
+    val node: ToolsNode  = ToolsNode(config)
     val input: ToolInput = ToolInput("unknown", "{}", "call_1")
 
     node.executeTool(input).map { (result: ToolOutput) =>
@@ -66,11 +65,10 @@ class ToolsNodeTest extends CatsEffectSuite:
   }
 
   test("tool execution error is caught") {
-    val tool: InvokableTool[IO] = Tool.invokable[IO]("failing_tool", "Failing tool", (_: Value) =>
-      Left("execution failed")
-    )
+    val tool: InvokableTool[IO] =
+      Tool.invokable[IO]("failing_tool", "Failing tool", (_: Value) => Left("execution failed"))
 
-    val node: ToolsNode = ToolsNode.fromAdkTools(List(tool))
+    val node: ToolsNode  = ToolsNode.fromAdkTools(List(tool))
     val input: ToolInput = ToolInput("failing_tool", "{}", "call_1")
 
     node.executeTool(input).map { (result: ToolOutput) =>
@@ -81,11 +79,11 @@ class ToolsNodeTest extends CatsEffectSuite:
 
   test("argumentsHandler preprocesses arguments") {
     val tool: InvokableTool[IO] = Tool.invokable[IO]("test", "Test tool", (_: Value) => Right(Str("result")))
-    val input: ToolInput = ToolInput("test", """{"value":"original"}""", "call_1")
+    val input: ToolInput        = ToolInput("test", """{"value":"original"}""", "call_1")
 
     Ref.of[IO, Option[String]](None).flatMap { (processedArgsRef: Ref[IO, Option[String]]) =>
-      val argHandler: (String, String) => IO[String] = (_: String, args: String) =>
-        processedArgsRef.set(Some(args)).map((_: Unit) => """{"value":"processed"}""")
+      val argHandler: (String, String) => IO[String] =
+        (_: String, args: String) => processedArgsRef.set(Some(args)).map((_: Unit) => """{"value":"processed"}""")
 
       val config: ToolsNodeConfig = ToolsNodeConfig.builder
         .withAdkTool(tool)
@@ -104,12 +102,11 @@ class ToolsNodeTest extends CatsEffectSuite:
 
   test("middleware is applied") {
     val tool: InvokableTool[IO] = Tool.invokable[IO]("test", "Test tool", (_: Value) => Right(Str("result")))
-    val input: ToolInput = ToolInput("test", "{}", "call_1")
+    val input: ToolInput        = ToolInput("test", "{}", "call_1")
 
     Ref.of[IO, Boolean](false).flatMap { (loggedRef: Ref[IO, Boolean]) =>
-      val logMiddleware: ToolMiddleware = ToolMiddleware.logging((msg: String) =>
-        loggedRef.update((logged: Boolean) => logged || msg.contains("Tool call"))
-      )
+      val logMiddleware: ToolMiddleware = ToolMiddleware
+        .logging((msg: String) => loggedRef.update((logged: Boolean) => logged || msg.contains("Tool call")))
 
       val config: ToolsNodeConfig = ToolsNodeConfig.builder
         .withAdkTool(tool)
@@ -119,15 +116,14 @@ class ToolsNodeTest extends CatsEffectSuite:
       val node: ToolsNode = ToolsNode(config)
 
       node.executeTool(input).flatMap { (_: ToolOutput) =>
-        loggedRef.get.map { (logged: Boolean) =>
-          assert(logged, "Should have logged")
-        }
+        loggedRef.get.map((logged: Boolean) => assert(logged, "Should have logged"))
       }
     }
   }
 
   test("batch execution with some failures") {
-    val successTool: InvokableTool[IO] = Tool.invokable[IO]("success", "Success tool", (_: Value) => Right(Str("result")))
+    val successTool: InvokableTool[IO] =
+      Tool.invokable[IO]("success", "Success tool", (_: Value) => Right(Str("result")))
     val failTool: InvokableTool[IO] = Tool.invokable[IO]("fail", "Fail tool", (_: Value) => Left("failed"))
 
     val node: ToolsNode = ToolsNode.fromAdkTools(List(successTool, failTool))

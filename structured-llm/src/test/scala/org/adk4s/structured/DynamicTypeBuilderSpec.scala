@@ -21,7 +21,9 @@ class DynamicTypeBuilderSpec extends HedgehogSuite:
   property("buildSmithyIdl includes all field names") {
     val fieldNameGen: Gen[String] = Gen.string(Gen.char('a', 'z'), Range.linear(1, 10))
     val fieldsGen: Gen[Vector[FieldDef]] =
-      Gen.list(fieldNameGen, Range.linear(1, 5)).map(_.distinct.map(name => FieldDef(name, "String", required = true)).toVector)
+      Gen
+        .list(fieldNameGen, Range.linear(1, 5))
+        .map(_.distinct.map(name => FieldDef(name, "String", required = true)).toVector)
     fieldsGen.forAll.map { (fields: Vector[FieldDef]) =>
       val idl: String = buildSmithyIdl("TestStruct", fields)
       fields.forall(f => idl.contains(f.name)) ==== true
@@ -36,8 +38,8 @@ class DynamicTypeBuilderSpec extends HedgehogSuite:
     val boolGen: Gen[Boolean] = Gen.boolean
     boolGen.forAll.map { (required: Boolean) =>
       val fields: Vector[FieldDef] = Vector(FieldDef("testField", "String", required))
-      val idl: String = buildSmithyIdl("TestStruct", fields)
-      (idl.contains("@required") ==== required)
+      val idl: String              = buildSmithyIdl("TestStruct", fields)
+      idl.contains("@required") ==== required
     }
   }
 

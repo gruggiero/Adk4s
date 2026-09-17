@@ -22,7 +22,11 @@ class EmbedderSpec extends CatsEffectSuite:
     val result = embedder.embedBatch(List("text1", "text2", "text3")).unsafeRunSync()
 
     assertEquals(result.embeddings.length, 3, "Should embed 3 texts")
-    assertEquals(result.embeddings.headOption.getOrElse(fail("expected non-empty list")).length, 768, "First vector should have 768 dimensions")
+    assertEquals(
+      result.embeddings.headOption.getOrElse(fail("expected non-empty list")).length,
+      768,
+      "First vector should have 768 dimensions"
+    )
     assertEquals(result.embeddings(1).length, 768, "Second vector should have 768 dimensions")
     assertEquals(result.embeddings(2).length, 768, "Third vector should have 768 dimensions")
   }

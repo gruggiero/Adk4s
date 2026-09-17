@@ -1,8 +1,8 @@
 package org.adk4s.core.types.typecontract
 
 import munit.FunSuite
-import org.adk4s.core.types.{NodeKey, ReservedNodeKey, Positive, NonNegative, given}
-import io.github.iltotore.iron.{autoRefine, refineEither}
+import org.adk4s.core.types.{ NodeKey, ReservedNodeKey, Positive, NonNegative, given }
+import io.github.iltotore.iron.{ autoRefine, refineEither }
 import io.github.iltotore.iron.constraint.numeric
 
 // spec: add-iron-refined-types/core-types — Typed Contract (Step 1)
@@ -64,7 +64,7 @@ class NodeKeyTypeContract extends FunSuite:
     // This is a compile-time check: ReservedNodeKey and NodeKey are
     // distinct types. If this compiles, the types are correctly separate.
     val r: ReservedNodeKey = ReservedNodeKey.Start
-    val k: NodeKey = NodeKey("node")
+    val k: NodeKey         = NodeKey("node")
     assertEquals(r.value, "__start__")
     assertEquals(k.value, "node")
 
@@ -83,19 +83,19 @@ class NodeKeyTypeContract extends FunSuite:
     assertEquals(x, 10)
 
   test("Positive.refineEither rejects zero"):
-    val result = (0).refineEither[numeric.Positive]
+    val result = 0.refineEither[numeric.Positive]
     assert(result.isLeft, s"Expected Left for 0, got $result")
 
   test("Positive.refineEither rejects negative"):
-    val result = (-1).refineEither[numeric.Positive]
+    val result = -1.refineEither[numeric.Positive]
     assert(result.isLeft, s"Expected Left for -1, got $result")
 
   test("NonNegative.refineEither rejects negative"):
-    val result = (-1).refineEither[numeric.Positive0]
+    val result = -1.refineEither[numeric.Positive0]
     assert(result.isLeft, s"Expected Left for -1, got $result")
 
   test("NonNegative.refineEither accepts zero"):
-    val result = (0).refineEither[numeric.Positive0]
+    val result = 0.refineEither[numeric.Positive0]
     assert(result.isRight, s"Expected Right for 0, got $result")
 
   // ── Compile-negative obligations ───────────────────────────────

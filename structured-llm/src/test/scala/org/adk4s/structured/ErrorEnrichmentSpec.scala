@@ -20,7 +20,7 @@ class ErrorEnrichmentSpec extends HedgehogSuite:
     val msgGen: Gen[String] = Gen.string(Gen.char('a', 'z'), Range.linear(1, 20))
     msgGen.forAll.map { (msg: String) =>
       val underlying: StructuredLLMError = ParseFailed(List.empty, msg)
-      val enriched: StructuredLLMError = Enriched(underlying, Vector.empty)
+      val enriched: StructuredLLMError   = Enriched(underlying, Vector.empty)
       enriched.message.contains(msg) ==== true
     }
   }
@@ -47,7 +47,7 @@ class ErrorEnrichmentSpec extends HedgehogSuite:
 
   test("AttemptRecord holds all fields") {
     val error: StructuredLLMError = ParseFailed(List.empty, "test error")
-    val record: AttemptRecord = AttemptRecord("client-a", error, "raw json", 12345L)
+    val record: AttemptRecord     = AttemptRecord("client-a", error, "raw json", 12345L)
     assertEquals(record.client, "client-a")
     assertEquals(record.rawResponse, "raw json")
     assertEquals(record.timestamp, 12345L)
@@ -59,14 +59,14 @@ class ErrorEnrichmentSpec extends HedgehogSuite:
 
   test("Enriched error with multiple attempts lists all") {
     val dummyError: org.llm4s.error.LLMError = org.llm4s.error.UnknownError("test", new Exception("test"))
-    val dummyPrompt: Prompt = Prompt.empty
-    val underlying: StructuredLLMError = ParseFailed(List.empty, "final fail")
+    val dummyPrompt: Prompt                  = Prompt.empty
+    val underlying: StructuredLLMError       = ParseFailed(List.empty, "final fail")
     val attempts: Vector[AttemptRecord] = Vector(
       AttemptRecord("client-a", ParseFailed(List.empty, "err1"), "raw1", 1L),
       AttemptRecord("client-b", LLMCallFailed(dummyError, dummyPrompt), "raw2", 2L)
     )
     val enriched: StructuredLLMError = Enriched(underlying, attempts)
-    val msg: String = enriched.message
+    val msg: String                  = enriched.message
     assert(msg.contains("client-a"))
     assert(msg.contains("client-b"))
     assert(msg.contains("Attempt 1"))
