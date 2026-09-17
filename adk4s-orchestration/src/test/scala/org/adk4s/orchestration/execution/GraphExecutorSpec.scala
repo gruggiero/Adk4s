@@ -51,6 +51,28 @@ class GraphExecutorSpec extends CatsEffectSuite:
       ValidatedGraph.from(graph)
     assert(result.isLeft, "Expected Left for invalid graph")
 
+  // ── Parallel execution end-node type check ───────────────────────────────
+
+  private def singleNodeGraph[B](transform: String => B): Graph[String, String] =
+    Graph[String, String]
+      .addPureNode[String, B]("node", (s: String) => Right(transform(s)))
+      .andThen { addition =>
+        val forgedRef: Graph.NodeRef[String, String] = Graph.NodeRef[String, String](addition.ref.key)
+        addition.graph.setEntry(addition.ref).andThen(_.addEndNode(forgedRef))
+      }
+      .fold(errors => fail(s"Graph construction failed: $errors"), identity)
+
+  test("executeParallel returns a correctly typed end-node result"):
+    val graph: Graph[String, String] = singleNodeGraph[String](_.toUpperCase)
+    GraphExecutor.executeParallel(graph, "input").assertEquals("INPUT")
+
+  test("executeParallel rejects a wrong-typed end-node result with a type mismatch error"):
+    val graph: Graph[String, String] = singleNodeGraph[Int](_.length)
+    GraphExecutor.executeParallel(graph, "input").attempt.map {
+      case Left(err) => err.getMessage.startsWith("Type mismatch at end node")
+      case Right(_) => false
+    }.assert
+
   test("No commented-out throw blocks remain in GraphExecutor"):
     // spec: add-iron-refined-types/wio-graph — Scenario: No commented-out throw blocks remain
     val source: String = scala.io.Source.fromFile(

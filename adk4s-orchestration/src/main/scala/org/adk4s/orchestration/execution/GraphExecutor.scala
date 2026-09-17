@@ -7,6 +7,8 @@ import org.adk4s.core.types.NodeKey
 import org.adk4s.orchestration.fork.ForkSpec
 import org.adk4s.orchestration.graph.{GCtx, Graph, GraphConfig, GraphNode}
 
+import scala.reflect.Typeable
+
 /** GraphExecutor provides graph compilation and execution.
   *
   * spec: add-iron-refined-types/wio-graph — Requirement: GraphExecutor raises GraphCompilationError instead of generic Exception
@@ -125,8 +127,12 @@ object GraphExecutor:
           IO.raiseError(GenericError(s"Node ${currentNodeKey.value} has multiple outgoing edges - not supported in simple execution"))
     }
 
-  /** Execute a graph with parallel DAG execution. */
-  def executeParallel[In, Out](
+  /** Execute a graph with parallel DAG execution.
+    *
+    * Node results flow through an untyped map, so the end node's output is checked
+    * against `Out` at runtime via the `Typeable[Out]` evidence.
+    */
+  def executeParallel[In, Out: Typeable](
     graph: Graph[In, Out],
     input: In,
     config: GraphConfig = GraphConfig(),
@@ -138,7 +144,7 @@ object GraphExecutor:
     )
 
   /** Execute a graph with parallel DAG execution using Kahn's algorithm. */
-  private def executeGraphParallel[In, Out](
+  private def executeGraphParallel[In, Out: Typeable](
     graph: Graph[In, Out],
     input: In,
     config: GraphConfig,
@@ -204,7 +210,7 @@ object GraphExecutor:
           Right(layers)
 
   /** Execute DAG layers sequentially, nodes within layers in parallel. */
-  private def executeLayers[In, Out](
+  private def executeLayers[In, Out: Typeable](
     layers: List[List[NodeKey]],
     graph: Graph[In, Out],
     input: In,
@@ -249,9 +255,9 @@ object GraphExecutor:
             case None => IO.pure(Left("No end nodes"))
             case Some(endKey) => currentResults.get(endKey) match
               case Some(value) => 
-                value match
-                  case out: Out => IO.pure(Right(out))
-                  case _ => IO.raiseError(new Exception(s"Type mismatch at end node: ${value.getClass}"))
+                summon[Typeable[Out]].unapply(value) match
+                  case Some(out) => IO.pure(Right(out))
+                  case None => IO.raiseError(new Exception(s"Type mismatch at end node: ${value.getClass}"))
               case None => IO.pure(Left("End node not found in results"))
         case layer :: tail =>
           executeLayer(layer, currentResults).flatMap { newResults =>
