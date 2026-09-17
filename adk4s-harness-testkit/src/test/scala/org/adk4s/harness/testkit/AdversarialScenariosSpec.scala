@@ -35,6 +35,13 @@ import smithy4s.Document
  * scenario tests (not properties), driven by concrete examples from
  * the spec.
  *
+ * NOTE: `HedgehogSuite` extends `HedgehogAssertions` which overrides
+ * `assertEquals`/`assert`/`fail` to return `hedgehog.Result` instead of
+ * throwing. In `test(...)` blocks (non-property tests), these return values
+ * are silently discarded — the assertions do NOT fire. Scenario tests MUST
+ * use `withMunitAssertions { a => a.assert(...) }` to get real munit
+ * assertions that throw on failure.
+ *
  * spec: middleware-laws — adversarial scenarios
  */
 class AdversarialScenariosSpec extends HedgehogSuite:
@@ -42,59 +49,65 @@ class AdversarialScenariosSpec extends HedgehogSuite:
   // ── L4: non-default middleware is NOT neutral ───────────────────────────────
 
   test("L4-adversarial — non-default beforeAgent is NOT neutral"):
-    val owner: MiddlewareName      = MiddlewareName("adv")
-    val targetCell: StateCell[Int] = StateCell[Int](owner, "target", 0)
-    // A middleware with NO declared cells but a beforeAgent that writes to
-    // another middleware's cell — this violates the default-neutrality
-    // precondition.
-    val mw: AgentMiddleware[IO] = new AgentMiddleware[IO]:
-      val name: MiddlewareName = MiddlewareName("adv-mw")
-      override def beforeAgent(state: HarnessState): IO[HarnessState] =
-        IO.pure(state.set(targetCell)(42))
-    val state: HarnessState  = HarnessState.initial(List(targetCell))
-    val result: HarnessState = mw.beforeAgent(state).unsafeRunSync()
-    assert(result.get(targetCell) == 42)
-    assert(result.get(targetCell) != state.get(targetCell))
+    withMunitAssertions { a =>
+      val owner: MiddlewareName      = MiddlewareName("adv")
+      val targetCell: StateCell[Int] = StateCell[Int](owner, "target", 0)
+      // A middleware with NO declared cells but a beforeAgent that writes to
+      // another middleware's cell — this violates the default-neutrality
+      // precondition.
+      val mw: AgentMiddleware[IO] = new AgentMiddleware[IO]:
+        val name: MiddlewareName = MiddlewareName("adv-mw")
+        override def beforeAgent(state: HarnessState): IO[HarnessState] =
+          IO.pure(state.set(targetCell)(42))
+      val state: HarnessState  = HarnessState.initial(List(targetCell))
+      val result: HarnessState = mw.beforeAgent(state).unsafeRunSync()
+      a.assert(result.get(targetCell) == 42)
+      a.assert(result.get(targetCell) != state.get(targetCell))
+    }
 
   // ── L5: cross-cell write is detected ────────────────────────────────────────
 
   test("L5-adversarial — cross-cell write is detected"):
-    val owner: MiddlewareName = MiddlewareName("adv")
-    val cellZ: StateCell[Int] = StateCell[Int](owner, "z", 0)
-    // A middleware with NO declared cells but a beforeAgent that writes to
-    // cell `z` it does not declare — the frame rule is VIOLATED.
-    val mw: AgentMiddleware[IO] = new AgentMiddleware[IO]:
-      val name: MiddlewareName = MiddlewareName("adv-mw")
-      override def beforeAgent(state: HarnessState): IO[HarnessState] =
-        IO.pure(state.set(cellZ)(99))
-    val state: HarnessState  = HarnessState.initial(List(cellZ)).set(cellZ)(5)
-    val result: HarnessState = mw.beforeAgent(state).unsafeRunSync()
-    // The cross-cell write happened — the frame rule is violated.
-    assert(result.get(cellZ) == 99)
-    assert(result.get(cellZ) != state.get(cellZ))
+    withMunitAssertions { a =>
+      val owner: MiddlewareName = MiddlewareName("adv")
+      val cellZ: StateCell[Int] = StateCell[Int](owner, "z", 0)
+      // A middleware with NO declared cells but a beforeAgent that writes to
+      // cell `z` it does not declare — the frame rule is VIOLATED.
+      val mw: AgentMiddleware[IO] = new AgentMiddleware[IO]:
+        val name: MiddlewareName = MiddlewareName("adv-mw")
+        override def beforeAgent(state: HarnessState): IO[HarnessState] =
+          IO.pure(state.set(cellZ)(99))
+      val state: HarnessState  = HarnessState.initial(List(cellZ)).set(cellZ)(5)
+      val result: HarnessState = mw.beforeAgent(state).unsafeRunSync()
+      // The cross-cell write happened — the frame rule is violated.
+      a.assert(result.get(cellZ) == 99)
+      a.assert(result.get(cellZ) != state.get(cellZ))
+    }
 
   // ── L6: overlapping cells do NOT commute ────────────────────────────────────
 
   test("L6-adversarial — overlapping cells break commutativity"):
-    val owner: MiddlewareName = MiddlewareName("adv")
-    val cellA: StateCell[Int] = StateCell[Int](owner, "a", 0)
-    val m1: AgentMiddleware[IO] = new AgentMiddleware[IO]:
-      val name: MiddlewareName                    = MiddlewareName("m1")
-      override val stateCells: List[StateCell[?]] = List(cellA)
-      override def beforeAgent(state: HarnessState): IO[HarnessState] =
-        IO.pure(state.set(cellA)(1))
-    val m2: AgentMiddleware[IO] = new AgentMiddleware[IO]:
-      val name: MiddlewareName                    = MiddlewareName("m2")
-      override val stateCells: List[StateCell[?]] = List(cellA)
-      override def beforeAgent(state: HarnessState): IO[HarnessState] =
-        IO.pure(state.set(cellA)(2))
-    val state: HarnessState = HarnessState.initial(List(cellA))
-    val r1: HarnessState    = m1.beforeAgent(m2.beforeAgent(state).unsafeRunSync()).unsafeRunSync()
-    val r2: HarnessState    = m2.beforeAgent(m1.beforeAgent(state).unsafeRunSync()).unsafeRunSync()
-    // m1 then m2 → a=2; m2 then m1 → a=1 — overlapping cells are NOT commutative.
-    assert(r1.get(cellA) == 2)
-    assert(r2.get(cellA) == 1)
-    assert(r1.get(cellA) != r2.get(cellA))
+    withMunitAssertions { a =>
+      val owner: MiddlewareName = MiddlewareName("adv")
+      val cellA: StateCell[Int] = StateCell[Int](owner, "a", 0)
+      val m1: AgentMiddleware[IO] = new AgentMiddleware[IO]:
+        val name: MiddlewareName                    = MiddlewareName("m1")
+        override val stateCells: List[StateCell[?]] = List(cellA)
+        override def beforeAgent(state: HarnessState): IO[HarnessState] =
+          IO.pure(state.set(cellA)(1))
+      val m2: AgentMiddleware[IO] = new AgentMiddleware[IO]:
+        val name: MiddlewareName                    = MiddlewareName("m2")
+        override val stateCells: List[StateCell[?]] = List(cellA)
+        override def beforeAgent(state: HarnessState): IO[HarnessState] =
+          IO.pure(state.set(cellA)(2))
+      val state: HarnessState = HarnessState.initial(List(cellA))
+      val r1: HarnessState    = m1.beforeAgent(m2.beforeAgent(state).unsafeRunSync()).unsafeRunSync()
+      val r2: HarnessState    = m2.beforeAgent(m1.beforeAgent(state).unsafeRunSync()).unsafeRunSync()
+      // m1 then m2 → a=1; m2 then m1 → a=2 — overlapping cells are NOT commutative.
+      a.assert(r1.get(cellA) == 1)
+      a.assert(r2.get(cellA) == 2)
+      a.assert(r1.get(cellA) != r2.get(cellA))
+    }
 
   // ── L6: request rewriters do NOT commute ────────────────────────────────────
 
@@ -124,11 +137,12 @@ class AdversarialScenariosSpec extends HedgehogSuite:
         r21   <- ref21.get
       yield (r12, r21)
     val (r12, r21): (Option[String], Option[String]) = program.unsafeRunSync()
-    // [m1, m2] → m1 wraps outermost → m2's prefix applied first → "ABbase"
-    // [m2, m1] → m2 wraps outermost → m1's prefix applied first → "BAbase"
-    assert(r12.contains("ABbase"))
-    assert(r21.contains("BAbase"))
-    assert(r12 != r21)
+    // m1 wraps outermost → m1's prefix "A" is prepended first, then m2's "B".
+    withMunitAssertions { a =>
+      a.assertEquals(r12, Some("BAbase"))
+      a.assertEquals(r21, Some("ABbase"))
+      a.assert(r12 != r21)
+    }
 
   // ── L8: corrupted cell value is a hard error ────────────────────────────────
 
@@ -140,7 +154,7 @@ class AdversarialScenariosSpec extends HedgehogSuite:
       Document.DObject(Map("adv/x" -> Document.DString("not-an-int")))
     val result: Either[StateDecodeError, HarnessState] =
       HarnessState.restore(List(intCell), corruptedSnapshot)
-    assert(result.isLeft)
+    withMunitAssertions(_.assert(result.isLeft))
 
   // ── L9: child writes to Private cell are unobservable ───────────────────────
 
@@ -153,7 +167,7 @@ class AdversarialScenariosSpec extends HedgehogSuite:
     val child: HarnessState  = HarnessState.initial(List(privateCell)).set(privateCell)(999)
     val merged: HarnessState = HarnessState.mergeBack(parent, List(child), List(privateCell))
     // The parent's Private value is untouched.
-    assert(merged.get(privateCell) == 99)
+    withMunitAssertions(_.assert(merged.get(privateCell) == 99))
 
   // ── L10: non-idempotent merge breaks neutrality ─────────────────────────────
 
@@ -167,8 +181,10 @@ class AdversarialScenariosSpec extends HedgehogSuite:
     val child: HarnessState  = HarnessState.project(parent, List(cellS))
     val merged: HarnessState = HarnessState.mergeBack(parent, List(child), List(cellS))
     // merge(5, 5) = 10 — the parent is NOT unchanged.
-    assert(merged.get(cellS) == 10)
-    assert(merged.get(cellS) != parent.get(cellS))
+    withMunitAssertions { a =>
+      a.assert(merged.get(cellS) == 10)
+      a.assert(merged.get(cellS) != parent.get(cellS))
+    }
 
   // ── L11: non-commutative merge fails the semilattice laws ───────────────────
 
@@ -188,9 +204,11 @@ class AdversarialScenariosSpec extends HedgehogSuite:
     val ab: List[Int] = cellL.merge(a, b)
     val ba: List[Int] = cellL.merge(b, a)
     // merge(a, b) == List(1, 2) but merge(b, a) == List(2, 1) — NOT commutative.
-    assert(ab == List(1, 2))
-    assert(ba == List(2, 1))
-    assert(ab != ba)
+    withMunitAssertions { a =>
+      a.assert(ab == List(1, 2))
+      a.assert(ba == List(2, 1))
+      a.assert(ab != ba)
+    }
 
   // ── L0: interrupt equivalence under TestControl (deterministic concurrency) ──
 
@@ -223,7 +241,7 @@ class AdversarialScenariosSpec extends HedgehogSuite:
     // TestControl ensures deterministic execution — no real time, no async race.
     val result: (Observation, Observation) =
       TestControl.executeEmbed(program).unsafeRunSync()
-    assert(result._1.eqStrict(result._2))
+    withMunitAssertions(_.assert(result._1.eqStrict(result._2)))
 
   // ── L11: mergeBack order-independence under TestControl ─────────────────────
 
@@ -254,6 +272,8 @@ class AdversarialScenariosSpec extends HedgehogSuite:
       )
     val result: (HarnessState, HarnessState) =
       TestControl.executeEmbed(program).unsafeRunSync()
-    assert(result._1.get(cellS) == Set(0, 1, 2, 3))
-    assert(result._2.get(cellS) == Set(0, 1, 2, 3))
-    assert(result._1.get(cellS) == result._2.get(cellS))
+    withMunitAssertions { a =>
+      a.assert(result._1.get(cellS) == Set(0, 1, 2, 3))
+      a.assert(result._2.get(cellS) == Set(0, 1, 2, 3))
+      a.assert(result._1.get(cellS) == result._2.get(cellS))
+    }

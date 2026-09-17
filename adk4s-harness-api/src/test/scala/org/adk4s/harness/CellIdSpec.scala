@@ -2,6 +2,14 @@ package org.adk4s.harness
 
 // spec: add-iron-refined-types/harness-state — Test oracle (Step 2)
 // Hedgehog properties and scenario tests for StateCell.CellId.
+//
+// NOTE: `HedgehogSuite` extends `HedgehogAssertions` which overrides
+// `assertEquals`/`assert`/`fail` to return `hedgehog.Result` instead of
+// throwing. In `test(...)` blocks (non-property tests), these return values
+// are silently discarded — the assertions do NOT fire. Scenario tests MUST
+// use `withMunitAssertions { a => a.assertEquals(...) }` to get real munit
+// assertions that throw on failure. Hedgehog `property(...)` blocks use
+// `====` which returns a `Result` checked by the property harness.
 
 import hedgehog.Gen
 import hedgehog.Range
@@ -17,40 +25,52 @@ class CellIdSpec extends HedgehogSuite:
   // spec: add-iron-refined-types/harness-state — Scenario: Well-formed owner/name compiles
 
   test("well-formed owner/name literal compiles and .value returns the string"):
-    val id: StateCell.CellId  = StateCell.CellId("counter/n")
-    val underlying: String    = id.value
-    assertEquals(underlying, "counter/n")
+    withMunitAssertions { a =>
+      val id: StateCell.CellId = StateCell.CellId("counter/n")
+      val underlying: String   = id.value
+      a.assertEquals(underlying, "counter/n")
+    }
 
   // ── Scenario: Empty string is rejected at runtime ────────────────────
   // spec: add-iron-refined-types/harness-state — Scenario: Empty string is rejected at runtime
 
   test("refineEither rejects empty string with ConfigError"):
-    val result: Either[ConfigError, StateCell.CellId] = StateCell.CellId.refineEither("")
-    assert(result.isLeft, s"Expected Left for empty string, got $result")
+    withMunitAssertions { a =>
+      val result: Either[ConfigError, StateCell.CellId] = StateCell.CellId.refineEither("")
+      a.assert(result.isLeft, s"Expected Left for empty string, got $result")
+    }
 
   // ── Scenario: Missing name segment is rejected ───────────────────────
   // spec: add-iron-refined-types/harness-state — Scenario: Missing name segment is rejected
 
   test("refineEither rejects missing name segment (counter/)"):
-    val result: Either[ConfigError, StateCell.CellId] = StateCell.CellId.refineEither("counter/")
-    assert(result.isLeft, s"Expected Left for 'counter/', got $result")
+    withMunitAssertions { a =>
+      val result: Either[ConfigError, StateCell.CellId] = StateCell.CellId.refineEither("counter/")
+      a.assert(result.isLeft, s"Expected Left for 'counter/', got $result")
+    }
 
   test("refineEither rejects missing owner segment (/n)"):
-    val result: Either[ConfigError, StateCell.CellId] = StateCell.CellId.refineEither("/n")
-    assert(result.isLeft, s"Expected Left for '/n', got $result")
+    withMunitAssertions { a =>
+      val result: Either[ConfigError, StateCell.CellId] = StateCell.CellId.refineEither("/n")
+      a.assert(result.isLeft, s"Expected Left for '/n', got $result")
+    }
 
   test("refineEither rejects no slash"):
-    val result: Either[ConfigError, StateCell.CellId] = StateCell.CellId.refineEither("noslash")
-    assert(result.isLeft, s"Expected Left for 'noslash', got $result")
+    withMunitAssertions { a =>
+      val result: Either[ConfigError, StateCell.CellId] = StateCell.CellId.refineEither("noslash")
+      a.assert(result.isLeft, s"Expected Left for 'noslash', got $result")
+    }
 
   // ── Scenario: CellId.apply constructs a valid id from owner and name ──
   // spec: add-iron-refined-types/harness-state — Scenario: CellId.apply constructs a valid id from owner and name
 
   test("CellId.apply(owner, name) constructs a valid id"):
-    val owner: MiddlewareName = MiddlewareName("counter")
-    val id: StateCell.CellId  = StateCell.CellId(owner, "n")
-    val underlying: String    = id.value
-    assertEquals(underlying, "counter/n")
+    withMunitAssertions { a =>
+      val owner: MiddlewareName = MiddlewareName("counter")
+      val id: StateCell.CellId  = StateCell.CellId(owner, "n")
+      val underlying: String    = id.value
+      a.assertEquals(underlying, "counter/n")
+    }
 
   // ── Property: CellId refineEither round-trips for well-formed inputs
   // spec: add-iron-refined-types/harness-state — Property: CellId refineEither round-trips
