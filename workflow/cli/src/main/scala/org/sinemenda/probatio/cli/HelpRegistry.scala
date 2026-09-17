@@ -94,7 +94,11 @@ object HelpRegistry:
   private val reconcileHelp: HelpOutput = HelpOutput(
     Subcommand.Reconcile,
     List(
-      FlagHelp("--change", "change name", "required")
+      FlagHelp("--file", "ledger file", "required"),
+      FlagHelp("--change", "change name", "required"),
+      FlagHelp("--spec", "spec name", "none"),
+      FlagHelp("--baseline", "baseline SHA", "none"),
+      FlagHelp("--format", "json|text", "none")
     ),
     HelpOutput.threeWayExit
   )
@@ -102,8 +106,8 @@ object HelpRegistry:
   private val dangerScanHelp: HelpOutput = HelpOutput(
     Subcommand.DangerScan,
     List(
-      FlagHelp("--baseline", "baseline SHA", "required"),
-      FlagHelp("--also", "additional file patterns to scan", "none")
+      FlagHelp("<baseline>", "baseline ref (positional; default HEAD)", "none"),
+      FlagHelp("--also", "additional files to scan (all remaining args)", "none")
     ),
     HelpOutput.threeWayExit
   )

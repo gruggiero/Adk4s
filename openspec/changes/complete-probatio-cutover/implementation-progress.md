@@ -1262,13 +1262,229 @@ plus in-place annotations on the reshaped rows (`SpecDocument` +`chainRows`,
 
 ## Spec 6: danger-reconcile-engines
 
-### Status: PENDING
+### Status: IN PROGRESS — Step 2 test oracle awaiting human review
+
+### Baseline
+- SHA: `a7b49cf` — clean tracked tree at Step 0 (untracked files
+  unrelated to this spec: `devin-cli-bug-report-20260824.md`,
+  `docs/implementation-plan/ring5-tutorial.html`,
+  `docs/openPoints/RING5-IMPLEMENTATION.md`, `docs/probatio-howto.md`).
+- Date: 2026-09-17
+
+### Step 0 — Baseline + concept check
+- **Inventory snapshot**: `inventory-snapshots/danger-reconcile-engines-before.md`
+  (created at Step 0 — `Outcome`, `LedgerRecord`, `ValidatedRecord`,
+  `ProvenanceFields`, `Ring`, `Validator`, `ContractViolation`,
+  `SubcommandWiring`, `StdoutRenderer`, `CliError` all resolve in it).
+- **Concepts Used (from inventory)**: all resolve — `Outcome` in
+  `core/Outcome.scala`; `LedgerRecord`/`ValidatedRecord`/
+  `ProvenanceFields`/`Ledger`/`Validator`/`ContractViolation` in
+  `core/Ledger*.scala` + `core/Validator.scala`; `Ring` in
+  `core/Ring.scala`; `SubcommandWiring`/`StdoutRenderer`/`CliError` in
+  `workflow/cli/...`.
+- **Concepts Used (behavioral)**: `Schema` + `Strangler` — spec-lint
+  PASS on this spec's prose (check 16's note: the eight danger-pattern
+  classes are authoritative in the predecessor script, not repeated as
+  MUST-CONFIRM marks).
+- **Predecessor semantics read in full**:
+  - `danger-scan.sh.predecessor.bak`: `BASELINE="HEAD"` default;
+    `for arg` loop (`--also` switches the rest to files — even a second
+    `--also` is consumed as the flag); `git diff --name-only $BASELINE
+    -- '*.scala' | grep '/src/main/'` scope; `[ -f ]` existence guard
+    then `sort -u` dedupe; empty scope →
+    `danger-scan: no production .scala files changed since $BASELINE
+    (and no --also files).` exit 0; eight `scan` calls per file in
+    fixed pattern order emitting `  [$label] lineno:text`; justifying
+    `danger-scan:allow` lines excluded by `grep -v`; summary line +
+    the catch-all-is-never-justifiable footer; exit 0/1.
+  - `reconcile.sh.predecessor.bak`: strict flag parser (`--file
+    --change --spec --baseline --format`), `die_finding`/`die_undetermined`
+    messages verbatim; every row validated against
+    `ledger-record-contract.jq` before classifying; `$rows` filtered by
+    change (+ optional spec/baseline) BEFORE claims/witnesses derived;
+    judgment rings `["R2","R8","manual"]`; claims = green exit on a
+    deterministic ring with neither `digest` nor `source == "ambient"`;
+    witness match key = (spec, ring, baseline, command) — the comment
+    is explicit that command-matching is what makes the witness real;
+    verdicts testimony/witnessed/contradicted; `observed` = exits of
+    all ambient rows at the key; compact `jq -c` JSON or the
+    `reconcile: <change> — N row(s), …` text block; exit 1 iff
+    testimony or contradicted non-empty.
+- **Current stub defects confirmed**: `ReconcileCmd` and
+  `DangerScanCmd` return `Outcome.Ran(0)` unconditionally;
+  `DangerScanCmd` additionally requires `--baseline` — rejecting the
+  bare positional invocation the predecessor and the spec accept.
+- **Proof Obligations table**: 22 rows; every requirement, scenario,
+  property, compile-negative, and contract named by exact title; the
+  Ring-3 parity row names `ambient-capture-wiring.bats` +
+  `discharge-fidelity.bats` under the differential harness; the Ring-6
+  row names `ReconcileKernel.scala` + `ReconcileBridgeSpec.scala`; the
+  stryker4s.conf retarget obligation is explicit (`break = 0`).
+- **Purity boundary**: both engines take already-read data and return
+  pure values; `ChangedFilesReader` (cli) owns `git` subprocess +
+  file reads; `SubcommandWiring.readLedgerFile` + `Ledger.readValidated`
+  own ledger I/O.
+- **MUST-CONFIRM**: none outstanding.
+
+### Step 1 — Typed contract (compiled 2026-09-17; APPROVED 2026-09-17)
+
+Compiled under the real module classpaths —
+`sbt "probatio-core/Test/compile" "probatio-cli/Test/compile"
+"probatio-verified/compile"` → success, `-Werror` clean. Contract
+suites green: `DangerReconcileTypeContract` 5/5,
+`DangerScanEngineSpec` 6/6, `ReconcileEngineSpec` 4/4,
+`DangerReconcileCliTypeContract` 5/5.
+
+**New/changed type surface**:
+
+| Type | Shape |
+|------|-------|
+| `core/DangerScanEngine.scala` (new) | `enum DangerPattern` — 8 cases (`UnsafeGet, UnsafeHead, CatchAll, Cast, Blocking, Swallowed, UnreachableClaim, LintOff`) + `label` returning the predecessor's report token; `DangerHit(file, line, pattern, text, justified)`; `DangerReport` — private ctor + sealed `copy`, only construction route `DangerReport.of(occurrences)` partitioning on `justified`, `hitCount = hits.length`; `DangerScanEngine.ScannedFile(path, lines)`; `scanLine(path, lineNo, line): List[DangerHit]` and `scan(files): DangerReport` — `???` bodies pending Step 3 |
+| `core/ReconcileEngine.scala` (new) | `enum Corroboration` — `SelfObserved`, `Witnessed(observer, others)`, `Testimony`, `Contradicted(observer, others)`, `Exempt`; `verdictToken` mapping to the predecessor's tokens; `ClaimVerdict(spec, ring, obligation, command, baseline, verdict, observed)`; `ReconcileReport` — private ctor + sealed `copy`, `of(change, classifications)`, every view (`rows`/`witnesses`/`claims`/`witnessed`/`testimony`/`contradicted`/`hasFindings`) derived from `classifications` — no discharge verdict field exists; `ReconcileEngine.Classified(record, corroboration)`; `judgmentRings = Set(R2, R8, Manual)`; `classify(records, change, spec, baseline): ReconcileReport` — `???` body pending Step 3 |
+| `verified/.../ReconcileKernel.scala` (new) | `corroborationFold(records: List[(BigInt, BigInt, BigInt)]): List[BigInt]` with `require`/`ensuring` per the spec contract; kind codes `WRITTEN/SELF_OBSERVED/OBSERVED` ∈ [0,2], class codes `CLS_*` ∈ [0,4]; `???` body pending Ring 6 |
+| `cli/ChangedFilesReader.scala` (new) | `resolveBaseline(repo, ref): Either[String, String]`; `changedProductionFiles(repo, baseline): Either[String, List[String]]` (`/src/main/` filter); `readFiles(repo, paths): List[ScannedFile]` (skips unreadable, `[ -f ]` parity) — `???` bodies pending Step 3 |
+| `cli/SubcommandEntrypoints.scala` | `DangerScanCmd` — new `parseArgs` (positional baseline default HEAD, `--also` tail, `-`-led tokens rejected naming the token) + `run(args, cwd)` overload; `ReconcileCmd` — strict 5-flag parse (`--file --change --spec --baseline --format`), predecessor `die_finding`/`die_undetermined` message parity, `readLedgerFile` + `Ledger.readValidated` + `classify` + render + three-way exit |
+| `cli/StdoutRenderer.scala` | `given StdoutRenderer[ReconcileReport]` (text summary + contradicted/testimony blocks) + `reconcileJson(report)` (compact `jq -c` shape) |
+| `cli/HelpRegistry.scala` | `reconcileHelp` gains the five flags; `dangerScanHelp` shows the positional baseline + `--also` tail |
+
+**Pinned decisions for review**:
+
+1. `Corroboration.Witnessed`/`Contradicted` carry the observing
+   `ValidatedRecord`(s) — a witness verdict without a witness is
+   unconstructible (compile-negative pinned).
+2. `DangerReport`/`ReconcileReport` have private constructors and
+   sealed `copy` — summary-vs-contents disagreement is unrepresentable,
+   matching the spec-5 report pattern.
+3. Witness matching key is (spec, ring, baseline, command) — `change`
+   is the outer filter, per the predecessor's explicit comment; the
+   spec's property pseudocode says "same change, spec, ring, baseline"
+   and the bats suite pins command-matching.
+4. `ReconcileReport` carries no discharge verdict; `discharged` and
+   `Corroboration.Discharged` are pinned as not compiling.
+5. `--also` semantics: everything after the first `--also` is a file —
+   a second `--also` is consumed as the flag again (predecessor-exact).
+6. Spec divergence recorded: a `-`-led token before `--also` is
+   rejected naming it (the predecessor would have taken it as the
+   baseline and reported an empty scope when the diff failed).
+7. `ReconcileReport.witnessed` is a `List[ClaimVerdict]` (matching the
+   spec's property pseudocode `reconcile(rs).witnessed.forall`); the
+   predecessor's JSON `witnessed` count is `witnessed.length` at render.
+8. Empty scope is decided on EXISTING files only — `readFiles` skips
+   non-existent `--also` paths like the predecessor's `[ -f ]` guard,
+   so an all-missing scope reports "no production files changed".
+
+**Compile-negative tests** (in `DangerScanEngineSpec` /
+`ReconcileEngineSpec`): raw `DangerReport(Nil, 5)` and `copy` reopen;
+`DangerPattern.NinthCase`; `Corroboration.Witnessed` bare;
+`report.discharged` + `Corroboration.Discharged`; `scan(Path)` /
+`classify(Path, ...)`; no-I/O source scans on both engine files.
+Exhaustiveness pinning convention followed: the ninth-case pin
+substitutes for a `compileErrors` on a non-exhaustive match (warnings
+do not escalate inside `compileErrors`; `-Wconf` does the match-level
+enforcement at production compile time).
+
+Human gate: APPROVED 2026-09-17 ("approved, continue").
+
+### Step 2 — Test oracle (compiled 2026-09-17; awaiting human review)
+
+Framework: munit + Hedgehog via `ProbatioSuite`/`ProbatioCliSuite`
+(detected per `openspec/capability-profile.md`); generators are
+constructive — every coverage label is guaranteed by construction, not
+filtered.
+
+**Oracle artifacts**:
+
+| File | Contents |
+|------|----------|
+| `core/.../ReconcileFixtures.scala` (new) | `ClaimKey` = (spec, ring, baseline, command); `RecKind` = Written/DigestRow/AmbientRow; `genRecordSet` — 1–4 claims at weighted verdict targets (40/35/25 testimony/witnessed/contradicted) + exempt/self-observed padding; testimony claims optionally emit a perturbed-key ambient row (the wrong-key-observer cover case) |
+| `core/.../ReconcileEngineSpec.scala` (extended) | 12 scenario tests (self-observed, ambient self-corroborates, witnessed carries the observer record, command/baseline key-mismatch, testimony, contradicted carries observers, judgment-ring exemption, failing-run exemption, change/spec scope filters) + 3 properties (`corroboration-is-total-and-exclusive`, `witness-requires-key-agreement`, `no-discharge-verdict-in-output`) with 8 coverage labels |
+| `core/.../DangerScanEngineSpec.scala` (extended) | 9 scenario/pinpoint tests (one trigger per pattern class, clean-line negative controls incl. `m.get("key")`/`xs.headOption`/`case Left(e)`, justification excludes + counts, case-insensitive unreachable-claim, `/src/main/` scope predicate incl. the repo-root `src/main/…` leading-slash quirk) + `justification-excludes-exactly-its-own-occurrence` property over `genDangerFixturePair` (constructive: ≥2 hits on distinct lines, one gains an allow-comment; target position derived arithmetically from the distribution rule) |
+| `core/.../DangerScanParitySpec.scala` (new) | `danger-parity-with-predecessor` — model-based: `genDangerFixture` materialises a git repo per sample (empty baseline commit, changed `.scala` files under `/src/main/`/`/src/test/`, optional `--also` files; `git add -A` makes new files visible to `git diff HEAD`), runs `bash danger-scan.sh.predecessor.bak` as the model and `DangerScanEngine.scan` over the reader-equivalent enumeration as the port, asserts (file, line, label) triple sets equal; 11 coverage labels (all 8 pattern classes, justified, test-path-only, no-changes) |
+| `core/.../ReconcileBridgeSpec.scala` (new) | `bridge-corroborationFold` — encodes records as `(keyIndex, outcomeCode, kind)` (key collapsed to index; exit collapsed to zero/nonzero; judgment-ring/failing written rows encode WRITTEN+nonzero per the kernel doc), asserts `ReconcileEngine.classify` codes equal `ReconcileKernel.corroborationFold` output per record; 5 coverage labels |
+| `cli/.../DangerScanCmdSpec.scala` (new) | 8 tests: parseArgs pins (positional baseline default HEAD, `--also` tail, second `--also` consumed as flag), unknown-token rejection naming it, clean-scope exit 0 + stated scope, unresolvable baseline undetermined, unjustified hit finding with `[label] line:` shape, justified-clean + `--also` naming a test-path file, nonexistent `--also` skipped |
+| `cli/.../ReconcileCmdSpec.scala` (new) | 12 tests: unknown-flag/required-flag/format rejection, nonexistent/empty/malformed ledger undetermined, testimony finding + block text, witnessed exit 0 + count, contradicted + `claimed 0, observed 1`, `--spec` narrowing, no-discharge in both renderings, JSON shape with `witnessed` as a count |
+
+**Contract addition during oracle design** (flagged for the gate):
+`DangerScanEngine.isProductionPath` — the `/src/main/` scope predicate.
+The parity property needs the scope decision inside the pure engine;
+leaving it in the reader's subprocess code would have made the spec's
+scope invariant untestable at the level the obligation table maps it.
+
+**ORACLE POLARITY** (run 2026-09-17):
+
+| Suite | Total | RED (NotImplementedError at `???`) | GREEN-BY-DESIGN |
+|-------|-------|------------------------------------|------------------|
+| `DangerScanEngineSpec` | 25 | 19 | 6 (Step-1 compile-negative + signature pins) |
+| `DangerScanParitySpec` | 1 | 1 | 0 |
+| `ReconcileEngineSpec` | 18 | 14 | 4 (Step-1 pins) |
+| `ReconcileBridgeSpec` | 1 | 1 | 0 |
+| `DangerScanCmdSpec` | 8 | 5 | 3 (parseArgs pins — parser implemented at Step 1) |
+| `ReconcileCmdSpec` | 12 | 6 | 6 (strict-parse + `readLedgerFile` paths — already real) |
+| **Total** | **65** | **46** | **19** |
+
+Every RED test fails with `scala.NotImplementedError` at a named `???`
+site — none fails for a second reason. Every GREEN-BY-DESIGN test
+exercises an already-real surface: the Step-1 contract pins, the
+implemented arg parsers, or the ledger reader's own error paths (the
+malformed/empty/missing-ledger undetermined paths never reach
+`classify`). No unclassified tests.
+
+Fixture fix during polarity: ledger-row baselines must satisfy the
+record contract's clause 11 (lowercase hex, 7–40 chars) — initial `b1`
+fixtures were rejected by `validateFull` before `classify` ran; fixed to
+`b1b1b1b`-shaped values so RED means `???`, not a contract violation.
+
+Human gate: APPROVED 2026-09-17 ("approved, continue").
+
+### Step 3 — Implementation (2026-09-17)
+
+| Body | Implementation |
+|------|----------------|
+| `DangerScanEngine.isProductionPath` | `path.contains("/src/main/")` — the predecessor's `grep '/src/main/'` verbatim |
+| `DangerScanEngine.scanLine` | `patternsInOrder.flatMap` — the eight predecessor EREs (ERE→Java: `[[:space:]]`→`\s`, `-i`→`(?i)`), one hit per (line, pattern), `justified` = line contains `danger-scan:allow` |
+| `DangerScanEngine.scan` | flatMap over files/lines → `DangerReport.of` (partition on `justified`) |
+| `ReconcileEngine.classify` | scope filter (change + optional spec/baseline) before claims/witnesses; digest/ambient → `SelfObserved`; judgment-ring or exit≠0 → `Exempt`; else ambient-at-key: none → `Testimony`, first exit-0 → `Witnessed(witness, atKey)`, all-nonzero → `Contradicted(first, others)` |
+| `ChangedFilesReader` | `resolveBaseline` = `git rev-parse --verify <ref>^{commit}` (spec divergence: unresolvable → `Left`, not the predecessor's silent empty diff); `changedProductionFiles` = `git diff --name-only <b> -- '*.scala'` + `isProductionPath`; `readFiles` = `[ -f ]`+readable guard then read |
+| `ReconcileKernel.corroborationFold` | `records.map` per record: non-WRITTEN → SELF_OBSERVED; out≠0 → EXEMPT; no OBSERVED at key → TESTIMONY; OBSERVED at key+out → WITNESSED; else CONTRADICTED |
+
+**Contract refinement during implementation** (flagged):
+`Corroboration.Witnessed(observer, others)` → `Witnessed(observer,
+observers)` — `observers` is the FULL ambient-at-key set in ledger
+order. The predecessor's `observed` is `$w | map(.exit)` in ledger
+order; an observer-first list would reorder `observed` whenever a
+dissenting ambient row precedes the witness. `observer` remains the
+first exit-0 record (the witnessing record); `observers` is non-empty
+by construction (it contains `observer`).
+
+**Oracle result**: all 65 spec-6 tests GREEN on the first run —
+`DangerScanEngineSpec` 25/25, `DangerScanParitySpec` 1/1 (80 git-repo
+samples, 17.4s), `ReconcileEngineSpec` 18/18, `ReconcileBridgeSpec`
+1/1, `DangerScanCmdSpec` 8/8, `ReconcileCmdSpec` 12/12.
+
+#### Rings
+
+| Ring | Verdict | Evidence |
+|------|---------|----------|
+| Ring 0 — compile clean | PASS | `probatio-core`/`probatio-cli`/`probatio-verified` compile under `-Werror` + exhaustiveness escalation |
+| Ring 1 — WartRemover + Scalafix + scalafmt + danger-scan | PASS (changed files) | WartRemover clean at compile; scalafmt applied; `probatio-cli/scalafixAll --check` clean (probatio-core: 2 pre-existing `NoSystemGetenv` errors in untouched `GrantWaiver.scala`/`PredecessorCheck.scala`, same as specs 4–5); predecessor `danger-scan.sh` on the diff + `--also` new sources: OK — 14 `danger-scan:allow` sites, all audited in the Ring 8 report |
+| Ring 2 — dependencyLint | PASS | `probatio-core` + `probatio-cli`: R-ARCH1 classpath clean |
+| Ring 3 — suites + `probatioOracleDiff` | PASS | probatio-core 505/505 (4 ignored, pre-existing), probatio-cli 354/354; `probatioOracleDiff`: all 17 bats files, ported failures == predecessor failures, VERDICT: PROCEED — no file is worse |
+| Ring 8 — fresh-context adversarial review | PASS (4 PARTIALs found, all fixed) | Report at `ring8-danger-reconcile-engines.md`. Findings fixed: (1) `scan` emission was line-major vs the predecessor's pattern-major — regrouped per `patternsInOrder` + order-pin test; (2) missing `observer-at-wrong-key` cover label added; (3) parity property's tooling-unavailable path mapped `None → Result.success` — vacuous green; now `Either` + `Result.failure`; (4) `Witnessed(observer, observers)` coherence not enforced — restructured to `Witnessed(observer, preceding, following)`, the ambient set derived as `preceding ++ (observer :: following)` (type-level; contract pin updated to the 3-arg apply). Justification strengthening: `case _` on `Corroboration` → named cases; dead `Outcome.Finding` arm → honest passthrough. |
+| Ring 5 — Stryker4s | 100% covered-code score | `sbt probatio-core/stryker` retargeted to `DangerScanEngine.scala` + `ReconcileEngine.scala`: 81 mutants, 5 excluded, 15 static, 61 tested — first run 1 survived (`&&→||` on `sameKey`'s first conjunct — uncovered: ambient row matching ring/baseline/command but differing only in spec/ring) + 1 NoCoverage (`baseline.forall` lambda — never exercised without `baseline = Some`). Added 3 scenario tests (different-spec witness, different-ring witness, `--baseline` filter). Second run: **61/61 killed, 0 survived, 100.0%**. |
+| Ring 6 — Stainless | 345/345 VCs valid | `probatio-verified` with `stainlessEnabled`: 345 valid, 0 invalid, 0 unknown, nativez3. The spec's `forall`/`zip`/`exists` ensuring hung the solver (no per-VC timeout — docs/ring6-stainless-verification-experience.md §5); rewritten per §4: structural `validRecords` (require), `foldGo(all, records)` carrying the full observer set through the recursion, structural `postOk` (ensuring) — inductive postcondition, no monotonicity lemma needed. `ReconcileBridgeSpec` green against the verified model. |
+
+**Contract refinement during implementation** (flagged at the gate):
+`Corroboration.Witnessed` is now `(observer, preceding, following)` —
+supersedes the earlier `(observer, observers)` note: `preceding`/
+`following` preserve the predecessor's `$w` ledger order AND make
+"witnessed without a witness" unconstructible (Ring 8 finding 4).
 
 ### Step Progress
-- [ ] Step 1 — Typed contract (human gate)
-- [ ] Step 2 — Test oracle (human gate)
-- [ ] Step 3 — Implementation
-- [ ] Ring 0–6, 8 + concept-delta + checkpoint
+- [x] Step 0 — Baseline + concept check
+- [x] Step 1 — Typed contract (human gate) — APPROVED
+- [x] Step 2 — Test oracle (human gate) — APPROVED
+- [x] Step 3 — Implementation — all `???` bodies landed; 77/77 spec-6 tests green
+- [x] Ring 0–6, 8 + concept-delta — all recorded above; AWAITING CHECKPOINT REVIEW
 
 ---
 

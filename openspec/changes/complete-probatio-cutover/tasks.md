@@ -79,17 +79,17 @@
 
 ## 6. danger-reconcile-engines
 
-- [ ] Step 1 — typed contract: `DangerPattern` (8 cases), `DangerHit`, `DangerReport` with smart constructor, `Corroboration` (5 cases), `ReconcileReport`, `DangerScanEngine.scan`, `ReconcileEngine.classify`, `ChangedFilesReader` (compiles, human gate)
-- [ ] Step 2 — test oracle: 16 scenarios + 5 properties (`danger-parity-with-predecessor`, `justification-excludes-exactly-its-own-occurrence`, `corroboration-is-total-and-exclusive`, `witness-requires-key-agreement`, `no-discharge-verdict-in-output`) + 4 compile-negative stubs; ORACLE POLARITY run (human gate)
-- [ ] Step 3 — implementation: the eight pattern classes with same-line justification handling; production-only scope with caller-named additions; the corroboration classifier; both entrypoints gain the predecessor's invocation surfaces (positional baseline with working-tree default; the full reconcile parameter set)
-- [ ] Ring 0 — clean; both new enums exhaustiveness-escalated
-- [ ] Ring 1 — lint clean; **from this point the dangerous-pattern scan may run through the ported tool** — run it both ways once and record that they agree
-- [ ] Ring 2 — `dependencyLint` clean; compile-negative proves no discharge-verdict type is referenced from the corroboration module
-- [ ] Ring 3 — property + scenario suites green; **`ambient-capture-wiring.bats` and `discharge-fidelity.bats` at parity**
-- [ ] Ring 8 — fresh-context adversarial review, comparing the pattern set against the predecessor's documented list
-- [ ] Ring 5 — retarget to `DangerScanEngine.scala`, `ReconcileEngine.scala`; threshold 90%; read and record the score
-- [ ] Ring 6 — `ReconcileKernel` mirror + `ReconcileBridgeSpec`; `sbt -J-Xmx6g ring6`
-- [ ] Concept-delta check + inventory update (5 added) + checkpoint
+- [x] Step 1 — typed contract: `DangerPattern` (8 cases), `DangerHit`, `DangerReport` with smart constructor, `Corroboration` (5 cases), `ReconcileReport`, `DangerScanEngine.scan`, `ReconcileEngine.classify`, `ChangedFilesReader` (compiles, human gate) — APPROVED
+- [x] Step 2 — test oracle: 16 scenarios + 5 properties (`danger-parity-with-predecessor`, `justification-excludes-exactly-its-own-occurrence`, `corroboration-is-total-and-exclusive`, `witness-requires-key-agreement`, `no-discharge-verdict-in-output`) + 4 compile-negative stubs; ORACLE POLARITY 46 RED / 19 GREEN-BY-DESIGN (human gate) — APPROVED
+- [x] Step 3 — implementation: the eight pattern classes with same-line justification handling; production-only scope with caller-named additions; the corroboration classifier; both entrypoints gain the predecessor's invocation surfaces
+- [x] Ring 0 — clean; both new enums exhaustiveness-escalated
+- [x] Ring 1 — lint clean; ported-vs-predecessor agreement recorded by `DangerScanParitySpec` (the property runs the predecessor script as the model on every generated git fixture)
+- [x] Ring 2 — `dependencyLint` clean; compile-negative proves no discharge-verdict type is referenced from the corroboration module
+- [x] Ring 3 — property + scenario suites green; `probatioOracleDiff` PROCEED — all 17 bats files at parity incl. `ambient-capture-wiring.bats` and `discharge-fidelity.bats`
+- [x] Ring 8 — fresh-context adversarial review (`ring8-danger-reconcile-engines.md`): 4 PARTIALs, all fixed (pattern-major emission, `observer-at-wrong-key` cover, parity-property vacuous-pass hatch, `Witnessed` coherence → `(observer, preceding, following)`)
+- [x] Ring 5 — retargeted to `DangerScanEngine.scala`, `ReconcileEngine.scala`; 100% covered-code score (61/61 killed; first-run survivor + NoCoverage fixed by 3 new scenario tests)
+- [x] Ring 6 — `ReconcileKernel` + `ReconcileBridgeSpec`; 345/345 VCs valid (structural recursion per ring6 experience doc §4 — the spec's `forall`/`zip` ensuring hung the solver)
+- [x] Concept-delta check + inventory update + checkpoint — AWAITING HUMAN VALIDATION
 
 ## 7. ledger-checkpoint-parity
 

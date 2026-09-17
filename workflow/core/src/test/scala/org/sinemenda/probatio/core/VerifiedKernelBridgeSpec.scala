@@ -370,19 +370,19 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
         noForgive
       )
     val report: ChainStateReport = prodResult match
-      case Right(r)  => r
-      case Left(u)   => fail(s"production must produce a report, got undetermined: ${u.reason}")
+      case Right(r) => r
+      case Left(u)  => fail(s"production must produce a report, got undetermined: ${u.reason}")
 
     // Project the production verdict onto kernel inputs.
     val idxByTitle: Map[String, Int] = reqs.map(_.requirement).zipWithIndex.toMap
     val reasonAt: Map[Int, UnresolvedReason] = report.unresolved.flatMap { (e: UnresolvedEntry) =>
-      idxByTitle.get(e.requirement).flatMap { (i: Int) => e.reasons.headOption.map(i -> _) }
+      idxByTitle.get(e.requirement).flatMap((i: Int) => e.reasons.headOption.map(i -> _))
     }.toMap
     val verdicts: ScalaList[BigInt] = reqs.indices.map { (i: Int) =>
       reasonAt.get(i) match
-        case Some(UnresolvedReason.Unbound)                                 => BigInt(0)
+        case Some(UnresolvedReason.Unbound)                                      => BigInt(0)
         case Some(UnresolvedReason.Unattributable | UnresolvedReason.Unresolved) => BigInt(1)
-        case _                                                              => BigInt(2)
+        case _                                                                   => BigInt(2)
     }.toList
     val dischargedIdx: ScalaList[BigInt] =
       reqs.indices.filterNot(reasonAt.contains).map(BigInt(_)).toList
@@ -396,9 +396,9 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
         scalaToStainlessList(dischargedIdx),
         scalaToStainlessList(unattrIdx)
       )
-    val kBound: BigInt    = kernelResult._1
-    val kResolved: BigInt = kernelResult._2
-    val kDis: BigInt      = kernelResult._3
+    val kBound: BigInt                                 = kernelResult._1
+    val kResolved: BigInt                              = kernelResult._2
+    val kDis: BigInt                                   = kernelResult._3
     val kUnresolved: stainless.collection.List[BigInt] = kernelResult._4
 
     assertEquals(kBound, BigInt(report.bound), "kernel bound must equal production bound")
@@ -416,8 +416,8 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     // Alpha: unbound (no row names it). Beta: bound via ordinal row but
     // unmappable → unattributable. Gamma: resolved + green row → discharged.
     // Delta: resolved + red row → failed.
-    val titles: List[String]       = List("Alpha", "Beta", "Gamma", "Delta")
-    val lint: Outcome[LintReport]  = foldLint(
+    val titles: List[String] = List("Alpha", "Beta", "Gamma", "Delta")
+    val lint: Outcome[LintReport] = foldLint(
       titles,
       Map(
         "Beta"  -> List(foldRow(21, "Requirement 2")),
@@ -445,7 +445,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     // Graph mode: a bound title with no mapped obligations is Unresolved
     // (not Unattributable); an F9 artifact finding marks its obligation's
     // requirement unresolved too.
-    val titles: List[String]      = List("Alpha", "Beta")
+    val titles: List[String] = List("Alpha", "Beta")
     val lint: Outcome[LintReport] = foldLint(
       titles,
       Map(

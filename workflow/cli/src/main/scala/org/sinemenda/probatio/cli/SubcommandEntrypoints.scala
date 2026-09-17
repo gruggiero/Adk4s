@@ -1735,41 +1735,218 @@ object CheckpointCmd:
 
 /** The `reconcile` subcommand — obligation reconciliation. */
 object ReconcileCmd:
+
+  /**
+   * The predecessor's five value-flags: `--file`, `--change`, `--spec`,
+   * `--baseline`, `--format`. Any other token is an unrecognised
+   * argument — never skipped (a typo'd `--baseline` would silently widen
+   * the scope and return a clean result over rows the caller never
+   * meant to include).
+   */
+  private val knownFlags: Set[String] =
+    Set("--file", "--change", "--spec", "--baseline", "--format")
+
+  /**
+   * Wire the reconcile subcommand to ReconcileEngine.classify.
+   *
+   * Reads the ledger through `SubcommandWiring.readLedgerFile` +
+   * `Ledger.readValidated` (every row validated before any conclusion —
+   * a malformed row makes the whole file undetermined, not skipped),
+   * classifies the in-scope records, emits the predecessor's text or
+   * JSON report, and maps the three-way outcome:
+   * 0 = every claim witnessed; 1 = testimony or contradicted;
+   * 2 = could not determine.
+   *
+   * spec: cli-wiring — Requirement: The ledger subcommand wires to the 15-clause validator and emits byte-compatible stdout
+   * spec: danger-reconcile-engines — Scenario: Error path — an unreadable record set is could-not-determine
+   */
   def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--change")
-    SubcommandWiring.parseArgs(args, flags) match
+    SubcommandWiring.parseArgs(args, knownFlags) match
       case Left(err) =>
-        SubcommandWiring.emitStderr(s"reconcile: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
+        finding(errorMessage(err))
       case Right(parsed) =>
-        val change: String = parsed.getOrElse("--change", "")
-        if change.isEmpty then
-          SubcommandWiring.emitStderr("reconcile: --change is required\n")
-          Outcome.Finding("--change is required")
-        else Outcome.Ran(0)
+        val file: Option[String]   = parsed.get("--file").filter(_.nonEmpty)
+        val change: Option[String] = parsed.get("--change").filter(_.nonEmpty)
+        val format: Option[String] = parsed.get("--format")
+        (file, change, format) match
+          case (None, _, _) => finding("--file is required")
+          case (_, None, _) => finding("--change is required")
+          case (_, _, Some(f)) if f != "json" && f != "text" =>
+            finding("--format must be json or text")
+          case (Some(f), Some(c), fmt) =>
+            reconcile(
+              f,
+              c,
+              parsed.get("--spec").filter(_.nonEmpty),
+              parsed.get("--baseline").filter(_.nonEmpty),
+              formatJson = fmt.contains("json")
+            )
+
+  /** The predecessor's `die_finding`: `reconcile: <msg>` on stderr, exit 1. */
+  private def finding(message: String): Outcome[Int] =
+    SubcommandWiring.emitStderr(s"reconcile: $message\n")
+    Outcome.Finding(message)
+
+  /** The predecessor's `die_undetermined`: `reconcile: UNDETERMINED — <msg>` on stderr, exit 2. */
+  private def undetermined(reason: String): Outcome[Int] =
+    SubcommandWiring.emitStderr(s"reconcile: UNDETERMINED — $reason\n")
+    Outcome.Undetermined(reason)
+
+  /** Map a parse error to the predecessor's message text. */
+  private def errorMessage(err: CliError): String = err match
+    case CliError.MissingValue(flag)       => s"$flag requires a value"
+    case CliError.UnknownFlag(token)       => s"unrecognised argument: $token"
+    case CliError.UnknownSubcommand(token) => s"unrecognised argument: $token"
+    case CliError.InvalidEnum(flag, value) => s"invalid value '$value' for $flag"
+
+  /** Read, validate, classify, and emit — the predecessor's main body. */
+  private def reconcile(
+    file: String,
+    change: String,
+    spec: Option[String],
+    baseline: Option[String],
+    formatJson: Boolean
+  ): Outcome[Int] =
+    SubcommandWiring.readLedgerFile(file) match
+      case Outcome.Undetermined(reason) => undetermined(reason)
+      case Outcome.Finding(msg) =>
+        Outcome.Finding(
+          msg
+        ) // danger-scan:allow unreachable-branch — readLedgerFile never yields Finding; passthrough keeps the direction honest
+      case Outcome.Ran(rows) =>
+        if rows.isEmpty then undetermined(s"$file holds no records")
+        else
+          Ledger.readValidated(rows) match
+            case Left(err) => undetermined(err.description)
+            case Right(records) =>
+              val report: ReconcileReport =
+                ReconcileEngine.classify(records, change, spec, baseline)
+              if formatJson then SubcommandWiring.emitStdout(StdoutRenderer.reconcileJson(report) + "\n")
+              else SubcommandWiring.emitStdout(StdoutRenderer[ReconcileReport].render(report) + "\n")
+              if report.hasFindings then
+                Outcome.Finding(
+                  s"${report.testimony.length} testimony, ${report.contradicted.length} contradicted"
+                )
+              else Outcome.Ran(0)
 
 /** The `danger-scan` subcommand — production code danger scan. */
 object DangerScanCmd:
+
+  /** The predecessor's `BASELINE="HEAD"` default — the working tree. */
+  private[cli] val defaultBaseline: String = "HEAD"
+
+  /** The predecessor's parsed invocation shape. */
+  final private[cli] case class DangerScanArgs(
+    baseline: String,
+    alsoFiles: List[String]
+  )
+
+  /**
+   * Parse args the way the predecessor's `for arg` loop does: a token
+   * equal to `--also` switches the rest of the invocation to additional
+   * files (even a second `--also` is consumed as the flag); every other
+   * token is the positional baseline — last wins, default HEAD.
+   *
+   * Spec divergence: a `-`-led token before `--also` is a named
+   * parameter the scan does not accept — rejected, naming the token.
+   * The predecessor would have taken `--frobnicate` as the baseline and
+   * reported an empty scope when the diff failed.
+   *
+   * spec: danger-reconcile-engines — Requirement: The scan's baseline is optional and defaults to the working tree
+   * spec: danger-reconcile-engines — Scenario: Error path — an unknown named parameter is rejected naming the token
+   */
+  private[cli] def parseArgs(args: List[String]): Either[String, DangerScanArgs] =
+    def loop(
+      remaining: List[String],
+      also: List[String],
+      parsingAlso: Boolean,
+      baseline: String
+    ): Either[String, DangerScanArgs] =
+      remaining match
+        case Nil => Right(DangerScanArgs(baseline, also.reverse))
+        case "--also" :: rest =>
+          loop(rest, also, parsingAlso = true, baseline)
+        case token :: rest if parsingAlso =>
+          loop(rest, token :: also, parsingAlso = true, baseline)
+        case token :: _ if token.startsWith("-") =>
+          Left(token)
+        case token :: rest =>
+          loop(rest, also, parsingAlso = false, baseline = token)
+    loop(args, List.empty, parsingAlso = false, defaultBaseline)
+
   /**
    * Wire the danger-scan subcommand to the pattern scanner.
    *
+   * Resolves the baseline, enumerates the changed production `.scala`
+   * files plus `--also` extras, scans them through
+   * `DangerScanEngine.scan`, and emits the predecessor's report.
+   *
    * spec: cli-wiring — Requirement: The danger-scan subcommand wires to the pattern scanner and emits findings
+   * spec: danger-reconcile-engines — Scenario: Error path — an unresolvable baseline is could-not-determine
+   * spec: danger-reconcile-engines — Scenario: Edge case — no changed production files reports clean with a stated scope
    */
   def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set("--baseline", "--also")
-    SubcommandWiring.parseArgs(args, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"danger-scan: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
+    run(args, Paths.get("").toAbsolutePath.normalize)
+
+  private[cli] def run(args: Array[String], cwd: Path): Outcome[Int] =
+    parseArgs(args.toList) match
+      case Left(token) =>
+        SubcommandWiring.emitStderr(s"danger-scan: unrecognised argument: $token\n")
+        Outcome.Finding(s"unrecognised argument: $token")
       case Right(parsed) =>
-        val baseline: String = parsed.getOrElse("--baseline", "")
-        if baseline.isEmpty then
-          SubcommandWiring.emitStderr("danger-scan: --baseline is required\n")
-          Outcome.Finding("--baseline is required")
-        else
-          // Scan the git diff for dangerous patterns
-          // For now, report no hits (clean diff)
-          Outcome.Ran(0)
+        ChangedFilesReader.resolveBaseline(cwd, parsed.baseline) match
+          case Left(reason) =>
+            undetermined(reason)
+          case Right(_) =>
+            ChangedFilesReader.changedProductionFiles(cwd, parsed.baseline) match
+              case Left(reason) =>
+                undetermined(reason)
+              case Right(changed) =>
+                val scope: List[String] = (changed ++ parsed.alsoFiles).distinct.sorted
+                val files: List[DangerScanEngine.ScannedFile] =
+                  ChangedFilesReader.readFiles(cwd, scope)
+                if files.isEmpty then
+                  SubcommandWiring.emitStdout(
+                    s"danger-scan: no production .scala files changed since ${parsed.baseline} (and no --also files).\n"
+                  )
+                  Outcome.Ran(0)
+                else emitReport(DangerScanEngine.scan(files), parsed.baseline)
+
+  /** The predecessor's `die_undetermined` equivalent: stderr + exit 2. */
+  private def undetermined(reason: String): Outcome[Int] =
+    SubcommandWiring.emitStderr(s"danger-scan: UNDETERMINED — $reason\n")
+    Outcome.Undetermined(reason)
+
+  /**
+   * Emit the predecessor's report: one `danger-scan: <file>` header per
+   * file with hits, each hit as `  [<label>] <line>:<text>`; then the
+   * OK line or the candidate-lines summary.
+   */
+  private def emitReport(report: DangerReport, baseline: String): Outcome[Int] =
+    if report.hits.isEmpty then
+      SubcommandWiring.emitStdout(
+        s"danger-scan: OK — no unjustified dangerous patterns since $baseline.\n"
+      )
+      Outcome.Ran(0)
+    else
+      report.hits.map(_.file).distinct.foreach { file =>
+        SubcommandWiring.emitStdout(s"danger-scan: $file\n")
+        report.hits
+          .filter((h: DangerHit) => h.file == file)
+          .foreach { (h: DangerHit) =>
+            SubcommandWiring.emitStdout(
+              s"  [${DangerPattern.label(h.pattern)}] ${h.line}:${h.text}\n"
+            )
+          }
+      }
+      SubcommandWiring.emitStdout(
+        "\n" +
+          s"danger-scan: ${report.hitCount} candidate line(s). Remove each, or justify it with a\n" +
+          "same-line '// danger-scan:allow <reason>' comment. A catch-all that maps\n" +
+          "an unrecognized variant to a VALID domain value is the bug class this\n" +
+          "scan exists for — that one is never justifiable.\n"
+      )
+      Outcome.Finding(s"danger-scan: ${report.hitCount} candidate line(s)")
 
 /** The `metals` subcommand — LSP metals client (start only; stop/call removed). */
 object MetalsCmd:

@@ -3,6 +3,7 @@ package org.sinemenda.probatio.cli
 import org.sinemenda.probatio.core.BannerOutput
 import org.sinemenda.probatio.core.ChainStateReport
 import org.sinemenda.probatio.core.CheckId
+import org.sinemenda.probatio.core.ClaimVerdict
 import org.sinemenda.probatio.core.DriftScan
 import org.sinemenda.probatio.core.DriftScanResult
 import org.sinemenda.probatio.core.DriftWarning
@@ -10,6 +11,8 @@ import org.sinemenda.probatio.core.FactRead
 import org.sinemenda.probatio.core.GatePayload
 import org.sinemenda.probatio.core.LintContext
 import org.sinemenda.probatio.core.LintReport
+import org.sinemenda.probatio.core.ReconcileReport
+import org.sinemenda.probatio.core.Ring
 import org.sinemenda.probatio.core.Verdict
 import upickle.default.*
 
@@ -232,3 +235,63 @@ object StdoutRenderer:
   given StdoutRenderer[BannerOutput] with
     def render(banner: BannerOutput): String =
       banner.payload
+
+  /**
+   * Render a ReconcileReport as the predecessor's text summary —
+   * byte-compatible with `reconcile.sh`'s `jq -r` emit: the counts
+   * header, then the contradicted block, then the testimony block.
+   *
+   * spec: danger-reconcile-engines — Scenario: Adversarial — an observer disagreeing with the written outcome is contradicted, reported separately
+   */
+  given StdoutRenderer[ReconcileReport] with
+    def render(report: ReconcileReport): String =
+      val header: String =
+        s"reconcile: ${report.change} — ${report.rows} row(s), " +
+          s"${report.witnesses} ambient witness(es), " +
+          s"${report.claims.length} claim(s) needing corroboration, " +
+          s"${report.witnessed.length} witnessed"
+      val contradictedBlock: String =
+        if report.contradicted.isEmpty then ""
+        else
+          "\n  contradicted (a witness recorded a different exit):" +
+            report.contradicted
+              .map { (v: ClaimVerdict) =>
+                s"\n    ${v.spec}/${Ring.asString(v.ring)} ${v.obligation} — claimed 0, observed ${v.observed.mkString(",")}"
+              }
+              .mkString("")
+      val testimonyBlock: String =
+        if report.testimony.isEmpty then ""
+        else
+          "\n  testimony (green claim, no witness at this baseline):" +
+            report.testimony
+              .map((v: ClaimVerdict) => s"\n    ${v.spec}/${Ring.asString(v.ring)} ${v.obligation} — ${v.command}")
+              .mkString("")
+      header + contradictedBlock + testimonyBlock
+
+  /**
+   * Render a ReconcileReport as compact JSON — byte-compatible with the
+   * predecessor's `jq -s -c` emit: `{change, rows, witnesses, claims,
+   * witnessed, testimony, contradicted}` where the verdict arrays carry
+   * `{spec, ring, obligation, command, baseline, verdict, observed}`.
+   */
+  def reconcileJson(report: ReconcileReport): String =
+    def verdictJson(v: ClaimVerdict): ujson.Obj = ujson.Obj(
+      "spec"       -> ujson.Str(v.spec),
+      "ring"       -> ujson.Str(Ring.asString(v.ring)),
+      "obligation" -> ujson.Str(v.obligation),
+      "command"    -> ujson.Str(v.command),
+      "baseline"   -> ujson.Str(v.baseline),
+      "verdict"    -> ujson.Str(v.verdict),
+      "observed"   -> ujson.Arr(v.observed.map((e: Int) => ujson.Num(e.toDouble))*)
+    )
+    ujson.write(
+      ujson.Obj(
+        "change"       -> ujson.Str(report.change),
+        "rows"         -> ujson.Num(report.rows.toDouble),
+        "witnesses"    -> ujson.Num(report.witnesses.toDouble),
+        "claims"       -> ujson.Num(report.claims.length.toDouble),
+        "witnessed"    -> ujson.Num(report.witnessed.length.toDouble),
+        "testimony"    -> ujson.Arr(report.testimony.map(verdictJson)*),
+        "contradicted" -> ujson.Arr(report.contradicted.map(verdictJson)*)
+      )
+    )

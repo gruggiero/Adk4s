@@ -820,3 +820,23 @@ smart constructors; wire reads route through them),
 `UnresolvedReason` (`Unattributable` now reachable — degraded-mode-only
 reason), `ChainState.Requirement` (unchanged shape; consumed only via
 `RequirementSet`).
+
+The following concepts were introduced by `spec:complete-probatio-cutover/danger-reconcile-engines`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `DangerPattern` | enum (8 cases: `UnsafeGet`, `UnsafeHead`, `CatchAll`, `Cast`, `Blocking`, `Swallowed`, `UnreachableClaim`, `LintOff`) + `label` — the predecessor's pattern classes and report tokens | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `DangerHit` | final case class (file, line, pattern, text, justified) — one occurrence | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `DangerReport` | final case class, private ctor + `of` — `hits`/`justifiedExcluded` are a partition of the occurrence list; a summary disagreeing with contents is unrepresentable | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `DangerScanEngine` | object (`isProductionPath` — the `/src/main/` containment rule; `scanLine`; `scan` — pattern-major emission, pure, no I/O) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `Corroboration` | enum (5 cases: `SelfObserved`, `Witnessed(observer, preceding, following)` — the ambient set is `preceding ++ (observer :: following)` so witnessed-without-witness is unconstructible, `Testimony`, `Contradicted(observer, others)`, `Exempt`) + `verdictToken` | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `ClaimVerdict` | final case class (spec, ring, obligation, command, baseline, verdict, observed) — the predecessor's per-claim verdict object | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `ReconcileReport` | final case class, private ctor + `of` — every count/verdict list is a derived view of `classifications`; NO discharge verdict exists | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `ReconcileEngine` | object (`Classified(record, corroboration)`, `judgmentRings = Set(R2, R8, Manual)`, `classify(records, change, spec, baseline)` — pure fold; exact-key corroboration on (spec, ring, baseline, command)) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `ChangedFilesReader` | object (`resolveBaseline`, `changedProductionFiles`, `readFiles`) — the git/filesystem adapter for danger-scan; subprocess failure maps to `Left`/undetermined, never a silent clean report | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `ReconcileKernel.corroborationFold` | Ring 6 contract (`require(validRecords)`; `ensuring(cls.length == records.length && postOk(records, records, cls))`) + helpers (`observedAt`, `observedOutcomeAt`, `validRecords`, `classifyRow`, `postOk`, `foldGo`) — all structural recursion; classification codes CLS_SELF_OBSERVED/WITNESSED/TESTIMONY/CONTRADICTED/EXEMPT | `org.sinemenda.probatio.verified` (verified/probatio) | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+
+Existing rows modified by this spec (annotated in place above): none — all
+concepts are new; `StdoutRenderer`, `SubcommandEntrypoints`, `HelpRegistry`
+were extended with the `reconcile`/`danger-scan` surfaces without changing
+existing concept shapes.
