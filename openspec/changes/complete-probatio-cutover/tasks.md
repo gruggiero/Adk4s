@@ -104,7 +104,7 @@
 - [x] Ring 8 — fresh-context adversarial review (`ring8-ledger-checkpoint-parity.md`): findings remediated (forgiven-row refiltering, version rejection, guarded fact measurement, artifact fallback, apostrophe-token, duplicate-section baseline, graph unbound); N3 path-keying signed off at spec-5 checkpoint
 - [x] Ring 5 — core 97.58% (242/248 killed, 6 equivalent, 0 NoCoverage); CLI in-diff 89.9% (446 covered, 401 killed, 3 second-pass kills verified by direct mutant application, 42 equivalent) — global 78.62% diluted by pre-existing specs 1–6 code
 - [x] Ring 6 — `LedgerValidatorKernel.markerDecision` + `allEvidencedIsForall` lemma + `CheckpointBridgeSpec`; 355/355 VCs valid, 0 invalid (direct `probatio-verified` invocation — `ring6` alias broken under sbt 1.12)
-- [x] Concept-delta check + inventory update (4 added — including `SessionId`, which spec 8 will modify, not introduce — and `LedgerRecord` modified) + checkpoint — AWAITING HUMAN VALIDATION
+- [x] Concept-delta check + inventory update (4 added — including `SessionId`, which spec 8 will modify, not introduce — and `LedgerRecord` modified) + checkpoint — **VALIDATED — human checkpoint approval 2026-09-18** (post-format re-verify on `7b278b4`: compile clean, 557/557 workflow tests green, `probatioOracleDiff` PROCEED — no file worse across all 17 bats files, Stainless 355/355 valid)
 
 ## 8. gate-event-completeness
 

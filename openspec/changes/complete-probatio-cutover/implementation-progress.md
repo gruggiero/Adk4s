@@ -1490,7 +1490,7 @@ supersedes the earlier `(observer, observers)` note: `preceding`/
 
 ## Spec 7: ledger-checkpoint-parity
 
-### Status: AWAITING VALIDATION — checkpoint pending human approval
+### Status: VALIDATED — human checkpoint approval 2026-09-18
 
 ### Baseline
 - SHA: `2c379e277021482e1778582eb1421a6b0819aaa3` (tracked tree clean;
@@ -1831,9 +1831,9 @@ distributions moved):**
 - [x] Step 1 — Typed contract (APPROVED 2026-09-18)
 - [x] Step 2 — Test oracle (APPROVED 2026-09-18)
 - [x] Step 3 — Implementation — all `???` bodies landed; Rings 0–4 green; Ring 8 remediated + re-run green
-- [x] Ring 0–6, 8 + concept-delta + checkpoint — all recorded above; **AWAITING HUMAN VALIDATION** (checkpoint run post-commit below)
+- [x] Ring 0–6, 8 + concept-delta + checkpoint — all recorded above; **VALIDATED — human checkpoint approval 2026-09-18** (post-format re-verify on `7b278b4`: compile clean, 557/557 workflow tests green, `probatioOracleDiff` PROCEED — no file worse across all 17 bats files, Stainless 355/355 valid)
 
-### Checkpoint (2026-09-18, post-commit `7f197e3`)
+### Checkpoint (2026-09-18, post-commit `7b278b4`)
 
 - **Invocation**: `probatio checkpoint report --ledger evidence-ledger.jsonl
   --change complete-probatio-cutover --spec ledger-checkpoint-parity
