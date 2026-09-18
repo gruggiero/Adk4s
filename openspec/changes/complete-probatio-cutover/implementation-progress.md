@@ -1262,7 +1262,7 @@ plus in-place annotations on the reshaped rows (`SpecDocument` +`chainRows`,
 
 ## Spec 6: danger-reconcile-engines
 
-### Status: IN PROGRESS — Step 2 test oracle awaiting human review
+### Status: VALIDATED — human checkpoint approval 2026-09-18
 
 ### Baseline
 - SHA: `a7b49cf` — clean tracked tree at Step 0 (untracked files
@@ -1484,7 +1484,7 @@ supersedes the earlier `(observer, observers)` note: `preceding`/
 - [x] Step 1 — Typed contract (human gate) — APPROVED
 - [x] Step 2 — Test oracle (human gate) — APPROVED
 - [x] Step 3 — Implementation — all `???` bodies landed; 77/77 spec-6 tests green
-- [x] Ring 0–6, 8 + concept-delta — all recorded above; AWAITING CHECKPOINT REVIEW
+- [x] Ring 0–6, 8 + concept-delta — all recorded above; **VALIDATED — human checkpoint approval 2026-09-18** (post-format re-verify on `9f7d6cb`: compile clean, spec-6 suites 55+25 green, Stainless 345/345 valid)
 
 ---
 

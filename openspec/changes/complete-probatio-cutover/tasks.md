@@ -89,7 +89,7 @@
 - [x] Ring 8 — fresh-context adversarial review (`ring8-danger-reconcile-engines.md`): 4 PARTIALs, all fixed (pattern-major emission, `observer-at-wrong-key` cover, parity-property vacuous-pass hatch, `Witnessed` coherence → `(observer, preceding, following)`)
 - [x] Ring 5 — retargeted to `DangerScanEngine.scala`, `ReconcileEngine.scala`; 100% covered-code score (61/61 killed; first-run survivor + NoCoverage fixed by 3 new scenario tests)
 - [x] Ring 6 — `ReconcileKernel` + `ReconcileBridgeSpec`; 345/345 VCs valid (structural recursion per ring6 experience doc §4 — the spec's `forall`/`zip` ensuring hung the solver)
-- [x] Concept-delta check + inventory update + checkpoint — AWAITING HUMAN VALIDATION
+- [x] Concept-delta check + inventory update + checkpoint — **VALIDATED — human checkpoint approval 2026-09-18** (post-format re-verify on 9f7d6cb: 80/80 spec-6 tests, 345/345 VCs)
 
 ## 7. ledger-checkpoint-parity
 
