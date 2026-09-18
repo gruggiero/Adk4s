@@ -55,16 +55,16 @@ object ReconcileFixtures:
         artifact = "artifact/path.scala",
         command = key.command,
         exit = exit,
-        baseline = key.baseline
-      ),
-      provenance = ProvenanceFields(
-        digest = kind match
-          case RecKind.DigestRow => Some("0123456789abcdef")
-          case _ => None // danger-scan:allow kind-exhaustive — Written/AmbientRow carry no digest by construction
-        ,
-        source = kind match
-          case RecKind.AmbientRow => Some("ambient")
-          case _ => None // danger-scan:allow kind-exhaustive — Written/DigestRow carry no ambient source
+        baseline = key.baseline,
+        optional = LedgerRecordOptional(
+          digest = kind match
+            case RecKind.DigestRow => Some("0123456789abcdef")
+            case _ => None // danger-scan:allow kind-exhaustive — Written/AmbientRow carry no digest by construction
+          ,
+          source = kind match
+            case RecKind.AmbientRow => Some("ambient")
+            case _ => None // danger-scan:allow kind-exhaustive — Written/DigestRow carry no ambient source
+        )
       )
     )
 

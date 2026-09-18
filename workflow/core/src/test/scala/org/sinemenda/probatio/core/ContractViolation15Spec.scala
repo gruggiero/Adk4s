@@ -59,4 +59,7 @@ final class ContractViolation15Spec extends ProbatioSuite:
         "ring = Ring.R3, obligation = \"o\", artifact = \"a\", command = \"cmd\", exit = 0, " +
         "baseline = \"abc1234\", session = \"x\")"
     )
-    assert(err.nonEmpty, "LedgerRecord should not have a session field — it lives on ProvenanceFields")
+    assert(
+      err.nonEmpty,
+      "LedgerRecord should not have a session field — it lives on the optional group (optional.session)"
+    )

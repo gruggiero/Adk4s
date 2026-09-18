@@ -67,9 +67,12 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
 
   // ── Scenario: Ledger subcommand exposes only append
   // spec: cli-protocol — Scenario: Ledger subcommand exposes only append
-  test("ledger subcommand exposes only Append, Read, Validate — no mutation action"):
+  // spec 7 (ledger-checkpoint-parity): the approved typed contract
+  // extends the action set to the predecessor's full op surface —
+  // validate renamed to verify, run added. Still no mutation action.
+  test("ledger subcommand exposes only Append, Run, Read, Verify — no mutation action"):
     val actions: Set[String] = LedgerCmd.Action.values.map(_.toString).toSet
-    assertEquals(actions, Set("Append", "Read", "Validate"))
+    assertEquals(actions, Set("Append", "Run", "Read", "Verify"))
     assert(!actions.contains("Update"))
     assert(!actions.contains("Delete"))
     assert(!actions.contains("Rewrite"))

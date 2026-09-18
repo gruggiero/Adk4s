@@ -31,3 +31,11 @@ object CliError:
 
   /** A flag not recognized by the subcommand (e.g. `--unknown-flag`). */
   final case class UnknownFlag(flag: String) extends CliError(flag)
+
+  /**
+   * A flag the subcommand knows but refuses in this mode (the
+   * predecessor's `run` dies on `--exit`/`--source` at the position they
+   * appear — before any other check, even before a missing value would
+   * be named).
+   */
+  final case class ForbiddenFlag(flag: String) extends CliError(flag)

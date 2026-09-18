@@ -152,7 +152,8 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       artifact = artifact,
       command = "sbt test",
       exit = exit,
-      baseline = baseline
+      baseline = baseline,
+      optional = LedgerRecordOptional()
     )
 
   private def ledgerOf(rs: List[LedgerRecord]): Ledger.LedgerData =

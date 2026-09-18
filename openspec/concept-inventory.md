@@ -563,8 +563,8 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `Outcome[+A]` | enum (Ran, Finding, Undetermined) | `org.sinemenda.probatio.core` | shipped |
 | `Ring` | enum (R0–R9, Manual) | `org.sinemenda.probatio.core` | shipped |
 | `ContractViolation` | sealed trait (15 clause variants — 12 original + 3 provenance clauses added by spec:port-scanner-to-probatio/provenance-validation) | `org.sinemenda.probatio.core` | shipped |
-| `LedgerRecord` | final case class (private[core] constructor) | `org.sinemenda.probatio.core` | shipped |
-| `LedgerRecordOptional` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `LedgerRecord` | final case class (private[core] constructor); spec 7 joined `optional: LedgerRecordOptional` as a REQUIRED field — a record that cannot state what it observed is unrepresentable | `org.sinemenda.probatio.core` | shipped; field-joined by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `LedgerRecordOptional` | final case class (sha256, digest, wallTime, source, session — Option types); was orphaned pre-spec-7, now attached as `LedgerRecord.optional`; `extract` enforces the TYPE of each present field | `org.sinemenda.probatio.core` | shipped; attached by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
 | `Ledger.LedgerData` | final case class (immutable, append-only) | `org.sinemenda.probatio.core` | shipped |
 | `UnresolvedReason` | enum (Unbound, Unresolved, Undischarged, Unattributable, Failed) | `org.sinemenda.probatio.core` | shipped |
 | `UnresolvedEntry` | final case class | `org.sinemenda.probatio.core` | shipped |
@@ -601,7 +601,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `FlagHelp` | final case class (name, description, default) | `org.sinemenda.probatio.cli` | shipped |
 | `ExitCodeDoc` | final case class (code, label, condition) | `org.sinemenda.probatio.cli` | shipped |
 | `CliErrorRender` | object (render: CliError → String) | `org.sinemenda.probatio.cli` | shipped |
-| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `ReconcileCmd` / `DangerScanCmd` / `MetalsCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints; 6 unported entrypoints removed: RegistryCheckCmd, ScanCmd, RemovalAuditCmd, ImpactScanCmd, ConceptScannerCmd, GraphCmd; SpecLintCmd implemented by spec-lint-engine: positional change-dir, `--context-only`, `--artifacts`, `--format json`, nested `specs/` discovery) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract`; SpecLintCmd implemented by `spec:complete-probatio-cutover/spec-lint-engine` |
+| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `ReconcileCmd` / `DangerScanCmd` / `MetalsCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints; 6 unported entrypoints removed: RegistryCheckCmd, ScanCmd, RemovalAuditCmd, ImpactScanCmd, ConceptScannerCmd, GraphCmd; SpecLintCmd implemented by spec-lint-engine: positional change-dir, `--context-only`, `--artifacts`, `--format json`, nested `specs/` discovery) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract`; SpecLintCmd implemented by `spec:complete-probatio-cutover/spec-lint-engine`; LedgerCmd `validate`→`verify` + `run` rework and CheckpointCmd `report`/`regenerate-tasks` implemented by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
 
 ### port-scanner-to-probatio change — sbt-plugin spec concepts
 
@@ -695,8 +695,8 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/provena
 
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
-| `ProvenanceFields` | final case class (sha256, digest, wallTime, source, session — Option types) | `org.sinemenda.probatio.core` | shipped |
-| `ValidatedRecord` | final case class (wraps LedgerRecord + ProvenanceFields after 15-clause validation) | `org.sinemenda.probatio.core` | shipped |
+| `ProvenanceFields` | final case class (sha256, digest, wallTime, source, session — Option types) | `org.sinemenda.probatio.core` | shipped; REMOVED by `spec:complete-probatio-cutover/ledger-checkpoint-parity` (subsumed by `LedgerRecordOptional`) |
+| `ValidatedRecord` | final case class (wraps LedgerRecord after 15-clause validation); spec 7 made `provenance` a DERIVED view of `record.optional` — never a second source of truth | `org.sinemenda.probatio.core` | shipped; provenance derived by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
 | `ContractViolation.OptionalFieldTypeInvalid` | case object (clause 13 — optional field type invalid) | `org.sinemenda.probatio.core` | shipped |
 | `ContractViolation.ObserverProvenanceInvalid` | case object (clause 14 — observer provenance invalid) | `org.sinemenda.probatio.core` | shipped |
 | `ContractViolation.SessionProvenanceInvalid` | case object (clause 15 — session provenance invalid) | `org.sinemenda.probatio.core` | shipped |
@@ -745,7 +745,7 @@ The following concepts were introduced by `spec:complete-probatio-porting/cli-wi
 |---------|------|---------|--------|
 | `CliContext` | final case class (repoRoot, changeDir, ledgerFile, gitDir: String; escapeHatch: Boolean) — resolved paths + env-var overrides read once at entrypoint start | `org.sinemenda.probatio.cli` | shipped |
 | `StdoutRenderer[A]` | trait (render(value: A): String) — typeclass for byte-compatible stdout rendering; given instances for ChainStateReport, ChainStateUndetermined, LintReport, GatePayload, BannerOutput, LintContext | `org.sinemenda.probatio.cli` | shipped; +LintContext instance by `spec:complete-probatio-cutover/spec-lint-engine` |
-| `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int] | `org.sinemenda.probatio.cli` | shipped |
+| `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int]; spec 7 added `repoContaining`/`gitExit`/`forgivePredicate` (moved from `ChainStateCmd`), `repoRootOf`, `sha256OfFile`/`sha256Hex`, `shellParses`, `replayCommand`, `executeCaptured`, `readTextFile`/`writeTextFile`, `absoluteGitDirOf`, boolean-aware `parseArgs` | `org.sinemenda.probatio.cli` | shipped; extended by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
 
 ### complete-probatio-cutover change — live-fact-banner spec concepts
 
@@ -840,3 +840,23 @@ Existing rows modified by this spec (annotated in place above): none — all
 concepts are new; `StdoutRenderer`, `SubcommandEntrypoints`, `HelpRegistry`
 were extended with the `reconcile`/`danger-scan` surfaces without changing
 existing concept shapes.
+
+### complete-probatio-cutover change — ledger-checkpoint-parity spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/ledger-checkpoint-parity`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `RingStatus` | enum (5 cases: `Green`, `Failed`, `Unevidenced`, `SameSession`, `UnverifiedSession`) + `token` — the predecessor's per-ring status tokens | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `RingEvidence` | final case class (ring, status, record: Option[LedgerRecord], note: Option[String]) — one ring's classified evidence | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `ReplayVerdict` | enum (3 cases: `Matches`, `Diverges`, `Unreplayable` — NO "skipped" case, a skipped row could pass as verified) + `unreplayableRings = Set(R8, Manual)` + total `classify(ring, replayedExit, recordedExit)` | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `CheckpointReport` | final case class, private ctor + `of(change, spec, baseline, rings, chainState)` — `unresolvedCount` derives from the verdict's own `unresolved` member; `markerWritten` requires every requested ring green AND zero unresolved, so an unevidenced-marker report is unrepresentable; `toJson`/`toText` render predecessor structure | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `CheckpointEngine` | object (`report` — dedup first-occurrence, last-record-per-ring, verdict consumed as opaque `ujson.Value` never recomputed; `classify` — the R8 same-session ladder; `markerDecision`; `unresolvedCountOf` — jq `length` semantics; `specBaseline` — progress-tracker `Commit` cell; `regenerateTasks` — checkbox-only rewrite) — pure, no I/O, no `ChainState` reference | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `LedgerValidatorKernel.allEvidenced` / `.markerDecision` | Ring 6 mirror — structural recursion over Stainless lists; `markerDecision` carries `ensuring` equivalence to the `forall` formulation | `org.sinemenda.probatio.verified` (verified/probatio) | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+
+Existing rows modified by this spec (annotated in place above):
+`LedgerRecord` (joined `optional` as required), `LedgerRecordOptional`
+(attached — was orphaned), `ValidatedRecord` (`provenance` derived),
+`ProvenanceFields` (removed — subsumed), `LedgerCmd`/`CheckpointCmd`
+(predecessor op surface), `SubcommandWiring` (shared I/O adapters +
+observation seams), `HelpRegistry` (ledger/checkpoint help surface).

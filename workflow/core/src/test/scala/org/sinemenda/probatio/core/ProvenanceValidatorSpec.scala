@@ -92,6 +92,19 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
         assertEquals(v.clauseIndex, 14)
       case other => fail(s"Expected SessionProvenanceInvalid, got $other")
 
+  // ── Scenario: a non-adversarial-review ring row with an empty session is rejected (adversarial)
+  test("R3 row with empty session is rejected with SessionProvenanceInvalid"):
+    val json: ujson.Value                                  = validRecordJson(ring = "R3", session = Some(ujson.Str("")))
+    val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
+    assert(result.isLeft, s"Expected Left, got $result")
+    result match
+      case Left(v: ContractViolation.SessionProvenanceInvalid) =>
+        assert(
+          v.description.contains("session must be a non-empty string when present"),
+          s"Expected description to contain 'session must be a non-empty string when present', got: ${v.description}"
+        )
+      case other => fail(s"Expected SessionProvenanceInvalid, got $other")
+
   // ── Scenario: a non-adversarial-review ring row without session is accepted
   // spec: provenance-validation — Scenario: a non-adversarial-review ring row without session is accepted
   test("R3 row without session is accepted with session=None"):
@@ -174,6 +187,19 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
   // spec: provenance-validation — Scenario: a row with a non-integer wallTime is rejected (adversarial)
   test("wallTime=1.5 (non-integer) is rejected with OptionalFieldTypeInvalid"):
     val json: ujson.Value = validRecordJson(ring = "R3", wallTime = Some(ujson.Num(1.5)))
+    val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
+    assert(result.isLeft, s"Expected Left, got $result")
+    result match
+      case Left(v: ContractViolation.OptionalFieldTypeInvalid) =>
+        assert(
+          v.description.contains("wallTime must be an integer"),
+          s"Expected description to contain 'wallTime must be an integer', got: ${v.description}"
+        )
+        assertEquals(v.clauseIndex, 12)
+      case other => fail(s"Expected OptionalFieldTypeInvalid, got $other")
+
+  test("wallTime=1e20 (integer-valued but not Int-representable) is rejected with OptionalFieldTypeInvalid"):
+    val json: ujson.Value = validRecordJson(ring = "R3", wallTime = Some(ujson.Num(1e20)))
     val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
     assert(result.isLeft, s"Expected Left, got $result")
     result match

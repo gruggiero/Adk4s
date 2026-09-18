@@ -66,58 +66,22 @@ object Validator:
       case Right(record)   => validateProvenance(obj.value.toMap, record)
 
   /**
-   * Validate clauses 12–14 (provenance) over a map that has passed
-   * clauses 0–11. The record is already constructed; provenance is
-   * layered on top.
+   * Validate clauses 13–14 (provenance) over a map that has passed
+   * clauses 0–11. Clause 12 (optional-field types) is already enforced
+   * inside `validateObject` by `LedgerRecordOptional.extract` — the
+   * record cannot be constructed without it, so a wrong-typed optional
+   * field is rejected before this point and is not re-checked here.
    */
   private def validateProvenance(
     fields: Map[String, ujson.Value],
     record: LedgerRecord
   ): Either[ContractViolation, ValidatedRecord] =
-    validateOptionalFieldTypes(fields) match
+    validateObserverProvenance(fields) match
       case Left(v) => Left(v)
       case Right(_) =>
-        validateObserverProvenance(fields) match
-          case Left(v) => Left(v)
-          case Right(_) =>
-            validateSessionProvenance(fields, record) match
-              case Left(v)           => Left(v)
-              case Right(provenance) => Right(ValidatedRecord(record, provenance))
-
-  /**
-   * Clause 12: optional-field type checks.
-   * sha256 must be a string when present, digest must be a string when
-   * present, wallTime must be an integer when present.
-   *
-   * spec: provenance-validation — Scenario: a row with a non-string sha256 is rejected (adversarial)
-   * spec: provenance-validation — Scenario: a row with a non-integer wallTime is rejected (adversarial)
-   */
-  private def validateOptionalFieldTypes(
-    fields: Map[String, ujson.Value]
-  ): Either[ContractViolation, Unit] =
-    fields.get("sha256") match
-      case Some(ujson.Str(_)) => validateDigestType(fields)
-      case Some(_) =>
-        Left(ContractViolation.OptionalFieldTypeInvalid(description = "sha256 must be a string when present"))
-      case None => validateDigestType(fields)
-
-  private def validateDigestType(
-    fields: Map[String, ujson.Value]
-  ): Either[ContractViolation, Unit] =
-    fields.get("digest") match
-      case Some(ujson.Str(_)) => validateWallTimeType(fields)
-      case Some(_) =>
-        Left(ContractViolation.OptionalFieldTypeInvalid(description = "digest must be a string when present"))
-      case None => validateWallTimeType(fields)
-
-  private def validateWallTimeType(
-    fields: Map[String, ujson.Value]
-  ): Either[ContractViolation, Unit] =
-    fields.get("wallTime") match
-      case Some(num: ujson.Num) if isIntegerValue(num) => Right(())
-      case Some(_) =>
-        Left(ContractViolation.OptionalFieldTypeInvalid(description = "wallTime must be an integer when present"))
-      case None => Right(())
+        validateSessionProvenance(fields, record) match
+          case Left(v)  => Left(v)
+          case Right(_) => Right(ValidatedRecord(record))
 
   /**
    * Clause 13: observer provenance — source must be "ambient" when present.
@@ -128,10 +92,10 @@ object Validator:
   private def validateObserverProvenance(
     fields: Map[String, ujson.Value]
   ): Either[ContractViolation, Unit] =
+    // A non-string source never reaches this clause — extraction enforces
+    // the field's type before validateObject returns a record.
     fields.get("source") match
       case Some(ujson.Str("ambient")) => Right(())
-      case Some(ujson.Str(_)) =>
-        Left(ContractViolation.ObserverProvenanceInvalid(description = "source must be \"ambient\" when present"))
       case Some(_) =>
         Left(ContractViolation.ObserverProvenanceInvalid(description = "source must be \"ambient\" when present"))
       case None => Right(())
@@ -149,16 +113,14 @@ object Validator:
   private def validateSessionProvenance(
     fields: Map[String, ujson.Value],
     record: LedgerRecord
-  ): Either[ContractViolation, ProvenanceFields] =
+  ): Either[ContractViolation, Unit] =
+    // A non-string session never reaches this clause — extraction
+    // enforces the field's type before validateObject returns a record.
     val sessionOpt: Option[ujson.Value] = fields.get("session")
     if record.ring == Ring.R8 then
       sessionOpt match
         case Some(ujson.Str(s)) if s.nonEmpty =>
-          Right(ProvenanceFields.extract(fields))
-        case Some(ujson.Str(_)) =>
-          Left(
-            ContractViolation.SessionProvenanceInvalid(description = "session must be a non-empty string for R8 rows")
-          )
+          Right(())
         case Some(_) =>
           Left(
             ContractViolation.SessionProvenanceInvalid(description = "session must be a non-empty string for R8 rows")
@@ -172,17 +134,13 @@ object Validator:
     else
       sessionOpt match
         case Some(ujson.Str(s)) if s.nonEmpty =>
-          Right(ProvenanceFields.extract(fields))
-        case Some(ujson.Str(_)) =>
-          Left(
-            ContractViolation.SessionProvenanceInvalid(description = "session must be a non-empty string when present")
-          )
+          Right(())
         case Some(_) =>
           Left(
             ContractViolation.SessionProvenanceInvalid(description = "session must be a non-empty string when present")
           )
         case None =>
-          Right(ProvenanceFields.extract(fields))
+          Right(())
 
   /** Validate the 12 clauses over a known JSON object. */
   private def validateObject(obj: ujson.Obj): Either[ContractViolation, LedgerRecord] =
@@ -352,20 +310,28 @@ object Validator:
         val baseline: String = baselineStr.value
         if !isValidBaseline(baseline) then Left(ContractViolation.BaselineInvalid())
         else
-          Right(
-            LedgerRecord(
-              v = v,
-              ts = ts,
-              change = change,
-              spec = spec,
-              ring = ring,
-              obligation = obligation,
-              artifact = artifact,
-              command = command,
-              exit = exit,
-              baseline = baseline
-            )
-          )
+          // The record cannot be constructed without its optional group —
+          // extraction enforces the TYPE of each present optional field.
+          // A wrong-typed optional field is a violation, never a dropped
+          // field.
+          LedgerRecordOptional.extract(fields) match
+            case Left(violation) => Left(violation)
+            case Right(optional) =>
+              Right(
+                LedgerRecord(
+                  v = v,
+                  ts = ts,
+                  change = change,
+                  spec = spec,
+                  ring = ring,
+                  obligation = obligation,
+                  artifact = artifact,
+                  command = command,
+                  exit = exit,
+                  baseline = baseline,
+                  optional = optional
+                )
+              )
       case _ => // danger-scan:allow type-rejection — wrong-typed field maps to Left(violation), never a valid value
         Left(ContractViolation.BaselineInvalid())
 

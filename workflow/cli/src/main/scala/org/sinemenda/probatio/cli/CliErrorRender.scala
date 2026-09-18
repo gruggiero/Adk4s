@@ -28,3 +28,4 @@ object CliErrorRender:
     case CliError.MissingValue(flag)       => s"missing value for flag: $flag"
     case CliError.InvalidEnum(flag, value) => s"invalid value '$value' for flag: $flag"
     case CliError.UnknownFlag(flag)        => s"unknown flag: $flag"
+    case CliError.ForbiddenFlag(flag)      => s"flag not accepted here: $flag"

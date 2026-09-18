@@ -802,3 +802,59 @@ object LedgerValidatorKernel:
     )
     indices.length == 15 && indices.forall(i => i >= 1 && i <= 15)
   }.ensuring(_ == true)
+
+  // ---------------------------------------------------------------------------
+  // Spec 7 — the checkpoint marker decision
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Structural membership check over the requested ring list: true iff
+   * every requested ring appears in the evidenced list. Written as a
+   * structural recursion so the equivalence to `List.forall` is a real
+   * proof obligation, not a restatement (ring6 experience: keep the
+   * `forall`/`zip` form out of the body when the `ensuring` names it).
+   */
+  @pure
+  def allEvidenced(requested: List[BigInt], evidenced: List[BigInt]): Boolean = {
+    decreases(requested.size)
+    requested match
+      case Nil()      => true
+      case Cons(h, t) => evidenced.contains(h) && allEvidenced(t, evidenced)
+  }
+
+  /**
+   * Induction principle: the structural `allEvidenced` agrees with
+   * `List.forall` elementwise. The recursive call supplies the
+   * induction hypothesis — Z3 cannot invent it, so an `ensuring` that
+   * names `forall` without this lemma is an unprovable VC (ring6
+   * experience §4).
+   */
+  @pure
+  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
+  def allEvidencedIsForall(requested: List[BigInt], evidenced: List[BigInt]): Unit = {
+    decreases(requested.size)
+    requested match
+      case Nil()      => ()
+      case Cons(_, t) => allEvidencedIsForall(t, evidenced)
+  }.ensuring((_: Unit) => allEvidenced(requested, evidenced) == requested.forall(r => evidenced.contains(r)))
+  // format: on
+
+  /**
+   * The checkpoint marker decision: granted iff every requested ring
+   * appears in the evidenced list and the supplied verdict reports zero
+   * unresolved requirements.
+   *
+   * spec: ledger-checkpoint-parity — Formal Contract: markerDecision
+   */
+  @pure
+  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
+  def markerDecision(
+    requested: List[BigInt],
+    evidenced: List[BigInt],
+    unresolvedCount: BigInt
+  ): Boolean = {
+    require(unresolvedCount >= 0)
+    allEvidencedIsForall(requested, evidenced)
+    allEvidenced(requested, evidenced) && unresolvedCount == 0
+  }.ensuring(granted => granted == (requested.forall(r => evidenced.contains(r)) && unresolvedCount == 0))
+  // format: on

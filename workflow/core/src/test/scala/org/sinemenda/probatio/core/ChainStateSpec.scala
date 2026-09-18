@@ -183,7 +183,8 @@ final class ChainStateSpec extends ProbatioSuite:
       artifact = "a.scala",
       command = "sbt test",
       exit = 0,
-      baseline = "abc1234"
+      baseline = "abc1234",
+      optional = LedgerRecordOptional()
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
@@ -226,7 +227,8 @@ final class ChainStateSpec extends ProbatioSuite:
       artifact = "a.scala",
       command = "sbt test",
       exit = 0,
-      baseline = "abc1234"
+      baseline = "abc1234",
+      optional = LedgerRecordOptional()
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =
@@ -261,7 +263,8 @@ final class ChainStateSpec extends ProbatioSuite:
       artifact = "a.scala",
       command = "sbt test",
       exit = 0,
-      baseline = "deadbeef"
+      baseline = "deadbeef",
+      optional = LedgerRecordOptional()
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val lint: LintReport = SpecLintFixtures.report(
@@ -301,7 +304,8 @@ final class ChainStateSpec extends ProbatioSuite:
       artifact = "a.scala",
       command = "sbt test",
       exit = 0,
-      baseline = "abc1234"
+      baseline = "abc1234",
+      optional = LedgerRecordOptional()
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val lint: LintReport = SpecLintFixtures.report(
@@ -476,7 +480,8 @@ final class ChainStateSpec extends ProbatioSuite:
       artifact = "a.scala",
       command = "sbt test",
       exit = 0,
-      baseline = "abc1234"
+      baseline = "abc1234",
+      optional = LedgerRecordOptional()
     )
     val ledger: Ledger.LedgerData = Ledger.fromRecords(List(record))
     val result: Either[ChainStateUndetermined, ChainStateReport] =

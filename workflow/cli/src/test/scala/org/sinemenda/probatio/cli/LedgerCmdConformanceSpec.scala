@@ -4,6 +4,8 @@ import hedgehog.*
 import hedgehog.Range
 import org.sinemenda.probatio.core.*
 
+import scala.jdk.CollectionConverters.*
+
 /**
  * Test oracle for the `ledger` subcommand wiring (cli-wiring spec).
  *
@@ -180,3 +182,115 @@ final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
         ringValid && baselineValid && r8SessionOk && change.nonEmpty && spec.nonEmpty && obligation.nonEmpty && artifact.nonEmpty && command.nonEmpty
 
       Result.diff(validatorAccepts, contractAccepts)(_ == _)
+
+  // ── Ring 4 contract-conformance: persisted records satisfy the record
+  //    contract checker itself (spec 7) ─────────────────────────────────
+  // spec: ledger-checkpoint-parity — Requirement: A record written by the observing path carries the fields that make it self-observed
+  //
+  // The wire contract is stated ONCE — in
+  // `scanner/ledger-record-contract.jq` — and the tool and this oracle both
+  // conform to it. `Validator.validateFull` agreeing is not enough: the
+  // contract checker itself is executed (`jq -e -f`) over every row the
+  // observing path persists, so an observation field the contract does not
+  // admit (or one whose shape drifts from the contract's type checks)
+  // cannot slip through a green run.
+
+  private val ledgerContractPath: java.nio.file.Path =
+    LazyList
+      .unfold(java.nio.file.Paths.get("").toAbsolutePath.normalize)((p: java.nio.file.Path) =>
+        Option(p.getParent).map((par: java.nio.file.Path) => p -> par)
+      )
+      .find(p =>
+        java.nio.file.Files.isRegularFile(
+          p.resolve("openspec/schemas/verified-scala3/scanner/ledger-record-contract.jq")
+        )
+      )
+      .getOrElse(java.nio.file.Paths.get("").toAbsolutePath)
+      .resolve("openspec/schemas/verified-scala3/scanner/ledger-record-contract.jq")
+
+  /** `echo '<row>' | jq -e -f ledger-record-contract.jq` — exit 0 = conforms. */
+  private def contractAccepts(row: String): Boolean =
+    val pb: ProcessBuilder =
+      new ProcessBuilder("jq", "-e", "-f", ledgerContractPath.toString)
+    val p: Process = pb.start()
+    p.getOutputStream.write(row.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    p.getOutputStream.close()
+    p.getInputStream.readAllBytes()
+    p.getErrorStream.readAllBytes()
+    p.waitFor() == 0
+
+  test("a record persisted by the run path satisfies ledger-record-contract.jq"):
+    val dir: java.nio.file.Path      = java.nio.file.Files.createTempDirectory("contract-conformance")
+    val ledger: java.nio.file.Path   = dir.resolve("ledger.jsonl")
+    val artifact: java.nio.file.Path = dir.resolve("Artifact.scala")
+    java.nio.file.Files.writeString(artifact, "object Artifact\n", java.nio.charset.StandardCharsets.UTF_8)
+    val outcome: Outcome[Int] = LedgerCmd.run(
+      Array(
+        "run",
+        "--file",
+        ledger.toString,
+        "--change",
+        "test-change",
+        "--spec",
+        "test-spec",
+        "--ring",
+        "R0",
+        "--obligation",
+        "test obligation",
+        "--artifact",
+        artifact.toString,
+        "--baseline",
+        "abc1234",
+        "--",
+        "true"
+      )
+    )
+    outcome match
+      case Outcome.Ran(0)               => ()
+      case Outcome.Ran(n)               => fail(s"run must exit 0, got $n")
+      case Outcome.Finding(msg)         => fail(s"run must not be a finding: $msg")
+      case Outcome.Undetermined(reason) => fail(s"run must not be undetermined: $reason")
+    val rows: List[String] =
+      java.nio.file.Files
+        .readAllLines(ledger, java.nio.charset.StandardCharsets.UTF_8)
+        .asScala
+        .toList
+        .filter(_.nonEmpty)
+    assertEquals(rows.length, 1, "the run path persists exactly one row")
+    val persistedRow: String =
+      rows.headOption.getOrElse(fail("no record line persisted"))
+    // The persisted row — observation fields and all — is checked by the
+    // contract checker itself, not by a second statement of the contract.
+    assert(
+      contractAccepts(persistedRow),
+      s"persisted run-mode row does not satisfy ledger-record-contract.jq:\n$persistedRow"
+    )
+    // And the observation fields the contract admits are the ones present —
+    // the contract rejects a `source` other than "ambient", a non-string
+    // digest, a non-integer wallTime; a row passing the checker cannot
+    // carry a silently-misshapen observation field.
+    val parsed: ujson.Value = ujson.read(persistedRow)
+    assert(parsed.obj.contains("digest"), "run-mode row must carry digest")
+    assert(parsed.obj.contains("wallTime"), "run-mode row must carry wallTime")
+    assert(parsed("wallTime").num == parsed("wallTime").num.floor, "wallTime must be an integer")
+
+  test("every row of the shipped mixed-shape fixture satisfies ledger-record-contract.jq"):
+    val fixture: java.nio.file.Path =
+      ledgerContractPath.getParent.getParent.resolve("tests/fixtures/evidence-ledger-v1.jsonl")
+    assert(
+      java.nio.file.Files.isRegularFile(fixture),
+      s"mixed-shape fixture missing at $fixture"
+    )
+    val rows: List[String] =
+      java.nio.file.Files
+        .readAllLines(fixture, java.nio.charset.StandardCharsets.UTF_8)
+        .asScala
+        .toList
+        .filter(_.nonEmpty)
+    assert(rows.nonEmpty, "the fixture holds at least one row")
+    rows.foreach { row =>
+      assert(
+        contractAccepts(row),
+        s"fixture row does not satisfy ledger-record-contract.jq:\n$row"
+      )
+    }

@@ -1234,8 +1234,7 @@ object ChainStateCmd:
 
   /** The repository containing `dir` — `git -C <dir> rev-parse --show-toplevel`. */
   private def repoContaining(dir: Path): Option[Path] =
-    if Files.isDirectory(dir) then SpecLintCmd.gitOut(dir, List("rev-parse", "--show-toplevel")).map(Paths.get(_))
-    else None
+    SubcommandWiring.repoContaining(dir)
 
   /**
    * `$(cd "$REPO" && git rev-parse <sha> 2>/dev/null || echo <sha>)` —
@@ -1262,41 +1261,25 @@ object ChainStateCmd:
       case NonFatal(_) => // danger-scan:allow fail-open — a non-git cwd passes the literal through
         sha
 
-  /** `git <args>` under `dir`, returning the exit code. */
-  private def gitExit(dir: Path, args: List[String]): Int =
-    try
-      val pb: ProcessBuilder = new ProcessBuilder(("git" +: args)*)
-      pb.directory(dir.toFile)
-      pb.redirectError(ProcessBuilder.Redirect.DISCARD)
-      pb.redirectOutput(ProcessBuilder.Redirect.DISCARD)
-      pb.start().waitFor()
-    catch case NonFatal(_) => 128 // danger-scan:allow fail-open — a git failure is "changed", never "unchanged"
-
   /**
-   * The forgive-unchanged oracle — the predecessor's
-   * `git diff --quiet <row.baseline> HEAD -- <artifact>` under the ledger
-   * file's repository root. Anything that is not a clean diff (changed
-   * artifact, unknown baseline, no repo) is "changed" — a stale row that
-   * cannot be forgiven stays absent evidence.
+   * The forgive-unchanged oracle — delegated to the shared wiring
+   * (`SubcommandWiring.forgivePredicate`) so the record tool's own read
+   * path and the checkpoint share one discipline.
    */
-  private def forgivePredicate(ledgerFile: String): (String, String) => Boolean =
-    val ledgerDir: Option[Path] =
-      Option(Paths.get(ledgerFile).toAbsolutePath.normalize.getParent)
-    val repo: Option[Path] = ledgerDir.flatMap(repoContaining)
-    (rowBaseline: String, artifact: String) =>
-      repo match
-        case Some(r) =>
-          gitExit(r, List("diff", "--quiet", rowBaseline, "HEAD", "--", artifact)) == 0
-        case None => false
+  private[cli] def forgivePredicate(ledgerFile: String): (String, String) => Boolean =
+    SubcommandWiring.forgivePredicate(ledgerFile)
 
 /** The `ledger` subcommand — append-only ledger operations. */
 object LedgerCmd:
   /**
-   * The only actions available: `append`, `read`, `validate`. No `update`,
-   * `delete`, `rewrite`, or `edit` action exists.
+   * The predecessor's operation set: `append`, `run`, `read`, `verify`.
+   * No `update`, `delete`, `rewrite`, or `edit` action exists — a
+   * modification operation on this type does not compile.
+   *
+   * spec: ledger-checkpoint-parity — Compile-Negative: A record operation type with an update, delete, or rewrite operation
    */
   enum Action:
-    case Append, Read, Validate
+    case Append, Run, Read, Verify
 
   /**
    * Wire the ledger subcommand to the 15-clause validator and emit
@@ -1310,34 +1293,32 @@ object LedgerCmd:
    */
   def run(args: Array[String]): Outcome[Int] =
     if args.isEmpty then
-      SubcommandWiring.emitStderr("ledger: unknown subcommand: '<none>'. Expected: append, run, read, validate.\n")
+      SubcommandWiring.emitStderr("ledger: unknown subcommand: '<none>'. Expected: append, run, read, verify.\n")
       Outcome.Finding("unknown subcommand")
     else
       val actionStr: String = args(0)
-      // Check for mutation subcommands — rejected for WHAT IT IS
+      // Check for mutation subcommands — rejected for WHAT IT IS, before
+      // any parameter parsing (the predecessor refuses them by name).
       actionStr match
         case "update" | "delete" | "rewrite" | "edit" =>
           SubcommandWiring.emitStderr(s"ledger: the ledger is append-only; '$actionStr' is not a subcommand.\n")
           Outcome.Finding(s"append-only: $actionStr")
-        case "run" =>
-          // run mode: execute the command after --, observe its exit code,
-          // then append a self-observed record.
-          runRunMode(args.drop(1))
         case _ => // danger-scan:allow string-rejection — non-mutation string falls through to parseAction which returns None→Finding for unknowns
           parseAction(actionStr) match
             case Some(action) =>
               runAction(action, args.drop(1))
             case None =>
               SubcommandWiring.emitStderr(
-                s"ledger: unknown subcommand: '$actionStr'. Expected: append, run, read, validate.\n"
+                s"ledger: unknown subcommand: '$actionStr'. Expected: append, run, read, verify.\n"
               )
               Outcome.Finding(s"unknown subcommand: $actionStr")
 
   /** Parse the action name. */
   private def parseAction(s: String): Option[Action] = s match
-    case "append"   => Some(Action.Append)
-    case "read"     => Some(Action.Read)
-    case "validate" => Some(Action.Validate)
+    case "append" => Some(Action.Append)
+    case "run"    => Some(Action.Run)
+    case "read"   => Some(Action.Read)
+    case "verify" => Some(Action.Verify)
     case _ => // danger-scan:allow string-rejection — unrecognized action maps to None (error), never a valid Action
       None
 
@@ -1345,7 +1326,7 @@ object LedgerCmd:
    * Run the ledger action with the given args.
    */
   private def runAction(action: Action, args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set(
+    val valueFlags: Set[String] = Set(
       "--file",
       "--change",
       "--spec",
@@ -1356,23 +1337,43 @@ object LedgerCmd:
       "--exit",
       "--baseline",
       "--session",
-      "--source",
-      "--forgive-unchanged"
+      "--source"
     )
-    // Split args at -- (run mode command separator)
-    val (flagArgs, runCommand) = splitAtDoubleDash(args.toList)
-    SubcommandWiring.parseArgs(flagArgs.toArray, flags) match
+    val booleanFlags: Set[String] = Set("--forgive-unchanged")
+    // Split args at -- (run mode command separator) — a value-taking
+    // flag consumes its next token, so `--command --` is data, not the
+    // separator.
+    val (flagArgs, runCommand) = splitAtDoubleDash(args.toList, valueFlags)
+    // The predecessor rejects --exit/--source during the arg loop for
+    // `run` — at the position they appear, before any other check.
+    val forbidden: Set[String] =
+      if action == Action.Run then Set("--exit", "--source") else Set.empty[String]
+    SubcommandWiring.parseArgs(flagArgs.toArray, valueFlags, booleanFlags, forbidden) match
       case Left(err) =>
-        SubcommandWiring.emitStderr(s"ledger: ${err.offendingToken}\n")
+        err match
+          case CliError.ForbiddenFlag("--exit") =>
+            SubcommandWiring.emitStderr("ledger: run mode does not accept --exit; the script observes the exit code\n")
+          case CliError.ForbiddenFlag("--source") =>
+            SubcommandWiring.emitStderr("ledger: run mode does not accept --source; a run row is self-observed\n")
+          case _ => // danger-scan:allow fallback-render — non-forbidden parse errors render through the shared mapper
+            SubcommandWiring.emitStderr(s"ledger: ${SubcommandWiring.argErrorMessage(err)}\n")
         Outcome.Finding(s"arg parse error: ${err.offendingToken}")
       case Right(parsed) =>
         action match
           case Action.Append =>
             runAppend(parsed, runCommand)
+          case Action.Run =>
+            runRunMode(parsed, runCommand)
           case Action.Read =>
             runRead(parsed)
-          case Action.Validate =>
-            runValidate(parsed)
+          case Action.Verify =>
+            runVerify(
+              parsed,
+              SubcommandWiring.repoRootOf,
+              SubcommandWiring.sha256OfFile,
+              SubcommandWiring.shellParses,
+              SubcommandWiring.replayCommand
+            )
 
   /**
    * Run mode: execute the command after --, observe its exit code, and
@@ -1381,50 +1382,114 @@ object LedgerCmd:
    *
    * spec: cli-wiring — Scenario: The run action observes the command exit code
    */
-  private def runRunMode(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set(
-      "--file",
-      "--change",
-      "--spec",
-      "--ring",
-      "--obligation",
-      "--artifact",
-      "--baseline",
-      "--session",
-      "--source"
-    )
-    val (flagArgs, runCommand) = splitAtDoubleDash(args.toList)
-    SubcommandWiring.parseArgs(flagArgs.toArray, flags) match
-      case Left(err) =>
-        SubcommandWiring.emitStderr(s"ledger: ${err.offendingToken}\n")
-        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
-      case Right(parsed) =>
-        // Execute the command and observe its exit code
-        val observedExit: Int = if runCommand.isEmpty then 0 else executeCommand(runCommand)
-        // Stamp --command and --exit with the observed values
-        val stamped: Map[String, String] = parsed ++ Map(
-          "--command" -> runCommand,
-          "--exit"    -> observedExit.toString
-        )
-        runAppend(stamped, runCommand)
+  private def runRunMode(parsed: Map[String, String], runCommand: String): Outcome[Int] =
+    // --exit/--source are already rejected at parse position for `run`
+    // (the predecessor dies in the arg loop, before any other check).
+    val file: String = parsed.getOrElse("--file", "")
+    if file.isEmpty then
+      SubcommandWiring.emitStderr("ledger: --file is required\n")
+      Outcome.Finding("--file is required")
+    else if runCommand.isEmpty then
+      SubcommandWiring.emitStderr("ledger: run mode requires a command after --\n")
+      Outcome.Finding("run mode requires a command after --")
+    else
+      // Missing REQUIRED inputs are named individually — bare names, as
+      // the predecessor's `missing="$missing change"` accumulates them.
+      val missing: List[String] = List(
+        ("change", parsed.getOrElse("--change", "")),
+        ("spec", parsed.getOrElse("--spec", "")),
+        ("ring", parsed.getOrElse("--ring", "")),
+        ("obligation", parsed.getOrElse("--obligation", "")),
+        ("artifact", parsed.getOrElse("--artifact", "")),
+        ("baseline", parsed.getOrElse("--baseline", ""))
+      ).filter(_._2.isEmpty).map(_._1)
+      if missing.nonEmpty then
+        SubcommandWiring.emitStderr(s"ledger: missing required field(s): ${missing.mkString(" ")}\n")
+        Outcome.Finding(s"missing required field(s): ${missing.mkString(" ")}")
+      else
+        // Resolve the artifact's pre-run sha256 relative to the ledger's
+        // repo root (the command may CREATE the artifact — an
+        // unresolvable artifact is a warning, never a fake hash). The
+        // predecessor concatenates `$repo_root/$ARTIFACT` — an absolute
+        // artifact lands UNDER the repo, it does not escape it.
+        val ledgerDir: Path =
+          Option(Paths.get(file).toAbsolutePath.normalize.getParent)
+            .getOrElse(Paths.get("").toAbsolutePath)
+        val repo: Path       = SubcommandWiring.repoRootOf(ledgerDir)
+        val artifact: String = parsed.getOrElse("--artifact", "")
+        val artifactSha256: String =
+          SubcommandWiring.sha256OfFile(Paths.get(s"$repo/$artifact")) match
+            case Some(sha) => sha
+            case None =>
+              SubcommandWiring.emitStderr(
+                s"ledger: WARNING — artifact $artifact does not resolve at run time (may be created by the command)\n"
+              )
+              ""
+        // Execute, observing exit + merged output + wall time.
+        val (observedExit: Int, output: Array[Byte], wallMs: Long) =
+          SubcommandWiring.executeCaptured(repo, runCommand)
+        val runDigest: String = SubcommandWiring.sha256Hex(output)
+        // R8 rows require the producing session (checked at record-build
+        // time, as the predecessor does — after the run has observed).
+        val ring: String    = parsed.getOrElse("--ring", "")
+        val session: String = parsed.getOrElse("--session", "")
+        if ring == "R8" && session.isEmpty then
+          SubcommandWiring.emitStderr(
+            "ledger: session is required for R8 (adversarial-review) rows — pass --session with the producing session's identity\n"
+          )
+          Outcome.Finding("session is required for R8 rows")
+        else
+          val record: ujson.Obj = ujson.Obj(
+            "v"          -> ujson.Num(SubcommandWiring.supportedVersion),
+            "ts"         -> ujson.Str(SubcommandWiring.stampTimestamp),
+            "change"     -> ujson.Str(parsed.getOrElse("--change", "")),
+            "spec"       -> ujson.Str(parsed.getOrElse("--spec", "")),
+            "ring"       -> ujson.Str(ring),
+            "obligation" -> ujson.Str(parsed.getOrElse("--obligation", "")),
+            "artifact"   -> ujson.Str(artifact),
+            "command"    -> ujson.Str(runCommand),
+            "exit"       -> ujson.Num(observedExit),
+            "baseline"   -> ujson.Str(parsed.getOrElse("--baseline", "")),
+            "sha256"     -> ujson.Str(artifactSha256),
+            "digest"     -> ujson.Str(runDigest),
+            "wallTime"   -> ujson.Num(wallMs.toDouble)
+          )
+          // Non-R8 run rows never carry `session` — the predecessor
+          // emits it only for the adversarial-review ring.
+          if ring == "R8" then record.value("session") = ujson.Str(session)
+          Validator.validateFull(record) match
+            case Left(violation: ContractViolation) =>
+              SubcommandWiring.emitStderr(s"ledger: clause ${violation.clauseIndex} — ${violation.description}\n")
+              Outcome.Finding(s"ledger run rejected: clause ${violation.clauseIndex} — ${violation.description}")
+            case Right(_) =>
+              SubcommandWiring.appendLedgerLine(file, ujson.write(record)) match
+                case Outcome.Undetermined(reason) =>
+                  SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
+                  Outcome.Undetermined(reason)
+                case Outcome.Finding(msg) => Outcome.Finding(msg)
+                case Outcome.Ran(_) =>
+                  SubcommandWiring.emitStderr(
+                    s"ledger: run recorded exit=$observedExit wallTime=${wallMs}ms\n"
+                  )
+                  Outcome.Ran(0)
 
   /**
-   * Execute a shell command and return its exit code.
-   * Returns 0 if the command is empty.
+   * Split args at the `--` separator (for run mode), walking the arg
+   * stream the way the predecessor's case loop does: a value-taking
+   * flag consumes its next token VERBATIM — `--command --` stores `--`
+   * as the command, it is not the separator. Only a `--` in flag
+   * position ends the flags.
    */
-  private def executeCommand(command: String): Int =
-    if command.isEmpty then 0
-    else
-      val process: Process = new ProcessBuilder("sh", "-c", command).inheritIO().start()
-      process.waitFor()
-
-  /** Split args at the -- separator (for run mode). */
-  private def splitAtDoubleDash(args: List[String]): (List[String], String) =
-    args.indexOf("--") match
-      case -1 => (args, "")
-      case idx =>
-        val (before, after) = args.splitAt(idx)
-        (before, after.drop(1).mkString(" "))
+  private def splitAtDoubleDash(args: List[String], valueFlags: Set[String]): (List[String], String) =
+    @annotation.tailrec
+    def loop(rest: List[String], acc: List[String]): (List[String], String) =
+      rest match
+        case Nil          => (acc.reverse, "")
+        case "--" :: tail => (acc.reverse, tail.mkString(" "))
+        case flag :: value :: tail if valueFlags.contains(flag) =>
+          loop(tail, value :: flag :: acc)
+        case head :: tail => loop(tail, head :: acc)
+    loop(args, List.empty[String])
 
   /**
    * Append a record to the ledger after validating against all 15 clauses.
@@ -1447,69 +1512,78 @@ object LedgerCmd:
       SubcommandWiring.emitStderr("ledger: --file is required\n")
       Outcome.Finding("--file is required")
     else
-      // Check required fields before building the record
+      // Check required fields before building the record — bare names,
+      // as the predecessor's `missing="$missing change"` accumulates them.
       val missing: List[String] = List(
-        ("--change", parsed.getOrElse("--change", "")),
-        ("--spec", parsed.getOrElse("--spec", "")),
-        ("--ring", parsed.getOrElse("--ring", "")),
-        ("--obligation", parsed.getOrElse("--obligation", "")),
-        ("--artifact", parsed.getOrElse("--artifact", "")),
-        ("--command", parsed.getOrElse("--command", "")),
-        ("--exit", parsed.getOrElse("--exit", "")),
-        ("--baseline", parsed.getOrElse("--baseline", ""))
+        ("change", parsed.getOrElse("--change", "")),
+        ("spec", parsed.getOrElse("--spec", "")),
+        ("ring", parsed.getOrElse("--ring", "")),
+        ("obligation", parsed.getOrElse("--obligation", "")),
+        ("artifact", parsed.getOrElse("--artifact", "")),
+        ("command", parsed.getOrElse("--command", "")),
+        ("exit", parsed.getOrElse("--exit", "")),
+        ("baseline", parsed.getOrElse("--baseline", ""))
       ).filter(_._2.isEmpty).map(_._1)
 
       if missing.nonEmpty then
         SubcommandWiring.emitStderr(s"ledger: missing required field(s): ${missing.mkString(" ")}\n")
         Outcome.Finding(s"missing required field(s): ${missing.mkString(" ")}")
       else
-        // R8 rows require session
+        // Strict exit grammar, checked before the session rule exactly
+        // as the predecessor does: `0 | -?[1-9][0-9]{0,2}` — the value AS
+        // WRITTEN (-999..999, no leading zeros, no sign-normalisation):
+        // `007` must not silently store 7 in the field that makes a row
+        // falsifiable.
         val ring: String    = parsed.getOrElse("--ring", "")
         val session: String = parsed.getOrElse("--session", "")
-        if ring == "R8" && session.isEmpty then
-          SubcommandWiring.emitStderr("ledger: session is required for R8 (adversarial-review) rows\n")
+        val ts: String      = SubcommandWiring.stampTimestamp
+        val exitStr: String = parsed.getOrElse("--exit", "0")
+        val exitCanonical: Boolean =
+          exitStr == "0" || exitStr.matches("-?[1-9][0-9]{0,2}")
+        if !exitCanonical then
+          SubcommandWiring.emitStderr(s"ledger: exit must be an integer in -999..999 as written, got: $exitStr\n")
+          Outcome.Finding(s"exit must be an integer in -999..999 as written, got: $exitStr")
+        else if ring == "R8" && session.isEmpty then
+          SubcommandWiring.emitStderr(
+            "ledger: session is required for R8 (adversarial-review) rows — pass --session with the producing session's identity\n"
+          )
           Outcome.Finding("session is required for R8 rows")
         else
           // Build the record JSON with v and ts stamped here (not accepted from caller)
-          val ts: String      = SubcommandWiring.stampTimestamp
-          val exitStr: String = parsed.getOrElse("--exit", "0")
-          exitStr.toIntOption match
-            case None =>
-              SubcommandWiring.emitStderr(s"ledger: --exit must be an integer, got '$exitStr'\n")
-              Outcome.Finding(s"--exit must be an integer, got '$exitStr'")
-            case Some(exitInt) =>
-              val record: ujson.Obj = ujson.Obj(
-                "v"          -> ujson.Num(SubcommandWiring.supportedVersion),
-                "ts"         -> ujson.Str(ts),
-                "change"     -> ujson.Str(parsed.getOrElse("--change", "")),
-                "spec"       -> ujson.Str(parsed.getOrElse("--spec", "")),
-                "ring"       -> ujson.Str(ring),
-                "obligation" -> ujson.Str(parsed.getOrElse("--obligation", "")),
-                "artifact"   -> ujson.Str(parsed.getOrElse("--artifact", "")),
-                "command"    -> ujson.Str(parsed.getOrElse("--command", "")),
-                "exit"       -> ujson.Num(exitInt),
-                "baseline"   -> ujson.Str(parsed.getOrElse("--baseline", ""))
-              )
-              // Add optional fields when present
-              if session.nonEmpty then record.value("session") = ujson.Str(session)
-              val source: String = parsed.getOrElse("--source", "")
-              if source.nonEmpty then record.value("source") = ujson.Str(source)
+          val exitInt: Int = exitStr.toInt // canonical grammar ⊆ parseable
+          val record: ujson.Obj = ujson.Obj(
+            "v"          -> ujson.Num(SubcommandWiring.supportedVersion),
+            "ts"         -> ujson.Str(ts),
+            "change"     -> ujson.Str(parsed.getOrElse("--change", "")),
+            "spec"       -> ujson.Str(parsed.getOrElse("--spec", "")),
+            "ring"       -> ujson.Str(ring),
+            "obligation" -> ujson.Str(parsed.getOrElse("--obligation", "")),
+            "artifact"   -> ujson.Str(parsed.getOrElse("--artifact", "")),
+            "command"    -> ujson.Str(parsed.getOrElse("--command", "")),
+            "exit"       -> ujson.Num(exitInt),
+            "baseline"   -> ujson.Str(parsed.getOrElse("--baseline", ""))
+          )
+          // Add optional fields when present
+          if session.nonEmpty then record.value("session") = ujson.Str(session)
+          val source: String = parsed.getOrElse("--source", "")
+          if source.nonEmpty then record.value("source") = ujson.Str(source)
 
-              // Validate against all 15 clauses BEFORE writing
-              Validator.validateFull(record) match
-                case Left(violation: ContractViolation) =>
-                  SubcommandWiring.emitStderr(s"ledger: clause ${violation.clauseIndex} — ${violation.description}\n")
-                  Outcome.Finding(s"ledger append rejected: clause ${violation.clauseIndex} — ${violation.description}")
-                case Right(_) =>
-                  // Write the record to the ledger file
-                  val recordLine: String = ujson.write(record)
-                  SubcommandWiring.appendLedgerLine(file, recordLine) match
-                    case Outcome.Undetermined(reason) =>
-                      Outcome.Undetermined(reason)
-                    case Outcome.Finding(msg) =>
-                      Outcome.Finding(msg)
-                    case Outcome.Ran(_) =>
-                      Outcome.Ran(0)
+          // Validate against all 15 clauses BEFORE writing
+          Validator.validateFull(record) match
+            case Left(violation: ContractViolation) =>
+              SubcommandWiring.emitStderr(s"ledger: clause ${violation.clauseIndex} — ${violation.description}\n")
+              Outcome.Finding(s"ledger append rejected: clause ${violation.clauseIndex} — ${violation.description}")
+            case Right(_) =>
+              // Write the record to the ledger file
+              val recordLine: String = ujson.write(record)
+              SubcommandWiring.appendLedgerLine(file, recordLine) match
+                case Outcome.Undetermined(reason) =>
+                  SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
+                  Outcome.Undetermined(reason)
+                case Outcome.Finding(msg) =>
+                  Outcome.Finding(msg)
+                case Outcome.Ran(_) =>
+                  Outcome.Ran(0)
 
   /**
    * Read records from the ledger file.
@@ -1526,47 +1600,204 @@ object LedgerCmd:
       SubcommandWiring.emitStderr("ledger: --change is required for read\n")
       Outcome.Finding("--change is required for read")
     else
-      SubcommandWiring.readLedgerFile(file) match
-        case Outcome.Undetermined(reason) =>
-          SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
-          Outcome.Undetermined(reason)
-        case Outcome.Finding(msg) =>
-          Outcome.Finding(msg)
-        case Outcome.Ran(rows) =>
-          // Filter by change, spec, baseline
-          val spec: String     = parsed.getOrElse("--spec", "")
-          val baseline: String = parsed.getOrElse("--baseline", "")
-          val filtered: List[ujson.Value] = rows.filter { row =>
-            val rowChange: String   = row("change").strOpt.getOrElse("")
-            val rowSpec: String     = row("spec").strOpt.getOrElse("")
-            val rowBaseline: String = row("baseline").strOpt.getOrElse("")
-            rowChange == change &&
-            (spec.isEmpty || rowSpec == spec) &&
-            (baseline.isEmpty || rowBaseline == baseline)
-          }
-          // Emit matching records on stdout
-          val output: String = filtered.map(ujson.write(_)).mkString("\n")
-          if output.nonEmpty then SubcommandWiring.emitStdout(output + "\n")
-          Outcome.Ran(0)
+      val filePath: Path   = Paths.get(file)
+      val spec: String     = parsed.getOrElse("--spec", "")
+      val baseline: String = parsed.getOrElse("--baseline", "")
+      // --forgive-unchanged: a stale row is kept iff the artifact it ran
+      // has not changed since the row's baseline — the shared wiring
+      // predicate. Absent the flag, nothing forgives.
+      val predicate: (String, String) => Boolean =
+        if parsed.contains("--forgive-unchanged") then SubcommandWiring.forgivePredicate(file)
+        else (_: String, _: String) => false
+      if !Files.exists(filePath) then
+        // The predecessor reports the absent ledger on stdout, exit 2 —
+        // "no ledger" is could-not-determine, never a measurement of zero.
+        SubcommandWiring.emitStdout(s"ledger: no ledger at $file\n")
+        Outcome.Undetermined(s"no ledger at $file")
+      else if !Files.isRegularFile(filePath) then
+        SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $file is not a regular file\n")
+        Outcome.Undetermined(s"$file is not a regular file")
+      else if !Files.isReadable(filePath) then
+        SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $file is not readable\n")
+        Outcome.Undetermined(s"$file is not readable")
+      else
+        readRowsFiltered(file, change, spec, baseline, predicate) match
+          case Outcome.Undetermined(reason) =>
+            SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
+            Outcome.Undetermined(reason)
+          case Outcome.Finding(msg) =>
+            Outcome.Finding(msg)
+          case Outcome.Ran(rows) =>
+            // Emit matching records on stdout
+            val output: String = rows.map(ujson.write(_)).mkString("\n")
+            if output.nonEmpty then SubcommandWiring.emitStdout(output + "\n")
+            Outcome.Ran(0)
 
   /**
-   * Validate a ledger file (verify all rows against the contract).
+   * Verify a ledger file: every row is contract-checked, judgment-ring
+   * (manual/R8) rows must name a resolvable artifact (sha256 traced),
+   * and runnable rows are replayed in the repo root — their observed
+   * exit must agree with the recorded exit. Any disagreement is a
+   * failure; a malformed row makes the whole file undetermined.
+   *
+   * The seams are the only effectful boundary: `repoRootOf` resolves the
+   * ledger file's repository root, `sha256Of` hashes a file,
+   * `shellParses` is the predecessor's `bash -n` syntax check, and
+   * `replayExit` re-runs the command under a directory returning its
+   * observed exit.
+   *
+   * spec: ledger-checkpoint-parity — Requirement: Replay SHALL assign exactly one verdict to every record
    */
-  def runValidate(parsed: Map[String, String]): Outcome[Int] =
+  private[cli] def runVerify(
+    parsed: Map[String, String],
+    repoRootOf: java.nio.file.Path => java.nio.file.Path,
+    sha256Of: java.nio.file.Path => Option[String],
+    shellParses: String => Boolean,
+    replayExit: (java.nio.file.Path, String) => Int
+  ): Outcome[Int] =
     val file: String = parsed.getOrElse("--file", "")
     if file.isEmpty then
       SubcommandWiring.emitStderr("ledger: --file is required\n")
       Outcome.Finding("--file is required")
     else
-      SubcommandWiring.readLedgerFile(file) match
-        case Outcome.Undetermined(reason) =>
-          SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
-          Outcome.Undetermined(reason)
-        case Outcome.Finding(msg) =>
-          Outcome.Finding(msg)
-        case Outcome.Ran(rows) =>
-          SubcommandWiring.emitStderr(s"ledger: verify passed (${rows.length} rows)\n")
-          Outcome.Ran(0)
+      val filePath: Path = Paths.get(file)
+      if !Files.exists(filePath) then
+        // The predecessor reports the absent ledger on stdout, exit 2 —
+        // "no ledger" is could-not-determine, never a measurement of zero.
+        SubcommandWiring.emitStdout(s"ledger: no ledger at $file\n")
+        Outcome.Undetermined(s"no ledger at $file")
+      else if !Files.isRegularFile(filePath) then
+        SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $file is not a regular file\n")
+        Outcome.Undetermined(s"$file is not a regular file")
+      else if !Files.isReadable(filePath) then
+        SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $file is not readable\n")
+        Outcome.Undetermined(s"$file is not readable")
+      else
+        SubcommandWiring.readLedgerFile(file) match
+          case Outcome.Undetermined(reason) =>
+            SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
+            Outcome.Undetermined(reason)
+          case Outcome.Finding(msg) =>
+            Outcome.Finding(msg)
+          case Outcome.Ran(rows) =>
+            val ledgerDir: Path =
+              Option(filePath.toAbsolutePath.normalize.getParent)
+                .getOrElse(Paths.get("").toAbsolutePath)
+            val repo: Path = repoRootOf(ledgerDir)
+            final case class Acc(lineNo: Int, failures: Int)
+            val result: Acc = rows.foldLeft(Acc(lineNo = 0, failures = 0)) { (acc: Acc, row: ujson.Value) =>
+              val n: Int           = acc.lineNo + 1
+              val ring: String     = row("ring").strOpt.getOrElse("")
+              val artifact: String = row("artifact").strOpt.getOrElse("")
+              val command: String  = row("command").strOpt.getOrElse("")
+              val recorded: Int    = row("exit").numOpt.map(_.toInt).getOrElse(0)
+              // The judgment-ring set is the typed model's own
+              // (`ReplayVerdict.unreplayableRings`), not a string literal
+              // — the code that ships is the code the properties test.
+              if Ring.fromString(ring).exists(ReplayVerdict.unreplayableRings.contains) then
+                // Judgment rows are not replayed — their evidence is a
+                // report artifact that must resolve and hash. The
+                // predecessor concatenates `$repo/$artifact` — an
+                // absolute artifact lands UNDER the repo.
+                if artifact.isEmpty then
+                  SubcommandWiring.emitStderr(
+                    s"ledger: line $n: manual/R8 rows must name a report artifact\n"
+                  )
+                  Acc(n, acc.failures + 1)
+                else
+                  sha256Of(Paths.get(s"$repo/$artifact")) match
+                    case None =>
+                      SubcommandWiring.emitStderr(
+                        s"ledger: line $n: manual row artifact does not resolve: $artifact\n"
+                      )
+                      Acc(n, acc.failures + 1)
+                    case Some(sha) =>
+                      SubcommandWiring.emitStderr(
+                        s"ledger: line $n: artifact $artifact sha256=$sha\n"
+                      )
+                      SubcommandWiring.emitStderr(
+                        s"ledger: line $n: manual/unreplayable (ring=$ring, artifact=$artifact)\n"
+                      )
+                      Acc(n, acc.failures)
+              else
+                // Runnable row — replay when the command parses as shell,
+                // then let the typed verdict classify the outcome.
+                val replayExitOption: Option[Int] =
+                  if shellParses(command) then Some(replayExit(repo, command)) else None
+                replayExitOption match
+                  case None =>
+                    // Not valid shell — skipped replay is named, never
+                    // silently passed.
+                    SubcommandWiring.emitStderr(
+                      s"ledger: line $n: non-manual row command does not parse as shell (skipped replay): $command\n"
+                    )
+                    Acc(n, acc.failures)
+                  case Some(observed) =>
+                    ReplayVerdict.classifyName(ring, Some(observed), recorded) match
+                      case ReplayVerdict.Matches => Acc(n, acc.failures)
+                      case ReplayVerdict.Diverges =>
+                        SubcommandWiring.emitStderr(
+                          s"ledger: line $n: command/exit disagreement (recorded $recorded, observed $observed): $command\n"
+                        )
+                        Acc(n, acc.failures + 1)
+                      case ReplayVerdict.Unreplayable =>
+                        // classifyName yields Matches or Diverges on a
+                        // defined replay for a non-judgment ring — this
+                        // arm is dead by construction.
+                        Acc(
+                          n,
+                          acc.failures
+                        ) // danger-scan:allow dead-arm — judgment rings handled above; replay defined
+            }
+            if result.failures > 0 then
+              SubcommandWiring.emitStderr(
+                s"ledger: verify found ${result.failures} failure(s) in ${result.lineNo} row(s)\n"
+              )
+              Outcome.Finding(s"verify found ${result.failures} failure(s) in ${result.lineNo} row(s)")
+            else
+              SubcommandWiring.emitStderr(s"ledger: verify passed (${result.lineNo} rows)\n")
+              Outcome.Ran(0)
+
+  /**
+   * The record tool's own read path: read + contract-validate the file,
+   * then keep the rows matching change/spec/baseline — a stale row is
+   * forgiven iff `artifactUnchanged` (the predecessor's
+   * `--forgive-unchanged` discipline: `git diff --quiet <row.baseline>
+   * HEAD -- <artifact>` in the ledger's repo root) says the artifact it
+   * ran has not changed.
+   *
+   * The checkpoint delegates row filtering to THIS path — it never
+   * re-filters raw ledger lines itself.
+   *
+   * spec: ledger-checkpoint-parity — Requirement: Record filtering SHALL delegate to the record tool's own read path
+   */
+  private[cli] def readRowsFiltered(
+    file: String,
+    change: String,
+    spec: String,
+    baseline: String,
+    artifactUnchanged: (String, String) => Boolean
+  ): Outcome[List[ujson.Value]] =
+    SubcommandWiring.readLedgerFile(file) match
+      case Outcome.Undetermined(reason) => Outcome.Undetermined(reason)
+      case Outcome.Finding(msg)         => Outcome.Finding(msg)
+      case Outcome.Ran(rows) =>
+        val kept: List[ujson.Value] = rows.filter { (row: ujson.Value) =>
+          val rowChange: String   = row("change").strOpt.getOrElse("")
+          val rowSpec: String     = row("spec").strOpt.getOrElse("")
+          val rowBaseline: String = row("baseline").strOpt.getOrElse("")
+          val rowArtifact: String = row("artifact").strOpt.getOrElse("")
+          if rowChange != change then false                   // out-of-scope — never forgiven
+          else if spec.nonEmpty && rowSpec != spec then false // out-of-scope
+          else if baseline.nonEmpty && rowBaseline != baseline then
+            // Stale — forgiven iff the artifact the row ran is unchanged
+            // since the row's own baseline. artifactUnchanged answers
+            // `git diff --quiet <rowBaseline> HEAD -- <artifact>`.
+            rowArtifact.nonEmpty && rowBaseline.nonEmpty &&
+            artifactUnchanged(rowBaseline, rowArtifact)
+          else true
+        }
+        Outcome.Ran(kept)
 
   /**
    * Append a record to the ledger after validating against all 15 clauses.
@@ -1592,9 +1823,11 @@ object LedgerCmd:
         ledgerPath match
           case Some(path) =>
             SubcommandWiring.appendLedgerLine(path, recordJson) match
-              case Outcome.Undetermined(reason) => Outcome.Undetermined(reason)
-              case Outcome.Finding(msg)         => Outcome.Finding(msg)
-              case Outcome.Ran(_)               => Outcome.Ran(0)
+              case Outcome.Undetermined(reason) =>
+                SubcommandWiring.emitStderr(s"ledger: UNDETERMINED — $reason\n")
+                Outcome.Undetermined(reason)
+              case Outcome.Finding(msg) => Outcome.Finding(msg)
+              case Outcome.Ran(_)       => Outcome.Ran(0)
           case None =>
             Outcome.Ran(0)
       case Left(violation: ContractViolation) =>
@@ -1605,13 +1838,55 @@ object LedgerCmd:
 /** The `checkpoint` subcommand — checkpoint operations. */
 object CheckpointCmd:
   /**
-   * Wire the checkpoint subcommand to write the presentation marker and
-   * emit the report.
+   * Wire the checkpoint subcommand to the predecessor's two operations:
+   * `report` (generate the per-ring checkpoint from recorded evidence,
+   * consuming the supplied correctness verdict verbatim) and
+   * `regenerate-tasks` (rewrite tasks.md checkbox state from the
+   * progress tracker). Unknown operations are rejected by name.
    *
    * spec: cli-wiring — Requirement: The checkpoint subcommand writes the presentation marker and emits the report
+   * spec: ledger-checkpoint-parity — Requirement: The checkpoint SHALL be generated from recorded evidence, never authored
    */
   def run(args: Array[String]): Outcome[Int] =
-    val flags: Set[String] = Set(
+    if args.isEmpty then
+      SubcommandWiring.emitStderr("checkpoint: unknown subcommand: '<none>'. Expected: report, regenerate-tasks.\n")
+      Outcome.Finding("unknown subcommand")
+    else
+      val sub: String = args(0)
+      sub match
+        case "report" =>
+          runReport(
+            args.drop(1),
+            ChainStateCmd.forgivePredicate
+          )
+        case "regenerate-tasks" =>
+          runRegenerateTasks(
+            args.drop(1),
+            SubcommandWiring.readTextFile,
+            SubcommandWiring.writeTextFile
+          )
+        case _ => // danger-scan:allow string-rejection — unknown op maps to Finding, never a valid action
+          SubcommandWiring.emitStderr(
+            s"checkpoint: unknown subcommand: '$sub'. Expected: report, regenerate-tasks.\n"
+          )
+          Outcome.Finding(s"unknown subcommand: $sub")
+
+  /**
+   * Generate the checkpoint report: read the supplied verdict verbatim,
+   * delegate row filtering to the record tool's own read path, and
+   * emit the generated report — never a recomputed correctness verdict.
+   * The presentation marker is written iff the report's evidence
+   * permits it (`report.markerWritten`) AND a `--session` was supplied
+   * to key it.
+   *
+   * spec: ledger-checkpoint-parity — Requirement: The checkpoint SHALL be generated from recorded evidence, never authored
+   * spec: ledger-checkpoint-parity — Compile-Negative: A correctness computation referenced from the checkpoint module
+   */
+  private[cli] def runReport(
+    args: Array[String],
+    forgivePredicateFor: String => (String, String) => Boolean
+  ): Outcome[Int] =
+    val valueFlags: Set[String] = Set(
       "--ledger",
       "--change",
       "--spec",
@@ -1622,116 +1897,267 @@ object CheckpointCmd:
       "--change-dir",
       "--session"
     )
-    SubcommandWiring.parseArgs(args, flags) match
+    SubcommandWiring.parseArgs(args, valueFlags) match
       case Left(err) =>
-        SubcommandWiring.emitStderr(s"checkpoint: ${err.offendingToken}\n")
+        SubcommandWiring.emitStderr(s"checkpoint: ${SubcommandWiring.argErrorMessage(err)}\n")
         Outcome.Finding(s"arg parse error: ${err.offendingToken}")
       case Right(parsed) =>
-        val change: String  = parsed.getOrElse("--change", "")
-        val spec: String    = parsed.getOrElse("--spec", "")
-        val session: String = parsed.getOrElse("--session", "")
-        val gitDir: String  = parsed.getOrElse("--change-dir", ".")
-
-        if change.isEmpty then
-          SubcommandWiring.emitStderr("checkpoint: --change is required\n")
-          Outcome.Finding("--change is required")
-        else if spec.isEmpty then
-          SubcommandWiring.emitStderr("checkpoint: --spec is required\n")
-          Outcome.Finding("--spec is required")
-        else if session.isEmpty then
-          SubcommandWiring.emitStderr("checkpoint: --session is required\n")
-          Outcome.Finding("--session is required")
+        val required: List[String] =
+          List("--ledger", "--change", "--spec", "--baseline", "--rings", "--chain-state-json")
+            .filter((k: String) => parsed.getOrElse(k, "").isEmpty)
+        if required.nonEmpty then
+          // The predecessor names the FIRST missing flag, in this order.
+          val flag: String = required.headOption.getOrElse("--ledger")
+          SubcommandWiring.emitStderr(s"checkpoint: $flag is required\n")
+          Outcome.Finding(s"$flag is required")
         else
-          // Read the ledger and compute chain-state before writing the marker.
-          // The marker SHALL be evidence that the chain-state discharge check
-          // ran — not just that tests ran. An undischarged spec produces a
-          // Finding (exit 1), not a marker.
-          val ledgerFile: String = parsed.getOrElse("--ledger", "")
-          val baseline: String   = parsed.getOrElse("--baseline", "")
-          if ledgerFile.isEmpty then
-            SubcommandWiring.emitStderr("checkpoint: --ledger is required\n")
-            Outcome.Finding("--ledger is required")
-          else if baseline.isEmpty then
-            SubcommandWiring.emitStderr("checkpoint: --baseline is required\n")
-            Outcome.Finding("--baseline is required")
+          val format: String = parsed.getOrElse("--format", "json")
+          if format != "json" && format != "text" then
+            SubcommandWiring.emitStderr("checkpoint: --format must be json or text\n")
+            Outcome.Finding("--format must be json or text")
           else
-            SubcommandWiring.readLedgerFile(ledgerFile) match
+            // --rings is comma-separated; every name must be in the closed
+            // domain, rejected by name — never reported unevidenced. The
+            // -1 limit keeps empty elements (a bare "," or a trailing
+            // comma names an EMPTY ring, which the closed domain rejects)
+            // — Java's default split drops them, which would let a
+            // delimiter-only value parse as an empty ring list and grant
+            // a vacuous all-green marker.
+            val ringNames: List[String] = parsed.getOrElse("--rings", "").split(",", -1).toList
+            val unknown: Option[String] =
+              ringNames.find((n: String) => Ring.fromString(n).isEmpty)
+            unknown match
+              case Some(bad) =>
+                SubcommandWiring.emitStderr(
+                  s"checkpoint: unrecognised ring in --rings: $bad (known: R0 R1 R2 R3 R4 R5 R6 R7 R8 R9 manual)\n"
+                )
+                Outcome.Finding(s"unrecognised ring in --rings: $bad")
+              case None =>
+                // Every name already validated — flatMap is exact, never
+                // a silent fallback to a real ring.
+                val rings: List[Ring] =
+                  ringNames.flatMap((n: String) => Ring.fromString(n))
+                runReportBody(parsed, format, rings, forgivePredicateFor)
+
+  /**
+   * The report body once args are validated: consume the supplied verdict
+   * verbatim, delegate row filtering to the record tool's read path,
+   * generate the checkpoint, write the session-keyed marker when the
+   * evidence permits, and emit.
+   */
+  private def runReportBody(
+    parsed: Map[String, String],
+    format: String,
+    rings: List[Ring],
+    forgivePredicateFor: String => (String, String) => Boolean
+  ): Outcome[Int] =
+    val ledgerFile: String = parsed.getOrElse("--ledger", "")
+    val change: String     = parsed.getOrElse("--change", "")
+    val spec: String       = parsed.getOrElse("--spec", "")
+    val baseline: String   = parsed.getOrElse("--baseline", "")
+    val csPath: String     = parsed.getOrElse("--chain-state-json", "")
+    val changeDir: String  = parsed.getOrElse("--change-dir", "")
+    val sessionArg: String = parsed.getOrElse("--session", "")
+    // The supplied verdict is READ, never recomputed: a file that does not
+    // parse, lacks a numeric `total`, or is itself undetermined makes the
+    // whole checkpoint undetermined — never a clean zero.
+    val csFile: Path = Paths.get(csPath)
+    if !Files.isReadable(csFile) then
+      SubcommandWiring.emitStderr(
+        s"checkpoint: UNDETERMINED — chain-state JSON not found or not readable at $csPath\n"
+      )
+      Outcome.Undetermined(s"chain-state JSON not found or not readable at $csPath")
+    else
+      val csParsed: Either[String, ujson.Value] =
+        try Right(ujson.read(Files.readString(csFile, StandardCharsets.UTF_8)))
+        catch
+          case NonFatal(_) => // danger-scan:allow typed-catch — bad JSON maps to a named Left
+            Left("does not parse")
+      csParsed match
+        case Left(_) =>
+          SubcommandWiring.emitStderr(
+            s"checkpoint: UNDETERMINED — chain-state JSON at $csPath does not parse, has no numeric total, or is itself undetermined\n"
+          )
+          Outcome.Undetermined(s"chain-state JSON at $csPath does not parse or is undetermined")
+        case Right(csJson) =>
+          val totalNumeric: Boolean = csJson.objOpt.flatMap(_.get("total")).flatMap(_.numOpt).isDefined
+          val selfUndetermined: Boolean =
+            csJson.objOpt.flatMap(_.get("undetermined")).exists((v: ujson.Value) => v != ujson.Null && v != ujson.False)
+          if !totalNumeric || selfUndetermined then
+            SubcommandWiring.emitStderr(
+              s"checkpoint: UNDETERMINED — chain-state JSON at $csPath does not parse, has no numeric total, or is itself undetermined\n"
+            )
+            Outcome.Undetermined(s"chain-state JSON at $csPath does not parse or is undetermined")
+          else
+            // Per-spec baseline: when --change-dir names the change's
+            // directory, the spec's own BASELINE SHA from
+            // implementation-progress.md supersedes the gate baseline;
+            // absent one, the fallback is traced.
+            val effectiveBaseline: String =
+              if changeDir.isEmpty then baseline
+              else
+                val progressFile: Path =
+                  Paths.get(changeDir).resolve("implementation-progress.md")
+                if !Files.isRegularFile(progressFile) then baseline
+                else
+                  SubcommandWiring.readTextFile(progressFile) match
+                    case Left(_) =>
+                      SubcommandWiring.emitStderr(
+                        s"checkpoint: no per-spec baseline for spec $spec in implementation-progress.md, falling back to gate baseline $baseline\n"
+                      )
+                      baseline
+                    case Right(progressText) =>
+                      CheckpointEngine.specBaseline(progressText, spec) match
+                        case Some(sha) =>
+                          SubcommandWiring.emitStderr(
+                            s"checkpoint: using per-spec baseline $sha for spec $spec from implementation-progress.md (gate baseline: $baseline)\n"
+                          )
+                          sha
+                        case None =>
+                          SubcommandWiring.emitStderr(
+                            s"checkpoint: no per-spec baseline for spec $spec in implementation-progress.md, falling back to gate baseline $baseline\n"
+                          )
+                          baseline
+            LedgerCmd.readRowsFiltered(
+              ledgerFile,
+              change,
+              spec,
+              effectiveBaseline,
+              forgivePredicateFor(ledgerFile)
+            ) match
               case Outcome.Undetermined(reason) =>
-                SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — $reason\n")
-                Outcome.Undetermined(reason)
+                SubcommandWiring.emitStderr(
+                  s"checkpoint: UNDETERMINED — ledger read failed: $reason\n"
+                )
+                Outcome.Undetermined(s"ledger read failed: $reason")
               case Outcome.Finding(msg) =>
                 Outcome.Finding(msg)
               case Outcome.Ran(rows) =>
-                val validated: Either[String, List[LedgerRecord]] =
+                val records: Either[String, List[LedgerRecord]] =
                   rows.foldLeft[Either[String, List[LedgerRecord]]](Right(Nil)) {
-                    case (Left(err), _) => Left(err)
-                    case (Right(acc), v) =>
-                      Validator.validate(v) match
-                        case Right(r) => Right(r :: acc)
-                        case Left(viol) =>
-                          Left(s"ledger contains invalid row: clause ${viol.clauseIndex} — ${viol.description}")
+                    (acc: Either[String, List[LedgerRecord]], row: ujson.Value) =>
+                      acc.flatMap { (rs: List[LedgerRecord]) =>
+                        LedgerRecord.from(row) match
+                          case Right(r) => Right(r :: rs)
+                          case Left(v) =>
+                            Left(s"ledger row failed validation: clause ${v.clauseIndex} — ${v.description}")
+                      }
                   }
-                validated match
-                  case Left(err) =>
-                    SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — $err\n")
-                    Outcome.Undetermined(err)
-                  case Right(recordsRev) =>
-                    val records: List[LedgerRecord] = recordsRev.reverse
-                    val ledger: Ledger.LedgerData   = Ledger.fromRecords(records)
-                    // --change-dir is the repository root; the change's
-                    // spec tree lives under openspec/changes/<change>.
-                    val changeDir: Path =
-                      Paths.get(gitDir).resolve("openspec/changes").resolve(change)
-                    ChainStateCmd.prepareInputs(
-                      changeDir,
+                records match
+                  case Left(reason) =>
+                    SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — $reason\n")
+                    Outcome.Undetermined(reason)
+                  case Right(reversed) =>
+                    val implementingSession: Option[SessionId] =
+                      Option(sessionArg).filter(_.nonEmpty).map(SessionId.fromRaw)
+                    val report: CheckpointReport = CheckpointEngine.report(
                       change,
-                      baseline,
-                      specFilter = None,
-                      sys.env, // scalafix:ok DisableSyntax.NoSysEnv
-                      ledgerFile,
-                      emitDiagnostics = false
-                    ) match
+                      spec,
+                      effectiveBaseline,
+                      rings,
+                      reversed.reverse,
+                      csJson,
+                      implementingSession
+                    )
+                    val output: String =
+                      if format == "text" then CheckpointReport.toText(report)
+                      else ujson.write(CheckpointReport.toJson(report))
+                    // The session-keyed presentation marker: written only
+                    // when the report's evidence permits it AND a session
+                    // keys it — a side effect, never part of the report.
+                    if report.markerWritten && implementingSession.isDefined && changeDir.nonEmpty then
+                      writeCheckpointMarker(changeDir, change, spec, sessionArg, output)
+                    SubcommandWiring.emitStdout(output + "\n")
+                    if report.markerWritten then Outcome.Ran(0)
+                    else
+                      Outcome.Finding(
+                        "checkpoint not clean: not every requested ring is green or the verdict has unresolved obligations"
+                      )
+
+  /**
+   * The predecessor's checkpoint-presentation side effect: the report
+   * output teed to `<git-dir>/verified-scala3-gate/checkpoint-output-
+   * <change>-<spec>-<session>`, resolved from --change-dir's repository.
+   * Fail-open — an unresolvable state dir or a failed write skips the
+   * marker silently, exactly as the predecessor's `tee` does.
+   */
+  private def writeCheckpointMarker(
+    changeDir: String,
+    change: String,
+    spec: String,
+    session: String,
+    output: String
+  ): Unit =
+    val stateDir: Option[GateStateDir] =
+      SubcommandWiring.repoContaining(Paths.get(changeDir)).flatMap(GateStateDirReader.resolve)
+    stateDir.foreach { (d: GateStateDir) =>
+      try
+        Files.createDirectories(d.path)
+        Files.writeString(
+          d.path.resolve(s"checkpoint-output-$change-$spec-$session"),
+          output + "\n",
+          StandardCharsets.UTF_8
+        )
+      catch
+        case NonFatal(_) => // danger-scan:allow fail-open — a failed marker write degrades, never fails the checkpoint
+          ()
+    }
+
+  /**
+   * Regenerate tasks.md checkbox state from the progress tracker —
+   * text-preserving; only the checkbox marker changes. With `--write`
+   * the tasks file is rewritten; without it the regenerated content is
+   * printed and the exit reports staleness (0 = already matches,
+   * 1 = would change, 2 = tracker unreadable).
+   */
+  private[cli] def runRegenerateTasks(
+    args: Array[String],
+    readFile: java.nio.file.Path => Either[String, String],
+    writeFile: (java.nio.file.Path, String) => Either[String, Unit]
+  ): Outcome[Int] =
+    val valueFlags: Set[String]   = Set("--progress", "--tasks")
+    val booleanFlags: Set[String] = Set("--write")
+    SubcommandWiring.parseArgs(args, valueFlags, booleanFlags) match
+      case Left(err) =>
+        SubcommandWiring.emitStderr(s"checkpoint: ${SubcommandWiring.argErrorMessage(err)}\n")
+        Outcome.Finding(s"arg parse error: ${err.offendingToken}")
+      case Right(parsed) =>
+        val progress: String = parsed.getOrElse("--progress", "")
+        val tasks: String    = parsed.getOrElse("--tasks", "")
+        if progress.isEmpty then
+          SubcommandWiring.emitStderr("checkpoint: --progress is required\n")
+          Outcome.Finding("--progress is required")
+        else if tasks.isEmpty then
+          SubcommandWiring.emitStderr("checkpoint: --tasks is required\n")
+          Outcome.Finding("--tasks is required")
+        else
+          val progressPath: Path = Paths.get(progress)
+          val tasksPath: Path    = Paths.get(tasks)
+          readFile(progressPath) match
+            case Left(reason) =>
+              SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — progress tracker $reason\n")
+              Outcome.Undetermined(s"progress tracker $reason")
+            case Right(progressText) =>
+              readFile(tasksPath) match
+                case Left(reason) =>
+                  SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — tasks file $reason\n")
+                  Outcome.Undetermined(s"tasks file $reason")
+                case Right(tasksText) =>
+                  val regenerated: String =
+                    CheckpointEngine.regenerateTasks(progressText, tasksText)
+                  if parsed.contains("--write") then
+                    writeFile(tasksPath, regenerated) match
                       case Left(reason) =>
-                        SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — $reason\n")
-                        Outcome.Undetermined(reason)
-                      case Right(inputs) =>
-                        ChainState.compute(
-                          inputs.lints,
-                          ledger,
-                          inputs.extracted,
-                          inputs.specBaselines,
-                          inputs.effectiveBaseline,
-                          inputs.resolvedBaseline,
-                          change,
-                          inputs.artifactUnchanged
-                        ) match
-                          case Left(u) =>
-                            SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — ${u.reason}\n")
-                            Outcome.Undetermined(u.reason)
-                          case Right(report) =>
-                            if report.unresolved.nonEmpty then
-                              val names: String =
-                                report.unresolved.map(u => s"${u.spec}/${u.requirement}").mkString(", ")
-                              SubcommandWiring.emitStdout(
-                                s"checkpoint: undischarged obligations for $change/$spec: $names\n"
-                              )
-                              Outcome.Finding(s"undischarged obligations: $names")
-                            else
-                              // All discharged — write the presentation marker
-                              val markerDir: java.nio.file.Path = Paths.get(gitDir, ".git", "verified-scala3-gate")
-                              val markerPath: java.nio.file.Path =
-                                markerDir.resolve(s"presentation-$change-$spec-$session")
-                              try
-                                Files.createDirectories(markerDir)
-                                Files.write(markerPath, Array.emptyByteArray)
-                                SubcommandWiring.emitStdout(
-                                  s"checkpoint: marker written for $change/$spec (session $session)\n"
-                                )
-                                Outcome.Ran(0)
-                              catch
-                                case e: java.io.IOException =>
-                                  SubcommandWiring.emitStderr(s"checkpoint: could not write marker: ${e.getMessage}\n")
-                                  Outcome.Undetermined(s"could not write marker: ${e.getMessage}")
+                        SubcommandWiring.emitStderr(s"checkpoint: UNDETERMINED — could not write $tasks: $reason\n")
+                        Outcome.Undetermined(s"could not write $tasks")
+                      case Right(_) => Outcome.Ran(0)
+                  else
+                    // Dry run: the regenerated content is printed and the
+                    // exit reports staleness — 0 when already matching,
+                    // 1 when the write would change the file.
+                    SubcommandWiring.emitStdout(regenerated)
+                    if regenerated == tasksText then Outcome.Ran(0)
+                    else Outcome.Finding("tasks.md is stale — regenerate with --write")
 
 /** The `reconcile` subcommand — obligation reconciliation. */
 object ReconcileCmd:
@@ -1798,6 +2224,7 @@ object ReconcileCmd:
     case CliError.UnknownFlag(token)       => s"unrecognised argument: $token"
     case CliError.UnknownSubcommand(token) => s"unrecognised argument: $token"
     case CliError.InvalidEnum(flag, value) => s"invalid value '$value' for $flag"
+    case CliError.ForbiddenFlag(flag)      => s"flag not accepted here: $flag"
 
   /** Read, validate, classify, and emit — the predecessor's main body. */
   private def reconcile(

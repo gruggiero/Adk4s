@@ -72,8 +72,9 @@ object HelpRegistry:
     Subcommand.Ledger,
     List(
       FlagHelp("append", "append a record to the ledger", "none"),
+      FlagHelp("run", "execute a command and append a self-observed record", "none"),
       FlagHelp("read", "read records from the ledger", "none"),
-      FlagHelp("validate", "validate a record against the contract", "none"),
+      FlagHelp("verify", "verify every row and replay recorded commands", "none"),
       FlagHelp("--file", "ledger file path", "required"),
       FlagHelp("--change", "change name filter", "none"),
       FlagHelp("--spec", "spec name filter", "none")
@@ -84,9 +85,17 @@ object HelpRegistry:
   private val checkpointHelp: HelpOutput = HelpOutput(
     Subcommand.Checkpoint,
     List(
+      FlagHelp("report", "generate the checkpoint from recorded evidence", "none"),
+      FlagHelp("regenerate-tasks", "rewrite tasks.md checkbox state from the tracker", "none"),
+      FlagHelp("--ledger", "ledger file", "required"),
       FlagHelp("--change", "change name", "required"),
       FlagHelp("--spec", "spec name", "required"),
-      FlagHelp("--ring", "ring name (R0-R8)", "required")
+      FlagHelp("--baseline", "baseline SHA", "required"),
+      FlagHelp("--rings", "comma-separated ring names (R0-R9, manual)", "required"),
+      FlagHelp("--chain-state-json", "supplied correctness verdict JSON file", "required"),
+      FlagHelp("--format", "json|text", "none"),
+      FlagHelp("--change-dir", "change directory (per-spec baseline, marker repo)", "none"),
+      FlagHelp("--session", "implementing session identity", "none")
     ),
     HelpOutput.threeWayExit
   )

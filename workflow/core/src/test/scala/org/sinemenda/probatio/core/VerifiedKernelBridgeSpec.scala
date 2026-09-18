@@ -343,7 +343,19 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     ChainState.Requirement("s", title)
 
   private def foldLedgerRow(obligation: String, exit: Int = 0, ring: Ring = Ring.R3): LedgerRecord =
-    LedgerRecord(1, "2026-09-17T00:00:00Z", "c", "s", ring, obligation, "a/b.scala", "sbt test", exit, "base0")
+    LedgerRecord(
+      1,
+      "2026-09-17T00:00:00Z",
+      "c",
+      "s",
+      ring,
+      obligation,
+      "a/b.scala",
+      "sbt test",
+      exit,
+      "base0",
+      LedgerRecordOptional()
+    )
 
   /**
    * Run production compute on the scenario and the kernel fold on the

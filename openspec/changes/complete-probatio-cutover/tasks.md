@@ -93,18 +93,18 @@
 
 ## 7. ledger-checkpoint-parity
 
-- [ ] Step 1 — typed contract: `RingEvidence`, `CheckpointReport` with smart constructor, `ReplayVerdict`, `SessionId` (opaque, lossless encoder), `CheckpointEngine.report`, `LedgerRecord` joined with its optional fields and a single total encoder (compiles, human gate)
-- [ ] Step 2 — test oracle: 20 scenarios + 6 properties (`record-round-trips-all-present-fields`, `self-observed-records-are-distinguishable`, `replay-verdict-is-total-and-sound`, `checkpoint-reports-every-requested-ring`, `marker-written-iff-evidenced-and-discharged`, `parity-with-predecessor`) + 5 compile-negative stubs; ORACLE POLARITY run (human gate)
-- [ ] Step 3 — implementation: emit the observation fields on the run path; add the replay operation; add the missing three parameters; add the checkpoint's report and task-regeneration operations with per-ring evidence and the same-session review check; gate the presentation marker on evidenced-and-discharged
-- [ ] Ring 0 — clean; `ReplayVerdict` exhaustiveness-escalated
-- [ ] Ring 1 — lint clean; dangerous-pattern scan (ported tool, now available)
-- [ ] Ring 2 — `dependencyLint` clean
-- [ ] Ring 3 — property + scenario suites green; **`evidence-ledger.bats`, `evidence-capture.bats`, `checkpoint-from-ledger.bats`, `judgment-ring-*.bats` must stay at zero failures** — these are currently green and must not regress
-- [ ] Ring 4 — `ledger-record-contract.jq` conforms; all 32 optional-field combinations round-trip; `tests/fixtures/evidence-ledger-v1.jsonl` reads cleanly; an unrecognised version is undetermined, not skipped
-- [ ] Ring 8 — fresh-context adversarial review
-- [ ] Ring 5 — retarget to `LedgerRecord.scala`, `Ledger.scala`, `CheckpointEngine.scala`, `SessionId.scala`; threshold 90%; read and record the score
-- [ ] Ring 6 — extend `LedgerValidatorKernel` with the marker decision + `CheckpointBridgeSpec`; `sbt -J-Xmx6g ring6`
-- [ ] Concept-delta check + inventory update (4 added — including `SessionId`, which spec 8 will modify, not introduce — and `LedgerRecord` modified) + checkpoint
+- [x] Step 1 — typed contract: `RingEvidence`, `CheckpointReport` with smart constructor, `ReplayVerdict`, `SessionId` (opaque, lossless encoder), `CheckpointEngine.report`, `LedgerRecord` joined with its optional fields and a single total encoder (compiles, human gate) — APPROVED
+- [x] Step 2 — test oracle: 20 scenarios + 6 properties (`record-round-trips-all-present-fields`, `self-observed-records-are-distinguishable`, `replay-verdict-is-total-and-sound`, `checkpoint-reports-every-requested-ring`, `marker-written-iff-evidenced-and-discharged`, `parity-with-predecessor`) + 5 compile-negative stubs; ORACLE POLARITY run (human gate) — APPROVED
+- [x] Step 3 — implementation: observation fields on the run path; `verify` replay operation; `--session`/`--change-dir`/`--format` parameters; checkpoint `report` + `regenerate-tasks` with per-ring evidence and the same-session review ladder; marker gated on evidenced-and-discharged
+- [x] Ring 0 — clean; `ReplayVerdict` exhaustiveness-escalated
+- [x] Ring 1 — lint clean; dangerous-pattern scan (ported tool, now available)
+- [x] Ring 2 — `dependencyLint` clean
+- [x] Ring 3 — property + scenario suites green; `probatioOracleDiff` PROCEED — all 17 bats files at parity incl. `evidence-ledger.bats`, `evidence-capture.bats`, `checkpoint-from-ledger.bats`, `judgment-ring-*.bats` (0 failures)
+- [x] Ring 4 — `ledger-record-contract.jq` conforms; all 32 optional-field combinations round-trip; `tests/fixtures/evidence-ledger-v1.jsonl` reads cleanly; an unrecognised version is undetermined, not skipped
+- [x] Ring 8 — fresh-context adversarial review (`ring8-ledger-checkpoint-parity.md`): findings remediated (forgiven-row refiltering, version rejection, guarded fact measurement, artifact fallback, apostrophe-token, duplicate-section baseline, graph unbound); N3 path-keying signed off at spec-5 checkpoint
+- [x] Ring 5 — core 97.58% (242/248 killed, 6 equivalent, 0 NoCoverage); CLI in-diff 89.9% (446 covered, 401 killed, 3 second-pass kills verified by direct mutant application, 42 equivalent) — global 78.62% diluted by pre-existing specs 1–6 code
+- [x] Ring 6 — `LedgerValidatorKernel.markerDecision` + `allEvidencedIsForall` lemma + `CheckpointBridgeSpec`; 355/355 VCs valid, 0 invalid (direct `probatio-verified` invocation — `ring6` alias broken under sbt 1.12)
+- [x] Concept-delta check + inventory update (4 added — including `SessionId`, which spec 8 will modify, not introduce — and `LedgerRecord` modified) + checkpoint — AWAITING HUMAN VALIDATION
 
 ## 8. gate-event-completeness
 
