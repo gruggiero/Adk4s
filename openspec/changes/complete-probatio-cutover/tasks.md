@@ -119,7 +119,7 @@
 - [x] Ring 8 — fresh-context adversarial review (`ring8-adversarial-review.md`): three rounds — 13 findings remediated, one MAJOR re-flagged (`ownedFileCheck` on non-production paths) remediated + focused re-verify VERIFIED-FIXED; the built artifact driven as a hook (native image rebuilt; end-to-end exit-code parity spot-checked)
 - [x] Ring 5 — PASS A (core) 95.65% covered-code, 1 equivalent survivor; PASS B (cli) after 4 remediation rounds: 83.68% covered / **91.91% in-diff covered** (500/544; ≈94% counting verified phantoms + post-run kills) — exceeds the 90% bar
 - [x] Ring 6 — `GateKernel` (refusal budget + outcome classification) verified: **401/401 VCs valid, 0 invalid, 0 unknown** via `sbt -J-Xmx6g 'set probatio-verified/stainlessEnabled := true' 'probatio-verified/compile'`; first run stalled on the `count`/`indexWhere` postcondition (documented no-per-VC-timeout trap) — rewritten with `markAtLength`/`markAtCount`/`firstTrueInRange`/`markAtFti` Unit-lemmas; `GateBridgeSpec` 2/2 green
-- [ ] Concept-delta check + inventory update (5 added, `SessionId` and `GateEvent` modified) + checkpoint — concept-delta recorded; checkpoint pending human approval
+- [x] Concept-delta check + inventory update (5 added, `SessionId` and `GateEvent` modified) + checkpoint — **VALIDATED — human checkpoint approval 2026-09-20** (re-verify on `112fc27`: compile clean, 169 focused tests green covering every touched file, `probatioOracleDiff` PROCEED — no file worse across all 17 bats files, Stainless 401/401 valid)
 
 ## 9. native-gate-delivery
 

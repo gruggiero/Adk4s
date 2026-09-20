@@ -1931,7 +1931,7 @@ ORACLE POLARITY run (2026-09-18):
 
 ## Spec 8: gate-event-completeness
 
-### Status: IN PROGRESS — Step 3 (implementation)
+### Status: VALIDATED — human checkpoint approval 2026-09-20
 
 ### Baseline
 - SHA: `5cebe3e0fa79be5fb2145df9a12599779e75fc12` (tracked tree clean;
@@ -2678,14 +2678,17 @@ body. Re-run on the final source:
   agrees production `GateDecisions`/`ambientVerdict` classification
   with the verified model.
 
-- **Checkpoint**: Ring 6 PASS — pending final artifact/commit.
+- **Checkpoint**: **VALIDATED — human checkpoint approval 2026-09-20**;
+  re-verify on `112fc27`: compile clean, 169 focused tests green,
+  scalafmt clean (cli/core/verified), Stainless 401/401 valid,
+  `probatioOracleDiff` PROCEED — all 17 bats files identical.
 
 ### Step Progress
 - [x] Step 0 — Baseline + concept check
 - [x] Step 1 — Typed contract (APPROVED 2026-09-18)
 - [x] Step 2 — Test oracle (APPROVED 2026-09-18)
 - [x] Step 3 — Implementation
-- [ ] Ring 0–6, 8 + concept-delta + checkpoint
+- [x] Ring 0–6, 8 + concept-delta + checkpoint — **VALIDATED 2026-09-20**
 
 ---
 
