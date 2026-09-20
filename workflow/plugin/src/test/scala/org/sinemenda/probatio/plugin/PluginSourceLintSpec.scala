@@ -17,8 +17,14 @@ import java.io.File
  */
 final class PluginSourceLintSpec extends ProbatioPluginSuite {
 
-  private val pluginSourceDir: String =
-    "workflow/plugin/src/main/scala/org/sinemenda/probatio/plugin"
+  // `sbt test` runs with cwd = repo root; the Stryker4s forked test-runner
+  // runs with cwd = the module base dir. Resolve against both.
+  private val pluginSourceDir: String = {
+    val repoRootRelative: String =
+      "workflow/plugin/src/main/scala/org/sinemenda/probatio/plugin"
+    if (new File(repoRootRelative).isDirectory) repoRootRelative
+    else "src/main/scala/org/sinemenda/probatio/plugin"
+  }
 
   private def listScalaFiles(dirPath: String): List[File] = {
     val dir: File = new File(dirPath)
@@ -115,5 +121,57 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
       content.contains("Def.task") || content.contains("Def.setting")
     }
     assert(hasDefTask, "plugin source should use Def.task or Def.setting for task composition")
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // native-gate-delivery (spec 9) — the build integration passes each tool
+  // the arguments its invocation requires
+  // spec: native-gate-delivery — Requirement: The build integration passes each tool the arguments its invocation requires
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── Scenario: Error path — a task lacking a required value reports it
+  //    rather than invoking
+  // spec: native-gate-delivery — Scenario: Error path — a task lacking a required value reports it rather than invoking
+  test("each delegating task reports a missing required value rather than invoking without arguments") {
+    val source: String =
+      fileContents(new File(s"$pluginSourceDir/ProbatioPlugin.scala"))
+    val argsKeys: List[String] = List(
+      "probatioSpecLintArgs",
+      "probatioChainStateArgs",
+      "probatioCheckpointArgs",
+      "probatioLedgerAppendArgs"
+    )
+    for (key <- argsKeys) {
+      assert(
+        source.contains(s"$key.value match"),
+        s"ProbatioPlugin.scala: task must gate on $key — $key.value match not found"
+      )
+      assert(
+        source.contains(s"$key is unset"),
+        s"ProbatioPlugin.scala: missing-value report must name $key"
+      )
+    }
+    // Every runDelegatingTask call site passes an argument list — there is
+    // no call site that passes only a tool name.
+    assert(
+      source.contains("Seq(binary.getAbsolutePath, subcommand) ++ args"),
+      "ProbatioPlugin.scala: the delegating command must append the task's argument list"
+    )
+    val callSites: Int =
+      "runDelegatingTask\\(binary,".r.findAllIn(source).length
+    assertEquals(callSites, 4, s"expected 4 delegating task call sites, found $callSites")
+  }
+
+  // ── Compile-Negative: a delegating build task constructed with only a
+  //    tool name and no argument list
+  // spec: native-gate-delivery — Compile-Negative: A delegating build task constructed with only a tool name and no argument list
+  test("compile-negative: runDelegatingTask cannot be invoked with only a tool name") {
+    val err: String = compileErrors(
+      "ProbatioPlugin.runDelegatingTask(new java.io.File(\"b\"), \"spec-lint\", sbt.util.Logger.Null)"
+    )
+    assert(
+      err.nonEmpty,
+      "runDelegatingTask(binary, subcommand, log) should not compile — a task that cannot pass arguments cannot drive its tool"
+    )
   }
 }

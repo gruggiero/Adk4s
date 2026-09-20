@@ -1,0 +1,327 @@
+package org.sinemenda.probatio.packaging
+
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import org.sinemenda.probatio.cli.ProbatioCliSuite
+import upickle.default.{write => writeJson}
+
+/**
+ * Direct tests for `ReleaseManifestIO.fromDirectory` and `ReleaseCheck` —
+ * the wired release-step gate (native-gate-delivery).
+ *
+ * Covers the filename → artifact mapping, the recorded-digest ↔
+ * artifact-bytes reconciliation (a stale sidecar must fail the build),
+ * and the malformed/missing input paths.
+ *
+ * spec: native-gate-delivery — Requirement: A release SHALL be complete before it is delivered
+ * spec: native-gate-delivery — Scenario: Error path — a manifest whose recorded checksum differs from the artifact's is detected
+ */
+final class ReleaseManifestIOSpec extends ProbatioCliSuite:
+
+  private def withTempDir(f: Path => Unit): Unit =
+    val dir: Path = Files.createTempDirectory("probatio-release")
+    try f(dir)
+    finally
+      Files
+        .walk(dir)
+        .sorted(java.util.Comparator.reverseOrder())
+        .forEach(p => { val _: Boolean = p.toFile.delete(); () })
+
+  private def write(dir: Path, name: String, content: String): Unit =
+    Files.writeString(dir.resolve(name), content, StandardCharsets.UTF_8)
+    ()
+
+  private def writeSidecar(dir: Path, artifactName: String): Unit =
+    val bytes: Array[Byte] = Files.readAllBytes(dir.resolve(artifactName))
+    write(dir, s"$artifactName.sha256", s"${ChecksumVerifier.computeSha256(bytes)}  $artifactName\n")
+
+  /** Writes a complete release directory: 5 content artifacts + sbom + 5 sidecars. */
+  private def writeCompleteRelease(dir: Path, version: String): Unit =
+    val contentNames: List[String] = List(
+      "probatio-linux-x86_64",
+      "probatio-macos-aarch64",
+      "probatio-macos-x86_64",
+      "probatio-assembly.jar",
+      "probatio-sources.jar"
+    )
+    contentNames.foreach(n => write(dir, n, s"content-of-$n"))
+    val sbom: Sbom = Sbom.forRelease(version, List(SbomPackage("upickle", "4.4.3", "Maven")))
+    write(dir, "probatio-sbom.spdx.json", writeJson[Sbom](sbom))
+    contentNames.foreach(n => writeSidecar(dir, n))
+
+  test("a complete release directory builds a manifest with all artifacts and recorded checksums"):
+    withTempDir { dir =>
+      writeCompleteRelease(dir, "v14.0.0")
+      ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true) match
+        case Right(manifest) =>
+          assert(
+            ReleaseManifest.expectedArtifacts.forall(manifest.artifacts.contains),
+            s"missing artifacts: ${ReleaseManifest.expectedArtifacts.diff(manifest.artifacts)}"
+          )
+          assertEquals(manifest.checksums.size, 5, "one recorded digest per content artifact")
+          assert(manifest.sbom.isDefined, "SBOM must be parsed")
+          assert(ReleaseValidator.validateAll(manifest).isEmpty,
+                 s"complete release must validate: ${ReleaseValidator.validateAll(manifest)}")
+        case Left(err) => fail(s"complete release must build: $err")
+    }
+
+  test("a sidecar whose recorded digest differs from the artifact's bytes is detected"):
+    withTempDir { dir =>
+      writeCompleteRelease(dir, "v14.0.0")
+      // Corrupt the content after its sidecar was recorded
+      write(dir, "probatio-assembly.jar", "corrupted-content")
+      ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true) match
+        case Left(err) =>
+          assert(err.contains("probatio-assembly.jar.sha256"), s"must name the stale sidecar: $err")
+        case Right(_) =>
+          fail("a stale sidecar must fail the manifest build — the mismatch is undetectable downstream")
+    }
+
+  test("a sidecar with a non-digest first token fails the build"):
+    withTempDir { dir =>
+      writeCompleteRelease(dir, "v14.0.0")
+      write(dir, "probatio-sources.jar.sha256", "SHA256 (probatio-sources.jar) = abcd")
+      ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true) match
+        case Left(err) =>
+          assert(err.contains("probatio-sources.jar.sha256"), s"must name the malformed sidecar: $err")
+        case Right(_) => fail("a non-digest sidecar token must not be recorded as a checksum")
+    }
+
+  test("a missing directory reports could-not-build"):
+    val missing: Path = Path.of("/nonexistent-probatio-release-dir")
+    ReleaseManifestIO.fromDirectory(missing, "v14.0.0", builtFromCI = true) match
+      case Left(err) => assert(err.contains("does not exist"), s"must name the directory: $err")
+      case Right(_)  => fail("a missing directory must not build a manifest")
+
+  test("an undecodable sidecar reports could-not-be-read"):
+    withTempDir { dir =>
+      // Invalid UTF-8: readString throws inside the manifest build, which
+      // must surface as a named Left, not an exception.
+      val _: Path = Files.write(
+        dir.resolve("probatio-assembly.jar.sha256"),
+        Array[Byte](0xff.toByte, 0xfe.toByte, 0x00.toByte)
+      )
+      ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true) match
+        case Left(err) =>
+          assert(err.contains("could not be read"), s"the read failure is named: $err")
+        case Right(_) =>
+          fail("an undecodable sidecar must not produce a manifest")
+    }
+
+  test("an orphan sidecar builds but the manifest is incomplete"):
+    withTempDir { dir =>
+      write(dir, "probatio-ghost.bin.sha256", s"${"a" * 64}  probatio-ghost.bin\n")
+      ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true) match
+        case Right(manifest) =>
+          assert(manifest.artifacts.contains(ReleaseArtifact.Checksum("probatio-ghost.bin")))
+          assert(manifest.checksums.contains("probatio-ghost.bin"))
+          assert(
+            ReleaseValidator.validateAll(manifest).nonEmpty,
+            "an orphan sidecar leaves the release incomplete"
+          )
+        case Left(err) => fail(s"orphan sidecar is a completeness issue, not a build failure: $err")
+    }
+
+  test("ReleaseCheck fails on an incomplete release directory"):
+    withTempDir { dir =>
+      write(dir, "probatio-assembly.jar", "content")
+      val thrown: Boolean =
+        try
+          ReleaseCheck.main(Array(dir.toString, "v14.0.0"))
+          false
+        catch case e: Exception => e.getMessage.contains("release")
+      assert(thrown, "an incomplete release must fail the release step")
+    }
+
+  test("ReleaseCheck rejects wrong argument counts"):
+    val thrown: Boolean =
+      try
+        ReleaseCheck.main(Array("only-one-arg"))
+        false
+      catch case e: Exception => e.getMessage.contains("usage")
+    assert(thrown, "wrong arity must report usage")
+
+  // ── Digest-token boundary table ─────────────────────────────────────
+  // The recorded token must be exactly 64 hex chars. Boundary mutants on
+  // the char predicate (`<=`→`<`, `>=`→`>`, `&&`→`||`, `forall`→`exists`)
+  // survive unless each boundary character is exercised both ways.
+
+  private def sidecarOnly(dir: Path, token: String): Either[String, ReleaseManifest] =
+    write(dir, "probatio-ghost.bin.sha256", s"$token  probatio-ghost.bin\n")
+    ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true)
+
+  test("a sidecar records a digest only at the exact 64-hex boundary"):
+    withTempDir { dir =>
+      List("f" * 64, "F" * 64, "a" * 64, "A" * 64, "0" * 64, "9" * 64).foreach { token =>
+        sidecarOnly(dir, token) match
+          case Right(manifest) =>
+            assertEquals(
+              manifest.checksums.get("probatio-ghost.bin"),
+              Some(token),
+              s"valid boundary digest must be recorded: $token"
+            )
+          case Left(err) => fail(s"a valid 64-hex token must be accepted ('$token'): $err")
+      }
+    }
+
+  test("a sidecar token outside the hex alphabet or off the length boundary is rejected"):
+    withTempDir { dir =>
+      List(
+        "g" * 64,                    // just past 'f'
+        "G" * 64,                    // just past 'F'
+        "`" * 64,                    // just below 'a'
+        "@" * 64,                    // just below 'A'
+        "/" * 64,                    // just below '0'
+        ":" * 64,                    // just above '9'
+        "z" * 64,                    // lowercase non-hex
+        "0" + "g" * 63,              // one hex char among non-hex (forall≠exists)
+        "a" * 63,                    // under the length boundary
+        "a" * 65                     // over the length boundary
+      ).foreach { token =>
+        sidecarOnly(dir, token) match
+          case Left(err) =>
+            assert(
+              err.contains("does not record a sha256 digest"),
+              s"an invalid token must be named ('$token'): $err"
+            )
+          case Right(_) =>
+            fail(s"a non-hex/off-length token must not be recorded as a checksum: '$token'")
+      }
+    }
+
+  test("a digest mismatch names that the recorded checksum differs from the artifact's"):
+    withTempDir { dir =>
+      write(dir, "probatio-assembly.jar", "real-content")
+      write(dir, "probatio-assembly.jar.sha256", s"${"0" * 64}  probatio-assembly.jar\n")
+      ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true) match
+        case Left(err) =>
+          assert(
+            err.contains("differs from the artifact's"),
+            s"the mismatch must be named as a recorded-checksum divergence: $err"
+          )
+        case Right(_) => fail("a recorded digest that differs from the bytes must fail the build")
+    }
+
+  test("a filename that merely equals a platform suffix is not a native binary"):
+    withTempDir { dir =>
+      write(dir, "linux-x86_64", "content")
+      write(dir, "probatio-unknown-suffix", "content")
+      write(dir, "README.md", "notes")
+      ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true) match
+        case Right(manifest) =>
+          assertEquals(
+            manifest.artifacts,
+            List.empty,
+            "bare suffixes, unknown probatio- names, and non-artifacts are all ignored"
+          )
+        case Left(err) => fail(s"non-artifact files must be ignored, not fatal: $err")
+    }
+
+  test("a present-but-unparseable SBOM fails the manifest build"):
+    withTempDir { dir =>
+      writeCompleteRelease(dir, "v14.0.0")
+      write(dir, "probatio-sbom.spdx.json", "this is not spdx json")
+      ReleaseManifestIO.fromDirectory(dir, "v14.0.0", builtFromCI = true) match
+        case Left(err) =>
+          assert(err.contains("unparseable"), s"the unparseable SBOM must be named: $err")
+        case Right(_) => fail("a corrupt SBOM file must not produce a manifest")
+    }
+
+  // ── ReleaseValidator issue text — each issue names its defect ───────
+
+  test("validateAll issues name their defect, not a blank string"):
+    // Missing everything.
+    val empty: ReleaseManifest =
+      ReleaseManifest("v1", artifacts = List.empty, checksums = Map.empty, sbom = None, builtFromCI = false)
+    val issues: List[String] = ReleaseValidator.validateAll(empty)
+    assert(issues.exists(_.contains("missing required artifact: probatio-linux-x86_64")), s"$issues")
+    assert(issues.exists(_.contains("missing native binary for committed platform: linux-x86_64")), s"$issues")
+    assert(issues.exists(_.contains("SBOM is missing from release manifest")), s"$issues")
+    assert(issues.exists(_.contains("built from CI")), s"$issues")
+    // A content artifact present without its sidecar.
+    val noSidecar: ReleaseManifest = empty.copy(
+      artifacts = List(ReleaseArtifact.AssemblyJar),
+      builtFromCI = true
+    )
+    val sidecarIssues: List[String] = ReleaseValidator.validateChecksums(noSidecar)
+    assert(
+      sidecarIssues.exists(_.contains("missing checksum for artifact: probatio-assembly.jar")),
+      s"$sidecarIssues"
+    )
+    // Orphan sidecar + orphan recorded digest.
+    val orphaned: ReleaseManifest = empty.copy(
+      artifacts = List(ReleaseArtifact.Checksum("ghost.bin")),
+      checksums = Map("phantom.bin" -> "a" * 64),
+      builtFromCI = true
+    )
+    val orphanIssues: List[String] = ReleaseValidator.validateChecksums(orphaned)
+    assert(
+      orphanIssues.exists(_.contains("checksum file has no matching content artifact: ghost.bin")),
+      s"$orphanIssues"
+    )
+    assert(
+      orphanIssues.exists(_.contains("checksum artifact has no recorded checksum: ghost.bin")),
+      s"$orphanIssues"
+    )
+    assert(
+      orphanIssues.exists(_.contains("recorded checksum has no checksum artifact: phantom.bin")),
+      s"$orphanIssues"
+    )
+    // A native binary for a JAR-fallback-only platform.
+    val extra: ReleaseManifest = empty.copy(
+      artifacts = List(ReleaseArtifact.NativeBinary(Platform.WindowsX86_64)),
+      builtFromCI = true
+    )
+    val coverageIssues: List[String] = ReleaseValidator.validatePlatformCoverage(extra)
+    assert(
+      coverageIssues.exists(_.contains("unexpected native binary for non-committed platform: windows-x86_64")),
+      s"$coverageIssues"
+    )
+
+  // ── ReleaseCheck seams ──────────────────────────────────────────────
+
+  test("isCIEnvironment observes CI=true exactly"):
+    assert(ReleaseCheck.isCIEnvironment(Map("CI" -> "true").get), "CI=true is a CI environment")
+    assert(!ReleaseCheck.isCIEnvironment(Map.empty[String, String].get), "absent CI is not a CI environment")
+    assert(!ReleaseCheck.isCIEnvironment(Map("CI" -> "1").get), "CI=1 is not the CI=true contract")
+    assert(!ReleaseCheck.isCIEnvironment(Map("CI" -> "TRUE").get), "the value match is exact")
+
+  test("ReleaseCheck.run reports completion for a valid CI-built release"):
+    withTempDir { dir =>
+      writeCompleteRelease(dir, "v14.0.0")
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true) match
+        case Right(report) =>
+          assert(report.contains("release manifest complete"), s"the completion is reported: $report")
+          assert(report.contains("v14.0.0"), s"the version is named: $report")
+        case Left(err) => fail(s"a complete CI release must pass: $err")
+    }
+
+  test("ReleaseCheck.run blocks a complete release not built from CI"):
+    withTempDir { dir =>
+      writeCompleteRelease(dir, "v14.0.0")
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = false) match
+        case Left(err) =>
+          assert(err.contains("release manifest incomplete"), s"the refusal is named: $err")
+          assert(err.contains("built from CI"), s"the provenance issue is listed: $err")
+          assert(err.contains("  - "), s"each issue is listed as a bullet: $err")
+        case Right(_) => fail("a locally-built manifest must not be delivered")
+    }
+
+  test("ReleaseCheck.run lists every issue on its own line"):
+    withTempDir { dir =>
+      write(dir, "probatio-assembly.jar", "content")
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true) match
+        case Left(err) =>
+          assert(
+            err.count(_ == '\n') >= 2,
+            s"multiple issues must be joined by newlines, not concatenated: $err"
+          )
+        case Right(_) => fail("a partial release must not be delivered")
+    }
+
+  test("ReleaseCheck.run names an unbuildable manifest"):
+    ReleaseCheck.run(Path.of("/nonexistent-probatio-release-dir"), "v1", builtFromCI = true) match
+      case Left(err) =>
+        assert(err.contains("release manifest could not be built"), s"the build failure is named: $err")
+      case Right(_) => fail("a missing directory must not produce a report")

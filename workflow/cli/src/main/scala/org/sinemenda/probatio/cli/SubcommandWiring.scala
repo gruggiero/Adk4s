@@ -246,20 +246,96 @@ object SubcommandWiring:
         128
 
   /**
+   * `git diff --no-renames --name-only -z <baseline> HEAD --` under
+   * `repo`, returning the set of changed paths. `Some(empty)` is a clean
+   * diff; `None` means the diff could not run (unknown baseline,
+   * non-repo) — the caller treats `None` as "changed", matching
+   * `gitExit != 0`.
+   *
+   * `--no-renames`: delete+add pairs stay distinct so the deleted
+   * (pre-image) name is reported — pathspec pruning in the predecessor's
+   * `git diff --quiet -- <artifact>` precedes rename detection.
+   * `-z`: raw NUL-separated names — `core.quotePath` would otherwise
+   * C-quote non-ASCII/control-char filenames, breaking literal
+   * comparison. Trailing `--`: disambiguates a baseline that is both a
+   * rev and a path, matching the predecessor's `-- <artifact>` form.
+   */
+  private def gitDiffNameOnly(repo: java.nio.file.Path, baseline: String): Option[Set[String]] =
+    try
+      val pb: ProcessBuilder = new ProcessBuilder(
+        "git", "diff", "--no-renames", "--name-only", "-z", baseline, "HEAD", "--"
+      )
+      pb.directory(repo.toFile)
+      pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+      val p: Process = pb.start()
+      val out: String =
+        new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
+      if p.waitFor() == 0 then
+        Some(out.split('\u0000').filter(_.nonEmpty).toSet)
+      else None
+    catch
+      case NonFatal(_) => // danger-scan:allow fail-open — a git failure is "changed", never "unchanged"
+        None
+
+  /**
+   * Whether `artifact` is a plain relative path the batched name-only
+   * membership check reproduces faithfully. Anything else — empty,
+   * absolute, `.`/`..` segments (git normalizes them in a pathspec;
+   * literal membership does not), trailing slash, or pathspec magic
+   * (`*`, `?`, `[`, `:`, `!`) — takes the predecessor's literal per-row
+   * command so git interprets it exactly as before. `private[cli]` so
+   * the guard's truth table is directly testable.
+   */
+  private[cli] def isPlainPathspec(artifact: String): Boolean =
+    artifact.nonEmpty &&
+      !artifact.startsWith("/") &&
+      !artifact.endsWith("/") &&
+      !artifact.split("/", -1).exists((s: String) => s == "." || s == "..") &&
+      !artifact.exists((c: Char) => c == '*' || c == '?' || c == '[' || c == ':' || c == '!')
+
+  /**
    * The forgive-unchanged oracle — the predecessor's
    * `git diff --quiet <row.baseline> HEAD -- <artifact>` under the ledger
    * file's repository root. Anything that is not a clean diff (changed
    * artifact, unknown baseline, no repo) is "changed" — a stale row that
    * cannot be forgiven stays absent evidence.
+   *
+   * The per-row `git diff --quiet` is batched: one `git diff --name-only
+   * <baseline> HEAD` per DISTINCT row baseline, memoized for the
+   * predicate's lifetime — a single invocation's repository facts cannot
+   * change mid-run. Pathspec parity: a changed file `f` marks `artifact`
+   * changed iff `f == artifact` or `f` is under directory `artifact`
+   * (git matches literal pathspecs at directory boundaries — `tests`
+   * matches `tests/x`, never `tests2`). Artifacts that are not plain
+   * relative pathspecs (`isPlainPathspec` — empty, absolute, `.`/`..`,
+   * magic, trailing slash) bypass the batch and run the predecessor's
+   * literal `git diff --quiet <baseline> HEAD -- <artifact>` so git
+   * interprets them exactly as before.
    */
   private[cli] def forgivePredicate(ledgerFile: String): (String, String) => Boolean =
     val ledgerDir: Option[java.nio.file.Path] =
       Option(Paths.get(ledgerFile).toAbsolutePath.normalize.getParent)
     val repo: Option[java.nio.file.Path] = ledgerDir.flatMap(repoContaining)
+    val baselineCache: java.util.concurrent.atomic.AtomicReference[Map[String, Option[Set[String]]]] =
+      new java.util.concurrent.atomic.AtomicReference(Map.empty)
     (rowBaseline: String, artifact: String) =>
       repo match
-        case Some(r) =>
+        case Some(r) if !isPlainPathspec(artifact) =>
           gitExit(r, List("diff", "--quiet", rowBaseline, "HEAD", "--", artifact)) == 0
+        case Some(r) =>
+          val changed: Option[Set[String]] =
+            baselineCache.get.get(rowBaseline) match // danger-scan:allow memo-read — AtomicReference.get + Map.get returns Option, not an unsafe get
+              case Some(result) => result
+              case None =>
+                val result: Option[Set[String]] = gitDiffNameOnly(r, rowBaseline)
+                baselineCache.updateAndGet((m: Map[String, Option[Set[String]]]) =>
+                  m + (rowBaseline -> result)
+                )
+                result
+          changed match
+            case Some(files) =>
+              !files.exists((f: String) => f == artifact || f.startsWith(artifact + "/"))
+            case None => false
         case None => false
 
   /**

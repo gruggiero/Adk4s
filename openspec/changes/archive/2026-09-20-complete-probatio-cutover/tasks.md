@@ -62,7 +62,7 @@
 - [x] Ring 6 — `SpecLintKernel` mirror + `SpecLintBridgeSpec` (2/2); Stainless 261/261 VCs valid
 - [x] Concept-delta check + inventory update (12 added, 4 annotated) + checkpoint
 
-## 5. chain-state-attribution
+## 5. chain-state-attribution — COMPLETE
 
 - [x] Step 1 — typed contract: `RequirementSet`, `FactSource`, `RequirementExtractor.extract`, `ChainState.compute` taking `RequirementSet` instead of `List[Requirement]`, smart constructors on `ChainStateReport` and `UnresolvedEntry` — compiled under `-Werror`, `ChainStateAttributionTypeContract` + `ChainStateAttributionSpec` compile-negatives green (APPROVED)
 - [x] Step 2 — test oracle: 15 scenarios + 5 properties (`verdict-parity-with-predecessor`, `counts-are-consistent`, `unattributable-is-reachable-and-never-discharged`, `obligation-rows-are-conserved`, `empty-is-not-unreadable`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate)
@@ -77,7 +77,7 @@
 - [x] Ring 6 — `ChainStateKernel.chainStateFold` (count ordering + unresolved complement + unattributable-never-discharged) + Manual-ring reconcile + `VerifiedKernelBridgeSpec` non-empty bridge; `probatio-verified` **325/325 VCs valid**
 - [x] Concept-delta check + inventory update + checkpoint — inventory updated (6 new rows + reshaped annotations); **VALIDATED — human checkpoint approval 2026-09-17 (N3 signed off)**
 
-## 6. danger-reconcile-engines
+## 6. danger-reconcile-engines — COMPLETE
 
 - [x] Step 1 — typed contract: `DangerPattern` (8 cases), `DangerHit`, `DangerReport` with smart constructor, `Corroboration` (5 cases), `ReconcileReport`, `DangerScanEngine.scan`, `ReconcileEngine.classify`, `ChangedFilesReader` (compiles, human gate) — APPROVED
 - [x] Step 2 — test oracle: 16 scenarios + 5 properties (`danger-parity-with-predecessor`, `justification-excludes-exactly-its-own-occurrence`, `corroboration-is-total-and-exclusive`, `witness-requires-key-agreement`, `no-discharge-verdict-in-output`) + 4 compile-negative stubs; ORACLE POLARITY 46 RED / 19 GREEN-BY-DESIGN (human gate) — APPROVED
@@ -91,7 +91,7 @@
 - [x] Ring 6 — `ReconcileKernel` + `ReconcileBridgeSpec`; 345/345 VCs valid (structural recursion per ring6 experience doc §4 — the spec's `forall`/`zip` ensuring hung the solver)
 - [x] Concept-delta check + inventory update + checkpoint — **VALIDATED — human checkpoint approval 2026-09-18** (post-format re-verify on 9f7d6cb: 80/80 spec-6 tests, 345/345 VCs)
 
-## 7. ledger-checkpoint-parity
+## 7. ledger-checkpoint-parity — COMPLETE
 
 - [x] Step 1 — typed contract: `RingEvidence`, `CheckpointReport` with smart constructor, `ReplayVerdict`, `SessionId` (opaque, lossless encoder), `CheckpointEngine.report`, `LedgerRecord` joined with its optional fields and a single total encoder (compiles, human gate) — APPROVED
 - [x] Step 2 — test oracle: 20 scenarios + 6 properties (`record-round-trips-all-present-fields`, `self-observed-records-are-distinguishable`, `replay-verdict-is-total-and-sound`, `checkpoint-reports-every-requested-ring`, `marker-written-iff-evidenced-and-discharged`, `parity-with-predecessor`) + 5 compile-negative stubs; ORACLE POLARITY run (human gate) — APPROVED
@@ -106,7 +106,7 @@
 - [x] Ring 6 — `LedgerValidatorKernel.markerDecision` + `allEvidencedIsForall` lemma + `CheckpointBridgeSpec`; 355/355 VCs valid, 0 invalid (direct `probatio-verified` invocation — `ring6` alias broken under sbt 1.12)
 - [x] Concept-delta check + inventory update (4 added — including `SessionId`, which spec 8 will modify, not introduce — and `LedgerRecord` modified) + checkpoint — **VALIDATED — human checkpoint approval 2026-09-18** (post-format re-verify on `7b278b4`: compile clean, 557/557 workflow tests green, `probatioOracleDiff` PROCEED — no file worse across all 17 bats files, Stainless 355/355 valid)
 
-## 8. gate-event-completeness
+## 8. gate-event-completeness — COMPLETE
 
 - [x] Step 1 — typed contract: `HarnessPayload`, `ToolOutcome` (`Exit` | `Skip`) with `classify` as the only constructor path, `GateStateDir`, `RefusalBudget`, `HeartbeatRecord`, `GateEvent` gaining its sixth case, `SessionId` resolution order (compiles, human gate) — **APPROVED 2026-09-18**
 - [x] Step 2 — test oracle: 24 scenarios + 6 properties (`outcome-classification-is-total-and-conservative`, `post-tool-observation-never-blocks`, `refusal-budget-is-bounded-and-nonzero`, `session-identity-encoding-is-injective`, `unreadable-state-allows`, `envelope-conforms-to-contract`) + 4 compile-negative stubs; ORACLE POLARITY run (human gate) — **APPROVED 2026-09-18**
@@ -121,22 +121,23 @@
 - [x] Ring 6 — `GateKernel` (refusal budget + outcome classification) verified: **401/401 VCs valid, 0 invalid, 0 unknown** via `sbt -J-Xmx6g 'set probatio-verified/stainlessEnabled := true' 'probatio-verified/compile'`; first run stalled on the `count`/`indexWhere` postcondition (documented no-per-VC-timeout trap) — rewritten with `markAtLength`/`markAtCount`/`firstTrueInRange`/`markAtFti` Unit-lemmas; `GateBridgeSpec` 2/2 green
 - [x] Concept-delta check + inventory update (5 added, `SessionId` and `GateEvent` modified) + checkpoint — **VALIDATED — human checkpoint approval 2026-09-20** (re-verify on `112fc27`: compile clean, 169 focused tests green covering every touched file, `probatioOracleDiff` PROCEED — no file worse across all 17 bats files, Stainless 401/401 valid)
 
-## 9. native-gate-delivery
+## 9. native-gate-delivery — COMPLETE
 
-- [ ] Prerequisite — install a GraalVM toolchain on the target host and record its version (not currently detected; recorded as a setup task in `capability-check.md`)
-- [ ] Step 1 — typed contract: `LatencyMeasurement`, a budget-verdict function that requires a measurement, `ShimGenerator.generateShim` taking a resolution result rather than a path, delegating tasks taking an argument list (compiles, human gate)
-- [ ] Step 2 — test oracle: 15 scenarios + 5 properties (`budget-verdict-requires-a-measurement`, `per-turn-tool-never-resolves-to-the-launcher-on-a-native-platform`, `exactly-one-warning-on-fallback`, `shim-target-equals-resolution-and-is-repeatable`, `release-complete-iff-every-named-artifact-present-and-matching`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate)
-- [ ] Step 3 — implementation: `sbt "probatio-cli/nativeImage"` produces the artifact; shim generation binds to the resolution result; `probatioInstall` stops assuming a present binary is checksum-valid and stops writing a launcher referencing an unset environment variable; each delegating task passes its tool's arguments; `ReleaseValidator` is wired to the release step
-- [ ] Step 3b — **measure the native artifact's warm start-up latency on linux-x86_64 and record the median with its sample count in the evidence record**; if the median exceeds 150 ms the delivery is blocked and the measurement is the recorded reason (`native-packaging` R-N1 calls an unmet budget a hard blocker, not a degradation)
-- [ ] Ring 0 — `sbt "probatio-cli/compile" "sbt-probatio/compile"` clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan (ported tool); shellcheck clean on the launcher and shims
-- [ ] Ring 2 — `probatioDependencyLint` clean across all four modules; `sbt-probatio` still links no `probatio-core` code
-- [ ] Ring 3 — property + scenario suites green; `SubprocessConformanceSpec` passes against the **native** artifact
-- [ ] Ring 8 — fresh-context adversarial review
-- [ ] Ring 5 — retarget to `ProbatioPlugin.scala`, `ShimGenerator.scala`, `InstallResolver.scala`, `LatencyMeasurement.scala`; threshold 80%; read and record the score
-- [ ] Concept-delta check + inventory update (1 added, `ShimGenerator` modified) + checkpoint
+- [x] Prerequisite — install a GraalVM toolchain on the target host and record its version (recorded: coursier `graalvm-java17@22.3.1`, GraalVM CE 22.3.1 / Java 17.0.6 — the recorded build toolchain)
+- [x] Step 1 — typed contract: `LatencyMeasurement`, a budget-verdict function that requires a measurement, `ShimGenerator.generateShim` taking a resolution result rather than a path, delegating tasks taking an argument list (compiles, human gate — APPROVED)
+- [x] Step 2 — test oracle: 15 scenarios + 5 properties (`budget-verdict-requires-a-measurement`, `per-turn-tool-never-resolves-to-the-launcher-on-a-native-platform`, `exactly-one-warning-on-fallback`, `shim-target-equals-resolution-and-is-repeatable`, `release-complete-iff-every-named-artifact-present-and-matching`) + 3 compile-negative stubs; ORACLE POLARITY run (human gate — APPROVED)
+- [x] Step 3 — implementation: `sbt "probatio-cli/nativeImage"` produces the artifact (rebuilt, 29.3s); shim generation binds to the resolution result; `probatioInstall` verifies a present binary against `probatioExpectedSha256` and writes the launcher bound to `probatioAssemblyJar`; each delegating task passes its tool's arguments; `ReleaseValidator` is wired to the release step (`ReleaseCheck` runMain gate in `release-probatio.yml`)
+- [x] Step 3b — warm-start latency measured and recorded: `gate --event prompt-submit`, 100 warm runs on linux-x86_64. First run exposed a defect (median 2508.846 ms — per-row `git diff` subprocess fan-out in `forgivePredicate`); fixed by per-baseline batching (parity verified 62/62 pairs). **Re-measured median 129.412 ms — verdict `Met`**, recorded in `evidence-ledger.jsonl` and `implementation-progress.md`
+- [x] Ring 0 — `sbt "probatio-cli/compile" "sbt-probatio/compile"` clean
+- [x] Ring 1 — lint clean (spec-lint 0 FAIL, 34 WARN); dangerous-pattern scan clean on changed files; shellcheck clean on the launcher and shims
+- [x] Ring 2 — `probatioDependencyLint` clean across all four modules; `sbt-probatio` still links no `probatio-core` code
+- [x] Ring 3 — property + scenario suites green (cli 651/651, plugin 66/66); `SubprocessConformanceSpec` passes against the **native** artifact (7/7); `sbt probatioOracleDiff` → **PROCEED — no file is worse** (17/17 bats files at parity or better)
+- [x] Ring 8 — fresh-context adversarial review: fictional `/usr/local/bin` shim target fixed (shim binds to the real installed `File`; `resolveForShim` runs before install side-effects and its warnings are emitted); `forgivePredicate` parity hardened (`--no-renames`, `-z`, pathspec fallback); `ReleaseManifestIO` verifies sidecar digests against file bytes + closes `Files.list`; `ReleaseCheck` provenance honest; uninstall removes the launcher; `runDelegatingTask` closes writer/source on spawn failure; unquotable shim targets reported as `Left`
+- [x] Ring 5 — stryker pass A1 `ProbatioPlugin` **96%** (StringLiteral excluded — the sbt key macro rejects mutated descriptions; 1 documented equivalent survivor in `stripTag`); pass A2 `ShimGenerator`+`InstallResolver` **100%** (27/27 testable killed); pass B cli (`BudgetVerdict`, `LatencyMeasurement`, `ReleaseCheck`, `ReleaseManifestIO`, `ReleaseValidator`, `SubcommandWiring`) **95.92%** / 96.91% covered — all 8 undetected in pre-existing `SubcommandWiring` adapter code outside the spec-9 diff + 1 equivalent `Option[Byte]` mutant
+- [x] Concept-delta check + inventory update (registry-check OK; `native-gate-delivery-after.md` snapshot generated — delta is `LatencyMeasurement`/`BudgetVerdict`/`LatencyBudget` + test generators, matching the declared delta)
+- [x] Checkpoint — **VALIDATED — human checkpoint approval 2026-09-20**
 
 ## Change exit criterion
 
-- [ ] `sbt probatioOracleDiff` reports **no bats file worse than the predecessor control** — the deficit measured 2026-08-29 (122 ported failures against 20 predecessor failures, 102 tests) is zero
-- [ ] Every predecessor script under `openspec/schemas/verified-scala3/` that the cutover replaced remains on disk as the revert target until this criterion has held green across a full change cycle
+- [x] `sbt probatioOracleDiff` reports **no bats file worse than the predecessor control** — the deficit measured 2026-08-29 (122 ported failures against 20 predecessor failures, 102 tests) is zero: **VERDICT PROCEED** 2026-09-20 on the final implementation state (`complete=true hasRegression=false`; all 17 bats files at parity or better)
+- [x] Every predecessor script under `openspec/schemas/verified-scala3/` that the cutover replaced remains on disk as the revert target until this criterion has held green across a full change cycle — verified on disk (`scanner/*.sh`, `*.predecessor.bak`); the green criterion has now held across the complete change cycle

@@ -3,6 +3,10 @@ package org.sinemenda.probatio.plugin
 import hedgehog._
 import hedgehog.Range._
 
+import java.io.File
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+
 /**
  * Tests for ExitCodeMapping — the pure function that maps the binary's exit
  * code to a task outcome with distinguishable failure messages.
@@ -119,6 +123,80 @@ final class ExitCodeMappingSpec extends ProbatioPluginSuite {
     assert(
       msg.contains("could not determine"),
       s"exit-2 with empty reason should still say 'could not determine': $msg"
+    )
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // native-gate-delivery (spec 9) — the build integration passes each tool
+  // the arguments its invocation requires
+  // spec: native-gate-delivery — Requirement: The build integration passes each tool the arguments its invocation requires
+  // ══════════════════════════════════════════════════════════════════════
+
+  /** Writes an executable fake probatio binary whose body is `body`. */
+  private def fakeBinary(dir: File, name: String, body: String): File = {
+    val script: File = new File(dir, name)
+    val _: java.nio.file.Path =
+      Files.write(script.toPath, s"#!/usr/bin/env bash\n$body\n".getBytes(StandardCharsets.UTF_8))
+    val executable: Boolean = script.setExecutable(true)
+    if (!executable) sys.error(s"could not mark fake binary $script executable")
+    script
+  }
+
+  // ── Scenario: Happy path — a task supplies the required arguments and
+  //    the tool runs
+  // spec: native-gate-delivery — Scenario: Happy path — a task supplies the required arguments and the tool runs
+  test("a delegating task invokes the tool with its argument list and follows the exit status") {
+    val dir: File     = Files.createTempDirectory("probatio-task-args").toFile
+    val capture: File = new File(dir, "argv.txt")
+    val binary: File  = fakeBinary(
+      dir,
+      "fake-probatio",
+      s"""printf '%s\n' "$$@" > "${capture.getAbsolutePath}""""
+    )
+    ProbatioPlugin.runDelegatingTask(
+      binary,
+      "spec-lint",
+      Seq("openspec", "--strict"),
+      sbt.util.Logger.Null
+    )
+    val captured: String =
+      new String(Files.readAllBytes(capture.toPath), StandardCharsets.UTF_8)
+    assertEquals(
+      captured,
+      "spec-lint\nopenspec\n--strict\n",
+      "the tool must receive the subcommand followed by the task's argument list"
+    )
+  }
+
+  // ── Scenario: Adversarial — a tool's finding status and could-not-
+  //    determine status produce distinguishable task failures
+  // spec: native-gate-delivery — Scenario: Adversarial — a tool's finding status and could-not-determine status produce distinguishable task failures
+  test("finding and could-not-determine exit statuses produce distinguishable task failures") {
+    val dir: File        = Files.createTempDirectory("probatio-task-status").toFile
+    val findingBin: File = fakeBinary(dir, "finding-tool", "echo '2 findings'; exit 1")
+    val undetBin: File   = fakeBinary(dir, "undet-tool", "echo 'ledger unreadable'; exit 2")
+
+    val findingMsg: String = intercept[RuntimeException](
+      ProbatioPlugin.runDelegatingTask(findingBin, "spec-lint", Seq("openspec"), sbt.util.Logger.Null)
+    ).getMessage
+    val undeterminedMsg: String = intercept[RuntimeException](
+      ProbatioPlugin.runDelegatingTask(undetBin, "spec-lint", Seq("openspec"), sbt.util.Logger.Null)
+    ).getMessage
+
+    assertNotEquals(
+      findingMsg,
+      undeterminedMsg,
+      "finding and could-not-determine task failures must be distinguishable"
+    )
+    assert(findingMsg.contains("reported"), s"finding failure must say 'reported': $findingMsg")
+    assert(findingMsg.contains("finding(s)"), s"finding failure must say 'finding(s)': $findingMsg")
+    assert(
+      undeterminedMsg.contains("could not determine"),
+      s"undetermined failure must say 'could not determine': $undeterminedMsg"
+    )
+    assert(
+      !undeterminedMsg.contains("finding(s)"),
+      s"undetermined failure must not be mislabelled as a finding: $undeterminedMsg"
     )
   }
 }

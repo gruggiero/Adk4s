@@ -191,15 +191,15 @@ explicitly rather than left implicit.
 
      DO NOT skip ahead. DO NOT batch-implement. One spec at a time. -->
 
-- [ ] 1. `specs/cli-entrypoint-contract/spec.md` — fix the argv contract so every tool is reachable through the built artifact; shrink the surface to the nine tools that are actually implemented; add subprocess-level conformance
-- [ ] 2. `specs/cutover-gate/spec.md` — build the differential harness and the comparison-based gate; redefine "oracle green" as parity with the predecessor control; make the revert path executable
-- [ ] 3. `specs/live-fact-banner/spec.md` — read the repository facts and assemble the banner from them; scan all six install roots for instruction drift; stop asserting fabricated facts as reads
-- [ ] 4. `specs/spec-lint-engine/spec.md` — port the F1–F10 checks, the W1–W7 warnings, the obligation-table parser and the applicability block, bound to the predecessor by an executable parity property
-- [ ] 5. `specs/chain-state-attribution/spec.md` — extract the change's real requirements, compute the correctness verdict over them, and make the unattributable and unmapped-obligation reports reachable
-- [ ] 6. `specs/danger-reconcile-engines/spec.md` — port the dangerous-pattern scan with its justification handling, and the corroboration classifier that tells a witnessed run from testimony
-- [ ] 7. `specs/ledger-checkpoint-parity/spec.md` — stop dropping the record's observation fields; add the replay operation; generate the checkpoint from recorded evidence and gate the presentation marker on it
-- [ ] 8. `specs/gate-event-completeness/spec.md` — add the sixth event and the ambient evidence writer; wire the blocking tiers to a real state reader with a bounded refusal budget; restore the installation probe
-- [ ] 9. `specs/native-gate-delivery/spec.md` — build and measure the native artifact, bind the shim's target to the resolution result, and give each build task the arguments its tool requires
+- [x] 1. `specs/cli-entrypoint-contract/spec.md` — fix the argv contract so every tool is reachable through the built artifact; shrink the surface to the nine tools that are actually implemented; add subprocess-level conformance
+- [x] 2. `specs/cutover-gate/spec.md` — build the differential harness and the comparison-based gate; redefine "oracle green" as parity with the predecessor control; make the revert path executable
+- [x] 3. `specs/live-fact-banner/spec.md` — read the repository facts and assemble the banner from them; scan all six install roots for instruction drift; stop asserting fabricated facts as reads
+- [x] 4. `specs/spec-lint-engine/spec.md` — port the F1–F10 checks, the W1–W7 warnings, the obligation-table parser and the applicability block, bound to the predecessor by an executable parity property
+- [x] 5. `specs/chain-state-attribution/spec.md` — extract the change's real requirements, compute the correctness verdict over them, and make the unattributable and unmapped-obligation reports reachable
+- [x] 6. `specs/danger-reconcile-engines/spec.md` — port the dangerous-pattern scan with its justification handling, and the corroboration classifier that tells a witnessed run from testimony
+- [x] 7. `specs/ledger-checkpoint-parity/spec.md` — stop dropping the record's observation fields; add the replay operation; generate the checkpoint from recorded evidence and gate the presentation marker on it
+- [x] 8. `specs/gate-event-completeness/spec.md` — add the sixth event and the ambient evidence writer; wire the blocking tiers to a real state reader with a bounded refusal budget; restore the installation probe
+- [x] 9. `specs/native-gate-delivery/spec.md` — build and measure the native artifact, bind the shim's target to the resolution result, and give each build task the arguments its tool requires
 
 ### Exit criterion for the change as a whole
 

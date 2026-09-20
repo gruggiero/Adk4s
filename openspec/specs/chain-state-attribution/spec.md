@@ -358,7 +358,7 @@ def chainStateFold(total: BigInt, verdicts: List[BigInt],
 }
 ```
 
-**Bridge property test**: `ChainStateBridgeSpec` (extended) runs the shipped
+**Bridge property test**: `VerifiedKernelBridgeSpec` (extended) runs the shipped
 `ChainState.compute` and the kernel on the same generated inputs.
 
 **Delegated to Ring 3**: predecessor parity and the extraction-path reporting are
@@ -376,7 +376,7 @@ delegated — neither has a PureScala model.
 | Every finding-carrying obligation row is attributed exactly once or reported unmapped | Requirement: An obligation that maps to no known requirement is reported separately, never dropped and never misattributed + Property: obligation-rows-are-conserved | property test | `workflow/core/src/test/scala/org/sinemenda/probatio/core/ChainStateAttributionSpec.scala` |
 | An ordinal-sourced finding is not attributed to the requirement at that ordinal | Scenario: Adversarial — an ordinal-sourced finding is not attributed to the requirement at that ordinal | scenario test | `workflow/core/src/test/scala/org/sinemenda/probatio/core/ChainStateAttributionSpec.scala` |
 | The unmapped-obligations field is present even when empty | Scenario: Edge case — the unmapped-obligations list is present and empty when nothing is unmappable | contract-conformance test against the report contract | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/ChainStateCmdConformanceSpec.scala` (existing suite, extended) |
-| Counts are monotone and the unresolved list is the exact complement | Property: counts-are-consistent + Contract: chainStateFold | property test + formal contract (Ring 6) + bridge test | `ChainStateAttributionSpec`; `verified/probatio/src/main/scala/org/sinemenda/probatio/core/ChainStateKernel.scala`; `ChainStateBridgeSpec` |
+| Counts are monotone and the unresolved list is the exact complement | Property: counts-are-consistent + Contract: chainStateFold | property test + formal contract (Ring 6) + bridge test | `ChainStateAttributionSpec`; `verified/probatio/src/main/scala/org/sinemenda/probatio/core/ChainStateKernel.scala`; `workflow/core/src/test/scala/org/sinemenda/probatio/core/VerifiedKernelBridgeSpec.scala` |
 | Impossible counts and reasonless unresolved entries are unrepresentable | Compile-Negative: ChainStateReport with discharged exceeding total + Compile-Negative: UnresolvedEntry with an empty reasons list | smart constructor + compile-negative tests | `ChainStateReport`, `UnresolvedEntry` in `workflow/core/src/main/scala/org/sinemenda/probatio/core/ChainStateReport.scala`; `ChainStateAttributionSpec` |
 | The extraction path is reported and a fallback is never presented as the extractor | Requirement: The extraction path used for the requirement set is reported + Scenario: Adversarial — a fallback result is never reported as an extractor result | scenario tests | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/ChainStateCmdSpec.scala` |
 | The could-not-determine marker appears exactly once | Requirement: A could-not-determine result states its reason exactly once + Scenario: Error path — a missing ledger produces a single-marker diagnostic | scenario test executing the built artifact | `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/ChainStateCmdSpec.scala` |

@@ -617,9 +617,9 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `probatioLedgerAppend` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
 | `probatioGateShim` | sbt TaskKey[File] | `org.sinemenda.probatio.plugin` | shipped |
 | `probatioUninstall` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
-| `ShimGenerator` | object (generateShim: String → String — pure 3-line shim generator) | `org.sinemenda.probatio.plugin` | shipped |
+| `ShimGenerator` | object (generateShim: ResolutionResult → Either[String, String] — pure 3-line shim generator bound to the resolution result; blocked resolution or an unquotable target path → Left(reason), no shim) — signature changed by `spec:complete-probatio-cutover/native-gate-delivery` | `org.sinemenda.probatio.plugin` | shipped |
 | `ExitCodeMapping` | object (mapExitCode: (String, Int, String) → Either[String, Unit] — three-way exit protocol mapping) | `org.sinemenda.probatio.plugin` | shipped |
-| `InstallResolver` | object (resolve: ResolutionScenario → ResolutionResult — pure install resolution model) | `org.sinemenda.probatio.plugin` | shipped |
+| `InstallResolver` | object (resolve: ResolutionScenario → ResolutionResult, resolveForShim: (scenario, subcommand, platformHasNative) → ResolutionResult — pure install resolution model; resolveForShim blocks a launcher resolution for a per-turn subcommand on a native platform) — member added by `spec:complete-probatio-cutover/native-gate-delivery` | `org.sinemenda.probatio.plugin` | shipped |
 | `ResolutionScenario` | sealed trait (PrebuiltAvailable, PrebuiltChecksumInvalid, JarFallback, NativeImage) | `org.sinemenda.probatio.plugin` | shipped |
 | `ResolutionResult` | final case class (path: Option[String], logLines: List[String]) | `org.sinemenda.probatio.plugin` | shipped |
 
@@ -883,3 +883,26 @@ Existing rows modified by this spec (annotated in place above): `GateEvent`
 `GateStateDirReader` (phase, presentation, grant, refusal, sweep, specDirs
 surface), `GateCmd` (six-event dispatcher — `post-bash` ambient writer,
 tool-call grant/oracle locks, marker-driven completion, payload channel).
+
+### complete-probatio-cutover change — native-gate-delivery spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/native-gate-delivery`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `LatencyMeasurement` | final case class (sampleCount, medianMillis, maxMillis, artifactKind: ArtifactKind ∈ {NativeImage, JarLauncher}) — an undersized measurement is a recordable observation; sufficiency is the verdict's call | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `BudgetVerdict` | enum (Met(m, b), Exceeded(m, b), Undetermined(NoMeasurement \| InsufficientSamples(observed, required))) — `evaluate(Option[LatencyMeasurement], LatencyBudget)`; Met/Exceeded carry the measurement as evidence | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `LatencyBudget` | final case class (medianMillis, minSamples) — `perTurn = (150.0, 100)` per native-packaging R-N1 | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `ReleaseManifestIO` | object — `fromDirectory(dir, version, builtFromCI): Either[String, ReleaseManifest]` rebuilds a typed manifest from a release-artifact directory (filename → artifact, `X.sha256` first token → `checksums(X)`, SPDX JSON → `Sbom`) | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `ReleaseCheck` | object — `main(args)`: the release-step gate; builds the manifest from the downloaded artifact dir and fails the release when `ReleaseValidator.validateAll` is non-empty | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `probatioSpecLintArgs` / `probatioChainStateArgs` / `probatioCheckpointArgs` / `probatioLedgerAppendArgs` | sbt SettingKey[Option[Seq[String]]] — the argument list each delegating task passes; `None` = task reports the missing value without invoking | `org.sinemenda.probatio.plugin` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `probatioExpectedSha256` | sbt SettingKey[Option[String]] — the recorded digest a cached prebuilt binary must match; unset = a present binary is checksum-invalid, never assumed valid | `org.sinemenda.probatio.plugin` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `probatioAssemblyJar` | sbt SettingKey[Option[File]] — the concrete JAR the fallback launcher binds to; unset = the task reports rather than writing a launcher referencing an unset env var | `org.sinemenda.probatio.plugin` | `spec:complete-probatio-cutover/native-gate-delivery` |
+
+Existing rows modified by this spec (annotated in place above): `ShimGenerator`
+(`generateShim` re-bound from a raw path to `ResolutionResult` — blocked
+resolution yields `Left`, no shim), `InstallResolver` (+`resolveForShim` —
+per-turn launcher block on native platforms), `ReleaseValidator`
+(`validateChecksums` now reconciles `manifest.checksums` keys with `Checksum`
+sidecar names), `ProbatioPlugin` (+`writeShim` seam, +`detectScenario`
+checksum parameter, +`runDelegatingTask` explicit `args`).

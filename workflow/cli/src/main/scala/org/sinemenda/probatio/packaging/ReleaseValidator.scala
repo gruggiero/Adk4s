@@ -67,10 +67,17 @@ object ReleaseValidator:
 
   /**
    * Validates that every content artifact has a corresponding SHA-256
-   * checksum file, and that no checksum files exist for non-content
-   * artifacts (i.e. no checksum-of-checksum).
+   * checksum file, that no checksum files exist for non-content
+   * artifacts (i.e. no checksum-of-checksum), and that the manifest's
+   * recorded checksum map reconciles with the checksum sidecar
+   * artifacts: `checksums` maps each content filename to its declared
+   * digest, so its key set must correspond exactly to the `Checksum`
+   * sidecar artifact names. A checksum sidecar with no recorded digest
+   * — or a recorded digest with no checksum sidecar — is an issue.
    *
    * spec: native-packaging — Requirement: Every release SHALL include per-platform binary, assembly JAR, SHA-256 checksums, SBOM, and sources
+   * spec: native-gate-delivery — Scenario: a release that misses an artifact is not complete
+   * spec: native-gate-delivery — Scenario: a recorded checksum that differs from the artifact's is not matching
    */
   def validateChecksums(manifest: ReleaseManifest): List[String] =
     val checksumArtifacts: List[ReleaseArtifact.Checksum] = manifest.artifacts.collect {
@@ -88,7 +95,16 @@ object ReleaseValidator:
       .filterNot(contentNames.contains)
       .toList
       .map(name => s"checksum file has no matching content artifact: $name")
-    missingChecksums ++ orphanChecksums
+    val recordedNames: Set[String] = manifest.checksums.keySet
+    val unrecordedSidecars: List[String] = checksumNames
+      .filterNot(recordedNames.contains)
+      .toList
+      .map(name => s"checksum artifact has no recorded checksum: $name")
+    val orphanRecords: List[String] = recordedNames
+      .filterNot(checksumNames.contains)
+      .toList
+      .map(name => s"recorded checksum has no checksum artifact: $name")
+    missingChecksums ++ orphanChecksums ++ unrecordedSidecars ++ orphanRecords
 
   /**
    * Validates that all artifacts are built from CI, not from a local

@@ -2,6 +2,8 @@ package org.sinemenda.probatio.packaging
 
 import hedgehog.*
 import hedgehog.Range
+import hedgehog.core.PropertyConfig
+import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.cli.ProbatioCliSuite
 
 /**
@@ -482,3 +484,244 @@ final class NativePackagingSpec extends ProbatioCliSuite:
     // If V1 failed, the concept scanner stays on JAR (documented exception).
     val v1SpikeDone: Boolean = true // Phase 0 confirmed V1 passed
     assert(v1SpikeDone, "V1 scalameta spike must be confirmed before concept-scanner port")
+
+  // ══════════════════════════════════════════════════════════════════════
+  // native-gate-delivery (spec 9) — resolution + release half
+  // spec: native-gate-delivery — Requirement: The per-turn tool is delivered as a native artifact where one exists for the platform
+  // spec: native-gate-delivery — Requirement: A release carries every artifact the delivery names
+  // ══════════════════════════════════════════════════════════════════════
+
+  private def coverConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(300))
+
+  private def genPlatform: Gen[Platform] =
+    Gen.element1(
+      Platform.LinuxX86_64,
+      Platform.MacosAarch64,
+      Platform.MacosX86_64,
+      Platform.WindowsX86_64
+    )
+
+  /** Tool names from the exposed set, with the per-turn tool over-represented. */
+  private def genToolName: Gen[String] =
+    Gen.frequency1(
+      3 -> Gen.constant("gate"),
+      1 -> Gen.element1("spec-lint", "chain-state", "checkpoint", "ledger", "danger-scan", "reconcile")
+    )
+
+  // ── Property: per-turn-tool-never-resolves-to-the-launcher-on-a-native-platform
+  // spec: native-gate-delivery — Property: per-turn-tool-never-resolves-to-the-launcher-on-a-native-platform
+  property("per-turn-tool-never-resolves-to-the-launcher-on-a-native-platform", coverConfig):
+    for
+      platform  <- genPlatform.forAll
+                     .cover(60, "native-platform", (p: Platform) => p.hasNativeBinary)
+      available <- Gen.boolean.forAll
+                     .cover(40, "artifact-absent", (a: Boolean) => !a)
+      tool      <- genToolName.forAll
+                     .cover(40, "per-turn-tool", (t: String) => BinaryResolution.perTurnSubcommands.contains(t))
+    yield
+      val result: ResolutionResult =
+        BinaryResolution.resolve(tool, platform, available, "/opt/probatio/probatio-assembly.jar")
+      val isLauncher: Boolean = result match
+        case ResolutionResult.JarFallback(_, _) => true
+        case _                                => false
+      Result
+        .assert(
+          !(platform.hasNativeBinary && BinaryResolution.perTurnSubcommands.contains(tool) && isLauncher)
+        )
+        .log(s"per-turn tool $tool resolved to the launcher on native platform $platform: $result")
+
+  // ── Property: exactly-one-warning-on-fallback
+  // spec: native-gate-delivery — Property: exactly-one-warning-on-fallback
+  //
+  // Every resolution that falls back to the launcher emits exactly one
+  // warning line, containing no embedded line break.
+  private final case class FallbackCase(platform: Platform, tool: String, jarPath: String)
+
+  /** Constructive over the fallback cases only: a non-native platform, or a native platform with a once-per-ring tool and no artifact. */
+  private def genFallbackCase: Gen[FallbackCase] =
+    val nonNative: Gen[FallbackCase] =
+      for
+        tool    <- Gen.element1("gate", "spec-lint", "chain-state", "checkpoint")
+        jarPath <- Gen.string(Gen.alphaNum, Range.linear(1, 30)).map(s => s"/opt/probatio/$s.jar")
+      yield FallbackCase(Platform.WindowsX86_64, tool, jarPath)
+    val oncePerRing: Gen[FallbackCase] =
+      for
+        platform <- Gen.element1(Platform.LinuxX86_64, Platform.MacosAarch64, Platform.MacosX86_64)
+        tool     <- Gen.element1("spec-lint", "chain-state", "checkpoint", "ledger")
+        jarPath  <- Gen.string(Gen.alphaNum, Range.linear(1, 30)).map(s => s"/opt/probatio/$s.jar")
+      yield FallbackCase(platform, tool, jarPath)
+    Gen.frequency1(1 -> nonNative, 1 -> oncePerRing)
+
+  property("exactly-one-warning-on-fallback", coverConfig):
+    for
+      c <- genFallbackCase.forAll
+        .cover(40, "non-native-platform", (c: FallbackCase) => !c.platform.hasNativeBinary)
+        .cover(40, "once-per-ring-fallback", (c: FallbackCase) => c.platform.hasNativeBinary)
+    yield
+      val result: ResolutionResult =
+        BinaryResolution.resolve(c.tool, c.platform, nativeBinaryAvailable = false, c.jarPath)
+      result match
+        case ResolutionResult.JarFallback(_, warning) =>
+          Result
+            .assert(!warning.contains('\n'))
+            .log(s"warning must be a single line with no embedded break: $warning")
+            .and(
+              Result
+                .assert(warning.contains(c.tool))
+                .log(s"warning does not name the tool ${c.tool}: $warning")
+            )
+            .and(
+              Result
+                .assert(warning.contains("fallback") || warning.contains("JAR"))
+                .log(s"warning does not name the fallback: $warning")
+            )
+        case other =>
+          Result.failure.log(s"expected JarFallback for $c, got $other")
+
+  // ── Scenario: Edge case — a platform with no native artifact uses the
+  //    launcher for every tool
+  // spec: native-gate-delivery — Scenario: Edge case — a platform with no native artifact uses the launcher for every tool
+  test("a platform with no native artifact uses the launcher for every tool, with exactly one warning"):
+    val tools: List[String] = List("gate", "spec-lint", "chain-state", "checkpoint", "ledger")
+    for tool <- tools do
+      BinaryResolution.resolve(
+        tool,
+        Platform.WindowsX86_64,
+        nativeBinaryAvailable = false,
+        "/l/probatio-assembly.jar"
+      ) match
+        case ResolutionResult.JarFallback(path, warning) =>
+          assertEquals(path, "/l/probatio-assembly.jar")
+          assert(!warning.contains('\n'), s"warning must be a single line: $warning")
+        case other =>
+          fail(s"expected JarFallback for $tool on a non-native platform, got $other")
+
+  // ── Property: release-complete-iff-every-named-artifact-present-and-matching
+  // spec: native-gate-delivery — Property: release-complete-iff-every-named-artifact-present-and-matching
+  //
+  // "Present" = every named artifact in the expected set appears.
+  // "Matching" = the recorded checksums correspond exactly to the Checksum
+  // sidecar artifacts — a recorded digest with no sidecar, or a sidecar
+  // with no recorded digest, is a mismatch.
+  private def everyNamedArtifactPresent(m: ReleaseManifest): Boolean =
+    ReleaseManifest.expectedArtifacts.forall(m.artifacts.contains)
+
+  private def everyChecksumMatches(m: ReleaseManifest): Boolean =
+    val sidecarNames: Set[String] =
+      m.artifacts.collect { case ReleaseArtifact.Checksum(n) => n }.toSet
+    m.checksums.keySet == sidecarNames
+
+  private def completeChecksums: Map[String, String] =
+    ReleaseManifest.expectedArtifacts
+      .collect { case ReleaseArtifact.Checksum(n) => n -> ("a" * 64) }
+      .toMap
+
+  private def completeManifest: ReleaseManifest =
+    ReleaseManifest(
+      version     = "v14.0.0",
+      artifacts   = ReleaseManifest.expectedArtifacts,
+      checksums   = completeChecksums,
+      sbom        = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
+      builtFromCI = true
+    )
+
+  /** spec: native-gate-delivery — Generator: genReleaseManifest. */
+  private def genReleaseManifest: Gen[ReleaseManifest] =
+    val allArtifacts: List[ReleaseArtifact] = ReleaseManifest.expectedArtifacts
+    val artifactGen: Gen[ReleaseArtifact] = allArtifacts match
+      case h :: t => Gen.element1(h, t*)
+      case Nil    => Gen.constant(ReleaseArtifact.AssemblyJar)
+    for
+      dropOne <- Gen.frequency1(
+                   3 -> Gen.constant(Option.empty[ReleaseArtifact]),
+                   1 -> artifactGen.map(Some(_))
+                 )
+      dropNative <- Gen.frequency1(
+                      4 -> Gen.constant(Option.empty[Platform]),
+                      1 -> Gen.element1(
+                             Platform.LinuxX86_64,
+                             Platform.MacosAarch64,
+                             Platform.MacosX86_64
+                           ).map(Some(_))
+                    )
+      // 0 = intact, 1 = recorded digest missing for a present sidecar,
+      // 2 = recorded digest with no sidecar, 3 = sidecar with no digest
+      checksumPerturb <- Gen.frequency1(
+                           5 -> Gen.constant(0),
+                           1 -> Gen.constant(1),
+                           1 -> Gen.constant(2),
+                           1 -> Gen.constant(3)
+                         )
+    yield
+      val dropped: Set[ReleaseArtifact] =
+        dropOne.toSet ++ dropNative.map(ReleaseArtifact.NativeBinary(_)).toSet
+      val artifacts: List[ReleaseArtifact] = checksumPerturb match
+        case 3 =>
+          allArtifacts.filterNot(dropped.contains) :+ ReleaseArtifact.Checksum("probatio-ghost.bin")
+        case _ =>
+          allArtifacts.filterNot(dropped.contains)
+      val checksums: Map[String, String] = checksumPerturb match
+        case 1 => completeChecksums - "probatio-linux-x86_64"
+        case 2 => completeChecksums + ("probatio-ghost.bin" -> ("b" * 64))
+        case _ => completeChecksums
+      completeManifest.copy(artifacts = artifacts, checksums = checksums)
+
+  property("release-complete-iff-every-named-artifact-present-and-matching", coverConfig):
+    for
+      m <- genReleaseManifest.forAll
+        .cover(
+          20,
+          "complete",
+          (m: ReleaseManifest) => everyNamedArtifactPresent(m) && everyChecksumMatches(m)
+        )
+        .cover(25, "missing-artifact", (m: ReleaseManifest) => !everyNamedArtifactPresent(m))
+        .cover(25, "checksum-mismatch", (m: ReleaseManifest) => !everyChecksumMatches(m))
+        .cover(
+          15,
+          "missing-platform",
+          (m: ReleaseManifest) =>
+            Platform.committedNativePlatforms.exists(p =>
+              !m.artifacts.contains(ReleaseArtifact.NativeBinary(p))
+            )
+        )
+    yield
+      val reported: Boolean = ReleaseValidator.validateAll(m).isEmpty
+      val expected: Boolean = everyNamedArtifactPresent(m) && everyChecksumMatches(m)
+      Result
+        .assert(reported == expected)
+        .log(s"validateAll=$reported but present-and-matching=$expected for manifest $m")
+
+  // ── Scenario: Happy path — a complete manifest reports complete
+  // spec: native-gate-delivery — Scenario: Happy path — a complete manifest reports complete
+  test("a manifest carrying every named artifact for every supported platform reports complete"):
+    val issues: List[String] = ReleaseValidator.validateAll(completeManifest)
+    assertEquals(issues, Nil, s"complete manifest must report no issues: $issues")
+
+  // ── Scenario: Adversarial — a manifest missing one artifact is not
+  //    reported complete
+  // spec: native-gate-delivery — Scenario: Adversarial — a manifest missing one artifact is not reported complete
+  test("a manifest missing one named artifact names it and is not complete"):
+    val manifest: ReleaseManifest = completeManifest.copy(
+      artifacts = ReleaseManifest.expectedArtifacts.filterNot(_ == ReleaseArtifact.AssemblyJar)
+    )
+    val issues: List[String] = ReleaseValidator.validateAll(manifest)
+    assert(issues.nonEmpty, "a manifest missing an artifact must not report complete")
+    assert(
+      issues.exists(_.contains(ReleaseArtifact.AssemblyJar.fileName)),
+      s"the report must name the missing artifact ${ReleaseArtifact.AssemblyJar.fileName}: $issues"
+    )
+
+  // ── Scenario: Error path — a manifest whose checksum does not match its
+  //    artifact is not complete
+  // spec: native-gate-delivery — Scenario: Error path — a manifest whose checksum does not match its artifact is not complete
+  test("a manifest whose recorded checksums differ from its checksum artifacts names the mismatch and is not complete"):
+    val manifest: ReleaseManifest = completeManifest.copy(
+      checksums = completeChecksums - "probatio-linux-x86_64"
+    )
+    val issues: List[String] = ReleaseValidator.validateAll(manifest)
+    assert(issues.nonEmpty, "a checksum mismatch must prevent completeness")
+    assert(
+      issues.exists(_.contains("probatio-linux-x86_64")),
+      s"the report must name the mismatched artifact: $issues"
+    )

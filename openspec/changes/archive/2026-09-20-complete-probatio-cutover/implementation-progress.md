@@ -2694,18 +2694,259 @@ body. Re-run on the final source:
 
 ## Spec 9: native-gate-delivery
 
-### Status: PENDING
+### Status: IN PROGRESS — Step 2 test oracle drafted, polarity verified, AWAITING human gate
+
+### Baseline
+- SHA: `c218cb54b4827801f6b149d6ae891d609c4f823a`
+- Date: 2026-09-20
+- Working tree: tracked tree clean; untracked docs files only
+- Gate installation check: `{"installed":true,"last_run":"2026-09-20T07:03:13Z","event":"post-edit"}`
+- Inventory snapshot: `inventory-snapshots/native-gate-delivery-before.md` (9 opaque, 125 sealed, 473 case classes, 18 service traits, 62 smithy, 392 generators)
+
+### Step 0 — Baseline + concept check
+- All 9 Concepts Used verified against `openspec/concept-inventory.md` AND read
+  in source: `BinaryResolution`, `Platform`, `ReleaseManifest`, `ReleaseValidator`,
+  `ChecksumVerifier`, `Sbom` (SbomModel.scala), `InstallResolver`, `ShimGenerator`,
+  `ExitCodeMapping`.
+- Behavioural concept `Strangler` (strangler-migration-protocol.md) read — the
+  spec relies on the Swap action's target only; no concept file update needed.
+- `registry-check.sh`: OK (803 implementation-map tokens verified, 5 weak
+  bindings — all pre-existing, none in this spec's surface).
+- Proof Obligations: 17 rows, every requirement named (spec-lint check 12 PASS,
+  recorded in spec-lint.md).
+- PUBLIC-TYPE-CHANGE IMPACT SCAN: `impact-scan.sh org.sinemenda.probatio.plugin.ShimGenerator`
+  → 2 refs in 2 files (textual fallback; Metals endpoint not running — the
+  fallback is built into the script). `generateShim` callers:
+  `ProbatioPlugin.scala:174` (sole production caller) + `ShimGeneratorSpec` /
+  `HookCutoverShimSpec` (test). No catch-all arms near any usage.
+- MUST-CONFIRM: none outstanding — the 150 ms warm-p50 budget and the
+  hyperfine procedure (100 warm / 10 cold runs) are in-repository at
+  `openspec/specs/native-packaging/spec.md` (spec-lint check 16 PASS).
+- Stale artifact fix: spec 5's spec.md named `ChainStateBridgeSpec` in two
+  places; the real bridge file is `VerifiedKernelBridgeSpec.scala` (bridges
+  `ChainStateKernel`). Corrected — F9 failure cleared on re-lint.
+
+### Prerequisite — GraalVM toolchain
+- **PRESENT — recorded.** The capability-check row said "not currently
+  detected"; re-established in-session:
+  - sbt native-packager invocation of record
+    (`workflow/cli/target/streams/_global/nativeImage/_global/streams/out`):
+    `/home/gruggiero/.cache/coursier/jvm/graalvm-java17@22.3.1/bin/native-image`
+  - `native-image --version`: GraalVM CE 22.3.1, Java 17.0.6+10-jvmci-22.3-b13
+  - Existing artifact `workflow/cli/target/native-image/probatio` (built
+    2026-09-19 during spec 8 Ring 8) runs: `--help` exits 0.
+  - Other toolchains present but not the one used: brew GraalVM CE 25.2.4,
+    Oracle GraalVM 25+37.1 (`~/bin/graalvm-jdk-25+37.1`), GraalVM CE 21.0.2
+    (`~/.local/bin/graalvm-jdk21`), nix graalvm-ce-25.0.0.
+
+### Step 1 — Typed contract (drafted, compiles clean, AWAITING human gate)
+- `probatio-cli` new types:
+  - `packaging/LatencyMeasurement.scala` — case class
+    `(sampleCount: Int, medianMillis: Double, maxMillis: Double,
+    artifactKind: ArtifactKind)`; `ArtifactKind` enum
+    `{NativeImage, JarLauncher}`. Undersized measurements are recordable —
+    construction does not reject them; the verdict decides.
+  - `packaging/BudgetVerdict.scala` — enum `{Met(m, b), Exceeded(m, b),
+    Undetermined(reason)}` with `UndeterminedReason` enum
+    `{NoMeasurement, InsufficientSamples(observed, required)}`;
+    `BudgetVerdict.evaluate(Option[LatencyMeasurement], LatencyBudget)`
+    (body `???`); `LatencyBudget(medianMillis, minSamples)` with
+    `perTurn = (150.0, 100)` per native-packaging R-N1.
+- `sbt-probatio` changed signatures:
+  - `ShimGenerator.generateShim` now takes `ResolutionResult` (never a raw
+    path) → `Either[String, String]`; `Left` = blocked resolution, no shim.
+    Body `???`.
+  - `InstallResolver.resolveForShim(ResolutionScenario, subcommand,
+    platformHasNative)` — per-turn launcher resolution is blocked on a
+    native platform (`path = None` + reason line). Body `???`.
+    NOTE: `InstallResolver` is a spec-9 modification beyond the delta's
+    declared `ShimGenerator`-modified — flagged for the gate.
+  - `ProbatioPlugin.runDelegatingTask` is `private[plugin]` and takes a
+    required `args: Seq[String]`; each delegating task gates on a new
+    `Option[Seq[String]]` args setting (`probatioSpecLintArgs`,
+    `probatioChainStateArgs`, `probatioCheckpointArgs`,
+    `probatioLedgerAppendArgs`, default `None`) — unset = the task reports
+    the missing value instead of invoking the tool.
+  - `probatioGateShim` binds `resolveForShim(detectScenario(...), "gate",
+    currentPlatformHasNative)`; `detectScenario` extracted private;
+    `currentPlatformHasNative` is `private[plugin]` (os.name probe,
+    mirrors `Platform.hasNativeBinary`).
+- Contract pins:
+  - `workflow/cli/src/test/scala/org/sinemenda/probatio/packaging/NativeGateDeliveryTypeContract.scala`
+  - `workflow/plugin/src/test/scala/org/sinemenda/probatio/plugin/NativeGateDeliveryPluginTypeContract.scala`
+- Compile negatives pinned: `evaluate` without a measurement slot, raw
+  median as measurement, `Met` without a measurement, `generateShim` with
+  a literal path (both arities), `generateShim` with a `logic` flag,
+  `runDelegatingTask` with no arg list.
+- Existing call sites migrated: `ShimGeneratorSpec`, `HookCutoverShimSpec`
+  bind `ResolutionResult(Some(path), Nil)` via a `shimFor` helper.
+- Evidence: `sbt "probatio-cli/compile" "probatio-cli/Test/compile"
+  "sbt-probatio/compile" "sbt-probatio/Test/compile"` — all clean
+  (2026-09-20).
+- Known `???` bodies (RED until Step 3): `BudgetVerdict.evaluate`,
+  `ShimGenerator.generateShim`, `InstallResolver.resolveForShim`.
+- Step-3 surface noted at gate (not in this step's task list): install-side
+  checksum setting and concrete-jar launcher setting to replace the unset
+  `$PROBATIO_JAR` reference.
+
+### Step 2 — Test oracle (drafted, polarity verified, AWAITING human gate)
+- New artifact (clears the 4 F9 failures):
+  `workflow/cli/src/test/scala/org/sinemenda/probatio/packaging/NativeGateDeliverySpec.scala`
+  — 4 latency scenarios + property `budget-verdict-requires-a-measurement`
+  (`genLatencyMeasurement`; cover absent ≥25 / too-few ≥20 / median-under
+  ≥20 / median-over ≥20) + 2 compile-negative stubs.
+- `NativePackagingSpec.scala` extended (spec-9 section):
+  `per-turn-tool-never-resolves-to-the-launcher-on-a-native-platform`
+  (cover native ≥60 / absent ≥40 / per-turn ≥40),
+  `exactly-one-warning-on-fallback` (constructive `genFallbackCase`;
+  cover non-native ≥40 / once-per-ring ≥40), non-native-platform scenario,
+  `release-complete-iff-every-named-artifact-present-and-matching`
+  (constructive `genReleaseManifest`; cover complete ≥20 / missing ≥25 /
+  mismatch ≥25 / missing-platform ≥15) + 3 release scenarios.
+- `ShimGeneratorSpec.scala` extended: property
+  `shim-target-equals-resolution-and-is-repeatable` (cover native ≥30 /
+  launcher ≥30 / space-path ≥15), resolved-write-repeatable scenario,
+  unwritable-location could-not-determine scenario (via new
+  `private[plugin] ProbatioPlugin.writeShim(resolution, subcommand,
+  target): Either[String, File]` — declared `???`, pinned in the plugin
+  TypeContract; the testable seam for both write scenarios).
+- `HookCutoverShimSpec.scala` extended: launcher-blocked-for-per-turn
+  scenario, checksum-invalid-blocked scenario, blocked-writes-no-shim
+  scenario, native-resolved-shim scenario, once-per-ring-one-warning
+  scenario, literal-path compile-negative.
+- `ExitCodeMappingSpec.scala` extended: task-supplies-args scenario (fake
+  executable captures argv through `runDelegatingTask`), distinguishable
+  finding/could-not-determine task failures.
+- `PluginSourceLintSpec.scala` extended: missing-required-value scenario
+  (source assertions: per-task args-setting guard + named report +
+  `++ args` command) + no-arg-list compile-negative.
+- Checksum interpretation (HUMAN-CONFIRMED at Step 2): `checksums` maps
+  contentFileName → declared digest; "matching" = `checksums` keySet ==
+  `Checksum` sidecar artifact names. `validateChecksums` will be extended
+  to reconcile the map in Step 3 — `validateAll` signature unchanged.
+- ORACLE POLARITY RUN (2026-09-20):
+  - cli: NativeGateDeliverySpec 5 RED (4 scenarios + property — `evaluate`
+    is `???`), 2 GREEN (compile-negatives). NativePackagingSpec 2 RED
+    (release-complete property + checksum-mismatch scenario —
+    `validateChecksums` does not reconcile `checksums`, the spec'd defect),
+    38 GREEN.
+  - plugin: ShimGeneratorSpec 9 RED (`generateShim`/`writeShim` `???`),
+    HookCutoverShimSpec 8 RED + 2 GREEN compile-negatives,
+    ExitCodeMappingSpec 10 GREEN (new task-args + distinguishable
+    scenarios pass — `runDelegatingTask` already implemented),
+    PluginSourceLintSpec 7 GREEN, InstallResolverSpec 8 GREEN,
+    plugin TypeContract 4 GREEN.
+  - Every RED traces to a `???` body or the checksum-map gap; every GREEN
+    is preserved behavior or type-level. Polarity correct.
+
+### Step 3 — Implementation (2026-09-20, post-approval)
+
+All `???` bodies implemented; every Step-2 RED suite is now GREEN.
+
+- `BudgetVerdict.evaluate` (`packaging/BudgetVerdict.scala`) — `None` →
+  `Undetermined(NoMeasurement)`; `sampleCount < minSamples` →
+  `Undetermined(InsufficientSamples(observed, required))`; sufficient +
+  `median < budget` → `Met`; otherwise `Exceeded`. Both `Met`/`Exceeded`
+  carry the measurement + budget.
+- `ReleaseValidator.validateChecksums` — extended to reconcile
+  `manifest.checksums` (content-name → declared digest) with the
+  `Checksum` sidecar artifact names: a sidecar with no recorded digest
+  and a recorded digest with no sidecar are both issues. The Step-2
+  oracle's checksum-map scenarios now pass.
+- `ReleaseManifestIO.fromDirectory` (new, packaging) — rebuilds a typed
+  `ReleaseManifest` from a directory of downloaded release artifacts:
+  filename → `ReleaseArtifact`, `X.sha256` first-token digest →
+  `checksums(X)`, SBOM parsed via `Sbom.parseJson`.
+- `ReleaseCheck` (new, packaging) — `main` entry point; builds the
+  manifest and fails the step via `sys.error` with the full issue list
+  when `validateAll` is non-empty. Wired into `release-probatio.yml`
+  (`release` job, between artifact download and `Create release`) as
+  `sbt -batch 'probatio-cli/runMain org.sinemenda.probatio.packaging.ReleaseCheck release-artifacts ${{ github.ref_name }}'`.
+- `ShimGenerator.generateShim` — resolved `Some(path)` → `Right` of the
+  exact 3-line shim (`#!/usr/bin/env bash`, `exec "<path>" <sub> "$@"`,
+  trailing newline); `None` → `Left` carrying the resolution's reason.
+- `InstallResolver.resolveForShim` — launcher scenario + per-turn
+  subcommand + native platform → `path = None` + single block reason;
+  launcher + once-per-ring (or non-native platform) → launcher path +
+  exactly one warning naming the tool (checksum-mismatch detail kept for
+  `PrebuiltChecksumInvalid`); native resolution → `resolve(scenario)`.
+- `ProbatioPlugin.writeShim` — generate → write seam; `Left(reason)` on
+  blocked resolution (no write), `Left` could-not-determine naming the
+  location on unwritable target (parent-not-a-directory guard + IO
+  failure), `Right(target)` on success; repeatable.
+- `probatioInstall` — `detectScenario` now takes `probatioExpectedSha256`:
+  a present binary is `PrebuiltAvailable` only when its SHA-256 matches
+  the recorded digest; otherwise `PrebuiltChecksumInvalid` (no longer
+  assumed valid). New settings `probatioExpectedSha256: Option[String]`
+  and `probatioAssemblyJar: Option[File]` (both default `None`); the
+  launcher script now execs `java -jar "<concrete jar path>"` and the
+  task fails naming the setting when it is unset — no `$PROBATIO_JAR`.
+
+**Verification**: all four compile surfaces clean; spec-9 suites GREEN —
+cli `NativeGateDeliverySpec` 7/7 + `NativePackagingSpec` 40/40 (incl.
+checksum-map reconciliation), plugin `ShimGeneratorSpec` 9/9,
+`HookCutoverShimSpec` 10/10, `ExitCodeMappingSpec` 10/10,
+`PluginSourceLintSpec` 7/7, `InstallResolverSpec` 8/8, plugin TypeContract
+4/4. Full module runs: cli 616/616, plugin 48/48.
+
+### Step 3b — Warm-start latency measurement (2026-09-20)
+
+`sbt probatio-cli/nativeImage` rebuilt the artifact (GraalVM 22.3.1,
+29.3s). Measured `probatio gate --event prompt-submit` on linux-x86_64:
+10 warm-up + 100 timed runs via `measure-warm-latency.sh`
+(EPOCHREALTIME, μs precision; hyperfine not installed on this host).
+
+**First measurement — defect found:** samples=100, median=2508.846 ms,
+max=2783.690 ms → `Exceeded` → delivery blocked, measurement recorded
+(ledger `manual` row). `strace` attribution: `chain-state` alone ran
+~700 `git diff --quiet <baseline> HEAD -- <artifact>` subprocesses —
+`SubcommandWiring.forgivePredicate` spawned one git call per stale
+ledger row (same (baseline, artifact) pair up to 144×; ~2182 execve
+total including PATH probes). Nested calls already exec the native
+binary; the cost was the per-row subprocess fan-out, not JVM startup.
+
+**Fix — batched forgive-unchanged oracle:** `forgivePredicate` now runs
+one `git diff --name-only <baseline> HEAD` per DISTINCT row baseline,
+memoized in an `AtomicReference`-held immutable map for the predicate's
+lifetime, and answers via directory-boundary prefix membership
+(`f == artifact || f.startsWith(artifact + "/")` — git pathspec
+semantics verified against `git ls-files`). `gitDiffNameOnly` captures
+exit code + names because `gitOut` conflates clean-diff empty output
+with failure. **Parity verified:** per-row `git diff --quiet` oracle vs
+batched rule over all 62 stale (baseline, artifact) pairs in the real
+ledger + 3 boundary-adversarial pairs — 0 mismatches. Signature
+unchanged; `readRowsFiltered` and the type contract untouched.
+
+**Re-measurement — verdict `Met`:** samples=100, min=119.917 ms,
+**median=129.412 ms**, max=275.741 ms → `BudgetVerdict.Met` (< 150.0 ms
+budget). `chain-state` alone: 2442 ms → 106 ms. All 616 cli tests green
+post-fix. Second ledger `manual` row records the corrected measurement
+and the parity check. Hyperfine + 10 cold runs remain as
+release-checklist evidence when the toolchain is available.
 
 ### Step Progress
-- [ ] Prerequisite — GraalVM toolchain
-- [ ] Step 1 — Typed contract (human gate)
-- [ ] Step 2 — Test oracle (human gate)
-- [ ] Step 3 — Implementation
-- [ ] Ring 0–5, 8 + concept-delta + checkpoint
+- [x] Step 0 — Baseline + concept check
+- [x] Prerequisite — GraalVM toolchain (recorded above)
+- [x] Step 1 — Typed contract (human gate — approved 2026-09-20)
+- [x] Step 2 — Test oracle drafted + polarity run (human gate — approved 2026-09-20)
+- [x] Step 3 — Implementation (all `???` bodies green; checksum-map reconciled; release gate wired)
+- [x] Step 3b — Latency measured + recorded — first run **Exceeded** (2508.846 ms) exposed the per-row `git diff` fan-out; batched per-baseline fix verified parity, re-measured **Met** (129.412 ms < 150 ms)
+- [x] Ring 0 — compile clean; Ring 1 — spec-lint 0 FAIL / danger-scan clean / shellcheck clean; Ring 2 — dependencyLint clean ×4; Ring 3 — all suites green, SubprocessConformanceSpec 7/7 on native artifact
+- [x] Ring 8 — fresh-context adversarial review (`ring8-native-gate-delivery.md`): 2 DANGEROUS fixed (fictional `/usr/local/bin` shim target → bound to the real installed `File`; `forgivePredicate` rename/C-quoting divergence → `--no-renames` + `-z` + pathspec fallback, parity verified), 9 PARTIAL/edge fixed, 4 observations dispositioned
+- [x] Ring 5 — stryker: PASS A1 `ProbatioPlugin` **96%** (StringLiteral excluded — sbt macro rejects mutated key descriptions; 1 equivalent survivor in `stripTag`), PASS A2 `ShimGenerator`+`InstallResolver` **100%** (27/27 testable), PASS B cli packaging + `SubcommandWiring` **95.92%** / 96.91% covered (188 detected, 8 undetected — all pre-existing `SubcommandWiring` adapter lines outside the spec-9 diff + 1 equivalent `Option[Byte]` mutant; zero undetected in `packaging/` or the `forgivePredicate` region)
+- [x] Concept-delta + inventory update — registry-check OK; `native-gate-delivery-after.md` snapshot diff confirms the declared delta (`LatencyMeasurement`/`BudgetVerdict`/`LatencyBudget` + test generators); `InstallResolver`/`ShimGenerator` rows re-verified against the reworked signatures (added the unquotable-path `Left` case)
+- [x] Checkpoint — **VALIDATED — human checkpoint approval 2026-09-20**
+
+### Final verification sweep (2026-09-20, post-Remediation)
+- Full suites: **cli 651/651, plugin 66/66** — zero regressions from Ring 8 fixes + survivor-killing tests
+- `sbt probatioOracleDiff` → **VERDICT: PROCEED — no file is worse**; all 17 bats files at parity (`complete=true hasRegression=false`; per-file pred==ported on every file)
+- spec-lint: **0 FAIL, 34 WARN** across all 9 specs (all W3 negative-requirement / W4 ordinal advisories)
+- `probatioDependencyLint` clean ×4 modules; danger-scan clean; shellcheck clean on the rewritten launcher template (`exec java -jar "<concrete jar>"`) and shim template
+- Native artifact rebuilt post-`forgivePredicate` fix (29.3s); `SubprocessConformanceSpec` 7/7 on it
 
 ---
 
 ## Change Exit Criterion
 
-- [ ] `sbt probatioOracleDiff` reports no bats file worse than the predecessor control (deficit measured 2026-08-29: 122 ported failures vs 20 predecessor failures, 102 tests → zero)
-- [ ] Every predecessor script under `openspec/schemas/verified-scala3/` that the cutover replaced remains on disk as the revert target until this criterion has held green across a full change cycle
+- [x] `sbt probatioOracleDiff` reports no bats file worse than the predecessor control — **VERDICT PROCEED 2026-09-20** on the final implementation state (`complete=true hasRegression=false`; all 17 bats files at parity or better; the 2026-08-29 deficit of 122 ported vs 20 predecessor failures is zero)
+- [x] Every predecessor script under `openspec/schemas/verified-scala3/` that the cutover replaced remains on disk as the revert target until this criterion has held green across a full change cycle — verified on disk (`scanner/*.sh`, `*.predecessor.bak`); the green criterion has now held across the complete change cycle

@@ -140,6 +140,22 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
+      # Release completeness gate (R-N3): the manifest is rebuilt from the
+      # downloaded artifact directory and validated by ReleaseValidator.
+      # A release that misses an artifact or whose recorded checksums do
+      # not reconcile with the checksum sidecars is not delivered.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Validate release manifest
+        run: sbt -batch 'probatio-cli/runMain org.sinemenda.probatio.packaging.ReleaseCheck release-artifacts ${{ github.ref_name }}'
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:

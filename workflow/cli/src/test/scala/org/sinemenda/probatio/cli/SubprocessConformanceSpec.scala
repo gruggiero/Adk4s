@@ -41,7 +41,17 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
     // The assembly JAR fallback:
     //   target/scala-3.8.4/probatio-cli-assembly-*.jar
     // Step 3 will wire this to the actual shim resolution path.
-    "workflow/cli/target/native-image/probatio"
+    // Resolve against the repository root — the forked test runner's cwd is
+    // the module directory, not the repo root.
+    val repoRoot: java.nio.file.Path = Iterator
+      .unfold(java.nio.file.Paths.get("").toAbsolutePath.normalize)((p: java.nio.file.Path) =>
+        Option(p.getParent).map((par: java.nio.file.Path) => p -> par)
+      )
+      .find((p: java.nio.file.Path) =>
+        java.nio.file.Files.isDirectory(p.resolve("openspec/schemas/verified-scala3"))
+      )
+      .getOrElse(java.nio.file.Paths.get("").toAbsolutePath)
+    repoRoot.resolve("workflow/cli/target/native-image/probatio").toString
 
   /** Whether the built artifact exists. */
   private def artifactExists: Boolean =
