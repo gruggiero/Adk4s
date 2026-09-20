@@ -269,6 +269,15 @@ object SubcommandWiring:
   private[cli] def absoluteGitDirOf(dir: java.nio.file.Path): Option[java.nio.file.Path] =
     SpecLintCmd.gitOut(dir, List("rev-parse", "--absolute-git-dir")).map(Paths.get(_))
 
+  /**
+   * `[ -e <path> ]` — true when the path exists (links followed), false
+   * when missing or on I/O error. Kept as a seam: `Files.exists` mutates
+   * to the non-compiling `Files.forall`, so the call lives here, outside
+   * the spec-8 mutation set.
+   */
+  private[cli] def fileExists(path: java.nio.file.Path): Boolean =
+    Files.exists(path)
+
   /** `sha256sum <file>` — the hex digest, or None when the file can't be hashed. */
   private[cli] def sha256OfFile(path: java.nio.file.Path): Option[String] =
     if !Files.isRegularFile(path) then None

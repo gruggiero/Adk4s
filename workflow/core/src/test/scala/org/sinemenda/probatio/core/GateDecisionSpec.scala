@@ -248,10 +248,43 @@ final class GateDecisionSpec extends ProbatioSuite:
     val reason: BlockReason = BlockReason.PredecessorNotVerified("specN", SpecPhase.Oracle)
     assert(reason.render.contains(escapeHatchVar), "must contain escape hatch var name")
 
+  // Ring 5 pinpoint tests — the render texts are the predecessor's exact
+  // refusal payloads; every clause is asserted, not just the keywords.
+
+  test("not-verified reason names the Implementation phase in render"):
+    val reason: BlockReason =
+      BlockReason.PredecessorNotVerified("specN", SpecPhase.Implementation)
+    val rendered: String = reason.render
+    assert(rendered.contains("Implementation"), "must contain the phase name")
+    assert(
+      rendered.contains("Run the tests (record RED and GREEN ledger rows) to advance it."),
+      "must contain the predecessor's advance instruction"
+    )
+
+  test("not-checkpointed reason names the checkpoint instruction in render"):
+    val reason: BlockReason = BlockReason.PredecessorNotCheckpointed("specN")
+    assert(
+      reason.render.contains("Run checkpoint to trigger the chain-state discharge check."),
+      "must contain the predecessor's checkpoint instruction"
+    )
+
+  // ── Scenario tests: refusal budget (spec 8, Ring 5 pinpoint) ────────────
+
+  // spec: gate-event-completeness — Requirement: At most one refusal is issued per turn
+  test("unspent refusal marker leaves the budget issuable"):
+    val budget: RefusalBudget = RefusalBudget.fromMarker(alreadyRefused = false)
+    assert(!budget.exhausted, "no marker — the budget is not spent")
+    assert(budget.issue.isDefined, "the first refusal must be issuable")
+
+  test("spent refusal marker exhausts the budget"):
+    val budget: RefusalBudget = RefusalBudget.fromMarker(alreadyRefused = true)
+    assert(budget.exhausted, "marker present — the budget is spent")
+    assertEquals(budget.issue, Option.empty[RefusalBudget])
+
   // ── Compile-Negative: sealed enums and traits ───────────────────────────
 
   // spec: gate-checkpoint-lock — Compile-Negative: GateEvent sealed enum
-  test("GateEvent is sealed — no sixth case constructible"):
+  test("GateEvent is sealed — no seventh case constructible"):
     val err: String = compileErrors(
       "val e: GateEvent = new GateEvent { def ordinal = 99 }"
     )

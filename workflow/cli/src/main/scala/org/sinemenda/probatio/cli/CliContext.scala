@@ -1,5 +1,9 @@
 package org.sinemenda.probatio.cli
 
+import org.sinemenda.probatio.core.EnvResolution
+import org.sinemenda.probatio.core.EnvVarSetting
+import org.sinemenda.probatio.core.SchemaPolicy
+
 /**
  * Resolved paths and env-var overrides read once at entrypoint start (R-P1 wiring).
  *
@@ -8,12 +12,15 @@ package org.sinemenda.probatio.cli
  * Avoids re-reading env per subcommand. An immutable case class constructed
  * once at dispatch — no mutation, no race conditions.
  *
- * The escape hatch (`PROBATIO_HOOKS=1`) is read here once and passed as a
- * boolean to the gate's predecessor-check and grant-waiver calls. The pure
- * core functions take booleans, not env vars (compile-negative enforced).
+ * The hook-control env var (`PROBATIO_HOOKS`, legacy alias
+ * `VERIFIED_SCALA3_HOOKS`) is resolved here through
+ * `SchemaPolicy.resolveHookEnv` — the one-major deprecation window is a
+ * core decision, not a CLI one. `off` skips the gate entirely, which is
+ * what bypasses every blocking check (predecessor parity).
  *
  * spec: cli-wiring — Concepts Introduced: CliContext
  * spec: cli-wiring — Requirement: The gate subcommand wires to the 5-event tier logic and emits the hook banner
+ * spec: gate-event-completeness — Scenario: Adversarial — the escape hatch bypasses both checks under either name
  */
 final case class CliContext(
   repoRoot: String,
@@ -50,9 +57,25 @@ object CliContext:
     )
 
   /**
-   * Read the escape hatch from a given environment — `true` when
-   * `PROBATIO_HOOKS` is set to `"1"`. The gate boundary passes the process
-   * environment.
+   * Resolve the hook-control env var from a given environment: the
+   * constructive `EnvVarSetting` over the two names, resolved through
+   * `SchemaPolicy.resolveHookEnv`. `schemaVersion` drives the alias
+   * window — callers pass `SchemaPolicy.renameVersion` when the repo's
+   * schema version is unknown (fail safe: the alias stays honoured).
+   *
+   * spec: gate-event-completeness — Scenario: Adversarial — the escape hatch bypasses both checks under either name
    */
-  def readEscapeHatch(env: Map[String, String]): Boolean =
-    env.get("PROBATIO_HOOKS").contains("1")
+  def hooksControl(
+    env: Map[String, String],
+    schemaVersion: Int
+  ): EnvResolution =
+    val setting: EnvVarSetting =
+      (
+        env.get(SchemaPolicy.newEnvVarName).filter(_.nonEmpty),
+        env.get(SchemaPolicy.legacyEnvVarName).filter(_.nonEmpty)
+      ) match
+        case (Some(newVal), Some(legacyVal)) => EnvVarSetting.Both(newVal, legacyVal)
+        case (Some(newVal), None)            => EnvVarSetting.NewOnly(newVal)
+        case (None, Some(legacyVal))         => EnvVarSetting.LegacyOnly(legacyVal)
+        case (None, None)                    => EnvVarSetting.Neither
+    SchemaPolicy.resolveHookEnv(setting, schemaVersion)

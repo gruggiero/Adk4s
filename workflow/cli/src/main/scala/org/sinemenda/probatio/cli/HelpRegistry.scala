@@ -40,10 +40,20 @@ object HelpRegistry:
     List(
       FlagHelp(
         "--event",
-        "hook event name (session-start, prompt-submit, tool-call, post-edit, completion)",
+        "hook event name (session-start, prompt-submit, tool-call, post-edit, post-bash, completion)",
         "required"
       ),
-      FlagHelp("--change", "change name", "required"),
+      FlagHelp("--format", "output format (hook-json, text)", "hook-json"),
+      FlagHelp("--repo", "repository root", "payload cwd"),
+      FlagHelp("--session", "session id", "payload session"),
+      FlagHelp("--file", "file path (tool-call, post-edit)", "none"),
+      FlagHelp("--tool", "tool name (tool-call)", "none"),
+      FlagHelp("--command", "command string (post-bash test seam)", "none"),
+      FlagHelp("--exit", "exit code (post-bash test seam)", "none"),
+      FlagHelp("--turn-text", "turn transcript text (completion)", "none"),
+      FlagHelp("--stop-hook-active", "stop-hook flag (completion)", "none"),
+      FlagHelp("--check-installed", "read the heartbeat and report installation state", "boolean"),
+      FlagHelp("--change", "change name", "none"),
       FlagHelp("--spec", "spec name", "none"),
       FlagHelp("--baseline", "baseline SHA", "none")
     ),

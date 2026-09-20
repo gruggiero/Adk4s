@@ -845,65 +845,62 @@ final class LiveFactBannerSpec extends ProbatioCliSuite:
       )
     }
 
-  test("a completion event without --ledger-file/--change/--baseline is a finding, not a pass"):
+  test("a completion event with no presentation marker allows mid-work stops"):
     withChangeRepo { (repo: Path) =>
-      gate(repo, "--event", "completion")._2 match
-        case Outcome.Finding(msg) =>
-          assert(msg.contains("missing required parameters"), s"reason: $msg")
-        case other => fail(s"missing parameters must be a Finding, got $other")
-      // any single missing parameter is still a finding
-      gate(repo, "--event", "completion", "--ledger-file", "L", "--baseline", "B")._2 match
-        case Outcome.Finding(_) => ()
-        case other              => fail(s"a missing --change must be a Finding, got $other")
-      gate(repo, "--event", "completion", "--change", "c", "--baseline", "B")._2 match
-        case Outcome.Finding(msg) =>
-          assert(msg.contains("--ledger-file"), s"the finding must name --ledger-file: $msg")
-        case other => fail(s"a missing --ledger-file must be a Finding, got $other")
+      // The predecessor's completion tier triggers only when the session
+      // holds a checkpoint-presentation marker; the flag surface
+      // (--ledger-file/--change/--baseline) was the pre-cutover stub.
+      assertEquals(gate(repo, "--event", "completion")._2, Outcome.Ran(0))
     }
 
-  test("a completion event missing only --baseline is a finding, even with a real ledger"):
+  test("a completion event is triggered by the session's presentation marker"):
     withChangeRepo { (repo: Path) =>
-      val ledger: Path = repo.resolve("ledger.jsonl")
-      Files.writeString(ledger, "")
-      gate(
-        repo,
-        "--event",
-        "completion",
-        "--change",
-        "c",
-        "--ledger-file",
-        ledger.toString
-      )._2 match
+      // Marker present + unresolved chain state → the completion refuses.
+      writeChainState(repo, reportWith(1), 0)
+      val (_, outcome) = gateEnv(
+        Array("--repo", repo.toString, "--event", "completion", "--session", "s-comp", "--format", "text"),
+        Map.empty[String, String]
+      )
+      // No marker yet → allow; write the marker, then refuse.
+      assertEquals(outcome, Outcome.Ran(0))
+      val stateDir: Path = repo.resolve(".git/verified-scala3-gate")
+      Files.createDirectories(stateDir)
+      Files.writeString(
+        stateDir.resolve(s"presentation-some-change-only-${SessionId.fromRaw("s-comp").encoded}"),
+        "deadbeef"
+      )
+      val (_, outcome2) = gateEnv(
+        Array("--repo", repo.toString, "--event", "completion", "--session", "s-comp", "--format", "text"),
+        Map.empty[String, String]
+      )
+      outcome2 match
         case Outcome.Finding(msg) =>
-          assert(msg.contains("--baseline"), s"the finding must name --baseline: $msg")
-        case other => fail(s"a missing --baseline must be a Finding, got $other")
+          assert(msg.contains("unresolved"), s"the refusal must name unresolved requirements: $msg")
+        case other => fail(s"a presented session with unresolved requirements must refuse, got $other")
     }
 
   test("the escape hatch bypasses the completion chain-state check"):
     withChangeRepo { (repo: Path) =>
       val (_, outcome) = gateEnv(
         Array("--repo", repo.toString, "--event", "completion"),
-        Map("PROBATIO_HOOKS" -> "1")
+        Map("PROBATIO_HOOKS" -> "off")
       )
       assertEquals(outcome, Outcome.Ran(0))
     }
 
-  test("tool-call is a recognised event — undetermined without state, never an unknown event"):
+  test("tool-call is a recognised event — fails open without state, never an unknown event"):
     withChangeRepo { (repo: Path) =>
-      gate(repo, "--event", "tool-call")._2 match
-        case Outcome.Undetermined(reason) =>
-          assert(
-            reason.contains("state directory"),
-            s"the undetermined reason must name the missing state dir, got: '$reason'"
-          )
-        case other => fail(s"tool-call must be undetermined, got $other")
+      // The predecessor allows a tool call when the state directory is
+      // unavailable (fail-open); the pre-cutover stub returned
+      // Undetermined unconditionally.
+      assertEquals(gate(repo, "--event", "tool-call")._2, Outcome.Ran(0))
     }
 
   test("the escape hatch bypasses the tool-call predecessor check"):
     withChangeRepo { (repo: Path) =>
       val (_, outcome) = gateEnv(
         Array("--repo", repo.toString, "--event", "tool-call"),
-        Map("PROBATIO_HOOKS" -> "1")
+        Map("PROBATIO_HOOKS" -> "off")
       )
       assertEquals(outcome, Outcome.Ran(0))
     }

@@ -10,11 +10,11 @@ package org.sinemenda.probatio.core
  *
  * This is a PURE function — it takes booleans as inputs, not file paths.
  * The CLI layer reads state files and passes the results. No file I/O
- * or `System.getenv` is permitted here (compile-negative enforced).
+ * or `System#getenv` is permitted here (compile-negative enforced).
  *
  * spec: gate-checkpoint-lock — Requirement: The grant waiver requires a checkpoint presentation marker
  * spec: gate-checkpoint-lock — Property: grant-waiver-requires-presentation
- * spec: gate-checkpoint-lock — Compile-Negative: No file I/O or System.getenv in GrantWaiver
+ * spec: gate-checkpoint-lock — Compile-Negative: No file I/O or System#getenv in GrantWaiver
  */
 object GrantWaiver:
 

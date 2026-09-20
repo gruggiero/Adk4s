@@ -3,14 +3,17 @@ package org.sinemenda.probatio.core
 /**
  * The reason a gate decision is `Block` (spec 9).
  *
- * Sealed trait with exactly four variants. Each has a `render` method
+ * Sealed trait. Each variant has a `render` method
  * producing the human-readable payload string. The typed sum prevents
  * the renderer from conflating `PredecessorNotCheckpointed` with
  * `PredecessorNotVerified` — the exact defect this spec exists to prevent.
+ * Spec 8 adds the three completion-tier refusals: unresolved
+ * requirements, undetermined evidence, uncorroborated ledger rows.
  *
  * spec: gate-checkpoint-lock — Concepts Introduced: BlockReason
  * spec: gate-checkpoint-lock — Requirement: The block reason distinguishes not-checkpointed from not-verified
  * spec: gate-checkpoint-lock — Compile-Negative: BlockReason sealed trait
+ * spec: gate-event-completeness — Requirement: The blocking tiers consult repository state and fail open when it is unavailable
  */
 sealed trait BlockReason:
   def render: String
@@ -77,5 +80,45 @@ object BlockReason:
         s"A user prompt must arrive after the checkpoint presentation. " +
         s"Set $escapeHatchVar to bypass this check."
   end GrantRequired
+
+  /**
+   * The completion tier's unresolved-requirements refusal. `details`
+   * is the rendered block produced by
+   * `GateDecisions.unresolvedBlock` — at most ten named entries plus
+   * a `+N more` line.
+   *
+   * spec: gate-event-completeness — Requirement: The blocking tiers consult repository state and fail open when it is unavailable
+   */
+  final case class CompletionUnresolved(details: String) extends BlockReason:
+    def render: String =
+      s"completion refused: unresolved requirements remain —$details"
+  end CompletionUnresolved
+
+  /**
+   * The completion tier's undetermined-evidence refusal — the chain
+   * state could not be established (exit outside {0,1} or a
+   * non-numeric `.total`).
+   *
+   * spec: gate-event-completeness — Requirement: The blocking tiers consult repository state and fail open when it is unavailable
+   */
+  case object ChainStateUndetermined extends BlockReason:
+    def render: String =
+      "completion refused: evidence could not be determined for at least one active change (chain state undetermined)"
+  end ChainStateUndetermined
+
+  /**
+   * The completion tier's uncorroborated-ledger refusal — a green row
+   * was written by hand with no witness that the command ran.
+   * `details` names the uncorroborated rows. Checked before the
+   * unresolved chain.
+   *
+   * spec: gate-event-completeness — Requirement: The blocking tiers consult repository state and fail open when it is unavailable
+   */
+  final case class Uncorroborated(details: String) extends BlockReason:
+    def render: String =
+      "completion refused: ledger rows are uncorroborated — a green row was written by hand with no witness " +
+        "that the command ran. Re-run the ring under 'ledger.sh run -- <command>' (which observes its own " +
+        s"exit), or let the post-bash hook record it.$details"
+  end Uncorroborated
 
 end BlockReason

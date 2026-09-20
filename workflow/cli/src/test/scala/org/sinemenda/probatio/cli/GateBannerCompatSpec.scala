@@ -1,8 +1,14 @@
 package org.sinemenda.probatio.cli
 
 import hedgehog.*
+import hedgehog.Gen
 import hedgehog.Range
+import hedgehog.core.PropertyConfig
+import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.*
+
+import scala.sys.process.ProcessLogger
+import scala.sys.process.stringSeqToProcess
 
 import LiveFactFixtures.withTempDir
 
@@ -64,12 +70,14 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
   // spec: cli-wiring — Scenario: completion blocks when chain-state is unresolved
 
   test("gate completion blocks when chain-state has unresolved obligations"):
-    // A real change dir: one spec whose requirement is bound and resolved
-    // (a mapped obligation naming a tracked artifact) but has no ledger
-    // evidence — undischarged, so completion must block with a Finding.
-    withTempDir("gate-test-ledger") { (tempDir: java.nio.file.Path) =>
-      val changeDir: java.nio.file.Path = tempDir.resolve("test-change")
-      val specDir: java.nio.file.Path   = changeDir.resolve("specs").resolve("only")
+    // Spec 8's trigger: the completion tier evaluates only when a
+    // checkpoint presentation marker exists for the session; chain state
+    // then arrives through the CHAIN_STATE_OVERRIDE subprocess seam. The
+    // stub reports one unresolved obligation, so completion blocks with
+    // a Finding.
+    withTempDir("gate-test-ledger") { (repo: java.nio.file.Path) =>
+      val specDir: java.nio.file.Path =
+        repo.resolve("openspec/changes/test-change/specs/only")
       java.nio.file.Files.createDirectories(specDir)
       java.nio.file.Files.writeString(
         specDir.resolve("spec.md"),
@@ -98,21 +106,40 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
           || obl one | Requirement: Solo Req | manual | `build.sbt` |
           |""".stripMargin
       )
-      val tempFile: java.nio.file.Path = tempDir.resolve("ledger.jsonl")
-      java.nio.file.Files.write(tempFile, Array.emptyByteArray)
+      // The state dir lives under .git — the gate resolves it via
+      // `git rev-parse --absolute-git-dir`.
+      List("git", "-C", repo.toString, "init", "-q")
+        .!(ProcessLogger(_ => (), _ => ()))
+      val session: SessionId = SessionId.fromRaw("t")
+      val stateDir: java.nio.file.Path =
+        repo.resolve(".git/verified-scala3-gate")
+      java.nio.file.Files.createDirectories(stateDir)
+      java.nio.file.Files.writeString(
+        stateDir.resolve(s"presentation-test-change-only-${session.encoded}"),
+        "hash"
+      )
+      val stub: java.nio.file.Path = repo.resolve("chain-state-stub.sh")
+      java.nio.file.Files.writeString(
+        stub,
+        "#!/usr/bin/env bash\n" +
+          "echo '{\"change\":\"test-change\",\"baseline\":\"x\",\"total\":1,\"bound\":1," +
+          "\"resolved\":1,\"discharged\":0," +
+          "\"unresolved\":[{\"requirement\":\"obl one\",\"reasons\":[\"undischarged\"]}]," +
+          "\"unmapped_obligations\":[]}'\n"
+      )
+      stub.toFile.setExecutable(true)
       val outcome: Outcome[Int] = GateCmd.run(
         Array(
           "--event",
           "completion",
-          "--change",
-          "test-change",
-          "--change-dir",
-          changeDir.toString,
-          "--baseline",
-          "abc1234",
-          "--ledger-file",
-          tempFile.toString
-        )
+          "--format",
+          "text",
+          "--session",
+          "t",
+          "--repo",
+          repo.toString
+        ),
+        Map("CHAIN_STATE_OVERRIDE" -> stub.toString)
       )
       outcome match
         case Outcome.Finding(_) => () // unresolved obligations block completion
@@ -195,3 +222,144 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
       val banner1: BannerOutput = BannerEngine.render(inputs)
       val banner2: BannerOutput = BannerEngine.render(inputs)
       Result.diff(banner1.payload, banner2.payload)(_ == _)
+
+  // ── Property: envelope-conforms-to-contract ─────────────────────────
+  // spec: gate-event-completeness — Property: envelope-conforms-to-contract
+  //
+  // Every non-empty hook-json envelope is piped through the REAL contract
+  // checker — `jq -e -f gate-hookjson-contract.jq` — rather than a Scala
+  // re-implementation, so a contract/.jq-semantics drift is caught here
+  // (Ring 8). The contract governs non-empty output only: a no-op call
+  // legitimately emits NOTHING, exactly as the contract's own comment
+  // specifies — empty output is vacuously conformant. The generator
+  // covers the two envelope-emitting events (the only hookEventName
+  // values the contract admits); the other four events emit either the
+  // `decision:block` refusal envelope (a different, spec-prose contract)
+  // or nothing.
+
+  /** The repository root — walked up from the test working directory. */
+  private def repoRoot: java.nio.file.Path =
+    val start: java.nio.file.Path = java.nio.file.Path.of("").toAbsolutePath.normalize
+    LazyList
+      .unfold(start)((p: java.nio.file.Path) => Option(p.getParent).map((par: java.nio.file.Path) => p -> par))
+      .find((p: java.nio.file.Path) => java.nio.file.Files.isDirectory(p.resolve("openspec/schemas/verified-scala3")))
+      .getOrElse(sys.error(s"could not locate the repository root from $start"))
+
+  private def hookJsonContract: java.nio.file.Path =
+    repoRoot.resolve("openspec/schemas/verified-scala3/scanner/gate-hookjson-contract.jq")
+
+  /** Pipe `input` through `jq -e -f <contract>`; true iff jq accepts. */
+  private def contractAccepts(input: String): Boolean =
+    import scala.sys.process.Process
+    val bytes: Array[Byte] = input.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    val code: Int =
+      (Process(Seq("jq", "-e", "-f", hookJsonContract.toString))
+        #< new java.io.ByteArrayInputStream(bytes))
+        .!(ProcessLogger(_ => (), _ => ()))
+    code == 0
+
+  private def envelopeCoverConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(300))
+
+  /** `genGateEvent` — exhaustive over the event enum (six cases). */
+  private def genGateEvent: Gen[GateEvent] =
+    Gen.element1(
+      GateEvent.SessionStart,
+      GateEvent.PromptSubmit,
+      GateEvent.ToolCall,
+      GateEvent.PostEdit,
+      GateEvent.PostBash,
+      GateEvent.Completion
+    )
+
+  /** The `--event` token for each event (the adapter-facing name). */
+  private def eventTokenOf(event: GateEvent): String = event match
+    case GateEvent.SessionStart => "session-start"
+    case GateEvent.PromptSubmit => "prompt-submit"
+    case GateEvent.ToolCall     => "tool-call"
+    case GateEvent.PostEdit     => "post-edit"
+    case GateEvent.PostBash     => "post-bash"
+    case GateEvent.Completion   => "completion"
+
+  property("envelope-conforms-to-contract", envelopeCoverConfig):
+    for
+      event <- genGateEvent.forAll
+        .cover(10, "session-start", (e: GateEvent) => e == GateEvent.SessionStart)
+        .cover(10, "prompt-submit", (e: GateEvent) => e == GateEvent.PromptSubmit)
+        .cover(10, "tool-call", (e: GateEvent) => e == GateEvent.ToolCall)
+        .cover(10, "post-edit", (e: GateEvent) => e == GateEvent.PostEdit)
+        .cover(10, "post-bash", (e: GateEvent) => e == GateEvent.PostBash)
+        .cover(10, "completion", (e: GateEvent) => e == GateEvent.Completion)
+      format <- Gen.element1("hook-json", "text").forAll
+    yield withTempDir("gate-envelope-prop") { (repo: java.nio.file.Path) =>
+      java.nio.file.Files.createDirectory(repo.resolve("openspec"))
+      // post-edit gets a spec-edit --file so its PostToolUse envelope is
+      // actually exercised (no scanners exist in a temp repo → the
+      // "could not run" finding emits the envelope).
+      val extra: List[String] =
+        if event == GateEvent.PostEdit then
+          List(
+            "--file",
+            repo.resolve("openspec/changes/c/specs/s/spec.md").toString
+          )
+        else List.empty[String]
+      val (out: String, _: Outcome[Int]) =
+        StdoutCapture.captureOut(
+          GateCmd.run(
+            Array(
+              "--event",
+              eventTokenOf(event),
+              "--format",
+              format,
+              "--repo",
+              repo.toString,
+              "--session",
+              "t"
+            ) ++ extra.toArray,
+            Map.empty,
+            () => None
+          )
+        )
+      val trimmed: String = out.trim
+      if trimmed.isEmpty then Result.success            // the no-op case the contract documents
+      else if format != "hook-json" then Result.success // non-hook-json output is prose, not an envelope
+      else
+        val parsed: Either[String, ujson.Value] =
+          try Right(ujson.read(trimmed))
+          catch case scala.util.control.NonFatal(e) => Left(e.toString)
+        parsed match
+          case Left(err: String) =>
+            Result.failure.log(s"hook-json output is not JSON: $trimmed ($err)")
+          case Right(obj: ujson.Obj) =>
+            obj.value.get("hookSpecificOutput") match
+              case Some(hso: ujson.Obj) =>
+                // The hook envelope: its event name must be the harness's
+                // own name for this event — never the enum's case name.
+                val name: String =
+                  hso.value.get("hookEventName") match
+                    case Some(ujson.Str(s)) => s
+                    case _ => "" // danger-scan:allow missing/non-string name — the name check below fails it
+                if name != GateEvent.harnessName(event) then
+                  Result.failure.log(
+                    s"envelope named '$name' for event $event (expected ${GateEvent.harnessName(event)})"
+                  )
+                else if name == "SessionStart" || name == "UserPromptSubmit" then
+                  // The jq contract admits exactly these two envelope names.
+                  if contractAccepts(trimmed) then Result.success
+                  else Result.failure.log(s"jq contract rejected the envelope: $trimmed")
+                else Result.success // PostToolUse envelopes carry a spec-prose contract, not the jq one
+              case _ =>
+                // A `decision:block` object is the blocking refusal
+                // envelope — a different, spec-prose contract — not the
+                // banner shape.
+                obj.value.get("decision") match
+                  case Some(ujson.Str("block")) => Result.success
+                  case _ =>
+                    Result.failure.log(
+                      s"hook-json output is neither a hookSpecificOutput envelope nor a decision:block: $trimmed"
+                    ) // danger-scan:allow test assertion — malformed envelopes fail the test
+          case Right(_) =>
+            Result.failure.log(
+              s"hook-json output is not an object: $trimmed"
+            ) // danger-scan:allow test assertion — non-object output fails the test
+    }

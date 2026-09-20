@@ -42,10 +42,10 @@ final class CliWiringCompileNegativeSpec extends ProbatioCliSuite:
   // The catch-all is unconstructible — the compiler rejects it at Ring 0
   // via -Wconf:name=PatternMatchExhaustivity:e
 
-  test("GateCmd.Event has no sixth case"):
-    val err: String = compileErrors("GateCmd.Event.SixthCase")
-    assert(err.nonEmpty, "GateCmd.Event.SixthCase should not exist — exactly 5 cases")
+  test("GateCmd.Event has no seventh case"):
+    val err: String = compileErrors("GateCmd.Event.SeventhCase")
+    assert(err.nonEmpty, "GateCmd.Event.SeventhCase should not exist — exactly 6 cases")
 
-  test("GateEvent has no sixth case"):
-    val err: String = compileErrors("org.sinemenda.probatio.core.GateEvent.SixthCase")
-    assert(err.nonEmpty, "GateEvent.SixthCase should not exist — exactly 5 cases")
+  test("GateEvent has no seventh case"):
+    val err: String = compileErrors("org.sinemenda.probatio.core.GateEvent.SeventhCase")
+    assert(err.nonEmpty, "GateEvent.SeventhCase should not exist — exactly 6 cases")

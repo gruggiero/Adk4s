@@ -729,10 +729,10 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/gate-ch
 
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
-| `GateEvent` | enum (SessionStart, PromptSubmit, PostEdit, ToolCall, Completion) — five hook events | `org.sinemenda.probatio.core` | shipped |
+| `GateEvent` | enum (SessionStart, PromptSubmit, PostEdit, ToolCall, Completion, PostBash) — six hook events + total `harnessName` (the harness's own event name per case) | `org.sinemenda.probatio.core` | shipped; +`PostBash`/`harnessName` by `spec:complete-probatio-cutover/gate-event-completeness` |
 | `GateDecision` | enum (Allow, Block(reason: BlockReason)) — gate decision | `org.sinemenda.probatio.core` | shipped |
-| `SpecPhase` | enum (Oracle, Implementation, Verified) — spec phase in implementation order | `org.sinemenda.probatio.core` | shipped |
-| `BlockReason` | sealed trait (PredecessorNotVerified(spec, phase), PredecessorNotCheckpointed(spec), OracleOrderingViolation, GrantRequired(spec)) — block reason with render | `org.sinemenda.probatio.core` | shipped |
+| `SpecPhase` | enum (Oracle, Implementation, Verified) — spec phase in implementation order + `fromStateFile` (total: unrecognised → `Oracle`) / `asToken` | `org.sinemenda.probatio.core` | shipped; +`fromStateFile`/`asToken` by `spec:complete-probatio-cutover/gate-event-completeness` |
+| `BlockReason` | sealed trait (PredecessorNotVerified(spec, phase), PredecessorNotCheckpointed(spec), OracleOrderingViolation, GrantRequired(spec), CompletionUnresolved(details), ChainStateUndetermined, Uncorroborated(details)) — block reason with render; the last three are the completion tier's refusal texts | `org.sinemenda.probatio.core` | shipped; +3 completion variants by `spec:complete-probatio-cutover/gate-event-completeness` |
 | `PredecessorCheck` | object (apply: pure function over List[(name, phase, hasPresentation)] + escapeHatch → Either[BlockReason, Unit]) | `org.sinemenda.probatio.core` | shipped |
 | `GrantWaiver` | object (apply: pure function over List[(name, phase, hasPresentation, hasGrant)] + escapeHatch → Either[BlockReason, Unit]) | `org.sinemenda.probatio.core` | shipped |
 | `PresentationMarker` | final case class (specName, exists: Boolean) — checkpoint presentation evidence | `org.sinemenda.probatio.core` | shipped |
@@ -743,7 +743,7 @@ The following concepts were introduced by `spec:complete-probatio-porting/cli-wi
 
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
-| `CliContext` | final case class (repoRoot, changeDir, ledgerFile, gitDir: String; escapeHatch: Boolean) — resolved paths + env-var overrides read once at entrypoint start | `org.sinemenda.probatio.cli` | shipped |
+| `CliContext` | final case class (repoRoot, changeDir, ledgerFile, gitDir: String; escapeHatch: Boolean) — resolved paths + env-var overrides read once at entrypoint start + `hooksControl(env, schemaVersion): EnvResolution` — the `PROBATIO_HOOKS`/`VERIFIED_SCALA3_HOOKS` alias window resolved through `SchemaPolicy` (`off` under either name skips the gate; the inverted `=1` reader is removed) | `org.sinemenda.probatio.cli` | shipped; +`hooksControl` by `spec:complete-probatio-cutover/gate-event-completeness` |
 | `StdoutRenderer[A]` | trait (render(value: A): String) — typeclass for byte-compatible stdout rendering; given instances for ChainStateReport, ChainStateUndetermined, LintReport, GatePayload, BannerOutput, LintContext | `org.sinemenda.probatio.cli` | shipped; +LintContext instance by `spec:complete-probatio-cutover/spec-lint-engine` |
 | `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int]; spec 7 added `repoContaining`/`gitExit`/`forgivePredicate` (moved from `ChainStateCmd`), `repoRootOf`, `sha256OfFile`/`sha256Hex`, `shellParses`, `replayCommand`, `executeCaptured`, `readTextFile`/`writeTextFile`, `absoluteGitDirOf`, boolean-aware `parseArgs` | `org.sinemenda.probatio.cli` | shipped; extended by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
 
@@ -765,7 +765,7 @@ The following concepts were introduced by `spec:complete-probatio-cutover/live-f
 | `HeartbeatRecord` | final case class (ts, event, format) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
 | `RepositoryFactsReader` | object (`read(repoRoot, userHome, env): RepositoryFacts` + `readLintContext(repoRoot, userHome): LintContext` — the single fact-reading seam; total: failures are data, never thrown) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner`; +`readLintContext` by `spec:complete-probatio-cutover/spec-lint-engine` |
 | `GateStateDir` | final case class (path: Path) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
-| `GateStateDirReader` | object (resolve via `git rev-parse --absolute-git-dir`, fingerprint `fp-<SessionId.encoded>` read/write, heartbeat read/write; all ops fail-open) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `GateStateDirReader` | object (resolve via `git rev-parse --absolute-git-dir`, fingerprint `fp-<SessionId.encoded>` read/write, heartbeat read/write; all ops fail-open) + spec-8 marker surface: `phaseFile`/`readPhase`/`writePhase`, `presentationFile`/`sessionPresentations` (`presentation-*-*-<sess>` glob parity)/`writePresentation`, `grantFile`/`hasGrant`/`hasAnySessionGrant`/`writeGrant`, `refusalFile`/`hasRefusal`/`writeRefusal` (write failure ⇒ fail open)/`clearRefusals`, `sweepCheckpointOutputs`, `specDirs`, `RefusalKind` + `markerPrefix` | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner`; extended by `spec:complete-probatio-cutover/gate-event-completeness` |
 | `BannerEngineKernel.bannerClaims` | Ring 6 contract (`facts: List[BigInt] => List[BigInt]` — emitted claims equal fact codes; `-1` unreadable, `0` absent, `n>0` present-with-count) + helpers (`allFactCodesValid`, `claimsMatchFacts`, `noUnreadableClaimedAbsent`, `claimFor`) and five fixed-size law lemmas | `org.sinemenda.probatio.verified` | `spec:complete-probatio-cutover/live-fact-banner` |
 
 Existing rows modified by this spec (annotated in place above): `BannerInputs`
@@ -860,3 +860,26 @@ Existing rows modified by this spec (annotated in place above):
 `ProvenanceFields` (removed — subsumed), `LedgerCmd`/`CheckpointCmd`
 (predecessor op surface), `SubcommandWiring` (shared I/O adapters +
 observation seams), `HelpRegistry` (ledger/checkpoint help surface).
+
+### complete-probatio-cutover change — gate-event-completeness spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/gate-event-completeness`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `HarnessPayload` | final case class, private ctor + `of(toolName, toolInput, toolResponse, cwd, stopHookActive)` — the structured input a harness supplies on stdin; `interrupted` derived from the response (one fact, stated once) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `ToolOutcome` | sealed trait, `private[ToolOutcome]` ctors — `classify(response)` is the only construction path (object → `Exit(0)` unless `interrupted:true`; `"Error: Exit code N"` → `Exit(N)` via `toIntOption`, unrepresentable digits → `Skip`; other string → `Skip(not-a-command-outcome)`; other shape → `Skip(unrecognised-response-shape)`); total and conservative | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `RefusalBudget` | final case class, private ctor (`issued: Int`) — `full`, `fromMarker` (present marker ⇒ spent), `exhausted`, `issue` (`None` when spent — the second refusal is unrepresentable); `apply(blockable)` fold — exactly one refusal at the first blockable, kernel-mirrored | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `GateDecisions` | object — the pure decision module (no I/O, enforced by the `NoIOInProbatioCore` scalafix rule): `readOnlyTools`, `isProductionEdit`, `isSpecEdit`, `specOrder`, `owningSpec` (Expected-Files table map — consulted on the production branch only), `advancePhase` (implementation→verified requires RED∧GREEN), `AmbientMatch`/`ambientRingMatch` + `ambientVerdict` (Either — the skip reason feeds the trace), `Step0Target`/`step0Target`, `markerTriple` (right-to-left parse quirks), `unresolvedBlock` (≤10 + `+N more`), `Polarity`/`hasRing3Row`/`firstRing3Baseline`/`hasGreenAfterRed`, `specEditChangeName` (sed-equivalent greedy-backtrack extraction) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `HarnessPayloadReader` | object — `consumesPayload`, `parse` (jq `// empty` semantics), `Empty`, `readChannel(inputPending)` — the at-most-once stdin read; silent open pipes read as no-payload | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `GateKernel` | object — Stainless Ring 6 mirror: `refusalBudget(blockable)` (`ensuring` exactly one refusal at the first blockable) and `classifyOutcome(shape, carriedCode)` (`ensuring` `Some` iff shape ∈ {0,2}); `GateBridgeSpec` in probatio-cli binds shipped code to the model on generated inputs | `org.sinemenda.probatio.verified` (verified/probatio) | `spec:complete-probatio-cutover/gate-event-completeness` |
+
+Existing rows modified by this spec (annotated in place above): `GateEvent`
+(+`PostBash` sixth case, total `harnessName`), `SpecPhase`
+(+`fromStateFile`/`asToken`), `BlockReason` (+`CompletionUnresolved`,
++`ChainStateUndetermined`, +`Uncorroborated`), `CliContext`
+(+`hooksControl` — the `=off`-under-either-name hatch through
+`SchemaPolicy`; the inverted `=1` reader removed), `GateStateDir`/
+`GateStateDirReader` (phase, presentation, grant, refusal, sweep, specDirs
+surface), `GateCmd` (six-event dispatcher — `post-bash` ambient writer,
+tool-call grant/oracle locks, marker-driven completion, payload channel).

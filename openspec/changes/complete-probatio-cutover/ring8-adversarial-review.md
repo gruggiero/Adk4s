@@ -1,244 +1,170 @@
-Ring 8: Adversarial Spec-Compliance Review — cutover-gate
+# Ring 8: Adversarial Spec-Compliance Review — gate-event-completeness
 
-Fresh context: yes
-Baseline: 8c26df8   Diff reviewed: workflow/core/src/test/scala/org/sinemenda/probatio/migration/ (CutoverGate.scala, CutoverVerdict.scala, DifferentialResult.scala, DifferentialHarness.scala, SeamTypes.scala, OracleGreenCheck.scala, OracleGreenGate.scala, OracleDiffRunner.scala, CutoverGateSpec.scala, DifferentialHarnessSpec.scala, CutoverRevertSpec.scala, CutoverBridgeSpec.scala), verified/probatio/src/main/scala/org/sinemenda/probatio/core/CutoverKernel.scala, build.sbt, openspec/concepts/conformance-property-test-contract.md, openspec/concepts/strangler-migration-protocol.md
-Dangerous patterns found: 5 (fixed 4 / justified 1)
-Oracle tampering: 2 findings (fixed 2)
-Requirements: 5 PASS, 2 PARTIAL (noted for human approval)
+```text
+Fresh context: yes (read-only explore subagent, spec + typed contract + full diff only)
+Baseline: 5cebe3e0fa79be5fb2145df9a12599779e75fc12
+Requirements: 3 PASS, 4 PARTIAL, 0 FAIL → remediated (see Disposition)
+Obligation rows: 15 PASS, 7 PARTIAL, 2 FAIL, 1 deferred → remediated
+Round 2 (fresh re-review, post-remediation): 13 items VERIFIED-FIXED,
+  1 MAJOR — ownedFileCheck on non-production paths (F1)
+Round 3 (focused re-verify of F1 fix): see §10
+```
 
----
+## Findings and disposition
 
-## Verdict List
+### 1. FAIL — `ToolOutcome.classify` `.toInt` overflow — FIXED
 
-### Requirement: The gate's decision is a comparison against the predecessor, not an absolute threshold — PASS
+`"Error: Exit code <digits>"` with ≥11 digits threw `NumberFormatException`,
+propagating out of the never-blocking post-bash tier. Fixed at
+`ToolOutcome.scala:75-86`: `toIntOption` — an unrepresentable code classifies
+as `Skip(NotACommandOutcome)`, matching the predecessor's observable result
+(the digit string is captured, the ledger's own `-999..999` grammar check
+rejects the row, exit 0). Boundary regression test added in `ToolOutcomeSpec`
+(`Int.MaxValue` still classifies; `MaxValue+1` does not). Belt-and-suspenders
+boundary guards added on both Tier A′ dispatches (`PostEdit`, `PostBash`) —
+the predecessor's `_post_bash_exit0` discipline is now encoded at the tier
+boundary, not just inside `classify`.
 
-`CutoverGate.decide` (CutoverGate.scala:40-43) checks `isComplete` then `hasRegression`. For
-complete comparisons, `hasRegression` = `files.exists(_.isWorse)` where `isWorse` requires
-`predecessorPresent && portedPresent && portedFailures > predecessorFailures`
-(DifferentialResult.scala:36-37). For complete comparisons all files are present, so this
-reduces to `files.exists(f => f.portedFailures > f.predecessorFailures)`. The gate proceeds iff
-no file is worse. The property `proceed-iff-no-file-worse` (CutoverGateSpec.scala:215) verifies
-this on generated complete comparisons. The adversarial scenario (one file worse, total
-improves → revert) is tested directly (CutoverGateSpec.scala:49) and via the property
-`total-improvement-does-not-excuse-a-regression` (CutoverGateSpec.scala:234). The formal
-contract `cutoverDecision` (CutoverKernel.scala:50-58) is verified by Stainless and bridged by
-`CutoverBridgeSpec`. All branches correct.
+### 2. FAIL — blocking added/relaxed vs predecessor — PARTIALLY CONFIRMED
 
-### Requirement: Both runs of the comparison execute in the same repository under the same suite — PARTIAL (noted for human approval)
+- `advancePhase` (GateDecisions.scala:121-131): **real relaxation** —
+  `implementation → verified` now requires `redExists && greenExists`
+  (predecessor: `red_exists=1 && green_exists=1` at gate.sh.bak:909-911),
+  not `greenExists` alone. Fixed.
+- `ownedFileCheck` on non-production expected-file paths: ~~spec-added
+  surface~~ — **REVISED in round 2 to a real violation (F1), now FIXED**.
+  Round 1 misdispositioned this: the spec obligation row "No blocking
+  behaviour was added or relaxed relative to the predecessor" is the
+  higher authority, and the Step-2 oracle had pinned the block on a
+  *non-production* fixture (`src/A.scala` lacks `/src/main/`). The
+  predecessor consults Expected-Files ownership only inside the
+  production branch (gate.sh.bak:733+); non-production paths allow
+  unconditionally after Step-0 grant handling (gate.sh.bak:~668
+  `non-production path, allow`). Reachable in-repo: spec 9's Expected
+  Files include `build.sbt` — port blocked, predecessor allows.
+  Remediation: `ownedFileCheck` deleted; `nonProdLock` allows after the
+  Step-0 branch; the scenario fixtures re-pointed at a production path
+  (`src/main/scala/A.scala`, two-spec impl-order fixture) where the
+  faithful priors-only predecessor check runs; new regression test pins
+  the F1 input (declared `build.sbt` + uncheckpointed prior → allow).
+  Second divergence uncovered by the fix: `ownedFileCheck` had emitted
+  `Finding` (exit 1) for the block; the predecessor's tool-call block is
+  `exit 2` (`Undetermined`) — the oracle assertion was corrected too.
+- "Presentation-marker orphan check conditional on expectedFiles": reviewer
+  misread — the predecessor check over priors runs unconditionally once the
+  phase is past oracle in both implementations (SubcommandEntrypoints.scala:962-989
+  mirrors gate.sh.bak:946+). No divergence found on re-check.
 
-The `DifferentialHarness.diff` function (DifferentialHarness.scala:96-117) takes a single
-`repository: String` parameter — both arms share it by construction. The `SuiteRun` type does
-not carry a repository field, so there is no mechanism to detect that the two runs were made
-against different repositories. The spec scenario "Adversarial — a comparison whose arms differ
-in repository is refused" requires the gate to revert, but the implementation cannot detect this
-condition. The test (DifferentialHarnessSpec.scala:16-35) only asserts that two different
-repository strings are different (`d1.repository != d2.repository`), which is trivially true and
-does not test the actual requirement.
+### 3. PARTIAL — adapter-config coverage hard-coded — FIXED
 
-The `verifySuiteDigests` function (DifferentialHarness.scala:128-139) correctly detects modified
-suite files by comparing SHA-256 digests, and the test (DifferentialHarnessSpec.scala:39-59)
-verifies this. However, `verifySuiteDigests` is not called by `diff` or `decide` — the caller
-must remember to invoke it separately. The spec says "a comparison against a modified suite is
-refused," but the gate does not refuse it; it provides a separate verification function.
+New scenario test `every adapter-configured event name is handled` in
+`GateEventSpec` extracts `--event` tokens from the three real adapter
+configs (`devin.hooks.v1.json`, `claude.settings.json`, `pi/verified-scala3-gate.ts`
+— both inline and array forms) and asserts each parses through `GateCmd.run`
+without rejection. A new adapter event now fails the test.
 
-**Evidence**: DifferentialHarness.scala:96-117 (no repository equality check),
-DifferentialHarnessSpec.scala:16-35 (test only checks string inequality)
-**Why tests missed it**: The test asserts `d1.repository != d2.repository` (trivially true)
-instead of asserting that the gate reverts on differing repositories.
-**Fix class**: Smart constructor / runtime rejection — `SuiteRun` should carry a repository
-field, and `diff` should refuse (return an incomplete `DifferentialResult`) when the two runs'
-repositories differ. This is a structural change to the harness API and is noted for human
-approval rather than fixed inline, as it changes the `SuiteRun` type signature and all callers.
+### 4. PARTIAL — compile-negatives are positive controls — STRENGTHENED
 
-### Requirement: A seam resolves to exactly one implementation — PASS
+`java.nio.file` genuinely was compilable inside `GateDecisions` (classpath
+member). Added a scoped DisableSyntax rule `NoIOInProbatioCore` to
+`.scalafix.conf` banning `java.nio.file.*`, `java.io.*`, `scala.io.*`, and
+`scala.sys.*` in `workflow/core/src/main/scala/**` — a real file-I/O
+violation in the decision layer now fails `scalafixAll`. (`java.nio.charset`
+remains permitted — `SessionId` encoding is not an I/O surface. `System.getenv`/
+`sys.env` were already banned by the global rules.) The `GateEvent`
+exhaustiveness pin stays a positive control: `compileErrors` cannot express
+a warning-escalated exhaustivity failure (verified empirically at Step 2);
+`-Wconf:name=PatternMatchExhaustivity:e` in build.sbt is the real enforcement.
 
-`SeamConfiguration` is `final case class SeamConfiguration private (portedTools: Set[ToolId])`
-with a private constructor (SeamTypes.scala:81). The smart constructor `fromPorted` takes only
-the ported set; the predecessor set is derived as `ToolId.swapOrder.toSet -- portedTools`
-(SeamTypes.scala:86). A seam in both sets is unconstructible because the predecessor set is not
-an input. The compile-negative test (CutoverGateSpec.scala:131-139) verifies the two-argument
-constructor doesn't compile. The `resolve` method (SeamTypes.scala:96-99) returns
-`Some(Ported)` or `Some(Predecessor)` for every seam in `swapOrder`. The property
-`seam-resolves-to-exactly-one` (CutoverGateSpec.scala:256) verifies this on generated
-configurations with cover annotations ensuring all-ported, all-predecessor, and mixed configs
-are hit. The `else None` branch in `resolve` is unreachable for the current 5-element enum
-(justified — every `ToolId` is in `swapOrder`).
+### 5. PARTIAL — probe `.cwd` fallback unreachable — FIXED
 
-### Requirement: A refused cutover restores the predecessor at every seam it had swapped — PARTIAL (noted for human approval)
+`GateCmd.run` now reads the channel for `--check-installed` when `--repo`
+is absent, threading `payload.cwd` into `resolveRepo` — matching the
+predecessor's `NEEDS_PAYLOAD || -z REPO` stdin read
+(gate.sh.predecessor.bak:157-162).
 
-The revert is implemented as test helpers in `CutoverRevertSpec`, not as production code.
-`revertToPredecessor` (CutoverRevertSpec.scala:73-78) ignores its `swapped` parameter
-(`val _ = swapped`) and always returns `SeamConfiguration.fromPorted(Set.empty)` (all
-predecessor). The property `revert-restores-every-swapped-seam` (CutoverRevertSpec.scala:54) is
-a tautology: since `revertToPredecessor` always returns all-predecessor, every seam resolves to
-`Predecessor` regardless of the input. The test cannot fail.
+### 6. PARTIAL — `stdinHasInput` trade-off — ACCEPTED, documented
 
-The spec requires "the restoration SHALL be verified by re-running the comparison" — no re-run
-is implemented or tested. The spec's generator strategy requires "materialised as real shim
-files in a temporary tree with their predecessor files present" — the actual `genSwapHistory`
-(CutoverRevertSpec.scala:116-127) generates only a `Set[ToolId]` with no filesystem
-materialisation.
+`System.in.available() > 0` vs `[ ! -t 0 ]`: a harness that opens stdin
+before writing can race past the read. Deliberate — the alternative blocked
+forever on open silent pipes under bats/sbt (observed: 25-min hang in
+`ambient-capture-wiring`). Every real harness writes the payload before
+exec completes; the trade-off stands and is documented in `run`'s docstring.
 
-The `simulateRevert` and `simulateRevertWithMissingPredecessor` helpers
-(CutoverRevertSpec.scala:88-105) are hardcoded constructors that return predetermined
-`RevertResult` values — they don't simulate any actual revert logic.
+### 7. PARTIAL — unreadable-state generator — EXTENDED
 
-**Evidence**: CutoverRevertSpec.scala:73-78 (`val _ = swapped`), CutoverRevertSpec.scala:54-62
-(tautological property), CutoverRevertSpec.scala:116-127 (no filesystem materialisation)
-**Why tests missed it**: The property is vacuously true because the function under test ignores
-its input. The generator doesn't materialise shim files as the spec requires, so filesystem-level
-revert correctness is never exercised.
-**Fix class**: The revert requires a production implementation that (1) restores shim files on
-disk, (2) verifies the restoration by re-running the comparison, and (3) reports failure naming
-the seam when restoration fails. The generator must materialise real shim files in a temporary
-tree. This is a substantial implementation beyond the scope of a review fix and is noted for
-human approval.
+`unreadable-state-allows` now covers three shapes: file-instead-of-dir,
+corrupt-JSON heartbeat, and marker files whose names fit no gate glob.
+(Malformed *phase* content is deliberately excluded — the predecessor reads
+it as `oracle`, which *blocks* a production tool-call; it is fail-closed by
+design, not a fail-open shape.)
 
-### Requirement: The gate's decision and its evidence are recorded before the swap proceeds — PASS (after fix)
+### 8. PARTIAL — envelope property reimplemented jq — FIXED
 
-`CutoverGate.record` (CutoverGate.scala:55-56) returns `GateRecord(decide(d), d)`, carrying
-both the verdict and the differential result. The `GateRecord.authorisesSwap` method
-(CutoverGate.scala:67-70) now requires `hasEvidence && verdict == Proceed` — a record with no
-files (empty comparison) does not authorise a swap. The test
-(CutoverGateSpec.scala:152-154) asserts `!record.authorisesSwap` for an empty comparison.
+`envelope-conforms-to-contract` now pipes every non-empty hook-json output
+through the real `jq -e -f gate-hookjson-contract.jq` process instead of a
+Scala predicate. Generator scope (session-start/prompt-submit only) is
+correct and now documented: the contract admits only those two
+`hookEventName` values; post-edit's `PostToolUse` envelope is a different,
+spec-prose contract.
 
-**Fix applied**: `authorisesSwap` was `verdict match { case Proceed => true; case Revert(_) => false }`
-which authorised a swap on an empty comparison (verdict = Proceed for vacuously complete empty
-differential). Changed to `hasEvidence && (verdict match { ... })`. The weak test assertion
-`!record.authorisesSwap || record.verdict == CutoverVerdict.Proceed` (which passed even when
-authorisesSwap was true) was strengthened to `!record.authorisesSwap`.
+### 9. Missing `GateBridgeSpec` — FIXED
 
----
+`workflow/cli/src/test/scala/org/sinemenda/probatio/cli/GateBridgeSpec.scala`
+created: `bridge-refusalBudget` and `bridge-classifyOutcome` properties run
+shipped `RefusalBudget.apply` / `ToolOutcome.classify` against the Stainless
+`GateKernel` mirrors on generated inputs. `carriedCode` is bounded to `Int`
+(the shipped classifier's representable range; the kernel models the digit
+string as unbounded `BigInt`).
 
-## Dangerous-Pattern Hunt
+### 10. Round 3 — focused re-verify of the F1 fix — VERIFIED-FIXED
 
-### 1. DifferentialHarness.runSuite silent fallback — FIXED
+Fresh-context review traced every `runToolCall`/`nonProdLock`/`grantLock`/
+`oracleLock` branch against gate.sh.bak:388–1010. No code path lets a
+non-production file block: `nonProdLock` handles Step-0 targets via
+`grantLock` (predecessor-exact: spec-dir exemptions, required-spec
+selection, two-stage grant resolution, bounded `grant-refused` marker,
+`toolCallRefusal` = stderr+exit-2 / `decision:block`+exit-0), then allows.
+`owningSpec` is consulted only inside `oracleLock` — the production
+branch, matching pred:779–803. The new regression test pins the exact F1
+input and would have failed pre-remediation. Two informational
+residuals, neither reachable in practice: a `FILE_PATH` ending exactly at
+`…/specs/` matches the predecessor's trailing `*` glob (`target_spec=""`
+→ grant scan) where `step0Target` returns `None` — only reachable via a
+trailing-slash non-file path; and `orderedSpecs` is computed after the
+spec-dir exemption rather than before — no observable difference. The
+stale `nonProdLock` scaladoc was corrected.
 
-**File**: DifferentialHarness.scala:55
-**Pattern**: `if !os.exists(oracleDir) then SuiteRun(List.empty, Set.empty)` — a missing oracle
-directory silently returns an empty run. An empty run produces an empty `DifferentialResult`,
-which the gate treats as complete (vacuously) and proceeds. This is a silent fallback to a valid
-domain value (empty = proceed) for an error condition (missing oracle).
-**Fix**: Replaced with `sys.error(...)` — a missing oracle is a hard failure, not an empty
-comparison. All callers (`OracleDiffRunner`, `OracleGreenCheck`) already check `os.exists` before
-calling `runSuite`, so no test breaks.
+## Deferred
 
-### 2. genRegressingDifferential: forcedPort not actually worse when pred == total — FIXED
+- The deferred bats differential runbook (predecessor on disk) — unchanged
+  obligation, still pending. Ring 5 executed: PASS A 95.65% covered-code
+  (1 equivalent survivor); PASS B 91.91% in-diff covered after 4 remediation
+  rounds (≈94% counting verified phantoms + post-run kills). Ring 6
+  executed: `GateKernel` 401/401 VCs valid via inductive-lemma
+  restructure; `GateBridgeSpec` 2/2 green.
+- `GateEventSpec` "other major version" literal (`"14"`-shaped constant) —
+  minor staleness risk at schema v16; noted, not a spec violation.
+- Missing `--event`: the predecessor defaults to `session-start`; the port
+  rejects an absent event. Deliberate — silently running the banner on a
+  malformed invocation is the bug class the spec's "reject unknown events"
+  requirement exists to prevent; noted as a documented divergence.
+- Ambient ledger append runs in-process (`LedgerCmd.runAppend`) so the
+  predecessor's two `ledger.sh` subprocess trace lines have no counterpart
+  — the append's own trace sites exist. Informational.
+- Round-3 residuals (unreachable): a `FILE_PATH` ending exactly at
+  `…/specs/` matches the predecessor's trailing-`*` glob where
+  `step0Target` returns `None`; `orderedSpecs` computes after the spec-dir
+  exemption rather than before — no observable difference.
 
-**File**: CutoverGateSpec.scala:424-426
-**Pattern**: `val forcedPort: Int = math.min(pred + 1, total)` — when `pred == total`,
-`forcedPort = total = pred`, so the file is NOT worse. The generator claims to produce a
-regression but doesn't. The property `total-improvement-does-not-excuse-a-regression` would
-falsify on such a case (gate returns Proceed for a non-regression, but the property expects
-Revert).
-**Fix**: Cap `pred` at `total - 1` for the worse file: `val safePred = math.min(pred, total - 1);
-val forcedPort = safePred + 1`. Now `forcedPort > safePred` always holds.
+## Reviewer misreadings (recorded for the record)
 
-### 3. DifferentialHarness.verifySuiteDigests: case _ silently accepts unexpected files — JUSTIFIED
-
-**File**: DifferentialHarness.scala:135
-**Pattern**: `expectedDigests.get(fileName) match { case Some(expected) if expected != actualDigest => Some(fileName); case _ => None }`
-— the `case _` covers both `Some(expected)` where `expected == actualDigest` (correct, no
-mismatch) AND `None` (file not in expected digests, silently accepted). An unexpected file in the
-oracle directory could be a modified suite that passes undetected.
-**Justification**: The `expectedDigests` map is caller-supplied. In the test
-(DifferentialHarnessSpec.scala:91), it's computed from all bats files in the directory, so
-`None` is never hit. In production use, the caller is responsible for providing a complete
-digest map. Changing this to flag unexpected files would be more defensive but could break
-callers that intentionally provide a subset. Noted as a potential strengthening but not fixed
-inline to avoid breaking the existing API contract.
-
-### 4. GateRecord.authorisesSwap did not check hasEvidence — FIXED
-
-**File**: CutoverGate.scala:65-67
-**Pattern**: `authorisesSwap` returned `true` for `Proceed` regardless of whether evidence was
-present. An empty `DifferentialResult` (no files) would authorise a swap despite having no
-comparison evidence. The spec says "a decision with no recorded comparison is not actionable."
-**Fix**: Changed to `hasEvidence && (verdict match { case Proceed => true; case Revert(_) => false })`.
-
-### 5. Weak test assertion masking the authorisesSwap bug — FIXED
-
-**File**: CutoverGateSpec.scala:151-154
-**Pattern**: `assert(!record.authorisesSwap || record.verdict == CutoverVerdict.Proceed)` — this
-assertion passes even when `authorisesSwap` is `true` (because `verdict == Proceed` for an empty
-comparison). The assertion was designed to pass regardless of the bug.
-**Fix**: Strengthened to `assert(!record.authorisesSwap, "an empty comparison must not authorise
-a swap — the comparison is missing")`.
-
----
-
-## Oracle-Tampering Check
-
-### Finding 1: All cover annotations were missing — FIXED
-
-**Evidence**: The spec declares Hedgehog `cover` requirements for all 5 property generators:
-- `genDifferentialResult`: no-file-worse ≥ 30%, exactly-one-worse ≥ 25%, worse-but-total-improves ≥ 15%, all-files-equal ≥ 10%
-- `genRegressingDifferential`: total-lower ≥ 60%
-- `genIncompleteDifferential`: missing-from-ported ≥ 40%, missing-from-predecessor ≥ 40%
-- `genSeamConfiguration`: all-ported ≥ 10%, all-predecessor ≥ 10%, mixed ≥ 60%
-- `genSwapHistory`: empty-prefix ≥ 10%, full-prefix ≥ 15%, partial-prefix ≥ 60%
-
-The implementation had these cover requirements only in comments (CutoverGateSpec.scala:323,343,373,397;
-CutoverRevertSpec.scala:101) — no actual `.cover(...)` calls. The codebase uses `.cover(...)` in
-other specs (CallKeySpec.scala:35-36, HarnessAgentSpec.scala:207-227), so the API is available.
-Without cover, the generators could vacuously pass the properties without hitting the edge cases
-the spec names.
-
-**Fix**: Added `.cover(...)` calls to all 5 property tests. Fixed generators that couldn't meet
-the cover thresholds with their original distribution:
-- `genSeamConfiguration`: with 5 independent booleans, all-ported = 1/32 ≈ 3% (below 10%). Added
-  frequency weighting: 2:2:9 (all-ported:all-predecessor:mixed) to ensure edge cases hit their
-  floors.
-- `genDifferentialResult`: with independent counts and 1-20 files, exactly-one-worse was ~21%
-  (below 25%). Added frequency-weighted constructive branches (3:3:3:1 =
-  independent:no-file-worse:exactly-one-worse:all-equal) that build cover classes directly, the
-  same approach the spec uses for `genRegressingDifferential`.
-- `genSwapHistory`: with uniform `Range.linear(0, 5)`, full-prefix was 0% in some runs (below
-  15%). Added frequency weighting: 2:3:10 (empty:full:partial).
-- Increased test limit to 500 for all properties with cover to eliminate sampling-variance flakiness.
-
-### Finding 2: genRegressingDifferential produced non-regressions — FIXED
-
-**Evidence**: When `pred == total`, `math.min(pred + 1, total) == total == pred`, so the
-"forced worse" file was not actually worse. The generator claimed to produce a regression but
-didn't, and the property `total-improvement-does-not-excuse-a-regression` would falsify on such
-cases (gate correctly returns Proceed for a non-regression, but the property expects Revert).
-This is a generator bug that weakens the oracle: it tests non-regression cases as if they were
-regressions.
-
-**Fix**: Cap `pred` at `total - 1` for the worse file so `forcedPort = safePred + 1 > safePred`
-always holds. Also fixed the improved files to ensure `pred >= 2` so the improvement always
-outweighs the regression, keeping the total-lower cover above 60%.
-
----
-
-## Summary of Changes
-
-### Files modified:
-
-1. **CutoverGate.scala** (CutoverGate.scala:67-70): `GateRecord.authorisesSwap` now requires
-   `hasEvidence` — an empty comparison (no files) no longer authorises a swap.
-
-2. **DifferentialHarness.scala** (DifferentialHarness.scala:55-56): `runSuite` now throws
-   `sys.error` on missing oracle directory instead of silently returning an empty run.
-
-3. **CutoverGateSpec.scala**:
-   - Added `coverConfig` with `SuccessCount(500)` for stable cover percentages.
-   - Added `.cover(...)` calls to all 4 properties (proceed-iff-no-file-worse,
-     total-improvement-does-not-excuse-a-regression, incomplete-comparison-never-proceeds,
-     seam-resolves-to-exactly-one).
-   - Restructured `genDifferentialResult` with frequency-weighted constructive branches
-     (3:3:3:1) to meet all 4 cover thresholds.
-   - Fixed `genRegressingDifferential`: cap `pred` at `total - 1` for worse file; ensure
-     `pred >= 2` for improved files.
-   - Restructured `genSeamConfiguration` with frequency weighting (2:2:9) to meet cover
-     thresholds.
-   - Strengthened the "no recorded comparison" test assertion from
-     `!authorisesSwap || verdict == Proceed` to `!authorisesSwap`.
-
-4. **CutoverRevertSpec.scala**:
-   - Added `coverConfig` with `SuccessCount(500)`.
-   - Added `.cover(...)` calls to the revert property.
-   - Restructured `genSwapHistory` with frequency weighting (2:3:10) to meet cover thresholds.
-
-### Test results: 32/32 passed across 5 consecutive runs (no flakiness).
+- `check_expected_files` / `UnexpectedArtifact` do not exist in the
+  predecessor or the port — the reviewer's FAIL-2 line cites were off, though
+  the `advancePhase` relaxation underneath was real.
+- The `human-grant-lock` (4) and `oracle-ordering-lock` (7) bats failures are
+  pre-existing suite staleness, verified by running `gate.sh.predecessor.bak`
+  directly: an empty `--tool` hits the `""` read-only case and exits 0 on the
+  predecessor too. Both diff arms run the ported gate, so gate-level
+  divergences were never visible to `probatioOracleDiff` — the Scala oracle
+  suite is the real gate-parity evidence.

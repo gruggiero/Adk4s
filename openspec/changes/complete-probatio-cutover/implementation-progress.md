@@ -1631,7 +1631,7 @@ ones:
 - `LedgerCmd.verify` replaces `validate`; `readRowsFiltered` is the
   single read path the checkpoint delegates to.
 
-### Step 2 — Test oracle (compiled + polarity run 2026-09-18; awaiting human review)
+### Step 2 — Test oracle (compiled + APPROVED 2026-09-18)
 
 Oracle files (written from the spec + approved Step-1 contract only,
 before implementation — `CheckpointEngine.report`/`classify`/
@@ -1826,6 +1826,55 @@ distributions moved):**
   are not in the spec-7 diff — the reviewer's scope candidates were
   verified unrelated.
 
+### Step 2 — Test oracle (APPROVED 2026-09-18)
+
+Oracle files (new/extended):
+
+- `workflow/core/src/test/scala/org/sinemenda/probatio/core/ToolOutcomeSpec.scala`
+  — 8 scenario tests + property `outcome-classification-is-total-and-conservative`
+  + the core-classpath compile-negative (fs2-io unreachable from probatio-core)
+- `workflow/core/src/test/scala/org/sinemenda/probatio/core/SessionIdSpec.scala`
+  — 5 scenario tests + property `session-identity-encoding-is-injective`
+- `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/GateEventSpec.scala`
+  — 17 scenario tests + properties `post-tool-observation-never-blocks`,
+  `refusal-budget-is-bounded-and-nonzero` + all 4 compile-negatives
+- `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/GateStateDirSpec.scala`
+  — 6 scenario tests (state reads, fail-open, install probe) + property
+  `unreadable-state-allows`
+- `GateBannerCompatSpec.scala` — extended with property
+  `envelope-conforms-to-contract` (gate-hookjson-contract.jq semantics in
+  pure Scala over both banner events)
+
+Coverage vs spec: all 24 scenarios, all 6 properties, all 4
+compile-negatives. The GateEvent-match omission negative is pinned as a
+positive control + documented `-Wconf` escalation (the toolbox compiler
+reports non-exhaustive matches as warnings, never errors — same
+limitation and resolution as CliWiringCompileNegativeSpec).
+
+ORACLE POLARITY run (2026-09-18):
+
+- probatio-core — 22/22 GREEN: ToolOutcomeSpec 10/10 (all classification
+  scenarios, the totality/conservativeness property, fs2-io negative),
+  SessionIdSpec 7/7, GateEventCompletenessTypeContract 5/5.
+- probatio-cli — 26 GREEN / 19 RED. Every RED is
+  `scala.NotImplementedError` on a pinned `???` body — exactly the
+  contract-time polarity the Step-1 record predicted:
+  - GateEventSpec 16 RED: post-bash handled/never-blocks/property,
+    green/red row, refusal/interrupted/compound/redirect scenarios,
+    verified+checkpointed, verified-not-checkpointed, unreadable
+    tool-call, three refusal-budget scenarios + property
+  - GateStateDirSpec 2 RED: unreadable fail-open scenario + property
+  - GateBannerCompatSpec 1 RED: completion → `markerTriple` `???` sweep
+  - GREEN-BY-DESIGN 26: unknown-event rejection, escape hatch under both
+    names (prologue short-circuit), envelope-name scenarios, all 4
+    compile-negatives, reader-level tests (phase/markers/refusals), 3
+    install-probe scenarios, banner byte-compat + envelope property,
+    cli type contract 4/4
+- Oracle-caught contract defect fixed during the polarity run:
+  `ToolOutcome.classify` used whole-string Regex match where the
+  predecessor's `test("^…")` accepts a prefix — corrected to
+  `findPrefixMatchOf`.
+
 ### Step Progress
 - [x] Step 0 — Baseline + concept check
 - [x] Step 1 — Typed contract (APPROVED 2026-09-18)
@@ -1882,12 +1931,760 @@ distributions moved):**
 
 ## Spec 8: gate-event-completeness
 
-### Status: PENDING
+### Status: IN PROGRESS — Step 3 (implementation)
+
+### Baseline
+- SHA: `5cebe3e0fa79be5fb2145df9a12599779e75fc12` (tracked tree clean;
+  untracked docs files only — same tolerance as specs 3–7)
+- Date: 2026-09-18
+
+### Step 0 — Baseline + concept check
+- **Gate installation**: `bin/probatio gate --check-installed` →
+  `{"installed":true,"last_run":"2026-09-18T19:12:56Z","event":"prompt-submit"}`,
+  exit 0. The probe path (spec-3 forward reference) is live — the heartbeat
+  was written by the shimmed gate's banner path on this session's
+  prompt-submit.
+- **Registry gate**: `registry-check.sh` → OK (803 implementation-map
+  tokens verified, 15 spec concept references checked, the same 5
+  pre-existing weak bindings — non-blocking, unrelated to spec 8).
+- **Inventory snapshot**:
+  `inventory-snapshots/gate-event-completeness-before.md` (9 opaque
+  types, 122 sealed, 466 case classes, 18 service traits, 62 smithy
+  models, 371 generators).
+- **Concepts Used verification**: every concept in the spec's table
+  resolves in source — `GateEvent` (5 cases, gains the sixth here),
+  `GateDecision`, `BlockReason` (4 variants), `SpecPhase`,
+  `PredecessorCheck`, `GrantWaiver`, `PresentationMarker`, `GatePayload`,
+  `HookSpecificOutput`, `LedgerRecord`, `Ring`, `Validator`, `Outcome`,
+  `SchemaPolicy` (`resolveHookEnv` already models the alias window),
+  `CliContext`.
+- **Recorded forward references (already landed, spec 3)**:
+  `SessionId` (`resolve` order explicit→harness→generic→ppid + lossless
+  `encoded`), `GateStateDir`/`GateStateDirReader` (resolve, fingerprint,
+  heartbeat read/write), `HeartbeatRecord`. Spec 8 extends all three —
+  recorded as *modified*, not introduced (the implementation-order
+  exception for `SessionId`).
+- **Unrecorded forward references**: none — `HarnessPayload`,
+  `ToolOutcome`, `RefusalBudget`, `PostBash`/`post-bash` appear nowhere in
+  `workflow/` or `verified/`.
+- **Concept files**: `strangler-migration-protocol.md`, `schema.md` —
+  cited at behavioral altitude only (spec-lint check 17: F10 clean, W7
+  silent; clauses say "harness response", "state directory", "turn",
+  "session"). No concept update required.
+- **Predecessor parity surface mapped** (`gate.sh.predecessor.bak`,
+  1788 lines):
+  - **Events** (six, adapter-configured): `session-start`,
+    `prompt-submit`, `tool-call`, `post-edit`, `post-bash`,
+    `completion`. Adapters: `claude.settings.json` (5 hook registrations,
+    PostToolUse split Bash→post-bash / Edit|Write|MultiEdit→post-edit),
+    `devin.hooks.v1.json` (same), pi extension (prompt-submit, tool-call,
+    post-edit only — no post-bash/completion wiring). The port
+    recognises five; `post-bash` is the missing one.
+  - **Payload**: read ONCE in the parent when event ∈ {post-edit,
+    tool-call, completion, post-bash} OR `--repo` absent, and stdin is
+    not a TTY. `payload_field` = jq `// empty`; absent field → "".
+    Repo resolution order: `--repo` → payload `.cwd` →
+    `CLAUDE_PROJECT_DIR` → `git rev-parse --show-toplevel` → `$PWD`.
+  - **Session**: `--session` → `CLAUDE_CODE_SESSION_ID` →
+    `VERIFIED_SCALA3_SESSION_ID` → `ppid-$PPID`; base64url filename
+    encoding (`+`→`-`, `/`→`_`, `=`→`.`).
+  - **Relevance guard → hook control → state dir → heartbeat →
+    checkpoint sweep**, in that order: no `openspec/` → exit 0 silent;
+    `PROBATIO_HOOKS=off` (or legacy `VERIFIED_SCALA3_HOOKS=off`, alias
+    expires when schema version > 15, deprecation notice on stderr) →
+    exit 0; `<abs-git-dir>/verified-scala3-gate` created only then;
+    heartbeat `{ts,event,format}` written every event; sweep consumes
+    `checkpoint-output-*-*-*` → `presentation-<chg>-<spec>-<sess>`
+    (sha256 of content).
+  - **tool-call**: read-only tools (`Read|read|View|view|Grep|grep|
+    Glob|glob|Search|search|""`) allow. Non-`*/src/main/*.scala` →
+    **grant lock**: Step-0 signature = implementation-progress.md edit
+    or spec-dir edit; untracked/past-oracle target spec → allow;
+    required grant = first spec with presentation-but-no-grant (or
+    prior-of-target); satisfied by current-session grant, any-session
+    grant, or verified+presentation waiver; refusal bounded by
+    `grant-refused-$SESSION`; text → stderr exit 2, hook-json →
+    `{"decision":"block",reason}` exit 0. `*/src/main/*.scala` →
+    **oracle lock**: `tool-call-refused-$SESSION` bound; allowlist
+    `VERIFIED_SCALA3_ALLOW_PATHS` (colon-separated prefixes); active
+    spec = `VERIFIED_SCALA3_ACTIVE_SPEC` override → Expected-Files
+    table map → first non-verified in impl order (impl-order.md table,
+    else sorted dirs); phase file default `oracle`; R3-ring rows only;
+    RED@ancestor → implementation; RED+GREEN (green descends from
+    red's baseline) → verified; still-oracle → block (writes refusal
+    marker, fails open if marker unwritable); else predecessor check
+    (skipped by `VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK`): first prior
+    spec not (verified AND presentation) → block, reason distinguishes
+    "verified (not checkpointed)" from the phase name.
+  - **post-edit**: normalize relative `--file` to `$REPO/...`; spec.md
+    under active changes (archive excluded) → `spec-lint --artifacts
+    <chgdir>` (SPEC_LINT_OVERRIDE); `*/src/main/*.scala` →
+    `danger-scan` bare (DANGER_SCAN_OVERRIDE); findings →
+    `{hookSpecificOutput:{hookEventName:"PostToolUse",
+    additionalContext}}` or text; NEVER blocks, always exit 0.
+  - **post-bash** (the sixth event — the ambient writer): outcome
+    predicate established first-hand from session transcripts —
+    `tool_response` object → exit 0 (or skip if `.interrupted`);
+    string `"Error: Exit code N"` → exit N; any other string → skip
+    `not-a-command-outcome`; other shape → skip
+    `unrecognised-response-shape`. Non-Bash `tool_name` → skip.
+    `*ledger.sh run*` → dedup skip. Compound commands
+    (`*`|`*, *`;`*, *`&&`*, trailing `&`, `*`\n`*) → skip (exit is not
+    the ring's); redirections fine. Ring table:
+    `sbt *test* | bats * | *"/bats "*` → R3 "ambient: test execution"
+    artifact `tests/`; `*danger-scan.sh*` → R1 "ambient: danger scan";
+    `*registry-check.sh*` → R1 "ambient: registry check";
+    `*spec-lint.sh*` → R1 "ambient: spec lint";
+    `*checkpoint.sh report*` → not recorded; else → not recorded.
+    Row append via `ledger.sh append` with `--source ambient`, spec =
+    first presentation-no-grant in session else first spec dir else
+    "unknown", baseline `git rev-parse --short HEAD` else `0000000`.
+    ALWAYS exit 0.
+  - **completion**: `stop_hook_active=true` → allow; no STATE_DIR →
+    allow (bounded refusal impossible); no
+    `presentation-*-*-$SESSION` marker → allow (mid-work stops pass).
+    Otherwise: reconcile (RECONCILE_OVERRIDE) exit 1 → uncorroborated
+    block (checked BEFORE unresolved); chain-state (CHAIN_STATE_OVERRIDE)
+    per active change — exit ∉{0,1} or non-numeric `.total` →
+    undetermined block (exit 2 text / decision:block hook-json);
+    `.unresolved|length` > 0 → block naming ≤10 requirements
+    (+ "+N more"). Refusal marker `completion-refused-$SESSION`;
+    `jq -e` on stdout only on exit 0 for hook-json (the harness reads
+    stderr on exit 2 — reason goes to stdout for text, JSON for
+    hook-json, both on exit 0 for the latter).
+  - **prompt-submit**: clears `completion-refused-`,
+    `tool-call-refused-`, `grant-refused-` markers; writes
+    `grant-<chg>-<spec>-$SESSION` for every presentation lacking one
+    (copies the presentation's hash; idempotent).
+  - **Envelope**: hook-json emitted only on the banner path —
+    `session-start`→`SessionStart`, `prompt-submit`→`UserPromptSubmit`,
+    `post-edit` findings→`PostToolUse`; the `gate-hookjson-contract.jq`
+    checker accepts only `SessionStart|UserPromptSubmit` (post-edit's
+    `PostToolUse` envelope is outside that contract's domain — the
+    contract governs the injection envelope; noted for the Step-2
+    `envelope-conforms-to-contract` generator: envelope events are the
+    three emitter shapes, blocking events emit `{"decision","reason"}`).
+    Blocking outputs in hook-json are `{"decision":"block","reason":..}`
+    on **exit 0**; in text the reason goes to stdout (completion) /
+    stderr (tool-call, grant) with exit 1/2.
+  - **`--check-installed`**: pure read, works in any repo, never creates
+    state — ALREADY PORTED (spec 3).
+  - **`PROBATIO_HOOKS_TRACE`** (legacy `VERIFIED_SCALA3_HOOKS_TRACE`
+    alias): appends one trace line per invocation when set.
+- **Divergences found in the port** (the work spec 8 removes):
+  - `post-bash` rejected as unknown event — the ambient writer is absent.
+  - `tool-call` returns `Undetermined` unconditionally — every
+    pre-execution event refused (the stranded-agent failure the spec
+    names); no state reader, no phase files, no grant lock, no oracle
+    lock, no refusal bound.
+  - `completion` requires `--ledger-file/--change/--baseline` (flags no
+    adapter sends) and blocks on any unresolved — no presentation-marker
+    trigger, no reconcile corroboration, no undetermined-vs-unresolved
+    distinction, no bounded refusal, no stop_hook_active.
+  - `post-edit` is a stub (`Ran(0)`) — no spec-lint/danger-scan
+    delegation, no findings envelope.
+  - Escape hatch inverted: `CliContext.readEscapeHatch` reads
+    `PROBATIO_HOOKS == "1"` — the predecessor's hatch is `=off` under
+    either name with the legacy alias's deprecation notice; `=1` is not
+    a predecessor value.
+  - No stdin/payload channel at all — `--file/--tool/--command/--exit`
+    flags are parsed but the payload path (the only path real adapters
+    exercise) does not exist.
+  - No `*_OVERRIDE` testability seams (`CHAIN_STATE_OVERRIDE`,
+    `RECONCILE_OVERRIDE`, `SPEC_LINT_OVERRIDE`, `DANGER_SCAN_OVERRIDE`) —
+    the bats oracle's stubs would be ignored.
+  - No checkpoint-presentation sweep, no grant writing on prompt-submit,
+    no refusal-marker clearing on new turns, no
+    `PROBATIO_HOOKS_TRACE`/`VERIFIED_SCALA3_HOOKS_TRACE` trace.
+  - Envelope emits only on the banner path (correct as far as it goes;
+    `post-edit`'s `PostToolUse` envelope missing with the tier itself).
+- **Proof obligations**: complete — 25 rows cover all seven
+  requirements, every scenario, the six properties, the four
+  compile-negatives, both Ring-6 contracts + `GateBridgeSpec`, the
+  six-file bats parity obligation, and the Ring-8 no-behavior-change
+  obligation.
+- **MUST-CONFIRM items**: the harness `tool_response` shapes are
+  externally sourced (established first-hand from session transcripts;
+  spec-lint check 16 note) — bound to the predecessor's classifier
+  verbatim: object → 0-or-interrupted-skip; `^Error: Exit code [0-9]+`
+  → the captured code; other string → skip; other shape → skip. **Do
+  not invent a response shape the predecessor does not handle.**
+
+### Step 1 — Typed contract (compiled 2026-09-18; APPROVED 2026-09-18)
+
+Compiled under the real module classpaths —
+`sbt "probatio-core/Test/compile" "probatio-cli/Test/compile"
+"probatio-verified/compile"` → success, `-Werror` clean. Contract
+suites green: `GateEventCompletenessTypeContract` 5/5 (six distinct
+`GateEvent` cases; `harnessName` total — `PostToolUse`/`UserPromptSubmit`;
+`classify` yields `Exit` only for the two genuine outcome shapes;
+`RefusalBudget` bounded — `fromMarker(true).issue == None`, the fold
+refuses exactly the first blockable).
+`GateEventCompletenessCliTypeContract` 4/4 (`Event.PostBash` IS
+`GateEvent.PostBash`; `consumesPayload` names the four payload events;
+`markerPrefix` names the predecessor's three marker files; the legacy
+hook-control alias resolves with a warning inside the window).
+
+**New/changed type surface**:
+
+| Type | Shape |
+|------|-------|
+| `core/GateEvent.scala` | sixth case `PostBash`; `harnessName(event)` — the total map to the harness's own names (`PreToolUse`/`PostToolUse`/`SessionStart`/`UserPromptSubmit`/`Stop`) |
+| `core/ToolOutcome.scala` (new) | sealed trait; `Exit(code)`/`Skip(reason)` ctors `private[ToolOutcome]` — `classify(response)` is the only construction path (object → `Exit(0)` unless `interrupted:true`; `"Error: Exit code N"` → `Exit(N)`; other string → `Skip(not-a-command-outcome)`; other shape → `Skip(unrecognised-response-shape)`); implemented at contract time, kernel-mirrored |
+| `core/HarnessPayload.scala` (new) | private ctor + `of(toolName, toolInput, toolResponse, cwd, stopHookActive)` deriving `interrupted` from the response — one fact, stated once |
+| `core/RefusalBudget.scala` (new) | private ctor `issued: Int`; `full`, `fromMarker`, `exhausted`, `issue` (`None` when spent — the second refusal is unrepresentable); kernel-mirrored `apply(blockable)` fold — exactly one refusal at the first blockable |
+| `core/GateDecisions.scala` (new) | the pure decision module — every input a value (the no-I/O compile-negative): `readOnlyTools`, `isProductionEdit`, `isSpecEdit` `???`, `specOrder` `???`, `owningSpec` `???`, `advancePhase`, `AmbientMatch`/`ambientRingMatch` `???`, `Step0Target`/`step0Target` `???`, `markerTriple` `???`, `unresolvedBlock` `???`, `Polarity`/`hasRing3Row` `???` |
+| `core/BlockReason.scala` | +`CompletionUnresolved(details)`, `ChainStateUndetermined`, `Uncorroborated(details)` — the predecessor's exact refusal texts |
+| `core/SpecPhase.scala` | +`fromStateFile` (total — unrecognised → `Oracle`) + `asToken` |
+| `core/SessionId.scala` | UNCHANGED — the spec-3 forward-referenced implementation already satisfies the injective-encoding contract |
+| `cli/GateStateDir.scala` | reader extended: `phaseFile`/`readPhase`/`writePhase`; `presentationFile`/`readPresentationHash`/`hasAnySessionPresentation`/`hasSessionPresentation`/`sessionPresentations`/`writePresentation`; `grantFile`/`hasGrant`/`hasAnySessionGrant`/`writeGrant`; `refusalFile`/`hasRefusal`/`writeRefusal` (Boolean — `false` ⇒ fail open)/`clearRefusals`; `sweepCheckpointOutputs(dir, sha256Of)`; `specDirs`; new `enum RefusalKind` + `markerPrefix` |
+| `cli/HarnessPayloadReader.scala` (new) | `consumesPayload`, `parse` (jq `// empty` semantics), `Empty`, `readChannel(isTty)` — the once-only top-level read |
+| `cli/CliContext.scala` | `readEscapeHatch` (the semantically-inverted `=1` check) REMOVED → `hooksControl(env, schemaVersion)` delegating to `SchemaPolicy.resolveHookEnv` — the alias window is a core decision |
+| `cli/SubcommandEntrypoints.scala` | `GateCmd.Event` is now `type Event = GateEvent` + companion alias — the sixth case is exhaustiveness-escalated; `parseEvent` +`post-bash`; `run(args, env, channel)` reads the channel AT MOST ONCE when the event consumes a payload or `--repo` is absent; `resolveRepo` gains the `.cwd` link; `GateContext(repo, session, stateDir, format, event)`; shared prologue for EVERY event — relevance → hook control (`off` skips) → state dir → heartbeat → checkpoint-output sweep → dispatch; prompt-submit clears refusals + writes grants then banners; `runPostEdit`/`runToolCall`/`runPostBash`/`runCompletion` pinned `???` pending Step 3 |
+| `verified/.../GateKernel.scala` (new) | `refusalBudget(blockable)` — `require` non-empty ∧ contains-true, `ensuring` exactly one refusal at the first blockable; `classifyOutcome(shape, carriedCode)` — `ensuring` `Some` iff shape ∈ {0, 2} |
+| `GateDecisionSpec` / `CliWiringCompileNegativeSpec` | five-case assertions updated to seven-case (the sixth exists; the seventh must not) |
+
+**Pinned decisions for human review** — the full list is the doc
+comment of both contract suites; the load-bearing ones:
+
+- `ToolOutcome`'s concept-table "enum" is realized as a sealed trait
+  with `private[ToolOutcome]` cases — an enum case's constructor is
+  public and cannot satisfy the "constructed only through `classify`"
+  compile-negative; the spec-7 `CheckpointReport` pattern applies.
+- `classify` is implemented at contract time (kernel-mirrored, like
+  spec 7's `markerDecision`); everything downstream of it is `???`.
+- The escape hatch's predecessor semantics are `=off` under EITHER
+  name with the deprecation notice — the port's inverted `=1` check is
+  deleted, not preserved.
+- `hasSessionPresentation` replicates the `presentation-*-*-<sess>`
+  glob (≥2 interior hyphens), not a loose suffix match; the sweep
+  copies the already-encoded session segment verbatim (no
+  double-encode); `markerTriple` replicates the right-to-left parse
+  quirks (`checkpoint-output-foo` → all three fields `foo`).
+- Two refusal-write divergences kept verbatim from the predecessor:
+  `tool-call`/`grant` fail open when the marker cannot be written;
+  `completion` blocks anyway once `STATE_DIR` was established (its
+  bound is the marker's existence, not the write's success).
+- Contract-time polarity effect: the old stub tiers are `???`, so the
+  pre-existing `GateBannerCompatSpec` tool-call/completion tests
+  (which asserted the flag-driven stubs) go red — expected; Step 2's
+  oracle replaces their assertions.
+
+### Step 2 — Test oracle (APPROVED 2026-09-18)
+
+Oracle files (new/extended):
+
+- `workflow/core/src/test/scala/org/sinemenda/probatio/core/ToolOutcomeSpec.scala`
+  — 8 scenario tests + property `outcome-classification-is-total-and-conservative`
+  + the core-classpath compile-negative (fs2-io unreachable from probatio-core)
+- `workflow/core/src/test/scala/org/sinemenda/probatio/core/SessionIdSpec.scala`
+  — 5 scenario tests + property `session-identity-encoding-is-injective`
+- `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/GateEventSpec.scala`
+  — 17 scenario tests + properties `post-tool-observation-never-blocks`,
+  `refusal-budget-is-bounded-and-nonzero` + all 4 compile-negatives
+- `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/GateStateDirSpec.scala`
+  — 6 scenario tests (state reads, fail-open, install probe) + property
+  `unreadable-state-allows`
+- `GateBannerCompatSpec.scala` — extended with property
+  `envelope-conforms-to-contract` (gate-hookjson-contract.jq semantics in
+  pure Scala over both banner events)
+
+Coverage vs spec: all 24 scenarios, all 6 properties, all 4
+compile-negatives. The GateEvent-match omission negative is pinned as a
+positive control + documented `-Wconf` escalation (the toolbox compiler
+reports non-exhaustive matches as warnings, never errors — same
+limitation and resolution as CliWiringCompileNegativeSpec).
+
+ORACLE POLARITY run (2026-09-18):
+
+- probatio-core — 22/22 GREEN: ToolOutcomeSpec 10/10 (all classification
+  scenarios, the totality/conservativeness property, fs2-io negative),
+  SessionIdSpec 7/7, GateEventCompletenessTypeContract 5/5.
+- probatio-cli — 26 GREEN / 19 RED. Every RED is
+  `scala.NotImplementedError` on a pinned `???` body — exactly the
+  contract-time polarity the Step-1 record predicted:
+  - GateEventSpec 16 RED: post-bash handled/never-blocks/property,
+    green/red row, refusal/interrupted/compound/redirect scenarios,
+    verified+checkpointed, verified-not-checkpointed, unreadable
+    tool-call, three refusal-budget scenarios + property
+  - GateStateDirSpec 2 RED: unreadable fail-open scenario + property
+  - GateBannerCompatSpec 1 RED: completion → `markerTriple` `???` sweep
+  - GREEN-BY-DESIGN 26: unknown-event rejection, escape hatch under both
+    names (prologue short-circuit), envelope-name scenarios, all 4
+    compile-negatives, reader-level tests (phase/markers/refusals), 3
+    install-probe scenarios, banner byte-compat + envelope property,
+    cli type contract 4/4
+- Oracle-caught contract defect fixed during the polarity run:
+  `ToolOutcome.classify` used whole-string Regex match where the
+  predecessor's `test("^…")` accepts a prefix — corrected to
+  `findPrefixMatchOf`.
+
+### Step 3 — Implementation (compiled; all oracle suites green)
+
+New/changed production surface:
+
+| File | Contents |
+|------|----------|
+| `workflow/core/src/main/scala/org/sinemenda/probatio/core/GateDecisions.scala` | all `???` bodies implemented — `isSpecEdit` (`/openspec/changes/<chg>/specs/<spec>/spec.md` under an active change dir, archive excluded), `specOrder` (impl-order table else sorted dirs), `owningSpec` (Expected-Files table map), `advancePhase` (R3-row polarity → `Implementation`/`Verified`), `ambientRingMatch` (the five-row ring table + `checkpoint.sh report` no-record), `step0Target`, `markerTriple` (right-to-left quirks preserved), `unresolvedBlock` (≤10 + `+N more`), `hasRing3Row`/`firstRing3Baseline`/`hasGreenAfterRed` (green-after-red via injected ancestry). Greedy-prefix fixes: `##`-style markers matched at `lastIndexOf`, not first occurrence |
+| `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/GateStateDir.scala` | glob parity fixes — `sessionPresentations` requires `presentation-<≥2-hyphen interior>-<encoded>` (the predecessor's `presentation-*-*-<sess>` glob shape); `sweepCheckpointOutputs` only consumes files matching the minimum `checkpoint-output-*-*-*` shape — non-conforming names are left in place (the shell glob never entered the loop, so they were never deleted either) |
+| `workflow/cli/src/main/scala/org/sinemenda/probatio/cli/SubcommandEntrypoints.scala` | the four tier bodies + shared helpers: jq-style field reads (`jqAlternative`, `toolInputField`, `payloadField`), `normalizeFilePath`, `activeChangeDirs`, `implementationOrderText`, scanner resolution honoring `SPEC_LINT_OVERRIDE`/`DANGER_SCAN_OVERRIDE`/`RECONCILE_OVERRIDE`/`CHAIN_STATE_OVERRIDE` then `<repo>/openspec/schemas/verified-scala3/scanner/`, `emitBlock` (`{"decision":"block","reason"}` hook-json → `Ran(0)`; text → stderr/`Undetermined`), `emitPostEditFindings` (`PostToolUse` envelope or bare stdout), `chainUnresolvedCount`/`chainUnresolvedNames` |
+| ↳ `runPostEdit` | informational-only: normalize relative `--file`/payload path; active-change `spec.md` → spec-lint; `/src/main/*.scala` → danger-scan; findings → envelope or text; NEVER blocks, always `Ran(0)` |
+| ↳ `runToolCall` | path `--file` → payload `file_path // path`; tool `--tool` → payload `tool_name`; read-only set bypass; `VERIFIED_SCALA3_ALLOW_PATHS` prefixes on production files; state-dir absent → allow; non-prod → grant lock (Step-0 signatures) then unconditional allow (the Expected-Files ownership mapping lives in the production branch only — see round-3 F1 remediation); prod → oracle lock (phase advance only on valid R3 ledger evidence, `VERIFIED_SCALA3_ACTIVE_SPEC` override, `VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK` skip); refusal bounded `tool-call-refused-<sess>`/`grant-refused-<sess>`, marker-write failure fails open |
+| ↳ `runPostBash` | observation-only: `--command`/`--exit` flag path (no payload, no classification); payload path = Bash-only, `.tool_input.command`, `ToolOutcome.classify(tool_response)`; interrupted/non-Bash/refused/compound-`exit-is-not-the-ring's` → skip; ambient ring match → in-process `LedgerCmd.runAppend` with `source=ambient`, session on R8 rows; every failure path → `Ran(0)` |
+| ↳ `runCompletion` | `--stop-hook-active`/payload `.stop_hook_active` bypass; no state dir → allow; no `presentation-*-*-<sess>` marker → allow (mid-work stops pass); reconcile exit 1 → uncorroborated; chain-state per active change — non-{0,1} exit or non-numeric `.total` → undetermined, `.unresolved` nonempty → unresolved; refusal order undetermined → uncorroborated → unresolved; `completion-refused-<sess>` bound — marker-write failure still blocks (bound is existence semantics per predecessor) |
+| `workflow/cli/src/test/scala/org/sinemenda/probatio/cli/GateBannerCompatSpec.scala` | the old flag-driven completion test rewritten marker-driven (spec-3's `--change/--ledger-file` surface does not exist in the predecessor): writes `presentation-test-change-only-<encoded-sess>` + `CHAIN_STATE_OVERRIDE` stub emitting unresolved chain state |
+
+Defects found and fixed during implementation:
+
+- **Scala comment termination**: two doc comments contained literal `*/`
+  sequences (glob text); the first closed the comment early and
+  unbalanced the file (11 phantom errors, `Not found` for every new
+  method). Rephrased to plain prose — comment bodies now describe the
+  glob shapes without embedding the terminator.
+- **`ujson.Value.obj` throws on non-objects**: the R3-polarity ledger
+  scan guarded with `objOpt` so a malformed row cannot crash the check.
+
+Ring results:
+
+| Ring | Result | Evidence |
+|------|--------|----------|
+| Step 3 implementation | 41/41 oracle green | `probatio-cli/testOnly GateEventSpec GateStateDirSpec GateBannerCompatSpec` → 25+8+8, 0 failed (the 19 RED `???` paths all green) |
+| Ring 0 — compile clean | PASS | `probatio-core/Test/compile` + `probatio-cli/Test/compile` + `probatio-verified/compile` green under `-Werror` |
+| Ring 1 — WartRemover + Scalafix + scalafmt + danger-scan | PASS (changed files) | scalafmt applied to probatio modules (module-scoped `scalafmtAll` — repo-wide run fails on pre-existing dialect errors in untouched `adk4s-core`/`adk4s-orchestration`). scalafix: 0 errors in changed files — 4 pre-existing `NoSystemGetenv` baseline errors in untouched `GrantWaiver`/`PredecessorCheck` doc comments (same tolerance as specs 1–7); `probatio-verified/scalafixAll` cannot run — the module lacks semanticdb/`-Wunused` settings (Stainless-instrumented, pre-existing). `danger-scan.sh.predecessor.bak 5cebe3e0 --also <12 new files>`: **OK** — 39 same-line `danger-scan:allow` sites (jq-semantics fallthroughs, fail-closed undetermined arms, test-assertion catch-alls; NOTE: the justification must sit on the `case` line — scalafmt's reflow of `case X =>` + next-line comment orphans it) |
+| Ring 2 — dependencyLint | PASS | `probatio-cli` + `probatio-core` + `probatio-verified`: R-ARCH1 classpath clean |
+| Ring 3 — suites + `probatioOracleDiff` | PASS — **VERDICT PROCEED** | `probatio-cli/test` 498/498; `probatio-core/test` 579/579 (4 ignored, pre-existing) including in-suite `OracleDiffRunner` on a fresh native image (35s rebuild): all 17 bats files, ported == predecessor everywhere, `complete=true hasRegression=false` — the change exit criterion holds |
+| Ring 4 — wire contract | PASS | `envelope-conforms-to-contract` property green + real `jq -e -f gate-hookjson-contract.jq` over a live `session-start` envelope (PASS); `prompt-submit` emitted empty output — the contract's documented no-op case (suppressed-session emission) |
+
+**Runtime defect found by Ring 3 and fixed mid-ring**: the default stdin
+channel used `System.console() != null` as the `-t 0` proxy — but
+`console()` is null under every non-interactive spawn, so the gate called
+`System.in.readAllBytes()` on bats' open silent pipe and blocked in
+`pipe_read` forever (observed live: a `completion` event hung 25 min in
+`ambient-capture-wiring.bats`). `HarnessPayloadReader.readChannel` now takes
+`inputPending` — read only when `System.in.available() > 0` (payload bytes
+are buffered before exec under every real adapter); the silent-pipe case
+reads as "no payload", the predecessor's `PAYLOAD=""` path. Signature
+`Boolean => Option[String]` unchanged (the Step-1 contract holds — only
+the parameter's meaning sharpened). Native image rebuilt; the same
+`ambient-capture-wiring.bats` completes in ~2 min.
+
+### Ring 8 — fresh-context adversarial review + remediation (2026-09-19)
+
+Report: `ring8-adversarial-review.md` (fresh-context read-only review of
+spec + typed contract + full diff). Verdicts: 3 PASS / 4 PARTIAL /
+0 FAIL requirements; obligation rows 15 PASS / 7 PARTIAL / 2 FAIL /
+1 deferred.
+
+**Real defects fixed**:
+
+- `ToolOutcome.classify` `.toInt` overflow — `[0-9]+` accepts ≥11 digits;
+  the throw escaped the never-blocking post-bash tier. Now `toIntOption`
+  → `Skip(NotACommandOutcome)` on unrepresentable codes (the predecessor's
+  observable result: digit string captured, ledger grammar rejects, exit
+  0). Boundary regression test added (`Int.MaxValue` classifies;
+  `MaxValue+1` does not).
+- `advancePhase` relaxed `implementation → verified` to green-only —
+  predecessor requires `red_exists && green_exists`. Fixed.
+- `runCheckInstalled` never read the channel — the payload `.cwd` repo
+  fallback was unreachable; the predecessor reads stdin whenever `--repo`
+  is absent. Fixed.
+- Tier-A′ boundary guards: `runPostEdit`/`runPostBash` dispatch wrapped in
+  `NonFatal → Ran(0)` — the predecessor's exit-0-under-any-payload
+  discipline is now encoded at the tier boundary.
+
+**Oracle/test strengthened**:
+
+- `GateBridgeSpec` created (spec-named artifact) — `refusalBudget` and
+  `classifyOutcome` bridge properties against `GateKernel`.
+- Adapter-config test reads the three real adapter files and asserts every
+  extracted `--event` token is handled (was hard-coded).
+- `envelope-conforms-to-contract` pipes through the real
+  `jq -e -f gate-hookjson-contract.jq` (was a Scala re-implementation).
+- `unreadable-state-allows` generator extended: file-instead-of-dir,
+  corrupt-JSON heartbeat, unmatchable marker names.
+- `.scalafix.conf` gained `NoIOInProbatioCore` — bans `java.nio.file`,
+  `java.io`, `scala.io`, `scala.sys` in `workflow/core` main sources; a
+  file-I/O violation inside `GateDecisions` now fails `scalafixAll`
+  (was previously compilable).
+
+**Reviewer misreadings recorded**: `check_expected_files`/
+`UnexpectedArtifact` do not exist in either codebase; the
+`human-grant-lock` (4) and `oracle-ordering-lock` (7) bats failures are
+pre-existing suite staleness — verified by running the `.bak` predecessor
+directly (empty `--tool` hits the `""` read-only case, exit 0 on both).
+`stdinHasInput` (`available() > 0`) is a documented trade-off accepted
+over a guaranteed hang on silent pipes. (`ownedFileCheck` was
+misdispositioned here as spec-added surface — round 2 re-flagged it as a
+real violation, remediated in round 3 below.)
+
+### Ring 8 — re-review + second remediation round (2026-09-19)
+
+Fresh-context re-review of the post-remediation diff verified all eight
+round-1 items VERIFIED-FIXED, then surfaced a second batch — all real:
+
+- **Trace surface absent**: the predecessor's diagnostic channel
+  (`PROBATIO_HOOKS_TRACE`, deprecated alias `VERIFIED_SCALA3_HOOKS_TRACE`)
+  had no port. Added `trace(env, event, format, repo, msg)` /
+  `trace(ctx, env, msg)` helpers — env-gated, timestamped
+  `event/format/repo: msg` lines, write failures swallowed — and mapped
+  all ~45 predecessor call sites: `runEvent` prologue, banner,
+  tool-call path selection and every refusal/allow reason, grant
+  handling (including the two-line prior-session grant pair, which
+  required `findAnySessionGrant` returning the first sorted matching
+  filename), phase advance (fires only on transition), predecessor
+  checks, post-edit findings, post-bash ambient rows (`ambientVerdict`
+  gained `Either[skip-reason, ring]` so the trace carries the
+  predecessor's skip text), completion decisions, and prompt-submit
+  grant writes.
+- **`readHeartbeat` lacked jq parity**: now mirrors `jq -e .` — missing/
+  unreadable/empty/invalid/`null`/`false` → absent, any other valid JSON
+  → installed; object fields use `.field // empty` (missing/null/false →
+  empty string); non-string scalars render with jq-raw semantics;
+  non-object valid JSON reads as a run record with empty fields.
+- **`isSpecEdit` glob parity**: bash `*` spans `/` and is greedy —
+  reimplemented as spanning match anchored on the FIRST
+  `/openspec/changes/` marker, `<name>/specs/<spec>/spec.md` tail,
+  `/archive/` excluded. `specEditFinding` now uses
+  `specEditChangeName` — sed-equivalent extraction (greedy prefix with
+  backtracking: last marker FOLLOWED BY `<name>/specs/`).
+- **`parseGateArgs` not last-wins**: repeated `--flag` now takes the
+  last occurrence (predecessor `case` loop overwrites).
+- **Spec-pinned `.cover` thresholds missing**: every property in the
+  spec's coverage table now carries its pinned percentages with
+  constructive generators (no filter-then-pray): `ToolOutcomeSpec`
+  weights object-success 22 / error-with-code 30 / refusal 22 /
+  interrupted 16 / unrecognised 22 at n=500; `SessionIdSpec` uses an
+  unsafe-biased alphabet + a direct differing-pair generator;
+  `GateEventSpec` generates non-Bash tools, ring-shaped/compound/
+  unrelated commands, structured tool responses, and turn sequences
+  with a weighted first-blockable position (`Range.constant` —
+  `Range.linear` scales with the hedgehog size parameter and starved
+  `blockable-not-first` to 7%); `GateStateDirSpec` generates the
+  spec's three unreadable-state shapes uniformly; `GateBannerCompatSpec`
+  covers all six events × both formats through the real `jq` contract.
+- **Gate help stale**: `gateHelp` now lists all six events and the real
+  flag surface (`--repo`, `--session`, `--file`, `--tool`, `--command`,
+  `--exit`, `--check-installed`, `--stop-hook-active`).
+
+Post-remediation verification: scalafmt clean; scalafix clean on changed
+files (same 4 pre-existing baseline hits tolerated); danger-scan OK
+(justifications kept on the `case` line — scalafmt's align preset keeps
+detaching them; the stable form is `case X => // danger-scan:allow …`
+with the body on the next line); `probatio-cli/test` 501/501;
+`probatio-core/test` 584/584 (`CutoverRevertSpec` coverage flake on an
+untouched file — `empty-prefix` 9% vs 10%, green on re-run, same class
+as the earlier `LedgerRecordRoundTripSpec` flake); `probatioOracleDiff`
+**VERDICT: PROCEED** — all 17 bats files identical between arms on a
+freshly rebuilt native image; `human-grant-lock` 4=4,
+`oracle-ordering-lock` 7=7, `workflow-hygiene` 6=6 are the previously
+dispositioned pre-existing failures (equal on both arms).
+
+| Ring | Result | Evidence |
+|------|--------|----------|
+| Ring 5 PASS A (rerun, post-remediation) | PASS | `probatio-core/stryker` on the 7 spec-8 core files: 272 mutants, 230 NoCoverage (GateDecisions internals reachable only through the cli oracle — same documented limitation), 19 static Ignored, **1 survived — equivalent**: `RefusalBudget.exhausted` `>=`/`==` indistinguishable under the private-ctor `issued ∈ {0,1}` invariant. 95.65% covered-code (threshold break=0: total score is dominated by the known NoCoverage cluster) |
+
+### Ring 8 — third round: F1 remediation (2026-09-19)
+
+The round-2 re-review's single MAJOR: `ownedFileCheck` consulted the
+Expected-Files ownership mapping for EVERY non-production file and could
+block on an uncheckpointed owner/prior — blocking the predecessor never
+had (its ownership mapping lives inside the production branch,
+gate.sh.bak:733+; non-prod paths trace `non-production path, allow` and
+exit 0, gate.sh.bak:~668). Reachable in-repo: spec 9's Expected Files
+declare `build.sbt`. The spec obligation row "No blocking behaviour was
+added or relaxed relative to the predecessor" made it a real violation —
+the approved Step-2 oracle had overshot by pinning the block scenario on
+a non-production fixture (`src/A.scala`).
+
+**Remediation**:
+
+- `ownedFileCheck` deleted; `nonProdLock` handles only Step-0 signature
+  targets via `grantLock`, then unconditionally allows. Verified
+  end-to-end on the rebuilt native image: `Edit build.sbt` declared in
+  Expected Files + verified-uncheckpointed prior → exit 0; the same
+  state on `src/main/scala/A.scala` → exit 2 with the predecessor's
+  exact reason text.
+- Oracle corrected, not just re-pointed: the scenario fixtures moved to
+  a production path under a two-spec impl-order fixture (`prior-spec`
+  before `test-spec`) so the block now exercises the faithful
+  priors-only check inside `oracleLock`. The fix also exposed a second
+  masked divergence — `ownedFileCheck` emitted `Finding` (exit 1) for
+  the block; the predecessor's tool-call block is `exit 2`
+  (`Undetermined`). The oracle assertion now pins `Undetermined`.
+- New regression test `a declared non-production file is not gated by
+  spec ownership` pins the exact F1 input (`build.sbt` declared +
+  uncheckpointed prior → `Ran(0)`); fails on the pre-remediation code.
+
+Post-F1 verification: `probatio-cli/test` 502/502 (+1 regression test),
+`probatio-core/test` 584/584, `probatioOracleDiff` **PROCEED** (17/17
+identical), native image rebuilt, scalafmt/scalafix/danger-scan clean.
+Ring 5 PASS B re-run on the post-F1 cli sources (the earlier run was
+aborted at ~30% when the remediation invalidated it — Stryker mutants of
+the removed code would have been stale). Operational note: killed
+Stryker runs leave `target/stryker4s-*` working copies behind; the
+`**`-globs then match the stale copies too (16 files / 217k mutants /
+OOM). Delete `workflow/cli/target/stryker4s-*` before re-running.
+
+- **Concept-delta**: `openspec/concept-inventory.md` — new section
+  "gate-event-completeness spec concepts" with 6 rows (`HarnessPayload`,
+  `ToolOutcome`, `RefusalBudget`, `GateDecisions`, `HarnessPayloadReader`,
+  `GateKernel`); 5 rows annotated in place (`GateEvent` +`PostBash`/
+  `harnessName`, `SpecPhase` +`fromStateFile`/`asToken`, `BlockReason`
+  +3 completion variants, `CliContext` +`hooksControl`,
+  `GateStateDirReader` +the spec-8 marker surface). `SessionId`,
+  `HeartbeatRecord`, `GateStateDir` were declared for this spec but
+  introduced early by live-fact-banner — already annotated. Snapshots:
+  `inventory-snapshots/gate-event-completeness-{before,after}.md`.
+  No `openspec/concepts/*.md` update — the spec alters no registered
+  concept's actions/state/syncs.
+### Ring 5 — PASS B (cli pass) survivor remediation
+
+PASS B mutates the 4 spec-8 cli files (`SubcommandEntrypoints`,
+`GateStateDir`, `HarnessPayloadReader`, `CliContext`) under all 30
+in-process cli suites (`SubprocessConformanceSpec` excluded — it execs
+the stale native artifact and cannot observe JVM mutants). Because these
+files mix spec-8 code with pre-existing spec-1..7 subcommands, the
+recorded score is the **in-diff covered-code rate** (mutants on lines
+the spec-8 diff touched), matching the spec-7 convention.
+
+Run 1 (post-F1): 1,549 mutants — 1,023 killed, 336 survived, 147
+NoCoverage, 39 ignored, 4 timeout; 75.35% covered globally. In-diff:
+499 covered mutants, 352 killed, 147 survived → **70.5% in-diff
+covered** (report `workflow/cli/target/stryker4s-report/1789855404053/`).
+
+**Remediation round 1** (245 first-run survivors → 147 after the
+pinpoint batch): pinpoint tests for trace output (event-specific lines,
+prologue skips, emit/suppression), payload field precedence, marker
+filename grammar (`SessionId.encoded` suffixes — `fromRaw("t")` encodes
+to `dA..`), refusal text + phase advance, installation probe,
+checkpoint-output sweep, hook-json envelopes, post-bash evidence rows,
+channel read-once, git baseline/ancestry, prompt-submit grant
+idempotence, completion branches, chain-state argv. Fixture corrections:
+`markerTriple` parses right-to-left (single-segment fixture names),
+`ToolOutcome.classify` reads exits only from `"Error: Exit code N"`
+strings, `mkRepo` leaves an unborn HEAD (seed + `gitCommitAll`), trace
+files append (count comparisons, not presence). Result: 81/81 green.
+
+**Remediation round 2** (the 147 in-diff survivors: ~82 trace/reason
+string literals on already-scenario-tested paths + ~65 logic mutants):
+strengthened existing tests with full trace-text and argv assertions
+(refusal reason tail fragments, already-refused suppression trace,
+allow-listed-path trace, `emit:`/`fully discharged`/`refuse
+(undetermined|uncorroborated|unresolved)`/`running chain-state` traces,
+reconcile stderr-merge + argv, archive-dir exclusion via a fail-loud
+stub, `unknown` baseline on unborn HEAD, `prompt-submit` named in the
+grant refusal) plus 13 new pinpoint tests: non-prod allow trace with
+state dir present, no-active-change non-prod, payload `.path` fallback
+(`file_path:false` → `.path`), completion no-marker/other-session-marker
+allow + trace, second-refusal suppression, missing chain-state tool →
+undetermined, no-ledger → reconcile skipped (`&&` guard),
+`--check-installed` repo resolution via payload `.cwd`, session-start
+channel read when `--repo` absent, post-bash classify skip-reason trace
+(`not-a-command-outcome — not recorded`), resolved-pair trace for
+non-ring commands (`command='ls -la' exit=0` + `no ring shape match`),
+ambient row `spec=unknown` when no spec dirs. GateStateDirSpec:
+heartbeat `Num` fractional + `Bool false→""` jq arms, sweep `>=2`-vs-`==2`
+via a 3-hyphen name, refusal-marker empty-content assert. Result:
+93/93 green; scalafmt/scalafix/danger-scan clean.
+
+**Dispositioned EQUIVALENT (documented, no test possible):**
+`stdinHasInput` mutants (in-process JVM always has `console()==null` +
+`available()==0` — both arms indistinguishable); `markerTriple`'s
+`takeRight`/`take`/`drop` variants (extra leading segments become the
+ignored tail — a `presentation-*`-globbed name parses to the same
+triple); sweep's `→true` arm (markerTriple returns `None` for any
+<2-hyphen name — the guard is redundant); `post-bash` `--exit` absent
+convergence (mutant `Some((cmd,""))` still records no row — `""` fails
+the append's exit parse); `cwd=""` fallback convergence
+(`Path.of("").toAbsolutePath` IS the process cwd — the final fallback
+either way); heartbeat `isRegularFile` guards (unreadable/absent both
+read `None`); `jqRender` `Num`-arm mutants on fields never read as
+numbers.
+
+Run 2 (post-round-2): 1,549 mutants — 78.28% covered / 70.66% total.
+In-diff: 499 covered, 391 killed → **78.36% in-diff covered**, 105
+survivors.
+
+**Remediation round 3** (the 105 in-diff survivors): strengthened
+stop-hook (marker-driven suppression + traced flagged run), grant-lock
+reason tail, post-edit quiet exact-empty output, spec-lint argv capture +
+`--artifacts`/`openspec/changes` literals, reconcile/chain-state argv
+exact-element asserts, text-mode envelope guard; new pinpoint tests:
+`VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK` bypass, spec-dir targets on
+untracked/past-oracle specs, prior-grant scan ordering, no-presentation
+Step-0 allow, stationary-phase no-write no-trace, post-bash empty-pair
+trace (`endsWith` — trace lines carry a timestamp prologue), no-change
+post-bash skip, ambient spec attribution, hook-json UserPromptSubmit
+envelope. GateStateDirSpec: presentation-glob decoys + cross-session
+marker + heartbeat Num/Bool arms + sweep 3-hyphen name. Result: 109/109
+green; scalafmt/scalafix/danger-scan clean.
+
+**Tooling anomaly**: Stryker's coverage-attributed test selection
+misreports some mutants as Survived although the asserting test provably
+kills them. Verified by manual mutant application: the `&&`→`||` at
+`SubcommandEntrypoints:968` (`sessionGrant || anyGrant.nonEmpty`) fails
+the grant-lock test (`a grant-less Step-0 edit must refuse, got
+Ran(0)`), and the `getOrElse("unknown")`→`""`/→`"Stryker"` mutants at
+`:1285` fail the chain-state argv test (`an unborn HEAD must pass the
+literal unknown baseline`). Dispositioned as coverage-attribution
+artifacts — the mutants are killable; Stryker did not select the
+covering test for them.
+
+Run 3 (post-round-3): 1,549 mutants — 1,132 killed, 250 survived, 124
+NoCoverage, 4 timeout; 81.96% covered / 75.23% total. In-diff: 539
+covered, 474 killed → **87.94% in-diff covered**, 65 survivors+timeouts.
+
+**Remediation round 4** (the run-3 in-diff survivors): strengthened the
+stationary-phase test (oracle refusal reason fragments + the
+ownership-resolution trace), the uncorroborated test (newline + `\n  `
+separator), the hook-json refusal (envelope ends `}\n`); 16 new pinpoint
+tests: read-only non-production trace, `ALLOW_PATHS` cannot waive the
+Step-0 grant lock + honors colon-separated prefixes, absent and
+non-string `tool_name` read as the empty (read-only) name, untracked and
+past-oracle spec-dir targets sorting AFTER a presented spec still skip
+the lock, no-active-change and all-specs-verified allow traces, the
+unmapped-file fallback trace, post-edit payload `file_path` resolution,
+repo-default `danger-scan`/`spec-lint`/`reconcile`+`chain-state` stubs
+under `openspec/schemas/verified-scala3/scanner/`, multi-line finding
+newline structure, post-edit hook-json trailing newline, `event=`
+prologue naming. Result: 126/126 green; scalafmt/scalafix/danger-scan
+clean.
+
+**Round-4 equivalents dispositioned** (no distinguishing test exists):
+`--exit` mutants (1145/1146 — `runAppend`'s strict exit grammar refuses
+a non-canonical exit, so `Some((cmd,""))` records no row, converging
+with `None`); `toolExists→true` + `(127,"")` literal on the chain-state
+missing-tool arm (1352/1359 — `runScanner` launch failure → `None` →
+the same `undetermined` catch-all); `jqRender` Bool/Num/Null arms
+(514/515/516 — unreachable: `jqField`/`jqAlternative` pre-guard
+`Null|Bool(false)`); `isRegularFile`/`isDirectory` guard flips
+(GateStateDir 182/225/324/445, SubcommandEntrypoints 562/590/609 — the
+un-guarded `readString`/`list`/`readAllLines` throws and the
+`NonFatal` catch produces the same `None`/`""`/empty); `implOrderText`
+`else ""` (591 — `specOrder` of arbitrary text yields no tokens → same
+specDirs fallback); `readLedgerRows` `t.isEmpty` (617 — `ujson.read("")`
+throws → per-line catch → `None`); `sessionGrant→false` (965 —
+`findAnySessionGrant` globs every session including the current one →
+same allow); `hooksControl` `"on"` default (297 — any non-`off` value
+is on); `stdinHasInput`/`readChannel` mutants (150×5, HPR 84/89 — the
+in-process JVM never has a pending channel); `banner.payload.isEmpty`
+(1491/1492 — the facts reader always emits fact lines → the empty arm
+is unreachable); the `Ring.R8` ambient arm (1237 — `ambientVerdict`
+never produces R8) and `runAppend`'s unused `runCommand` (1239);
+`sessionPresentations` `"presentation-"` glob literal (GateStateDir
+261 — `markerTriple` re-checks the prefix, a non-prefixed decoy parses
+to `None`); `runScanner` `getOrElse("")` arms (785/806 — `None` needs a
+launch failure while `toolExists` is true).
+
+Run 4 (post-round-4): 1,386 testable mutants — 1,132 killed, 250
+survived, 124 NoCoverage, 4 timeout; 83.68% covered / 77.09% total
+(report `workflow/cli/target/stryker4s-report/1789877369531/`).
+In-diff (incl. untracked `HarnessPayloadReader.scala`): 544 covered,
+500 killed → **91.91% in-diff covered** — above the 90% high bar. 40
+survivors + 4 timeouts + 21 NoCoverage remain in-diff.
+
+**Remediation round 5** (the run-4 in-diff survivors — post-run
+strengthenings, no further Stryker run): strengthened the
+untracked-spec-dir test (`non-production path, allow` + normalized
+relative path in the trace) and the stationary-phase refusal test
+(stderr capture asserting `reason\n`); new pinpoint tests: non-string
+payload fields read as `""` via `HarnessPayloadReader.parse` directly
+(jq `// empty` parity — a garbage `tool_name`/`cwd` would poison the
+tool-name tier and repo resolution), the same-session grant
+short-circuit (dual-grant fixture asserting no `prior session` trace —
+VERIFIED by hand-application: the `if sessionGrant → false` mutant at
+`SubcommandEntrypoints:965` fails it), the missing-`--exit` resolved-pair
+trace (`command='' exit=`). Result: 115/115 + 13/13 green.
+
+**Final survivor disposition** (run 4, 44 in-diff Survived+Timeout):
+
+- **Killed by round-5 asserts (5):** `:965` `sessionGrant→false`
+  (hand-verified), `:689` refusal `"\n"`, `:938` non-production trace
+  literal, `:1146` `exitFlag.isEmpty` (resolved-pair trace pins the
+  empty pair), `HarnessPayloadReader:67` `case _ => ""`.
+- **Proven phantom — hand-applied mutant fails the covering test while
+  Stryker reports Survived (3):** `:968` `&&`→`||` grant-lock waiver,
+  `:1285` `getOrElse("unknown")` baseline literal,
+  `GateStateDir:261` session-suffix literal (the
+  `presentation-cname-sname<enc>` no-dash decoy leaks a pair under the
+  mutant → the marker-glob test fails). Coverage-attribution anomaly,
+  same class documented above.
+- **Phantom by analysis — a covering test provably distinguishes (3):**
+  `:708` completion-refusal `"\n"` (the uncorroborated test asserts
+  `out.endsWith("\n")`), `:804` `mergeStderr→false` (the spec-lint
+  override stub's `LINT-ERR` is asserted from stderr), `:1145`
+  `"--exit"` literal (the green/red post-bash tests assert the row's
+  `exit` — a misread flag yields no pair and no row).
+- **Equivalent — convergent through fail-open catches, guarded callers,
+  or dead arms (remaining 29):** `GateStateDir` 182/225 (unguarded
+  `readString` throws → catch → same `Oracle`/`None`), 324 (`writeGrant`
+  rewrites identical content — idempotent), 416/445 (`Files.list` throws
+  → catch → `List.empty`); `HarnessPayloadReader` 49 (`ujson.read("")`
+  throws → `None`), 84→true (`readChannel` unreachable under the test
+  JVM — no pending stdin; environment-bound like `stdinHasInput`);
+  `SubcommandEntrypoints` 150×2 (`console()`/`available()` fixed
+  in-process → environment-bound), 297 (`"on"`→`""`: the consumer tests
+  `== "off"` — any non-off value is on), 515×2 (fractional-`Num` render
+  arm — payload fields rendered through `jqRender` are string/int in
+  realistic harness payloads), 542 (`case None => "Stryker"` converges
+  to the same non-production allow as `""`), 562/590/609/617 (unguarded
+  read throws → catch → identical default), 591 (`specOrder` of garbage
+  text yields no tokens → same `specDirs` fallback), 785/806
+  (`runScanner` `None` requires a ProcessBuilder launch failure —
+  unreachable under tests), 834 (hand-verified convergent: the payload
+  `tool_name` is consulted only when `--file` is absent → the empty file
+  fails open), 1079 (`!writeRefusal→false` — observable only on an
+  unwritable state dir; residual documented), 1237×2 (dead `Ring.R8`
+  arm — `ambientVerdict` never yields R8), 1239 (`runAppend`'s second
+  arg is `@unused`), 1352 (`bash <missing>` exits non-`{0,1}` → the same
+  `undetermined` catch-all as the 127 arm), 1359 (`out` ignored by
+  `case _`), 1491 (`banner.payload.isEmpty` — unreachable under
+  fixtures: the facts reader always emits fact lines).
+- **Timeouts (4):** `HarnessPayloadReader:84`→false and
+  `SubcommandEntrypoints:150`×3 — all remove the non-blocking read
+  guard; the read blocks forever under a silent pipe — non-terminating
+  by construction, expected.
+- **NoCoverage (21):** in-diff lines Stryker reports uncovered —
+  subprocess-launch failure paths and defensive arms the in-process
+  suite cannot drive.
+
+Effective in-diff kill rate counting the round-5 kills and verified
+phantoms: (500 + 5 + 6) / 544 ≈ **94%**.
+
+### Ring 6 — Stainless formal verification
+
+`GateKernel.scala` (new, verified module): `refusalBudget` +
+
+`classifyOutcome` per the spec's formal contract. First run carried the
+law directly in `refusalBudget`'s `ensuring` (`count`/`firstTrueIndex`
+equalities over `markAt` on an unbounded `List`) — the induction Z3
+cannot invent; the run produced no VC output for >65 min (the
+documented no-per-VC-timeout stall,
+`docs/ring6-stainless-verification-experience.md` §4/§5) and was killed.
+Rewritten per the codebase idiom (`ChainStateKernel.filteredNotBanned`
+pattern): structural helpers `countTrue`/`elemAt`/`firstTrueIndex`/
+`markAt` plus Unit-returning inductive lemmas `markAtLength`/
+`markAtCount`/`firstTrueInRange`/`markAtFti` (each `decreases(l.size)`,
+recursive call carries the IH) instantiated inside `refusalBudget`'s
+body. Re-run on the final source:
+
+- `sbt -J-Xmx6g 'set probatio-verified/stainlessEnabled := true'
+  'probatio-verified/clean' 'probatio-verified/compile'` (log:
+  `/tmp/ring6-spec8.log`)
+- **401/401 VCs valid, 0 invalid, 0 unknown** — nativez3, 2.56 s solve
+  time (205 from cache, 84 trivial). All `GateKernel` lemma
+  preconditions + `refusalBudget`'s postcondition `valid`.
+- `GateBridgeSpec` 2/2 green — property bridge over generated inputs
+  agrees production `GateDecisions`/`ambientVerdict` classification
+  with the verified model.
+
+- **Checkpoint**: Ring 6 PASS — pending final artifact/commit.
 
 ### Step Progress
-- [ ] Step 1 — Typed contract (human gate)
-- [ ] Step 2 — Test oracle (human gate)
-- [ ] Step 3 — Implementation
+- [x] Step 0 — Baseline + concept check
+- [x] Step 1 — Typed contract (APPROVED 2026-09-18)
+- [x] Step 2 — Test oracle (APPROVED 2026-09-18)
+- [x] Step 3 — Implementation
 - [ ] Ring 0–6, 8 + concept-delta + checkpoint
 
 ---

@@ -12,11 +12,11 @@ package org.sinemenda.probatio.core
  *
  * This is a PURE function — it takes booleans as inputs, not file paths.
  * The CLI layer reads state files and passes the results. No file I/O
- * or `System.getenv` is permitted here (compile-negative enforced).
+ * or `System#getenv` is permitted here (compile-negative enforced).
  *
  * spec: gate-checkpoint-lock — Requirement: The predecessor check requires a checkpoint presentation marker in addition to verified phase
  * spec: gate-checkpoint-lock — Property: predecessor-check-requires-presentation
- * spec: gate-checkpoint-lock — Compile-Negative: No file I/O or System.getenv in PredecessorCheck
+ * spec: gate-checkpoint-lock — Compile-Negative: No file I/O or System#getenv in PredecessorCheck
  */
 object PredecessorCheck:
 

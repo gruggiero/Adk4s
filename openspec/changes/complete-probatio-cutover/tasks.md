@@ -108,18 +108,18 @@
 
 ## 8. gate-event-completeness
 
-- [ ] Step 1 — typed contract: `HarnessPayload`, `ToolOutcome` (`Exit` | `Skip`) with `classify` as the only constructor path, `GateStateDir`, `RefusalBudget`, `HeartbeatRecord`, `GateEvent` gaining its sixth case, `SessionId` resolution order (compiles, human gate)
-- [ ] Step 2 — test oracle: 24 scenarios + 6 properties (`outcome-classification-is-total-and-conservative`, `post-tool-observation-never-blocks`, `refusal-budget-is-bounded-and-nonzero`, `session-identity-encoding-is-injective`, `unreadable-state-allows`, `envelope-conforms-to-contract`) + 4 compile-negative stubs; ORACLE POLARITY run (human gate)
-- [ ] Step 3 — implementation: the post-tool observation event and its ambient record writer; `HarnessPayloadReader` reading the input channel at most once in the top-level process; `GateStateDirReader`; the pre-execution and completion tiers wired to it, failing open with a stated reason; the bounded refusal budget; the installation probe; the envelope's harness event names; the escape hatch under both names with the deprecation notice
-- [ ] Ring 0 — clean; **the sixth `GateEvent` case must be handled in every existing match or Ring 0 fails** (the intended forcing function)
-- [ ] Ring 1 — lint clean; dangerous-pattern scan (ported tool)
-- [ ] Ring 2 — `dependencyLint` clean; compile-negative proves no file I/O or environment read in the gate decision functions
-- [ ] Ring 3 — property + scenario suites green; **`hook-tiers.bats`, `gate-payload.bats`, `ambient-capture-wiring.bats`, `ambient-evidence-capture.bats`, `oracle-ordering-lock.bats`, `human-grant-lock.bats` at parity** (baseline: 0/0/0/0/7/4 predecessor failures, 20/21/21/9/9/7 ported)
-- [ ] Ring 4 — `gate-hookjson-contract.jq` conforms for every event variant, including the sixth
-- [ ] Ring 8 — fresh-context adversarial review, driving the built artifact as a hook
-- [ ] Ring 5 — retarget to `ToolOutcome.scala`, `RefusalBudget.scala`, `GateStateDirReader.scala`, `HarnessPayloadReader.scala`, `SubcommandEntrypoints.scala`; threshold 80%; read and record the score
-- [ ] Ring 6 — `GateKernel` mirror (refusal budget + outcome classification) + `GateBridgeSpec`; `sbt -J-Xmx6g ring6`
-- [ ] Concept-delta check + inventory update (5 added, `SessionId` and `GateEvent` modified) + checkpoint
+- [x] Step 1 — typed contract: `HarnessPayload`, `ToolOutcome` (`Exit` | `Skip`) with `classify` as the only constructor path, `GateStateDir`, `RefusalBudget`, `HeartbeatRecord`, `GateEvent` gaining its sixth case, `SessionId` resolution order (compiles, human gate) — **APPROVED 2026-09-18**
+- [x] Step 2 — test oracle: 24 scenarios + 6 properties (`outcome-classification-is-total-and-conservative`, `post-tool-observation-never-blocks`, `refusal-budget-is-bounded-and-nonzero`, `session-identity-encoding-is-injective`, `unreadable-state-allows`, `envelope-conforms-to-contract`) + 4 compile-negative stubs; ORACLE POLARITY run (human gate) — **APPROVED 2026-09-18**
+- [x] Step 3 — implementation: the post-tool observation event and its ambient record writer; `HarnessPayloadReader` reading the input channel at most once in the top-level process; `GateStateDirReader`; the pre-execution and completion tiers wired to it, failing open with a stated reason; the bounded refusal budget; the installation probe; the envelope's harness event names; the escape hatch under both names with the deprecation notice
+- [x] Ring 0 — clean; the sixth `GateEvent` case is handled in every existing match (forcing function held)
+- [x] Ring 1 — lint clean; dangerous-pattern scan (ported tool) — `danger-scan.sh.predecessor.bak 5cebe3e0 --also <new files>`: OK
+- [x] Ring 2 — `dependencyLint` clean; `NoIOInProbatioCore` scalafix rule proves no file I/O or environment read in the gate decision functions
+- [x] Ring 3 — property + scenario suites green (`probatio-cli` 595/595, `probatio-core` 584/584); `probatioOracleDiff` PROCEED — all 17 bats files identical incl. `hook-tiers` 0=0, `gate-payload` 0=0, `ambient-capture-wiring` 1=1, `ambient-evidence-capture` 0=0, `oracle-ordering-lock` 7=7, `human-grant-lock` 4=4 (equal residual failures are pre-existing suite staleness — verified against `gate.sh.predecessor.bak` directly)
+- [x] Ring 4 — `gate-hookjson-contract.jq` conforms for every event variant, including the sixth (real `jq -e -f` exec, all six events × both formats)
+- [x] Ring 8 — fresh-context adversarial review (`ring8-adversarial-review.md`): three rounds — 13 findings remediated, one MAJOR re-flagged (`ownedFileCheck` on non-production paths) remediated + focused re-verify VERIFIED-FIXED; the built artifact driven as a hook (native image rebuilt; end-to-end exit-code parity spot-checked)
+- [x] Ring 5 — PASS A (core) 95.65% covered-code, 1 equivalent survivor; PASS B (cli) after 4 remediation rounds: 83.68% covered / **91.91% in-diff covered** (500/544; ≈94% counting verified phantoms + post-run kills) — exceeds the 90% bar
+- [x] Ring 6 — `GateKernel` (refusal budget + outcome classification) verified: **401/401 VCs valid, 0 invalid, 0 unknown** via `sbt -J-Xmx6g 'set probatio-verified/stainlessEnabled := true' 'probatio-verified/compile'`; first run stalled on the `count`/`indexWhere` postcondition (documented no-per-VC-timeout trap) — rewritten with `markAtLength`/`markAtCount`/`firstTrueInRange`/`markAtFti` Unit-lemmas; `GateBridgeSpec` 2/2 green
+- [ ] Concept-delta check + inventory update (5 added, `SessionId` and `GateEvent` modified) + checkpoint — concept-delta recorded; checkpoint pending human approval
 
 ## 9. native-gate-delivery
 
