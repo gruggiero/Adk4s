@@ -657,14 +657,31 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `SkillDocReference` | final case class (skillDocPath, referencedPath, line — isPredecessorReference, isPortedReference) | `org.sinemenda.probatio.migration` | test-only |
 | `SkillDocLintResult` | final case class (brokenReferences, forwardReferences — isClean) | `org.sinemenda.probatio.migration` | test-only |
 | `ToolId` (migration) | enum (SpecLint, ChainState, DangerScan, Reconcile, Gate — swapOrder, overrideEnvVar) | `org.sinemenda.probatio.migration` | test-only |
-| `OracleGreenCheck` | object (runOracle: SeamConfiguration → OracleOutcome — runs the bats oracle under a seam configuration) | `org.sinemenda.probatio.migration` | test-only |
+| `OracleGreenCheck` | **final class extends ProbatioSuite** (a munit suite, NOT an object) with instance methods `runOracle: SeamConfiguration → OracleOutcome` and `runDifferential: SeamConfiguration → DifferentialResult`, plus `genSeamConfiguration` — callers must instantiate it (`new OracleGreenCheck()`). Kind corrected 2026-09-20 by `repair-probatio-cutover` inventory-check; previously recorded as `object`. | `org.sinemenda.probatio.migration` | test-only |
 
 ### complete-probatio-porting change — migration-protocol spec concepts
 
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
-| `OracleGreenGate` | object (apply: (Stage, SeamConfiguration) → Boolean — gates stage transitions on bats oracle green; delegates to OracleGreenCheck.runOracle; also apply: (ToolId, SeamConfiguration) → Boolean for per-swap gating) | `org.sinemenda.probatio.migration` | test-only |
+| `OracleGreenGate` | object (apply: (Stage, SeamConfiguration) → Boolean — gates stage transitions on bats oracle green; instantiates `new OracleGreenCheck()` and calls its instance `runOracle`, since `OracleGreenCheck` is a suite class not an object; also apply: (ToolId, SeamConfiguration) → Boolean for per-swap gating) | `org.sinemenda.probatio.migration` | test-only |
 | `Stage` | enum (Wiring, Cutover — migration stages for oracle-green gating) | `org.sinemenda.probatio.migration` | test-only |
+
+### complete-probatio-cutover change — cutover-gate spec concepts
+
+<!-- Added 2026-09-20 by `repair-probatio-cutover` inventory-check. These seven
+     shipped with the archived `cutover-gate` spec but were never recorded; the
+     change's concept-delta check missed them. Provenance is therefore the
+     cutover-gate spec, not this change. -->
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `DifferentialHarness` | object (`runSuite`: (SeamConfiguration, oracleDir, binaryPath) → SuiteRun; `diff`: (SuiteRun, SuiteRun, repository) → DifferentialResult; `verifySuiteDigests`: (oracleDir, Map[String,String]) → Either[String, Unit]; nested `SuiteRun`, `BatsFileResult`). **KNOWN DEFECT 2026-09-20**: `runSuite` sets `*_OVERRIDE` env vars and runs bats in place — it does NOT materialise seam-configured trees as its scaladoc and the `strangler-migration-protocol` concept both declare, so both arms execute the same on-disk scripts. Being repaired by `spec:repair-probatio-cutover/differential-harness-integrity`. | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `FileComparison` | final case class (fileName, total, predecessorFailures, portedFailures, predecessorPresent, portedPresent — `isWorse`) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `DifferentialResult` | final case class (files: List[FileComparison], repository — `isComplete`, `worseFiles`, `hasRegression`, `worseFileNames`) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `CutoverGate` | object (`decide`: DifferentialResult → CutoverVerdict; `record`: DifferentialResult → GateRecord) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `CutoverVerdict` | enum (Proceed, Revert(evidence: DifferentialResult)) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `GateRecord` | final case class (verdict: CutoverVerdict, evidence: DifferentialResult — `authorisesSwap`, `hasEvidence`) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `SkillDocLintCheck` | **final class extends ProbatioCliSuite** (a munit suite, NOT an object) — detects stale skill-doc references after a shim swap | `org.sinemenda.probatio.migration` (cli test sources) | test-only; shipped by `spec:complete-probatio-porting/hook-cutover` |
 
 ### complete-probatio-porting change — hook-cutover spec concepts
 

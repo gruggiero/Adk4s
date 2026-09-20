@@ -27,7 +27,7 @@ context: |
   STACK QUICK REFERENCE (verify against capability-profile.md before use):
   - Scala 3.8.4, sbt, cats-effect 3, fs2, smithy4s, upickle (NOT circe)
   - Test: munit + Hedgehog (NOT ScalaTest, NOT ScalaCheck)
-  - 12 modules (see build.sbt for the current list)
+  - 18 sbt projects (17 aggregated-or-leaf + `probatio-spike`); see openspec/capability-profile.md
   - verified module: pinned to Scala 3.7.2 for Stainless (Ring 6)
 
 # ── Per-Artifact Rules ───────────────────────────────────────────────────
