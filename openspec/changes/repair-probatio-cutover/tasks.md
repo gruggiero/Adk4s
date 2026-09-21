@@ -25,18 +25,18 @@ no spec qualifies for a combined gate.
 
 ## 2. chain-state-undetermined-fidelity
 
-- [ ] Step 1 — typed contract: `PrePassOutcome` with `Completed`/`DidNotRun`, `ChainStateReport`'s factory narrowed to the completed arm, the could-not-determine type carrying no count field (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 9 scenarios + 3 properties (`no-counts-without-a-completed-pre-pass`, `outcome-status-is-total-and-disjoint`, `parity-with-predecessor-on-the-undetermined-boundary`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: map every pre-pass termination to an outcome in the adapter; make a report unconstructible without a completed pre-pass; name the unreadable input in every could-not-determine
-- [ ] Ring 0 — compile clean; the new outcome type is exhaustiveness-escalated
-- [ ] Ring 1 — lint clean; dangerous-pattern scan on the diff
-- [ ] Ring 2 — dependency lint clean; the boundary decision stays free of file I/O
-- [ ] Ring 3 — property + scenario suites green; **its acceptance file at parity with the genuine control**
-- [ ] Ring 4 — the correctness-report contract still conforms for every emitted report
-- [ ] Ring 5 — retarget the mutate list to the chain-state and report files; read the score (90%)
-- [ ] Ring 6 — extend the chain-state kernel with the boundary and count-monotonicity contracts; bridge property green
-- [ ] Ring 8 — fresh-context adversarial review
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Step 1 — typed contract: `PrePassOutcome` with `Completed`/`DidNotRun`, `ChainStateReport`'s factory narrowed to the completed arm, the could-not-determine type carrying no count field (compiles; **human gate**)
+- [x] Step 2 — test oracle: 9 scenarios + 3 properties (`no-counts-without-a-completed-pre-pass`, `outcome-status-is-total-and-disjoint`, `parity-with-predecessor-on-the-undetermined-boundary`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: map every pre-pass termination to an outcome in the adapter; make a report unconstructible without a completed pre-pass; name the unreadable input in every could-not-determine
+- [x] Ring 0 — compile clean; the new outcome type is exhaustiveness-escalated
+- [x] Ring 1 — lint clean; dangerous-pattern scan on the diff
+- [x] Ring 2 — dependency lint clean; the boundary decision stays free of file I/O
+- [x] Ring 3 — property + scenario suites green; **its acceptance file at parity with the genuine control**
+- [x] Ring 4 — the correctness-report contract still conforms for every emitted report
+- [x] Ring 5 — retarget the mutate list to the chain-state and report files; read the score (90%)
+- [x] Ring 6 — extend the chain-state kernel with the boundary and count-monotonicity contracts; bridge property green
+- [x] Ring 8 — fresh-context adversarial review
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 3. completion-witness-refusal
 

@@ -74,7 +74,7 @@
 
 ### 2. chain-state-undetermined-fidelity
 
-- **Status**: in progress — Rings 0–6 evidence complete; Ring 8 pending
+- **Status**: VALIDATED — human checkpoint approved (R8 freshness attested: review ran as isolated subagent `3d744b78` on spec + contract + `git diff 523ceb8b` only)
 - **BASELINE SHA**: `523ceb8b362200438484123da753602817367104`
 
 ### Step Progress
@@ -119,9 +119,9 @@
 - [x] Ring 6 — Stainless **431/431 VCs valid** (+8 over spec 1: `computeOutcome` boundary, `didNotRunIgnoresPopulatedEvidence`, `didNotRunCarriesStatedReason`, `completedOutcomeMatchesCompute`, `derivedCountsMonotone`); kernel models `PrePassOutcome`{`PrePassCompleted(lintSuccess)`,`PrePassDidNotRun(reason: BigInt)`}; bridge `VerifiedKernelBridgeSpec` **15/15** (DidNotRun ignores populated evidence, reason preservation, completed delegation, bounded monotone counts)
 - [x] Ring 8 — adversarial review → `ring8-chain-state-undetermined-fidelity.md`: **fresh-context: yes** (isolated read-only subagent `3d744b78`, inputs: spec + contract + `git diff 523ceb8b` only) — **34 PASS / 1 PARTIAL / 0 FAIL at review**; the PARTIAL (parity-property generator narrower than declared: shapes {0,1} of 0–3, no findings-run stub) **remediated**: `BoundaryStub.FindingsRun` (exit 1 + valid marker) + `three-req` shape added — corpus now 72 cases, parity property re-run green. **35 PASS / 0 PARTIAL / 0 FAIL after remediation**
 - [x] Concept-delta + inventory update — `concept-inventory.md`: `PrePassOutcome`, `UndeterminedReason`, `ChainStatePrePass`, `ChainStateKernel.computeOutcome` registered under `spec:repair-probatio-cutover/chain-state-undetermined-fidelity`; `ChainStateReport`/`ChainStateUndetermined`/`ChainState` rows annotated in place with re-shape provenance
-- [ ] Checkpoint
+- [x] Checkpoint — implementation committed `9c17261`; 16 PO-exact evidence rows re-recorded at the commit baseline (discharge requires `r.obligation ==` the spec's PO-table cell text AND `r.change == --change`); chain-state report: 46 total / 46 bound / 46 resolved / **8 discharged** (spec-1's 5 + spec-2's 3; remaining 38 belong to specs 3–11); `checkpoint.sh report` → all rings green, R8 `unverified-session` pending human attestation (same as spec 1)
 
-| Commit | _(pending)_ |
+| Commit | `9c17261` |
 
 ---
 
