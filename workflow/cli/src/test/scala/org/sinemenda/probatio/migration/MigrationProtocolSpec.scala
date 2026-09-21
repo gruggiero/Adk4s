@@ -84,15 +84,19 @@ final class MigrationProtocolSpec extends ProbatioCliSuite:
   // (all predecessor), full set (all ported), single-tool.
   def genAllValidSubsets: Gen[Set[ToolId]] =
     for
+      portedLedger     <- Gen.boolean
       portedChainState <- Gen.boolean
       portedSpecLint   <- Gen.boolean
       portedDangerScan <- Gen.boolean
       portedReconcile  <- Gen.boolean
+      portedCheckpoint <- Gen.boolean
       portedGate       <- Gen.boolean
     yield Set(
+      if portedLedger then Some(ToolId.Ledger) else None,
       if portedChainState then Some(ToolId.ChainState) else None,
       if portedSpecLint then Some(ToolId.SpecLint) else None,
       if portedDangerScan then Some(ToolId.DangerScan) else None,
       if portedReconcile then Some(ToolId.Reconcile) else None,
+      if portedCheckpoint then Some(ToolId.Checkpoint) else None,
       if portedGate then Some(ToolId.Gate) else None
     ).flatten

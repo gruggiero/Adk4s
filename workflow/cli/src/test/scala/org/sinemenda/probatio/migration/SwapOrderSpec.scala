@@ -20,9 +20,10 @@ final class SwapOrderSpec extends ProbatioCliSuite:
   // spec: migration-protocol — Scenario: Ledger and chain-state shims swap first
   test("swap order: ledger and chain-state shims swap before all others"):
     val swapOrder: List[ToolId] = ToolId.swapOrder
-    val firstTwo: List[ToolId]  = List(ToolId.ChainState, ToolId.SpecLint)
-    // The first two entries in swapOrder must be ChainState and SpecLint
-    // (the purest, best-covered tools), in that order.
+    val firstTwo: List[ToolId]  = List(ToolId.Ledger, ToolId.ChainState)
+    // The first two entries in swapOrder must be Ledger and ChainState —
+    // ledger evidence precedes chain state; the purest, best-covered
+    // tools lead (spec: differential-harness-integrity widened the order).
     assert(
       swapOrder.take(2) == firstTwo,
       s"expected first two = $firstTwo, got ${swapOrder.take(2)}"
@@ -44,8 +45,8 @@ final class SwapOrderSpec extends ProbatioCliSuite:
     // A shim can only be swapped if ALL tools before it in the swap order
     // have already been ported. This enforces dependency order.
     val state: MigrationState = MigrationState(Set(ToolId.ChainState))
-    // DangerScan (index 2) CANNOT be swapped because SpecLint
-    // (index 1) hasn't been ported yet.
+    // DangerScan (index 3) CANNOT be swapped because SpecLint
+    // (index 2) hasn't been ported yet.
     val canSwapDanger: Boolean = canSwap(state, ToolId.DangerScan)
     assert(
       !canSwapDanger,

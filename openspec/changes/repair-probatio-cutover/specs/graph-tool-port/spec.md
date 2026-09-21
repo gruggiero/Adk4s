@@ -10,8 +10,8 @@ does not cover, and the correctness verdict tool depends on it.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | This spec adds a seam the migration did not previously have: the traceability tool moves from its predecessor implementation to the ported one. The protocol's **Swap** and **Gate** actions apply to it unchanged. | `openspec/concepts/strangler-migration-protocol.md` |
-| Conformance property-test contract | The ported tool's exported graph must agree with the predecessor's on the repository's own corpus — the same bidirectional-equivalence discipline the ported validators already carry. | `openspec/concepts/conformance-property-test-contract.md` |
+| `Strangler` (Strangler Migration Protocol) | This spec adds a seam the migration did not previously have: the traceability tool moves from its predecessor implementation to the ported one. The protocol's **Swap** and **Gate** actions apply to it unchanged. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Conformance` (Conformance Property-Test Contract) | The ported tool's exported graph must agree with the predecessor's on the repository's own corpus — the same bidirectional-equivalence discipline the ported validators already carry. | `openspec/concepts/conformance-property-test-contract.md` |
 
 This spec does not alter either concept's purpose, actions, state, or synchronizations.
 Whether the traceability graph warrants its own behavioural concept file is flagged for

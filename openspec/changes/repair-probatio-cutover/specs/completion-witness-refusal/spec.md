@@ -8,7 +8,7 @@ returns allow where the predecessor refuses.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The completion tier sits at the gate seam, the last tool swapped. This spec restores the predecessor's refusal at that seam. No protocol action changes. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | The completion tier sits at the gate seam, the last tool swapped. This spec restores the predecessor's refusal at that seam. No protocol action changes. | `openspec/concepts/strangler-migration-protocol.md` |
 
 This spec does not alter any concept's purpose, actions, state, or synchronizations.
 

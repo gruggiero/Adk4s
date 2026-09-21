@@ -1,6 +1,7 @@
 package org.sinemenda.probatio.migration
 
 import hedgehog.*
+import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.ProbatioSuite
 
 import java.lang.Process
@@ -127,12 +128,9 @@ final class OracleGreenCheck extends ProbatioSuite:
         else
           // Ported tools: set override to the probatio binary path.
           // The binary is the JAR launcher at bin/probatio, which dispatches
-          // to the correct subcommand based on argv.
-          config.portedTools.flatMap { tool =>
-            val envVar: String     = ToolId.overrideEnvVar(tool)
-            val binaryPath: String = portedBinaryPath
-            Some(envVar -> binaryPath)
-          }.toMap
+          // to the correct subcommand based on argv. Tools without an
+          // override seam (ledger, checkpoint) contribute no env var.
+          config.portedTools.flatMap(tool => ToolId.overrideEnvVar(tool).map(_ -> portedBinaryPath)).toMap
 
       val batsFiles: IndexedSeq[os.Path]      = os.list(oracleDir).filter(_.ext == "bats")
       val outcomes: IndexedSeq[OracleOutcome] = batsFiles.map(runSingleBatsFile(_, env))
@@ -149,14 +147,23 @@ final class OracleGreenCheck extends ProbatioSuite:
   //
   // spec: cutover-gate — Requirement: The gate's decision is a comparison against the predecessor, not an absolute threshold
   def runDifferential(portedConfig: SeamConfiguration): DifferentialResult =
-    val oracleDir: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3" / "tests"
-    val binaryPath: String = portedBinaryPath
-    val predecessorRun: DifferentialHarness.SuiteRun =
-      DifferentialHarness.runSuite(portedConfig.withPredecessor, oracleDir, binaryPath)
-    val portedRun: DifferentialHarness.SuiteRun =
-      DifferentialHarness.runSuite(portedConfig, oracleDir, binaryPath)
-    val repository: String = os.pwd.toString
-    DifferentialHarness.diff(predecessorRun, portedRun, repository)
+    val schemaDir: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3"
+    val baseline: String   = "HEAD"
+    val workRoot: os.Path  = os.temp.dir(prefix = "probatio-arms-", deleteOnExit = true)
+    val predArm: Outcome[ArmTree] =
+      ArmTree.materialise(portedConfig.withPredecessor, baseline, schemaDir, workRoot / "predecessor")
+    val portArm: Outcome[ArmTree] =
+      ArmTree.materialise(portedConfig, baseline, schemaDir, workRoot / "ported")
+    (predArm, portArm) match
+      case (Outcome.Ran(pred), Outcome.Ran(port)) =>
+        DifferentialHarness.compare(pred, port) match
+          case Right(differential) => differential
+          case Left(identical) =>
+            sys.error(
+              s"differential refused: arms identical at seams ${identical.seams.map(_.seam).mkString(", ")}"
+            )
+      case _ =>
+        sys.error("arm materialisation could not be determined")
 
   // ── Helper: the resolved probatio binary path (JAR launcher)
   // The binary is the launcher script at bin/probatio, which invokes
@@ -167,8 +174,12 @@ final class OracleGreenCheck extends ProbatioSuite:
 
   // ── Helper: run a single bats file and parse the outcome
   private def runSingleBatsFile(batsFile: os.Path, env: Map[String, String]): OracleOutcome =
-    val cmd: Seq[String]        = Seq("bats", batsFile.toString)
-    val builder: ProcessBuilder = new ProcessBuilder(cmd*).redirectErrorStream(true)
+    val cmd: Seq[String] = Seq("bats", batsFile.toString)
+    // stdin is /dev/null: gate.sh reads the harness payload via `cat`, and
+    // an inherited open stdin makes that read block forever.
+    val builder: ProcessBuilder = new ProcessBuilder(cmd*)
+      .redirectErrorStream(true)
+      .redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
     // Set override env vars on the process
     env.foreach { case (k: String, v: String) => builder.environment().put(k, v) }
     val process: Process = builder.start()

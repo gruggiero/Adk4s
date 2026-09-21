@@ -10,7 +10,7 @@ archived, approved change.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The protocol's **Swap** action produces the forwarding scripts this spec makes portable. The protocol's **Gate** action is what this spec wires into continuous integration so it runs without being asked. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | The protocol's **Swap** action produces the forwarding scripts this spec makes portable. The protocol's **Gate** action is what this spec wires into continuous integration so it runs without being asked. | `openspec/concepts/strangler-migration-protocol.md` |
 
 This spec does not alter any concept's purpose, actions, state, or synchronizations.
 

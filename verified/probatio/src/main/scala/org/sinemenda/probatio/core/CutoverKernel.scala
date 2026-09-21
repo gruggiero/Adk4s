@@ -195,3 +195,152 @@ object CutoverKernel:
       case Proceed     => false
       case Revert(idx) => idx == BigInt(0)
   }.ensuring(_ == true)
+
+  // ---------------------------------------------------------------------------
+  // differential-harness-integrity — divergence and worse-file contracts
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The arm-divergence verdict. `ArmsIdentical` is a refusal — the
+   * comparison never proceeds to the suite. `ArmsDiverged` carries the
+   * index of the first seam whose digests differ.
+   *
+   * Seam content digests are abstracted as `BigInt` tokens: equality of
+   * tokens stands for byte-identical implementations. Path identity is
+   * deliberately absent from the model — two paths holding the same
+   * digest are the same implementation.
+   *
+   * spec: differential-harness-integrity — Contract: divergence
+   */
+  sealed abstract class ArmVerdict
+  case object ArmsIdentical                  extends ArmVerdict
+  case class ArmsDiverged(firstDiff: BigInt) extends ArmVerdict
+
+  /**
+   * The divergence decision: `ArmsIdentical` if and only if every paired
+   * seam digest is equal; `ArmsDiverged(i)` names a genuinely differing
+   * position otherwise.
+   *
+   * The iff between `firstDiffIndex` and `allEqualDigests` is an inductive
+   * postcondition over unbounded lists — Z3 cannot discharge it (see
+   * docs/ring6-stainless-verification-experience.md §5–6). The contract is
+   * instead pinned by the fixed-size law lemmas below plus the Ring 3
+   * bridge spec over generated inputs.
+   *
+   * spec: differential-harness-integrity — Contract: divergence
+   */
+  @pure
+  def divergenceDecision(left: List[BigInt], right: List[BigInt]): ArmVerdict = {
+    require(left.length == right.length)
+    firstDiffIndex(left, right, BigInt(0)) match
+      case Some(idx) => ArmsDiverged(idx)
+      case None()    => ArmsIdentical
+  }
+
+  /**
+   * Structural recursion: true iff every paired digest is equal.
+   * Replaces `zip.forall` which generated unprovable VCs.
+   */
+  @pure
+  def allEqualDigests(left: List[BigInt], right: List[BigInt]): Boolean = {
+    decreases(left.size)
+    (left, right) match
+      case (Nil(), Nil())                   => true
+      case (Cons(l, restL), Cons(r, restR)) => l == r && allEqualDigests(restL, restR)
+      case _                                => true // danger-scan:allow unreachable — equal-length fold invariant
+  }
+
+  /**
+   * Find the first index where the paired digests differ.
+   * Returns `Some(index)` if found, `None` if all are equal.
+   */
+  @pure
+  def firstDiffIndex(left: List[BigInt], right: List[BigInt], idx: BigInt): Option[BigInt] = {
+    decreases(left.size)
+    (left, right) match
+      case (Nil(), Nil()) => None()
+      case (Cons(l, restL), Cons(r, restR)) =>
+        if l != r then Some(idx)
+        else firstDiffIndex(restL, restR, idx + BigInt(1))
+      case _ => None() // danger-scan:allow shape-mismatch — never maps to a valid index
+  }
+
+  /**
+   * The worse-file fold: the indices of files whose ported failure count
+   * exceeds the predecessor count. This is the model the shipped
+   * `DifferentialResult.worseFiles` must agree with.
+   *
+   * The length-exactness between `worseFrom` and `countWorse` is an
+   * inductive postcondition over unbounded lists — Z3 cannot discharge it
+   * (see docs/ring6-stainless-verification-experience.md §5–6). Pinned by
+   * `worseIndicesExactOnFixture` plus the Ring 3 bridge spec.
+   *
+   * spec: differential-harness-integrity — Contract: worseFiles
+   */
+  @pure
+  def worseIndices(predecessor: List[BigInt], ported: List[BigInt]): List[BigInt] = {
+    require(
+      predecessor.length == ported.length &&
+        allNonNeg(predecessor) && allNonNeg(ported)
+    )
+    worseFrom(predecessor, ported, BigInt(0))
+  }
+
+  /** Structural recursion: collect indices where ported > predecessor. */
+  @pure
+  def worseFrom(predecessor: List[BigInt], ported: List[BigInt], idx: BigInt): List[BigInt] = {
+    decreases(predecessor.size)
+    (predecessor, ported) match
+      case (Nil(), Nil()) => Nil()
+      case (Cons(p, restP), Cons(q, restQ)) =>
+        if q > p then Cons(idx, worseFrom(restP, restQ, idx + BigInt(1)))
+        else worseFrom(restP, restQ, idx + BigInt(1))
+      case _ => Nil() // danger-scan:allow unreachable — equal-length fold invariant
+  }
+
+  /** Structural recursion: count positions where ported > predecessor. */
+  @pure
+  def countWorse(predecessor: List[BigInt], ported: List[BigInt]): BigInt = {
+    decreases(predecessor.size)
+    (predecessor, ported) match
+      case (Nil(), Nil()) => BigInt(0)
+      case (Cons(p, restP), Cons(q, restQ)) =>
+        (if q > p then BigInt(1) else BigInt(0)) + countWorse(restP, restQ)
+      case _ => BigInt(0) // danger-scan:allow unreachable — equal-length fold invariant
+  }
+
+  /**
+   * Law: equal digest vectors yield the refusal verdict.
+   * spec: differential-harness-integrity — Property: identical-arms-never-proceed
+   */
+  @pure
+  def identicalVectorsRefuse(a: BigInt, b: BigInt): Boolean = {
+    divergenceDecision(Cons(a, Cons(b, Nil())), Cons(a, Cons(b, Nil()))) match
+      case ArmsIdentical   => true
+      case ArmsDiverged(_) => false
+  }.ensuring(_ == true)
+
+  /**
+   * Law: vectors differing at exactly one position diverge, and the
+   * verdict names that position.
+   * spec: differential-harness-integrity — Scenario: Adversarial — arms differing at one seam only are still compared
+   */
+  @pure
+  def oneDiffDiverges(a: BigInt, b: BigInt, c: BigInt): Boolean = {
+    require(b != c)
+    divergenceDecision(Cons(a, Cons(b, Nil())), Cons(a, Cons(c, Nil()))) match
+      case ArmsIdentical   => false
+      case ArmsDiverged(i) => i == BigInt(1)
+  }.ensuring(_ == true)
+
+  /**
+   * Law: the worse-file fold is exact on a fixed input.
+   * File 0: pred=3, ported=5 (worse). File 1: pred=4, ported=2 (better).
+   * spec: differential-harness-integrity — Property: comparison-is-monotone-in-failures
+   */
+  @pure
+  def worseIndicesExactOnFixture: Boolean = {
+    val pred: List[BigInt]   = Cons(BigInt(3), Cons(BigInt(4), Nil()))
+    val ported: List[BigInt] = Cons(BigInt(5), Cons(BigInt(2), Nil()))
+    worseIndices(pred, ported) == Cons(BigInt(0), Nil())
+  }.ensuring(_ == true)

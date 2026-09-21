@@ -1,23 +1,27 @@
 package org.sinemenda.probatio.migration
 
-import java.lang.Process
-import java.lang.ProcessBuilder
+import org.sinemenda.probatio.core.Outcome
 
 /**
- * The differential harness — materialises two seam-configured copies of
- * the scanner tree inside the repository, runs the suite against each,
- * parses both outputs, and emits a `DifferentialResult`.
+ * The differential harness — runs the acceptance suite against two
+ * MATERIALISED arms and compares the per-file results.
  *
- * Both runs execute in the same repository under the same unmodified
- * suite, differing only in which implementation each seam resolves to.
- * The harness verifies that the suite file digests match the
- * repository's before running.
+ * Each arm is an [[ArmTree]]: a copy of the tool tree in which every seam
+ * has been resolved to a named implementation and digested by content.
+ * The comparison refuses to run when the two arms resolve every seam to
+ * identical content — a comparison of a run with itself cannot show a
+ * regression, so the absence of one carries no evidence.
+ *
+ * Both arms are materialised from the same repository at the same
+ * baseline — each a `git worktree` of that commit — so the suite inside
+ * each arm is the same committed suite by construction.
  *
  * This object is callable from tests and from the `probatioOracleDiff`
  * sbt task.
  *
  * spec: cutover-gate — Requirement: Both runs of the comparison execute in the same repository under the same suite
  * spec: cutover-gate — Implementation Anchors: DifferentialHarness
+ * spec: differential-harness-integrity — Requirement: A comparison whose arms resolve identically is refused
  */
 object DifferentialHarness:
 
@@ -34,8 +38,8 @@ object DifferentialHarness:
   )
 
   /**
-   * The result of running the full suite under one seam configuration:
-   * the per-file results.
+   * The result of running the full suite under one arm: the per-file
+   * results.
    */
   final case class SuiteRun(
     fileResults: List[BatsFileResult],
@@ -43,47 +47,174 @@ object DifferentialHarness:
   )
 
   /**
-   * Run the oracle suite under a seam configuration and return the
+   * The divergence verdict for two arms' resolved seams — the pre-suite
+   * guard. Identical iff every paired seam holds the same content digest.
+   *
+   * spec: differential-harness-integrity — Contract: divergence
+   */
+  def divergence(left: List[SeamResolution], right: List[SeamResolution]): ArmDivergence =
+    require(
+      left.length == right.length && left.map(_.seam) == right.map(_.seam),
+      "divergence requires both arms to resolve the same seams in the same order"
+    )
+    val differing: List[(SeamResolution, SeamResolution)] =
+      left.zip(right).filter((l, r) => l.implementationDigest != r.implementationDigest)
+    if differing.isEmpty
+    then ArmDivergence.Identical(left)
+    else ArmDivergence.Diverged(differing)
+
+  /**
+   * Run the oracle suite inside a materialised arm and return the
    * per-file results.
    *
-   * For the predecessor configuration (no tools ported), no override
-   * env vars are set — the bats files run against the original scanner
-   * scripts. For a ported configuration, the override env vars point
-   * to the probatio binary.
+   * The suite is the arm's own copy (`arm.root / "tests"`): the bats files
+   * resolve the arm's `scanner/`, `hooks/`, and `bin/` relative to their
+   * own location, so each run measures the arm's materialised seam
+   * contents — not the live tree's.
+   *
+   * spec: differential-harness-integrity — Requirement: The comparison resolves each arm to a materialised tree
    */
-  def runSuite(config: SeamConfiguration, oracleDir: os.Path, binaryPath: String): SuiteRun =
-    if !os.exists(oracleDir) then
-      sys.error(s"oracle directory not found: $oracleDir — a missing oracle is a hard failure, not an empty comparison")
-    else
-      val env: Map[String, String]       = buildEnv(config, binaryPath)
-      val batsFiles: IndexedSeq[os.Path] = os.list(oracleDir).filter(_.ext == "bats")
-      val fileSet: Set[String]           = batsFiles.map(_.last).toSet
-      val results: List[BatsFileResult]  = batsFiles.map(runSingleBatsFile(_, env)).toList
-      SuiteRun(results, fileSet)
+  def runSuite(arm: ArmTree): SuiteRun =
+    // os.RelPath keeps the segment out of os.Path's literal macro: a
+    // mutated literal segment would be a compile-time error stryker
+    // cannot roll back; here it is a runtime throw the tests kill.
+    val testsDir: os.Path = arm.root / os.RelPath("tests")
+    val batsFiles: IndexedSeq[os.Path] =
+      os.list(testsDir).filter(_.ext == "bats").sortBy(_.last)
+    val results: List[BatsFileResult] = batsFiles.toList.flatMap { (f: os.Path) =>
+      // stdin must be CLOSED: hooks/gate.sh does `PAYLOAD="$(cat)"` — with
+      // an inherited open stdin (e.g. sbt's pipe) that read blocks forever.
+      val res = os
+        .proc("bats", f.last)
+        .call(cwd = testsDir, check = false, stderr = os.Pipe, stdin = Array.empty[Byte])
+      val lines: List[String] = res.out.text().linesIterator.toList
+      val failures: Int       = lines.count(_.startsWith("not ok "))
+      val total: Int          = lines.count(l => l.startsWith("ok ") || l.startsWith("not ok "))
+      // A file that produced no TAP results (bats error, load failure)
+      // yields no result row — the diff then marks it absent from the
+      // run, making the comparison incomplete rather than a silent pass.
+      if total == 0 then None else Some(BatsFileResult(f.last, total, failures))
+    }
+    SuiteRun(results, batsFiles.map(_.last).toSet)
 
-  /** Build the environment variable overrides for a seam configuration. */
-  private def buildEnv(config: SeamConfiguration, binaryPath: String): Map[String, String] =
-    if config.portedTools.isEmpty then Map.empty[String, String]
-    else
-      config.portedTools.flatMap { (tool: ToolId) =>
-        val envVar: String = ToolId.overrideEnvVar(tool)
-        Some(envVar -> binaryPath)
-      }.toMap
+  /**
+   * The comparison entry point: refuse identical arms, otherwise run the
+   * suite against both arms and return the per-file differential.
+   *
+   * `Left(Identical)` is a REFUSAL — distinguishable from every
+   * `CutoverVerdict`; it is never a passing verdict and carries the seam
+   * resolutions that proved the arms identical.
+   *
+   * spec: differential-harness-integrity — Requirement: A comparison whose arms resolve identically is refused
+   * spec: differential-harness-integrity — Scenario: Adversarial — identical arms yield a refusal, not Proceed
+   */
+  def compare(predecessor: ArmTree, ported: ArmTree): Either[ArmDivergence.Identical, DifferentialResult] =
+    require(
+      predecessor.origin == ported.origin && predecessor.baseline == ported.baseline,
+      "both arms must be materialised from the same repository at the same baseline"
+    )
+    divergence(predecessor.resolutions, ported.resolutions) match
+      case identical: ArmDivergence.Identical => Left(identical)
+      case _: ArmDivergence.Diverged =>
+        Right(diff(runSuite(predecessor), runSuite(ported), predecessor.origin.toString))
 
-  /** Run a single bats file and parse the TAP output. */
-  private def runSingleBatsFile(batsFile: os.Path, env: Map[String, String]): BatsFileResult =
-    val cmd: Seq[String]        = Seq("bats", batsFile.toString)
-    val builder: ProcessBuilder = new ProcessBuilder(cmd*).redirectErrorStream(true)
-    env.foreach { case (k: String, v: String) => builder.environment().put(k, v) }
-    val process: Process = builder.start()
-    val output: String   = scala.io.Source.fromInputStream(process.getInputStream).mkString
-    process.waitFor()
-    val lines: List[String] = output.linesIterator.toList
-    val passed: Int         = lines.count(l => l.startsWith("ok ") && !l.contains("# skip"))
-    val skipped: Int        = lines.count(l => l.startsWith("ok ") && l.contains("# skip"))
-    val failed: Int         = lines.count(_.startsWith("not ok "))
-    val total: Int          = passed + skipped + failed
-    BatsFileResult(batsFile.last, total, failed)
+  /**
+   * The tree-relative tool paths each suite file exercises, derived by
+   * scanning the file's source for `scanner/`, `hooks/`, and `bin/` tool
+   * references. Used to mark files that exercise a tool with no seam —
+   * such a file is reported as not-compared, never as at-parity.
+   *
+   * spec: differential-harness-integrity — Scenario: Adversarial — a suite file exercising an unrepresented tool is not claimed as compared
+   */
+  def exercisedToolPaths(arm: ArmTree): Map[String, Set[String]] =
+    val testsDir: os.Path = arm.root / os.RelPath("tests")
+    // A file exercises a tool iff its text names a file that actually
+    // exists under the arm's scanner/, hooks/, or bin/ — a path-shaped
+    // substring like `bin/env` (from `#!/usr/bin/env`) is not a tool.
+    val toolPaths: Set[String] =
+      List("scanner", "hooks", "bin").flatMap { (d: String) =>
+        val dir: os.Path = arm.root / d
+        if os.exists(dir) then os.list(dir).filter(os.isFile).map((f: os.Path) => s"$d/${f.last}")
+        else List.empty[String]
+      }.toSet
+    os.list(testsDir)
+      .filter(_.ext == "bats")
+      .map((f: os.Path) => f.last -> toolPaths.filter(os.read(f).contains))
+      .toMap
+      .filter((_: String, paths: Set[String]) => paths.nonEmpty)
+
+  /**
+   * The exercised tool paths that are NOT in the seam set, per suite file.
+   * Files with a non-empty entry are not-compared: they exercise a tool
+   * whose live invocation path no seam covers.
+   *
+   * spec: differential-harness-integrity — Requirement: Every swapped seam is represented in the comparison
+   */
+  def unseamedToolPaths(arm: ArmTree): Map[String, Set[String]] =
+    val seamPaths: Set[String] = ToolId.swapOrder.map(ToolId.seamPath).toSet
+    exercisedToolPaths(arm)
+      .map((file, paths) => file -> paths.diff(seamPaths))
+      .filter((_, paths) => paths.nonEmpty)
+
+  /**
+   * Check a predecessor-arm suite run against the recorded control.
+   *
+   * The control is a measured fact at a named baseline: if `arm.baseline`
+   * differs from the control's recorded baseline the check is
+   * `Undetermined` — never a pass or a fail. At the recorded baseline the
+   * check is `Ran(())` iff every suite file's predecessor failure count
+   * equals the control's, and `Finding` naming the differing files
+   * otherwise.
+   *
+   * spec: differential-harness-integrity — Requirement: The comparison reproduces the recorded predecessor control
+   * spec: differential-harness-integrity — Scenario: Error path — a comparison at a different baseline is not checked against the control
+   */
+  def checkPredecessorControl(arm: ArmTree, run: SuiteRun, controlPath: os.Path): Outcome[Unit] =
+    if !os.exists(controlPath) then Outcome.Undetermined(s"recorded predecessor control not found: $controlPath")
+    else
+      // The control is an external fixture: unreadable or malformed JSON,
+      // or mistyped fields, are could-not-determine — never an exception
+      // escaping the check, and never a pass.
+      scala.util
+        .Try(checkAgainstControl(arm, run, controlPath))
+        .fold(
+          (_: Throwable) =>
+            Outcome.Undetermined(s"recorded predecessor control is unreadable or malformed: $controlPath"),
+          (outcome: Outcome[Unit]) => outcome
+        )
+
+  private def checkAgainstControl(arm: ArmTree, run: SuiteRun, controlPath: os.Path): Outcome[Unit] =
+    val control: ujson.Value    = ujson.read(os.read(controlPath))
+    val controlBaseline: String = control("measuredAtBaseline").str
+    if arm.baseline != controlBaseline then
+      Outcome.Undetermined(
+        s"baseline mismatch — arm materialised at ${arm.baseline}, control recorded at $controlBaseline"
+      )
+    else
+      val perFile = control("perFile").obj
+      val runByFile: Map[String, BatsFileResult] =
+        run.fileResults.map((r: BatsFileResult) => r.fileName -> r).toMap
+      val differing: List[String] = perFile.keys.toList.sorted.flatMap { (file: String) =>
+        val expected = perFile(file).obj
+        runByFile.get(file) match
+          case None => Some(s"$file (absent from run)")
+          case Some(result) =>
+            val expectedTotal: Int    = expected("total").num.toInt
+            val expectedFailures: Int = expected("failures").num.toInt
+            if result.failures == expectedFailures && result.total == expectedTotal then None
+            else
+              Some(
+                s"$file (control ${expectedTotal}t/${expectedFailures}f, run ${result.total}t/${result.failures}f)"
+              )
+      }
+      val extras: List[String] =
+        (runByFile.keySet -- perFile.keySet).toList.sorted.map((f: String) => s"$f (not in control)")
+      val mismatches: List[String] = differing ++ extras
+      if mismatches.isEmpty then Outcome.Ran(())
+      else
+        Outcome.Finding(
+          s"predecessor run differs from the recorded control: ${mismatches.mkString(", ")}"
+        )
 
   /**
    * Compute the differential result from two suite runs.
@@ -141,6 +272,4 @@ object DifferentialHarness:
 
   /** Compute a SHA-256 digest of a file. */
   private def computeDigest(path: os.Path): String =
-    val bytes: Array[Byte]                  = os.read.bytes(path)
-    val digest: java.security.MessageDigest = java.security.MessageDigest.getInstance("SHA-256")
-    digest.digest(bytes).map("%02x".format(_)).mkString
+    ContentDigest.hex(ContentDigest.ofFile(path))

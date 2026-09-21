@@ -10,7 +10,7 @@ the rename that has verified logic — the cache migration — has no caller.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The protocol's **Skill-doc update** action requires instruction documents to land with the swap they describe. This spec discharges that action for the rename. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | The protocol's **Skill-doc update** action requires instruction documents to land with the swap they describe. This spec discharges that action for the rename. | `openspec/concepts/strangler-migration-protocol.md` |
 
 This spec does not alter any concept's purpose, actions, state, or synchronizations.
 

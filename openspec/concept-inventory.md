@@ -656,7 +656,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `ShimResolution` | final case class (targets: List[ShimTarget] — allExactlyOne, missing, dual) | `org.sinemenda.probatio.migration` | test-only |
 | `SkillDocReference` | final case class (skillDocPath, referencedPath, line — isPredecessorReference, isPortedReference) | `org.sinemenda.probatio.migration` | test-only |
 | `SkillDocLintResult` | final case class (brokenReferences, forwardReferences — isClean) | `org.sinemenda.probatio.migration` | test-only |
-| `ToolId` (migration) | enum (SpecLint, ChainState, DangerScan, Reconcile, Gate — swapOrder, overrideEnvVar) | `org.sinemenda.probatio.migration` | test-only |
+| `ToolId` (migration) | enum (Ledger, ChainState, SpecLint, DangerScan, Reconcile, Checkpoint, Gate — swapOrder, seamPath, predecessorSource, `overrideEnvVar: Option[String]` with None for Ledger/Checkpoint). Widened 2026-09-21 by `repair-probatio-cutover/differential-harness-integrity` (+Ledger, +Checkpoint — the two seams the comparison never measured). | `org.sinemenda.probatio.migration` | test-only |
 | `OracleGreenCheck` | **final class extends ProbatioSuite** (a munit suite, NOT an object) with instance methods `runOracle: SeamConfiguration → OracleOutcome` and `runDifferential: SeamConfiguration → DifferentialResult`, plus `genSeamConfiguration` — callers must instantiate it (`new OracleGreenCheck()`). Kind corrected 2026-09-20 by `repair-probatio-cutover` inventory-check; previously recorded as `object`. | `org.sinemenda.probatio.migration` | test-only |
 
 ### complete-probatio-porting change — migration-protocol spec concepts
@@ -675,7 +675,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
-| `DifferentialHarness` | object (`runSuite`: (SeamConfiguration, oracleDir, binaryPath) → SuiteRun; `diff`: (SuiteRun, SuiteRun, repository) → DifferentialResult; `verifySuiteDigests`: (oracleDir, Map[String,String]) → Either[String, Unit]; nested `SuiteRun`, `BatsFileResult`). **KNOWN DEFECT 2026-09-20**: `runSuite` sets `*_OVERRIDE` env vars and runs bats in place — it does NOT materialise seam-configured trees as its scaladoc and the `strangler-migration-protocol` concept both declare, so both arms execute the same on-disk scripts. Being repaired by `spec:repair-probatio-cutover/differential-harness-integrity`. | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `DifferentialHarness` | object (`runSuite`: ArmTree → SuiteRun; `divergence`: (List[SeamResolution], List[SeamResolution]) → ArmDivergence; `compare`: (ArmTree, ArmTree) → Either[ArmDivergence.Identical, DifferentialResult]; `exercisedToolPaths`/`unseamedToolPaths`: ArmTree → Map[String, Set[String]]; `checkPredecessorControl`: (ArmTree, SuiteRun, controlPath) → Outcome[Unit]; `diff`: (SuiteRun, SuiteRun, repository) → DifferentialResult; `verifySuiteDigests`: (oracleDir, Map[String,String]) → Either[String, Unit]; nested `SuiteRun`, `BatsFileResult`). **DEFECT REPAIRED 2026-09-21** by `spec:repair-probatio-cutover/differential-harness-integrity`: `runSuite` now executes the suite inside a materialised `ArmTree` (a `git worktree` at a baseline with per-seam content digests) instead of setting `*_OVERRIDE` env vars on the live tree; identical arms are refused (`Left`), never reported as a verdict. | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate`, repaired by `spec:repair-probatio-cutover/differential-harness-integrity` |
 | `FileComparison` | final case class (fileName, total, predecessorFailures, portedFailures, predecessorPresent, portedPresent — `isWorse`) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
 | `DifferentialResult` | final case class (files: List[FileComparison], repository — `isComplete`, `worseFiles`, `hasRegression`, `worseFileNames`) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
 | `CutoverGate` | object (`decide`: DifferentialResult → CutoverVerdict; `record`: DifferentialResult → GateRecord) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
@@ -683,12 +683,21 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `GateRecord` | final case class (verdict: CutoverVerdict, evidence: DifferentialResult — `authorisesSwap`, `hasEvidence`) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
 | `SkillDocLintCheck` | **final class extends ProbatioCliSuite** (a munit suite, NOT an object) — detects stale skill-doc references after a shim swap | `org.sinemenda.probatio.migration` (cli test sources) | test-only; shipped by `spec:complete-probatio-porting/hook-cutover` |
 
+### repair-probatio-cutover change — differential-harness-integrity spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ArmTree` | final case class, private constructor (root, origin, baseline, config, resolutions) — constructible only via `ArmTree.materialise` (git worktree at baseline + seam resolution) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+| `ArmDivergence` | enum (Identical(seams: List[SeamResolution]) — a refusal, never a verdict; Diverged(perSeam: List[(SeamResolution, SeamResolution)]) — `isIdentical`, `divergingSeams`) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+| `SeamResolution` | final case class (seam: ToolId, implementationDigest: ContentDigest, sourcePath: os.Path) — identity is the digest; sourcePath is provenance only | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+| `ContentDigest` | opaque type over String (64-char lowercase SHA-256 hex — `ofBytes`, `ofFile`, `parse`, `hex`) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+
 ### complete-probatio-porting change — hook-cutover spec concepts
 
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
 | `ShimSwap` | final case class (tool: ToolId, predecessorPath, shimPath, binaryPath, oracleGreen, timestamp — immutable audit trail entry for one shim swap) | `org.sinemenda.probatio.migration` | test-only |
-| `SwapOrder` | enum (LedgerFirst, ChainState, SpecLint, DangerScan, Reconcile, GateLast — R-M3 dependency order for shim swaps; gate is always last; swapOrder, isLast, indexOf) | `org.sinemenda.probatio.migration` | test-only |
+| `SwapOrder` | enum (LedgerFirst, ChainState, SpecLint, DangerScan, Reconcile, Checkpoint, GateLast — R-M3 dependency order for shim swaps; gate is always last; swapOrder, isLast, indexOf). Checkpoint position added 2026-09-21 by `repair-probatio-cutover/differential-harness-integrity`, matching the `strangler-migration-protocol` concept's declared order. | `org.sinemenda.probatio.migration` | test-only |
 
 ### port-scanner-to-probatio change — non-goals-guard spec concepts
 

@@ -28,6 +28,7 @@ enum SwapOrder:
   case SpecLint
   case DangerScan
   case Reconcile
+  case Checkpoint
   case GateLast
 
 object SwapOrder:
@@ -38,6 +39,7 @@ object SwapOrder:
     SwapOrder.SpecLint,
     SwapOrder.DangerScan,
     SwapOrder.Reconcile,
+    SwapOrder.Checkpoint,
     SwapOrder.GateLast
   )
 

@@ -14,7 +14,15 @@ seam. The gate is always swapped last because it is the only blocking hook.
 - `SeamConfiguration(portedTools: Set[ToolId])` — which tools are on the
   ported implementation (the rest are on the predecessor)
 - `SwapOrder` — the binding dependency order (LedgerFirst → ChainState →
-  SpecLint → DangerScan → Reconcile → GateLast)
+  SpecLint → DangerScan → Reconcile → Checkpoint → GateLast)
+- `ArmTree` — a materialised copy of the repository tree at a baseline in
+  which every seam resolves to a named implementation; constructible only
+  through `ArmTree.materialise`
+- `SeamResolution` — what one seam resolved to in one arm, identified by
+  content digest, not by path
+- `ArmDivergence` — the pre-suite verdict over two arms' resolutions:
+  `Identical` (a refusal — never a passing verdict) or `Diverged` (the
+  seams whose resolved contents differ)
 
 ## Actions
 
@@ -51,8 +59,9 @@ binary but its subcommands are not yet verified.
 - The `CutoverGate.decide(differential)` function decides whether to
   proceed or revert based on the per-file comparison
 - The `DifferentialHarness` object materialises two seam-configured
-  scanner trees, runs the suite against each, and emits the
-  `DifferentialResult` the gate decides on
+  scanner trees, refuses the comparison when both resolve identically,
+  runs the suite against each, and emits the `DifferentialResult` the
+  gate decides on
 - The `OracleGreenGate.apply(tool, seamConfig)` function gates each swap
   on the cutover gate's decision
 - The `SwapOrder` enum encodes the binding dependency order

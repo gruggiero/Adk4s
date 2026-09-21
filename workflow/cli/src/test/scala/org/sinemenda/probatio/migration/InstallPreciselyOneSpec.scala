@@ -93,17 +93,21 @@ final class InstallPreciselyOneSpec extends ProbatioCliSuite:
   // set ranges from empty to all tools).
   def genMigrationState: Gen[MigrationState] =
     for
+      portedLedger     <- Gen.boolean
       portedChainState <- Gen.boolean
       portedSpecLint   <- Gen.boolean
       portedDangerScan <- Gen.boolean
       portedReconcile  <- Gen.boolean
+      portedCheckpoint <- Gen.boolean
       portedGate       <- Gen.boolean
     yield
       val ported: Set[ToolId] = Set(
+        if portedLedger then Some(ToolId.Ledger) else None,
         if portedChainState then Some(ToolId.ChainState) else None,
         if portedSpecLint then Some(ToolId.SpecLint) else None,
         if portedDangerScan then Some(ToolId.DangerScan) else None,
         if portedReconcile then Some(ToolId.Reconcile) else None,
+        if portedCheckpoint then Some(ToolId.Checkpoint) else None,
         if portedGate then Some(ToolId.Gate) else None
       ).flatten
       MigrationState(ported)
@@ -128,10 +132,12 @@ final class InstallPreciselyOneSpec extends ProbatioCliSuite:
 
   // ── Helper: map a tool to its predecessor script path
   private def predecessorScriptPath(tool: ToolId): String = tool match
+    case ToolId.Ledger     => "openspec/schemas/verified-scala3/scanner/ledger.sh"
     case ToolId.SpecLint   => "openspec/schemas/verified-scala3/scanner/spec-lint.sh"
     case ToolId.ChainState => "openspec/schemas/verified-scala3/scanner/chain-state.sh"
     case ToolId.DangerScan => "openspec/schemas/verified-scala3/scanner/danger-scan.sh"
     case ToolId.Reconcile  => "openspec/schemas/verified-scala3/scanner/reconcile.sh"
+    case ToolId.Checkpoint => "openspec/schemas/verified-scala3/scanner/checkpoint.sh"
     case ToolId.Gate       => "openspec/schemas/verified-scala3/hooks/gate.sh"
 
   // ── Helpers for test reporting

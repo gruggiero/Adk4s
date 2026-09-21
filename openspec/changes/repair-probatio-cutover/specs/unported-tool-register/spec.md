@@ -9,7 +9,7 @@ dependency of the correctness verdict while being scoped out of the port.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The protocol's **State** tracks which tools have been ported. This spec makes the complement — which have not, and why — an equally explicit and machine-checked part of that state. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | The protocol's **State** tracks which tools have been ported. This spec makes the complement — which have not, and why — an equally explicit and machine-checked part of that state. | `openspec/concepts/strangler-migration-protocol.md` |
 
 This spec does not alter the concept's purpose, actions, or synchronizations. It records
 the migration state's unported half in a checked form; whether the concept's **State**

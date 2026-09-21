@@ -9,7 +9,7 @@ for swapping them.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The protocol's **Swap** action requires the ported tool to stand in for the predecessor. This spec establishes that precondition for the two installers before their swap. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | The protocol's **Swap** action requires the ported tool to stand in for the predecessor. This spec establishes that precondition for the two installers before their swap. | `openspec/concepts/strangler-migration-protocol.md` |
 
 This spec does not alter any concept's purpose, actions, state, or synchronizations.
 

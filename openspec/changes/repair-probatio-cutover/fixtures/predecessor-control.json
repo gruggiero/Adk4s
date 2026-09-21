@@ -1,0 +1,27 @@
+{
+  "control": "predecessor",
+  "measuredAt": "2026-09-20",
+  "measuredAtBaseline": "817d18530cf03cd1484beac31148ad0b9aeb8f39",
+  "mechanism": "detached git worktree at 817d185 with the five *.predecessor.bak files restored at their live paths; 17-file bats suite run in place",
+  "baselineNote": "817d185 and the change baseline d1cf98a3dbb37e13f20d9b6e4fc2044ad3a5e1a9 differ only in openspec change documentation — the measured surface (scanner/, hooks/, tests/, bin/) is identical",
+  "suiteTotals": { "files": 17, "tests": 282, "failures": 18 },
+  "perFile": {
+    "ambient-capture-wiring.bats":      { "total": 32, "failures": 0 },
+    "ambient-evidence-capture.bats":    { "total": 9,  "failures": 0 },
+    "chain-state.bats":                 { "total": 24, "failures": 6 },
+    "checkpoint-from-ledger.bats":      { "total": 19, "failures": 0 },
+    "correctness-invariant.bats":       { "total": 30, "failures": 1 },
+    "discharge-fidelity.bats":          { "total": 11, "failures": 0 },
+    "evidence-capture.bats":            { "total": 13, "failures": 0 },
+    "evidence-ledger.bats":             { "total": 23, "failures": 0 },
+    "fact-extraction.bats":             { "total": 10, "failures": 0 },
+    "gate-payload.bats":                { "total": 24, "failures": 0 },
+    "harness-install-verification.bats":{ "total": 10, "failures": 0 },
+    "hook-tiers.bats":                  { "total": 27, "failures": 0 },
+    "human-grant-lock.bats":            { "total": 10, "failures": 4 },
+    "judgment-ring-integrity.bats":     { "total": 7,  "failures": 0 },
+    "judgment-ring-provenance.bats":    { "total": 10, "failures": 0 },
+    "oracle-ordering-lock.bats":        { "total": 13, "failures": 7 },
+    "workflow-hygiene.bats":            { "total": 10, "failures": 0 }
+  }
+}

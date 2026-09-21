@@ -8,7 +8,7 @@ bound/resolved/discharged count — numbers derived from an invocation that neve
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The ported verdict tool sits at a swapped seam; this spec restores the predecessor's three-way outcome at that seam. No protocol action changes. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | The ported verdict tool sits at a swapped seam; this spec restores the predecessor's three-way outcome at that seam. No protocol action changes. | `openspec/concepts/strangler-migration-protocol.md` |
 
 This spec does not alter any concept's purpose, actions, state, or synchronizations.
 

@@ -9,8 +9,8 @@ under a comparison that can see the difference.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The protocol's **Swap** and **Gate** actions applied to the two seams the migration declared but never measured. The protocol's declared swap order already places the ledger first. | `openspec/concepts/strangler-migration-protocol.md` |
-| Conformance property-test contract | The ledger record format has an executable contract; the ported validator must agree with it in both directions. | `openspec/concepts/conformance-property-test-contract.md` |
+| `Strangler` (Strangler Migration Protocol) | The protocol's **Swap** and **Gate** actions applied to the two seams the migration declared but never measured. The protocol's declared swap order already places the ledger first. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Conformance` (Conformance Property-Test Contract) | The ledger record format has an executable contract; the ported validator must agree with it in both directions. | `openspec/concepts/conformance-property-test-contract.md` |
 
 This spec does not alter either concept's purpose, actions, state, or synchronizations.
 

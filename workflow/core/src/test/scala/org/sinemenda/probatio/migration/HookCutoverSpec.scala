@@ -133,15 +133,19 @@ final class HookCutoverSpec extends ProbatioSuite:
     val err: String = compileErrors("SwapOrder.GateFirst")
     assert(err.nonEmpty, "SwapOrder must not have a GateFirst case — the gate is always last")
 
-  // ── Compile-Negative: SwapOrder has exactly 6 cases
-  test("SwapOrder enum has exactly 6 cases"):
+  // ── Compile-Negative: SwapOrder has exactly 7 cases
+  // spec: differential-harness-integrity — Type-Constraint: the seam enum gains a ledger seam and a checkpoint seam
+  // Cardinality widened 6 → 7 by differential-harness-integrity: the
+  // checkpoint seam joins the six declared positions (gate remains last).
+  test("SwapOrder enum has exactly 7 cases"):
     val cases: Array[SwapOrder] = SwapOrder.values
-    assertEquals(cases.length, 6, s"SwapOrder should have exactly 6 cases, found ${cases.length}")
+    assertEquals(cases.length, 7, s"SwapOrder should have exactly 7 cases, found ${cases.length}")
     assert(cases.contains(SwapOrder.LedgerFirst), "LedgerFirst missing")
     assert(cases.contains(SwapOrder.ChainState), "ChainState missing")
     assert(cases.contains(SwapOrder.SpecLint), "SpecLint missing")
     assert(cases.contains(SwapOrder.DangerScan), "DangerScan missing")
     assert(cases.contains(SwapOrder.Reconcile), "Reconcile missing")
+    assert(cases.contains(SwapOrder.Checkpoint), "Checkpoint missing")
     assert(cases.contains(SwapOrder.GateLast), "GateLast missing")
 
   // ── Generator: genSeamConfigurationPrefix

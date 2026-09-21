@@ -110,17 +110,21 @@ final class SkillDocLintCheck extends ProbatioCliSuite:
   // ── Generator: genMigrationState (same pattern as InstallPreciselyOneSpec)
   def genMigrationState: Gen[MigrationState] =
     for
+      portedLedger     <- Gen.boolean
       portedChainState <- Gen.boolean
       portedSpecLint   <- Gen.boolean
       portedDangerScan <- Gen.boolean
       portedReconcile  <- Gen.boolean
+      portedCheckpoint <- Gen.boolean
       portedGate       <- Gen.boolean
     yield
       val ported: Set[ToolId] = Set(
+        if portedLedger then Some(ToolId.Ledger) else None,
         if portedChainState then Some(ToolId.ChainState) else None,
         if portedSpecLint then Some(ToolId.SpecLint) else None,
         if portedDangerScan then Some(ToolId.DangerScan) else None,
         if portedReconcile then Some(ToolId.Reconcile) else None,
+        if portedCheckpoint then Some(ToolId.Checkpoint) else None,
         if portedGate then Some(ToolId.Gate) else None
       ).flatten
       MigrationState(ported)
@@ -195,6 +199,8 @@ final class SkillDocLintCheck extends ProbatioCliSuite:
         case s if s.startsWith("probatio chain-state") => Some(ToolId.ChainState)
         case s if s.startsWith("probatio danger")      => Some(ToolId.DangerScan)
         case s if s.startsWith("probatio reconcile")   => Some(ToolId.Reconcile)
+        case s if s.startsWith("probatio ledger")      => Some(ToolId.Ledger)
+        case s if s.startsWith("probatio checkpoint")  => Some(ToolId.Checkpoint)
         case s if s.startsWith("probatio gate")        => Some(ToolId.Gate)
         case _                                         => None
     toolForCommand(refPath) match
@@ -224,10 +230,12 @@ final class SkillDocLintCheck extends ProbatioCliSuite:
 
   // ── Helper: map a tool to its predecessor script name
   private def predecessorScriptName(tool: ToolId): String = tool match
+    case ToolId.Ledger     => "ledger.sh"
     case ToolId.SpecLint   => "spec-lint.sh"
     case ToolId.ChainState => "chain-state.sh"
     case ToolId.DangerScan => "danger-scan.sh"
     case ToolId.Reconcile  => "reconcile.sh"
+    case ToolId.Checkpoint => "checkpoint.sh"
     case ToolId.Gate       => "gate.sh"
 
   // ── Helper: check whether a predecessor script path exists on disk.

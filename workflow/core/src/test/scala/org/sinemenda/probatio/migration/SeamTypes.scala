@@ -17,17 +17,26 @@ import upickle.default.*
 object SeamTypes:
 
   /**
-   * The tools that have override seams in the predecessor implementation.
+   * The tools whose live invocation paths the cutover replaces — the seam
+   * set the differential comparison ranges over.
    *
-   * Each maps to an `*_OVERRIDE` environment variable in
-   * `openspec/schemas/verified-scala3/hooks/gate.sh` or
-   * `openspec/schemas/verified-scala3/scanner/chain-state.sh`.
+   * `Ledger` and `Checkpoint` are seams even though the predecessor
+   * implementation carries no `*_OVERRIDE` variable for them: their live
+   * paths (`scanner/ledger.sh`, `scanner/checkpoint.sh`) are replaced by
+   * the same exec-shim mechanism, and under materialisation an arm's seam
+   * content is what sits at that path. A seam that is not in this set is
+   * not compared.
+   *
+   * spec: differential-harness-integrity — Type-Constraint: the seam enum gains a ledger seam and a checkpoint seam
+   * spec: differential-harness-integrity — Requirement: Every swapped seam is represented in the comparison
    */
   enum ToolId:
-    case SpecLint
+    case Ledger
     case ChainState
+    case SpecLint
     case DangerScan
     case Reconcile
+    case Checkpoint
     case Gate
 
   object ToolId:
@@ -35,28 +44,76 @@ object SeamTypes:
       (t: ToolId) => ujson.Str(t.toString),
       (v: ujson.Value) =>
         v match
-          case ujson.Str("SpecLint")   => ToolId.SpecLint
+          case ujson.Str("Ledger")     => ToolId.Ledger
           case ujson.Str("ChainState") => ToolId.ChainState
+          case ujson.Str("SpecLint")   => ToolId.SpecLint
           case ujson.Str("DangerScan") => ToolId.DangerScan
           case ujson.Str("Reconcile")  => ToolId.Reconcile
+          case ujson.Str("Checkpoint") => ToolId.Checkpoint
           case ujson.Str("Gate")       => ToolId.Gate
           case other                   => sys.error(s"invalid ToolId: $other")
     )
 
-    /** The environment variable name for this tool's override seam. */
-    def overrideEnvVar(tool: ToolId): String = tool match
-      case ToolId.SpecLint   => "SPEC_LINT_OVERRIDE"
-      case ToolId.ChainState => "CHAIN_STATE_OVERRIDE"
-      case ToolId.DangerScan => "DANGER_SCAN_OVERRIDE"
-      case ToolId.Reconcile  => "RECONCILE_OVERRIDE"
-      case ToolId.Gate       => "GATE_OVERRIDE"
+    /**
+     * The `*_OVERRIDE` environment variable name for this tool's delegation
+     * seam inside the predecessor scripts, if one exists.
+     *
+     * `None` for `Ledger` and `Checkpoint` — the predecessors declare no
+     * such variable, and inventing a name nothing reads would be a seam
+     * that looks live but is not. Under materialisation the env-var
+     * mechanism is superseded: an arm's seam holds its implementation at
+     * the live path itself.
+     */
+    def overrideEnvVar(tool: ToolId): Option[String] = tool match
+      case ToolId.Ledger     => None
+      case ToolId.ChainState => Some("CHAIN_STATE_OVERRIDE")
+      case ToolId.SpecLint   => Some("SPEC_LINT_OVERRIDE")
+      case ToolId.DangerScan => Some("DANGER_SCAN_OVERRIDE")
+      case ToolId.Reconcile  => Some("RECONCILE_OVERRIDE")
+      case ToolId.Checkpoint => None
+      case ToolId.Gate       => Some("GATE_OVERRIDE")
 
-    /** The R-M3 swap order: purest, best-covered tools first; gate last. */
+    /**
+     * The live invocation path of a seam, relative to the schema directory
+     * (`openspec/schemas/verified-scala3`). This is the path the cutover
+     * replaces — the file an arm's materialisation resolves.
+     */
+    def seamPath(tool: ToolId): String = tool match
+      case ToolId.Ledger     => "scanner/ledger.sh"
+      case ToolId.ChainState => "scanner/chain-state.sh"
+      case ToolId.SpecLint   => "scanner/spec-lint.sh"
+      case ToolId.DangerScan => "scanner/danger-scan.sh"
+      case ToolId.Reconcile  => "scanner/reconcile.sh"
+      case ToolId.Checkpoint => "scanner/checkpoint.sh"
+      case ToolId.Gate       => "hooks/gate.sh"
+
+    /**
+     * The predecessor implementation source for a seam, relative to the
+     * schema directory. For the five swapped tools this is the recorded
+     * `*.predecessor.bak` file; for `Ledger` and `Checkpoint` — whose live
+     * paths were never swapped before this change — the live file itself
+     * is the predecessor implementation.
+     */
+    def predecessorSource(tool: ToolId): String = tool match
+      case ToolId.Ledger     => "scanner/ledger.sh"
+      case ToolId.ChainState => "scanner/chain-state.sh.predecessor.bak"
+      case ToolId.SpecLint   => "scanner/spec-lint.sh.predecessor.bak"
+      case ToolId.DangerScan => "scanner/danger-scan.sh.predecessor.bak"
+      case ToolId.Reconcile  => "scanner/reconcile.sh.predecessor.bak"
+      case ToolId.Checkpoint => "scanner/checkpoint.sh"
+      case ToolId.Gate       => "hooks/gate.sh.predecessor.bak"
+
+    /**
+     * The R-M3 swap order: purest, best-covered tools first; gate last.
+     * Mirrors [[SwapOrder.swapOrder]] position-for-position.
+     */
     val swapOrder: List[ToolId] = List(
+      ToolId.Ledger,
       ToolId.ChainState,
       ToolId.SpecLint,
       ToolId.DangerScan,
       ToolId.Reconcile,
+      ToolId.Checkpoint,
       ToolId.Gate
     )
 

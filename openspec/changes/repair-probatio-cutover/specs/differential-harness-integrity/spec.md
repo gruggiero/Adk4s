@@ -9,10 +9,11 @@ information.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | This spec implements the protocol's **Gate** action as declared. The concept's Synchronizations already state that the comparison "materialises two seam-configured scanner trees"; the shipped code does not. The concept prose is correct and is **not** altered — the code is brought to it. The concept's **State** section declares a swap order with six positions including a ledger position; the seam set in code has five and no ledger seam. This spec closes that divergence too. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | This spec implements the protocol's **Gate** action as declared. The concept's Synchronizations already state that the comparison "materialises two seam-configured scanner trees"; the shipped code did not. The concept's **State** section declared a six-position swap order; this spec adds the `Checkpoint` position and registers the new `ArmTree`/`SeamResolution`/`ArmDivergence` state entries in the concept — an extension to match the seven-seam reality, not a change to its purpose, actions, or synchronizations. | `openspec/concepts/strangler-migration-protocol.md` |
 
-This spec does not alter any concept's purpose, actions, state, or synchronizations. It
-makes the existing declarations true of the code.
+This spec does not alter any concept's purpose, actions, or synchronizations. Its **State**
+section is extended with the seam-set and arm types this spec introduces, and the swap order
+gains the `Checkpoint` position the seam widening requires.
 
 ## Concepts Used (from inventory)
 

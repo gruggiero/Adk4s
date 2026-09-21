@@ -22,12 +22,18 @@ import upickle.default.*
  */
 object MigrationTypes:
 
-  /** The tools that have override seams in the predecessor implementation. */
+  /**
+   * The tools whose live invocation paths the cutover replaces — the seam
+   * set. Gains `Ledger` and `Checkpoint` per differential-harness-integrity;
+   * kept in sync with `SeamTypes.ToolId` by the conformance property.
+   */
   enum ToolId:
-    case SpecLint
+    case Ledger
     case ChainState
+    case SpecLint
     case DangerScan
     case Reconcile
+    case Checkpoint
     case Gate
 
   object ToolId:
@@ -35,20 +41,24 @@ object MigrationTypes:
       (t: ToolId) => ujson.Str(t.toString),
       (v: ujson.Value) =>
         v match
-          case ujson.Str("SpecLint")   => ToolId.SpecLint
+          case ujson.Str("Ledger")     => ToolId.Ledger
           case ujson.Str("ChainState") => ToolId.ChainState
+          case ujson.Str("SpecLint")   => ToolId.SpecLint
           case ujson.Str("DangerScan") => ToolId.DangerScan
           case ujson.Str("Reconcile")  => ToolId.Reconcile
+          case ujson.Str("Checkpoint") => ToolId.Checkpoint
           case ujson.Str("Gate")       => ToolId.Gate
           case other                   => sys.error(s"invalid ToolId: $other")
     )
 
     /** The R-M3 swap order: purest, best-covered tools first; gate last. */
     val swapOrder: List[ToolId] = List(
+      ToolId.Ledger,
       ToolId.ChainState,
       ToolId.SpecLint,
       ToolId.DangerScan,
       ToolId.Reconcile,
+      ToolId.Checkpoint,
       ToolId.Gate
     )
 
@@ -73,12 +83,14 @@ object MigrationTypes:
             m("portedTools") match
               case arr: ujson.Arr =>
                 val tools: Set[ToolId] = arr.value.toList.flatMap {
-                  case ujson.Str("SpecLint")   => Some(ToolId.SpecLint)
+                  case ujson.Str("Ledger")     => Some(ToolId.Ledger)
                   case ujson.Str("ChainState") => Some(ToolId.ChainState)
+                  case ujson.Str("SpecLint")   => Some(ToolId.SpecLint)
                   case ujson.Str("DangerScan") => Some(ToolId.DangerScan)
                   case ujson.Str("Reconcile")  => Some(ToolId.Reconcile)
+                  case ujson.Str("Checkpoint") => Some(ToolId.Checkpoint)
                   case ujson.Str("Gate")       => Some(ToolId.Gate)
-                  case _                       => None
+                  case other                   => sys.error(s"invalid ToolId in MigrationState: $other")
                 }.toSet
                 MigrationState(tools)
               case other => sys.error(s"invalid portedTools: $other")

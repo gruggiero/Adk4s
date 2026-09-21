@@ -9,7 +9,7 @@ complete, and nothing re-ran it.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The feature freeze is the protocol's constraint on what a swap may change. This spec repairs its enforcing mechanism; the constraint itself is unchanged. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | The feature freeze is the protocol's constraint on what a swap may change. This spec repairs its enforcing mechanism; the constraint itself is unchanged. | `openspec/concepts/strangler-migration-protocol.md` |
 
 This spec does not alter any concept's purpose, actions, state, or synchronizations.
 

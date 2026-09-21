@@ -9,7 +9,7 @@ a vocabulary mismatch into a gate that does not run.
 
 | Concept | Role here | File |
 |---------|-----------|------|
-| Strangler migration protocol | The gate is the last seam swapped and the only blocking hook. This spec restores the predecessor's dispatch behaviour at that seam. No protocol action changes. | `openspec/concepts/strangler-migration-protocol.md` |
+| `Strangler` (Strangler Migration Protocol) | The gate is the last seam swapped and the only blocking hook. This spec restores the predecessor's dispatch behaviour at that seam. No protocol action changes. | `openspec/concepts/strangler-migration-protocol.md` |
 
 This spec does not alter any concept's purpose, actions, state, or synchronizations.
 

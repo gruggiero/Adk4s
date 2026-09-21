@@ -24,12 +24,15 @@ setup() {
 @test "D7: spec-lint.sh drift message references scanner/install-skills.sh, not sync-skills.sh" {
   # The INSTRUCTION DRIFT remediation message must reference the script
   # that actually exists (scanner/install-skills.sh), not the dangling
-  # reference (verified-scala3/sync-skills.sh).
-  # grep returns exit 1 when 0 matches found — so we check the output count
-  run grep -c 'sync-skills\.sh' "$SPEC_LINT"
-  [ "$output" -eq 0 ]
-  run grep -c 'install-skills\.sh' "$SPEC_LINT"
-  [ "$output" -ge 1 ]
+  # reference (verified-scala3/sync-skills.sh). The message lives in the
+  # ported implementation's source — the workflow/ Scala tree — not in
+  # the spec-lint.sh shim, which is a 2-line exec carrying no text.
+  local root
+  root="$(repo_root)"
+  run grep -rl 'sync-skills\.sh' "$root/workflow" --include='*.scala'
+  [ "$status" -ne 0 ]
+  run grep -rl 'install-skills\.sh' "$root/workflow" --include='*.scala'
+  [ "$status" -eq 0 ]
 }
 
 @test "D7: every tool-name in scanner messages resolves to a tracked file" {
@@ -88,24 +91,22 @@ setup() {
 # ── D8: gate.sh parses cwd with jq, not sed ──────────────────────────────
 
 @test "D8: gate.sh extracts cwd from hook JSON using jq, not sed" {
-  # The cwd extraction from the hook JSON payload must use jq (the
-  # declared prerequisite), not a sed regex over JSON.
-  # Find the cwd extraction line.
-  run grep -n 'cwd' "$GATE"
+  # The ported payload reader (HarnessPayloadReader.scala) extracts cwd
+  # via structured JSON parsing — the jq equivalent — not regex/sed over
+  # the payload text. The gate.sh shim is a 2-line exec carrying no
+  # parsing logic.
+  local root reader
+  root="$(repo_root)"
+  reader="$root/workflow/cli/src/main/scala/org/sinemenda/probatio/cli/HarnessPayloadReader.scala"
+  [ -f "$reader" ]
+  run grep -c 'ujson' "$reader"
   [ "$status" -eq 0 ]
-  # The line that extracts cwd must use jq, not sed
-  # Look for sed-based cwd extraction (the bug)
-  run grep -E 'sed.*cwd|cwd.*sed' "$GATE"
-  [ "$status" -eq 1 ]
-  # Verify jq is used for cwd extraction
-  run grep -E 'jq.*cwd|cwd.*jq' "$GATE"
-  # If jq is not directly on the cwd line, check that the payload is
-  # parsed with jq somewhere before cwd is used
-  if [ "$status" -ne 0 ]; then
-    # At minimum, the payload must be parsed with jq, not sed
-    run grep -E 'sed.*"cwd"' "$GATE"
-    [ "$status" -eq 1 ]
-  fi
+  run grep -n '"cwd"' "$reader"
+  [ "$status" -eq 0 ]
+  # Pattern-matching substitution over the payload text is the defect
+  # this test guards — a regex/sed extraction must fail the assertion.
+  run grep -cE 'findFirstMatchIn|findAllMatchIn|util\.matching\.Regex|sed -[ne]' "$reader"
+  [ "$output" -eq 0 ]
 }
 
 # ── D8: heartbeat written after relevance guard ──────────────────────────

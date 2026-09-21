@@ -6,6 +6,8 @@ import org.sinemenda.probatio.verified.CutoverKernel
 
 import scala.collection.immutable.List as ScalaList
 
+import SeamTypes.*
+
 /**
  * Ring 6 bridge spec — binds the shipped `CutoverGate.decide` to its
  * PureScala mirror model `CutoverKernel.cutoverDecision`.
@@ -124,6 +126,74 @@ final class CutoverBridgeSpec extends ProbatioSuite:
           .log(s"model=$modelDecision shipped=$shippedProceeds d=$d")
       else Result.success
 
+  // ── Bridge: shipped divergence agrees with model divergenceDecision ──────
+  // spec: differential-harness-integrity — Contract: divergence
+  //
+  // The model abstracts digests as BigInt tokens; the bridge assigns each
+  // distinct shipped digest a token (equal digests → equal tokens), runs the
+  // verified `divergenceDecision` on the token vectors, and asserts the
+  // shipped verdict agrees: identical ⟺ ArmsIdentical, and a diverged
+  // verdict's firstDiff names the shipped first differing seam's position.
+
+  property("bridge-divergence — shipped and model agree on the verdict"):
+    for pair <- genBridgeArmPair.forAll
+    yield
+      val (left, right): (ScalaList[SeamResolution], ScalaList[SeamResolution]) = pair
+      val tokenOf: Map[String, Int] =
+        (left ++ right)
+          .map((r: SeamResolution) => ContentDigest.hex(r.implementationDigest))
+          .distinct
+          .sorted
+          .zipWithIndex
+          .toMap
+      val leftTokens: stainless.collection.List[BigInt] =
+        toBigIntList(left.map((r: SeamResolution) => tokenOf(ContentDigest.hex(r.implementationDigest))))
+      val rightTokens: stainless.collection.List[BigInt] =
+        toBigIntList(right.map((r: SeamResolution) => tokenOf(ContentDigest.hex(r.implementationDigest))))
+      val shipped: ArmDivergence          = DifferentialHarness.divergence(left, right)
+      val model: CutoverKernel.ArmVerdict = CutoverKernel.divergenceDecision(leftTokens, rightTokens)
+      model match
+        case CutoverKernel.ArmsIdentical =>
+          Result
+            .assert(shipped.isIdentical)
+            .log(s"model refused (identical tokens) but shipped diverged: $shipped")
+        case CutoverKernel.ArmsDiverged(i) =>
+          val idx: Int = i.toInt
+          Result
+            .assert(!shipped.isIdentical)
+            .log(s"model diverged at $idx but shipped refused: $shipped")
+            .and(
+              Result
+                .assert(shipped.divergingSeams.headOption.contains(left(idx).seam))
+                .log(
+                  s"model firstDiff=$idx (${left(idx).seam}) but shipped first differs at ${shipped.divergingSeams.headOption}"
+                )
+            )
+
+  // ── Bridge: shipped worseFiles agrees with model worseIndices ────────────
+  // spec: differential-harness-integrity — Contract: worseFiles
+  //
+  // Bridged on COMPLETE comparisons only: the shipped `isWorse` additionally
+  // requires both runs present, which the model's plain count vectors cannot
+  // express. On complete data the conjuncts are vacuously true and the two
+  // folds must name the same positions.
+
+  property("bridge-worse-indices — shipped and model name the same worse files"):
+    for d <- genBridgeDifferential.forAll
+    yield
+      if d.isComplete then
+        val sorted: ScalaList[FileComparison]             = d.files.sortBy(_.fileName)
+        val predList: stainless.collection.List[BigInt]   = toBigIntList(sorted.map(_.predecessorFailures))
+        val portedList: stainless.collection.List[BigInt] = toBigIntList(sorted.map(_.portedFailures))
+        val modelIdxs: Set[Int] =
+          CutoverKernel.worseIndices(predList, portedList).toScala.map((b: BigInt) => b.toInt).toSet
+        val shippedIdxs: Set[Int] =
+          sorted.zipWithIndex.collect { case (f, i) if f.isWorse => i }.toSet
+        Result
+          .assert(modelIdxs == shippedIdxs)
+          .log(s"model worse=$modelIdxs shipped worse=$shippedIdxs files=$sorted")
+      else Result.success
+
   // ════════════════════════════════════════════════════════════════════════
   // Helpers
   // ════════════════════════════════════════════════════════════════════════
@@ -150,3 +220,25 @@ final class CutoverBridgeSpec extends ProbatioSuite:
       pred  <- Gen.int(Range.linear(0, total))
       port  <- Gen.int(Range.linear(0, total))
     yield FileComparison(name, total, pred, port, true, true)
+
+  /**
+   * A pair of seven-seam resolution vectors, content drawn from a small
+   * alphabet so identical and diverged outcomes are both frequent.
+   */
+  def genBridgeArmPair: Gen[(ScalaList[SeamResolution], ScalaList[SeamResolution])] =
+    for
+      leftContents  <- Gen.list(Gen.int(Range.linear(0, 3)), Range.constant(7, 7))
+      rightContents <- Gen.list(Gen.int(Range.linear(0, 3)), Range.constant(7, 7))
+    yield
+      val left: ScalaList[SeamResolution] =
+        ToolId.swapOrder.lazyZip(leftContents).map((s, c) => bridgeResolution(s, c, "/left"))
+      val right: ScalaList[SeamResolution] =
+        ToolId.swapOrder.lazyZip(rightContents).map((s, c) => bridgeResolution(s, c, "/right"))
+      (left, right)
+
+  def bridgeResolution(seam: ToolId, contentIdx: Int, pathPrefix: String): SeamResolution =
+    SeamResolution(
+      seam,
+      ContentDigest.ofBytes(s"bridge-content-$contentIdx".getBytes("UTF-8")),
+      os.Path(pathPrefix) / os.RelPath(ToolId.seamPath(seam))
+    )
