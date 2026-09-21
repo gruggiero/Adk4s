@@ -13,7 +13,7 @@
 
 ### 1. differential-harness-integrity
 
-- **Status**: IMPLEMENTED — all rings run; R8 fresh-context review completed by isolated subagent; findings remediated; awaiting human review
+- **Status**: VALIDATED — human checkpoint approval 2026-09-21; all rings green at commit baseline c59a2aa; R8 fresh-context verified
 - **BASELINE SHA**: `d1cf98a3dbb37e13f20d9b6e4fc2044ad3a5e1a9`
 
 ### Step Progress
@@ -66,7 +66,7 @@
 - [x] Ring 8 — adversarial review → `ring8-differential-harness-integrity.md`: **fresh-context: yes** (isolated read-only subagent `devin-subagent-d19f4f3f`, inputs: spec + contract + diff only) — 10 req PASS / 4 PARTIAL at review; findings remediated (ArmTree sealed to final class; ported resolution always writes canonical shim; control parse → Undetermined; worktree leak fixed; MigrationState decoder rejects unknown tools; generators cover all 126 mixed subsets; bridge properties added for divergenceDecision + worseIndices; spec prose corrected); post-remediation re-run 64 core + 9 cli tests green
 - [x] Concept-delta check + inventory update + checkpoint — strangler concept updated (7-position order + arm types); `concept-inventory.md` updated (ToolId widened, DifferentialHarness signature repaired, SwapOrder +Checkpoint, 4 new concepts registered); chain-state: 5/5 spec-1 requirements discharged; checkpoint report regenerated (R8 GREEN — fresh-context verified)
 
-| Commit | _(pending)_ |
+| Commit | `c59a2aa` |
 
 ---
 

@@ -9,19 +9,19 @@ no spec qualifies for a combined gate.
 
 ## 1. differential-harness-integrity
 
-- [ ] Prerequisite — confirm the five predecessor implementations are present on disk and readable; record their content digests as the arm-materialisation source
-- [ ] Prerequisite — record the hand-measured predecessor control (18 failures of 282, per file, at the change baseline) as the fixture this spec must reproduce
-- [ ] Step 1 — typed contract: `ArmTree` with a private constructor reachable only from materialisation, `ArmDivergence`, `SeamResolution` carrying a content digest, `ToolId` gaining the ledger and checkpoint seams (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 14 scenarios + 4 properties (`identical-arms-never-proceed`, `divergence-is-detected-by-content-not-path`, `seam-set-covers-the-swap-order`, `comparison-is-monotone-in-failures`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: replace the environment-variable arm construction with tree materialisation; digest each seam; refuse a comparison whose arms are identical; retarget the two source-inspecting acceptance tests at the ported implementation
-- [ ] Ring 0 — `sbt "probatio-core/compile" "probatio-cli/compile"` clean; the two new seam variants force every match over the seam enum
-- [ ] Ring 1 — scalafix + WartRemover clean; dangerous-pattern scan on the diff
-- [ ] Ring 2 — `probatioDependencyLint` clean across all four modules
-- [ ] Ring 3 — property + scenario suites green; **the predecessor arm reproduces the recorded control per file**
-- [ ] Ring 5 — move the migration sources to main, retarget the mutate list to the harness and seam files, run, move back; read the score (90% core / 80% adapter)
-- [ ] Ring 6 — extend the cutover kernel with the divergence and worse-file contracts; bridge property green; invoke the verification module directly
-- [ ] Ring 8 — fresh-context adversarial review; standing instruction: check whether the mechanism can return a passing verdict when the thing it measures is absent
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Prerequisite — confirm the five predecessor implementations are present on disk and readable; record their content digests as the arm-materialisation source
+- [x] Prerequisite — record the hand-measured predecessor control (18 failures of 282, per file, at the change baseline) as the fixture this spec must reproduce
+- [x] Step 1 — typed contract: `ArmTree` with a private constructor reachable only from materialisation, `ArmDivergence`, `SeamResolution` carrying a content digest, `ToolId` gaining the ledger and checkpoint seams (compiles; **human gate**)
+- [x] Step 2 — test oracle: 14 scenarios + 4 properties (`identical-arms-never-proceed`, `divergence-is-detected-by-content-not-path`, `seam-set-covers-the-swap-order`, `comparison-is-monotone-in-failures`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: replace the environment-variable arm construction with tree materialisation; digest each seam; refuse a comparison whose arms are identical; retarget the two source-inspecting acceptance tests at the ported implementation
+- [x] Ring 0 — `sbt "probatio-core/compile" "probatio-cli/compile"` clean; the two new seam variants force every match over the seam enum
+- [x] Ring 1 — scalafix + WartRemover clean; dangerous-pattern scan on the diff
+- [x] Ring 2 — `probatioDependencyLint` clean across all four modules
+- [x] Ring 3 — property + scenario suites green; **the predecessor arm reproduces the recorded control per file**
+- [x] Ring 5 — move the migration sources to main, retarget the mutate list to the harness and seam files, run, move back; read the score (90% core / 80% adapter)
+- [x] Ring 6 — extend the cutover kernel with the divergence and worse-file contracts; bridge property green; invoke the verification module directly
+- [x] Ring 8 — fresh-context adversarial review; standing instruction: check whether the mechanism can return a passing verdict when the thing it measures is absent
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 2. chain-state-undetermined-fidelity
 
