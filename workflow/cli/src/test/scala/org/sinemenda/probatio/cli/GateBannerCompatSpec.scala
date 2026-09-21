@@ -171,7 +171,16 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
       val lints: Map[String, Outcome[LintReport]] = Map("test-spec" -> Outcome.Ran(lint))
       val noForgive: (String, String) => Boolean  = (_, _) => false
       val chainResult: Either[ChainStateUndetermined, ChainStateReport] =
-        ChainState.compute(lints, ledger, extracted, Map.empty, "abc1234", "abc1234", "test-change", noForgive)
+        ChainState.compute(
+          PrePassOutcome.Completed(lints),
+          ledger,
+          extracted,
+          Map.empty,
+          "abc1234",
+          "abc1234",
+          "test-change",
+          noForgive
+        )
       chainResult match
         case Right(report) =>
           assert(report.unresolved.nonEmpty, "should have unresolved obligations")

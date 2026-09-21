@@ -569,8 +569,8 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `UnresolvedReason` | enum (Unbound, Unresolved, Undischarged, Unattributable, Failed) | `org.sinemenda.probatio.core` | shipped |
 | `UnresolvedEntry` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `UnmappedObligation` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `ChainStateReport` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `ChainStateUndetermined` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `ChainStateReport` | final case class (private constructor; verdict-path factory `from(prePass: PrePassOutcome.Completed, …)` — a report cannot be built from a `DidNotRun`; `fromCounts` `private[probatio]` for wire reconstruction only) | `org.sinemenda.probatio.core` | shipped; construction narrowed by `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `ChainStateUndetermined` | final case class (change, baseline, reason: `UndeterminedReason` — carries no measurement counts) | `org.sinemenda.probatio.core` | shipped; re-shaped by `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
 | `ChainState.Requirement` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `Verdict` | enum (Bound, Resolved, Unbound) | `org.sinemenda.probatio.core` | shipped |
 | `CheckId` | enum (F1–F10) | `org.sinemenda.probatio.core` | shipped |
@@ -691,6 +691,22 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `ArmDivergence` | enum (Identical(seams: List[SeamResolution]) — a refusal, never a verdict; Diverged(perSeam: List[(SeamResolution, SeamResolution)]) — `isIdentical`, `divergingSeams`) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
 | `SeamResolution` | final case class (seam: ToolId, implementationDigest: ContentDigest, sourcePath: os.Path) — identity is the digest; sourcePath is provenance only | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
 | `ContentDigest` | opaque type over String (64-char lowercase SHA-256 hex — `ofBytes`, `ofFile`, `parse`, `hex`) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+
+### repair-probatio-cutover change — chain-state-undetermined-fidelity spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `PrePassOutcome` | enum (`Completed(lints: Map[String, Outcome[LintReport]])` — carries the pre-pass's produced data; `DidNotRun(reason: UndeterminedReason)` — carries no lint data at all, so a measurement cannot be read out of a run that never happened) + `isCompleted`/`didNotRun` | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `UndeterminedReason` | opaque type over String (no public `apply` — an empty reason is unconstructible; `of: String => Either[String, UndeterminedReason]` validating route; `stated` total route — empty → `unclassifiable` = "the input under inspection"; `.text`; `ReadWriter` rejects empty on the wire) | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `ChainStatePrePass` | object (`runPrePassProbe` — spawns the resolved spec-lint (`SPEC_LINT_OVERRIDE` else `<repo>/openspec/schemas/verified-scala3/scanner/spec-lint.sh`) and classifies termination: absent / non-executable / launch failure / exit ∉ {0,1} / missing or count-mismatched completion marker / malformed graph-mode JSON → named `Left`s; mode-aware marker check — graph mode requires stdout to parse as a JSON array, degraded requires `spec-lint: <n> spec file(s)` with n == enumerated count) | `org.sinemenda.probatio.cli` | `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `ChainStateKernel.computeOutcome` | Ring 6 contract extension (`PrePassOutcome`{`PrePassCompleted(lintSuccess)`, `PrePassDidNotRun(reason: BigInt)`} + `computeOutcome` — `DidNotRun` → `Left(Undetermined)` without consulting evidence; `Completed` → existing fold) + laws `didNotRunIgnoresPopulatedEvidence`, `didNotRunCarriesStatedReason`, `completedOutcomeMatchesCompute`, `derivedCountsMonotone` | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+
+Existing rows modified by this spec (annotated in place above):
+`ChainStateReport` (verdict-path factory gated on `PrePassOutcome.Completed`;
+`fromCounts` narrowed to `private[probatio]`),
+`ChainStateUndetermined` (reason re-typed to `UndeterminedReason`; no count
+fields), `ChainState` (`compute` takes the typed `PrePassOutcome` — a bare
+lint map cannot reach the fold).
 
 ### complete-probatio-porting change — hook-cutover spec concepts
 
@@ -835,7 +851,7 @@ The following concepts were introduced by `spec:complete-probatio-cutover/chain-
 | `ExtractedObligation` | final case class (spec, line, obligation, artifact, artifacts, requirementClaims, unmappable) — one normalised obligation row; `unmappable` evaluated per-path at extraction time | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
 | `RequirementSet` | final case class (specNames, requirements, obligations, source) + `empty` + `isEmpty` — the only way requirements enter `ChainState.compute`; a bare `List[Requirement]` cannot | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
 | `RequirementExtractor` | object (`NamedSpec(name, document)`; `extract(specs, graphExport: Option[ujson.Value]): RequirementSet`; `usableExport`, `degradedObligations` exposed for verification) — total; degraded/empty inputs surface as data, never thrown | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
-| `ChainState` | object (`compute(lints, ledger, reqs: RequirementSet, specBaselines: Map[String, List[String]], baseline, change, artifactUnchanged)` — per-spec lint outcomes + unfiltered ledger + per-section baseline lists + injected forgiveness predicate) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `ChainState` | object (`compute(prePass: PrePassOutcome, ledger, reqs: RequirementSet, specBaselines: Map[String, List[String]], baseline, change, artifactUnchanged)` — `DidNotRun` short-circuits to `Left(ChainStateUndetermined)` without consulting evidence; `Completed` delegates to the measured fold) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution`; signature re-shaped by `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
 | `ChainStateKernel.chainStateFold` | Ring 6 contract (`total, verdicts, discharged, unattributable => (bound, resolved, dis, unresolved)` — verdict codes 0/1/2, index ranges in `[0,total)`; postcondition: `dis <= resolved <= bound <= total`, `unresolved.size == total - dis`, unattributable indices never counted discharged and always appear in `unresolved`) + helpers (`filterOut`, `foldFrom`, `rangeClause`, `clauseFrom`, `filteredNotBanned`, `absentIsUnresolved`) + three witness lemmas | `org.sinemenda.probatio.core` (verified/probatio) | `spec:complete-probatio-cutover/chain-state-attribution` |
 
 Existing rows modified by this spec (annotated in place above):

@@ -233,7 +233,16 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
 
   test("bridge-chainstate-failed-lint — both return Left for failed lint"):
     val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
+      ChainState.compute(
+        PrePassOutcome.Completed(failedLints),
+        emptyLedger,
+        noReqs,
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     assert(prodResult.isLeft, s"production must return Left for failed lint, got $prodResult")
 
     val modelResult: stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
@@ -244,7 +253,16 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
 
   test("bridge-chainstate-successful-lint — both return Right for successful lint"):
     val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(okLints(emptyLint), emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
+      ChainState.compute(
+        PrePassOutcome.Completed(okLints(emptyLint)),
+        emptyLedger,
+        noReqs,
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     assert(
       prodResult.isRight,
       s"production must return Right for successful lint, got $prodResult"
@@ -264,7 +282,16 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
     // with a clean report (discharged=0). The defect class is collapsing
     // undetermined into a clean "0 discharged" Right.
     val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(failedLints, emptyLedger, noReqs, Map.empty, "abc1234", "abc1234", "c", noForgive)
+      ChainState.compute(
+        PrePassOutcome.Completed(failedLints),
+        emptyLedger,
+        noReqs,
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
     assert(
       prodResult.isLeft,
       "production: failed lint must yield Left (undetermined), never Right (clean report)"
@@ -372,7 +399,7 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       RequirementSet(List("s"), reqs, obligations, source)
     val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
       ChainState.compute(
-        Map("s" -> lint),
+        PrePassOutcome.Completed(Map("s" -> lint)),
         ledger,
         set,
         Map.empty,
@@ -498,6 +525,182 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       ),
       "model: a Manual-ring row matching change/baseline/spec/obligation must discharge"
     )
+
+  // ── 2b. PrePassOutcome boundary bridge (chain-state-undetermined-fidelity) ──
+
+  /**
+   * A deliberately-populated production input — requirements, mapped
+   * obligations and a qualifying ledger row — so that a `Right` would be
+   * constructible if the boundary consulted the evidence.
+   */
+  private lazy val populatedReqs: RequirementSet =
+    RequirementSet(
+      List("s"),
+      List(foldReq("Alpha")),
+      List(foldObl(11, "obl alpha", List("Alpha"))),
+      FactSource.Degraded
+    )
+
+  private lazy val populatedLedger: Ledger.LedgerData =
+    Ledger.fromRecords(List(foldLedgerRow("obl alpha")))
+
+  test("bridge-prepass-didnotrun — populated evidence is ignored, both sides return Left"):
+    // Production: a did-not-run carries no lint data; the populated
+    // ledger/requirements must never be consulted — the defect this spec
+    // removes is populated evidence masquerading as a measurement.
+    val prodResult: Either[ChainStateUndetermined, ChainStateReport] =
+      ChainState.compute(
+        PrePassOutcome.DidNotRun(
+          UndeterminedReason.stated("spec-lint not found at /x/spec-lint.sh; cannot determine bound/resolved")
+        ),
+        populatedLedger,
+        populatedReqs,
+        Map.empty,
+        "base0",
+        "base0",
+        "c",
+        noForgive
+      )
+    prodResult match
+      case Left(u) =>
+        assert(
+          u.reason.text.contains("spec-lint not found at /x/spec-lint.sh"),
+          s"production: the undetermined must carry the stated reason, got ${u.reason.text}"
+        )
+      case Right(r) =>
+        fail(s"production: a did-not-run must never produce a report, got $r")
+
+    // Model: the same boundary on populated kernel inputs.
+    val kernelVerdicts: stainless.lang.Map[BigInt, ChainStateKernel.Verdict] =
+      stainless.lang.Map(BigInt(1) -> ChainStateKernel.Resolved())
+    val kernelRecords: stainless.collection.List[ChainStateKernel.LedgerRecord] =
+      scalaToStainlessList(
+        ScalaList(ChainStateKernel.LedgerRecord(BigInt(1), BigInt(1), ChainStateKernel.Manual, BigInt(1), BigInt(1)))
+      )
+    val kernelReqs: stainless.collection.List[ChainStateKernel.Requirement] =
+      scalaToStainlessList(ScalaList(ChainStateKernel.Requirement(BigInt(1), BigInt(1))))
+    val modelResult: stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
+      ChainStateKernel.computeOutcome(
+        ChainStateKernel.PrePassDidNotRun(BigInt(7)),
+        kernelVerdicts,
+        kernelRecords,
+        kernelReqs,
+        BigInt(1),
+        BigInt(1)
+      )
+    assert(modelResult.isLeft, s"model: a did-not-run must never produce a report, got $modelResult")
+    modelResult match
+      case stainless.lang.Left(u) =>
+        assertEquals(u.reason, BigInt(7), "model: the undetermined must carry the stated reason")
+      case stainless.lang.Right(_) =>
+        fail("model: a did-not-run must never produce a report")
+
+  test("bridge-prepass-completed — Completed is the only arm that reaches the fold"):
+    // Production: Completed with a failing lint is undetermined; with a
+    // successful lint it produces a measured report.
+    val prodFailed: Either[ChainStateUndetermined, ChainStateReport] =
+      ChainState.compute(
+        PrePassOutcome.Completed(failedLints),
+        emptyLedger,
+        noReqs,
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
+    assert(prodFailed.isLeft, s"production: a completed pre-pass with a failed lint is Left, got $prodFailed")
+    val prodOk: Either[ChainStateUndetermined, ChainStateReport] =
+      ChainState.compute(
+        PrePassOutcome.Completed(okLints(emptyLint)),
+        emptyLedger,
+        noReqs,
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "c",
+        noForgive
+      )
+    assert(prodOk.isRight, s"production: a completed pre-pass reaches the fold, got $prodOk")
+
+    // Model: computeOutcome(PrePassCompleted(ran)) delegates to compute(ran).
+    val emptyKernelInput
+        : stainless.lang.Either[ChainStateKernel.Undetermined, ChainStateKernel.ChainStateReport] =
+      ChainStateKernel.computeOutcome(
+        ChainStateKernel.PrePassCompleted(false),
+        stainless.lang.Map.empty[BigInt, ChainStateKernel.Verdict],
+        stainless.collection.List.empty[ChainStateKernel.LedgerRecord],
+        stainless.collection.List.empty[ChainStateKernel.Requirement],
+        BigInt(1),
+        BigInt(1)
+      )
+    assert(emptyKernelInput.isLeft, s"model: Completed(false) delegates to the failed-lint arm, got $emptyKernelInput")
+
+  test("bridge-prepass-counts-monotone — every measured report is monotone and bounded"):
+    // Over a constructive corpus of completed pre-passes, every production
+    // report obeys 0 <= discharged <= resolved <= bound <= total — the
+    // model's derivedCountsMonotone is the Stainless-proven mirror.
+    val corpus: List[(String, Either[ChainStateUndetermined, ChainStateReport])] = List(
+      "all-satisfied" -> ChainState.compute(
+        PrePassOutcome.Completed(Map("s" -> foldLint(List("Alpha"), Map("Alpha" -> List(foldRow(11, "Requirement: Alpha")))))),
+        Ledger.fromRecords(List(foldLedgerRow("obl alpha"))),
+        RequirementSet(
+          List("s"),
+          List(foldReq("Alpha")),
+          List(foldObl(11, "obl alpha", List("Alpha"))),
+          FactSource.Degraded
+        ),
+        Map.empty,
+        "base0",
+        "base0",
+        "c",
+        noForgive
+      ),
+      "unbound-only" -> ChainState.compute(
+        PrePassOutcome.Completed(Map("s" -> foldLint(List("Alpha"), Map.empty))),
+        emptyLedger,
+        RequirementSet(List("s"), List(foldReq("Alpha")), List.empty, FactSource.Degraded),
+        Map.empty,
+        "base0",
+        "base0",
+        "c",
+        noForgive
+      ),
+      "undischarged" -> ChainState.compute(
+        PrePassOutcome.Completed(Map("s" -> foldLint(List("Alpha"), Map("Alpha" -> List(foldRow(11, "Requirement: Alpha")))))),
+        emptyLedger,
+        RequirementSet(
+          List("s"),
+          List(foldReq("Alpha")),
+          List(foldObl(11, "obl alpha", List("Alpha"))),
+          FactSource.Degraded
+        ),
+        Map.empty,
+        "base0",
+        "base0",
+        "c",
+        noForgive
+      )
+    )
+    corpus.foreach { (name: String, result: Either[ChainStateUndetermined, ChainStateReport]) =>
+      result match
+        case Right(r) =>
+          assert(
+            r.discharged >= 0 && r.discharged <= r.resolved &&
+              r.resolved <= r.bound && r.bound <= r.total,
+            s"$name: counts must obey 0 <= discharged <= resolved <= bound <= total, got $r"
+          )
+          assert(
+            ChainStateKernel.derivedCountsMonotone(
+              BigInt(r.total),
+              BigInt(r.total - r.bound),
+              BigInt(r.bound - r.resolved),
+              BigInt(r.resolved - r.discharged)
+            ),
+            s"$name: the model's derivedCountsMonotone must accept production's derived components"
+          )
+        case Left(u) => fail(s"$name: a completed pre-pass fixture must produce a report, got ${u.reason.text}")
+    }
 
   // ── 3. BannerEngineKernel bridge ────────────────────────────────────────
 

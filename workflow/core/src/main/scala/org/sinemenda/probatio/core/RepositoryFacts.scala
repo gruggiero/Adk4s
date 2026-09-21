@@ -169,7 +169,7 @@ object RepositoryFacts:
           "state"    -> "undetermined",
           "change"   -> u.change,
           "baseline" -> u.baseline,
-          "reason"   -> u.reason
+          "reason"   -> u.reason.text
         )
       case Right(report) =>
         ujson.Obj(

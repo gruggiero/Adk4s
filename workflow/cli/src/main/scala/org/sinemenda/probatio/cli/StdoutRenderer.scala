@@ -77,7 +77,7 @@ object StdoutRenderer:
         "change"               -> ujson.Str(undetermined.change),
         "baseline"             -> ujson.Str(undetermined.baseline),
         "undetermined"         -> ujson.Bool(true),
-        "reason"               -> ujson.Str(undetermined.reason),
+        "reason"               -> ujson.Str(undetermined.reason.text),
         "total"                -> ujson.Null,
         "bound"                -> ujson.Null,
         "resolved"             -> ujson.Null,

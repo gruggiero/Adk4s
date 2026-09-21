@@ -22,6 +22,7 @@ import org.sinemenda.probatio.core.RequirementVerdict
 import org.sinemenda.probatio.core.RootBase
 import org.sinemenda.probatio.core.SpecDocument
 import org.sinemenda.probatio.core.StampFormat
+import org.sinemenda.probatio.core.UndeterminedReason
 import org.sinemenda.probatio.core.UnresolvedEntry
 import org.sinemenda.probatio.core.UnresolvedReason
 import org.sinemenda.probatio.core.Verdict
@@ -490,7 +491,7 @@ object LiveFactFixtures:
       50 -> genReport.map(r => Right(r)),
       50 -> Gen
         .string(Gen.alpha, Range.linear(3, 20))
-        .map(r => Left(ChainStateUndetermined("c", "b", r)))
+        .map(r => Left(ChainStateUndetermined("c", "b", UndeterminedReason.stated(r))))
     )
 
   private val genArtifacts: Gen[FactRead[ArtifactScan]] =
@@ -587,7 +588,7 @@ object LiveFactFixtures:
                   ActiveChangeWithChainState(
                     "mut",
                     FactRead.Absent,
-                    Left(ChainStateUndetermined("mut", "b", "mutated"))
+                    Left(ChainStateUndetermined("mut", "b", UndeterminedReason.stated("mutated")))
                   )
                 )
               )

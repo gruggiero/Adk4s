@@ -98,7 +98,7 @@ final class BannerBridgeSpec extends ProbatioSuite:
           ActiveChangeWithChainState(
             name = s"bridge-change-$i",
             artifacts = FactRead.Absent,
-            chainState = Left(ChainStateUndetermined("bridge-change", "b", "bridge"))
+            chainState = Left(ChainStateUndetermined("bridge-change", "b", UndeterminedReason.stated("bridge")))
           )
         }
       )

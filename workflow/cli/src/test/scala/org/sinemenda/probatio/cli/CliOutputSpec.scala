@@ -4,6 +4,7 @@ import org.sinemenda.probatio.core.ChainStateUndetermined
 import org.sinemenda.probatio.core.GatePayload
 import org.sinemenda.probatio.core.HookSpecificOutput
 import org.sinemenda.probatio.core.Outcome
+import org.sinemenda.probatio.core.UndeterminedReason
 import upickle.default.*
 
 /**
@@ -20,7 +21,7 @@ final class CliOutputSpec extends ProbatioCliSuite:
     val undetermined: ChainStateUndetermined = ChainStateUndetermined(
       change = "port-scanner-to-probatio",
       baseline = "abc123",
-      reason = "ledger unreadable: truncated at line 42"
+      reason = UndeterminedReason.stated("ledger unreadable: truncated at line 42")
     )
     val stdout: String = write(undetermined)
     assert(stdout.nonEmpty, "undetermined chain-state stdout payload is empty")
@@ -57,14 +58,24 @@ final class CliOutputSpec extends ProbatioCliSuite:
       assert(reason.nonEmpty, s"reason '$reason' is empty")
     }
 
-  test("undetermined chain-state with empty reason still produces a JSON object"):
-    // Even an empty-reason undetermined must produce a JSON object on stdout,
-    // not suppress it entirely.
+  test("undetermined chain-state rejects an empty reason and still produces a JSON object"):
+    // An empty reason is unrepresentable (UndeterminedReason.of rejects it);
+    // the total `stated` route maps it to the unclassifiable-input reason —
+    // the report still serializes to a JSON object on stdout, never
+    // suppressed entirely.
+    assert(
+      UndeterminedReason.of("").isLeft,
+      "an empty reason must be rejected by the smart constructor"
+    )
     val undetermined: ChainStateUndetermined = ChainStateUndetermined(
       change = "test-change",
       baseline = "sha000",
-      reason = ""
+      reason = UndeterminedReason.stated("")
     )
     val stdout: String = write(undetermined)
     assert(stdout.nonEmpty, "undetermined with empty reason produced empty stdout")
     assert(stdout.contains("test-change"), "change name not in stdout payload")
+    assert(
+      undetermined.reason.text.nonEmpty,
+      "the stated fallback still names the input under inspection"
+    )

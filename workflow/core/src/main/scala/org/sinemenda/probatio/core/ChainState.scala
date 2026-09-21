@@ -29,9 +29,15 @@ object ChainState:
    *
    * Parameters:
    *
-   * @param lints
-   *   the per-spec lint outcomes — spec name → the `Outcome` of linting
-   *   that spec's document. A run that did not complete
+   * @param prePass
+   *   the outcome of the mechanical pre-pass — the spec-lint run the
+   *   adapter invoked. `PrePassOutcome.Completed` carries the per-spec
+   *   lint outcomes it produced — spec name → the `Outcome` of linting
+   *   that spec's document. A pre-pass that did not run
+   *   (`PrePassOutcome.DidNotRun`) yields the could-not-determine verdict
+   *   carrying its stated reason — no counts are computed and no report
+   *   is constructed, because there is no measurement to count. Within a
+   *   completed pre-pass, a spec's lint run that did not complete
    *   (`Outcome.Undetermined`/`Outcome.Finding`) makes the whole result
    *   undetermined, and a spec named by `reqs.specNames` that has no entry
    *   here is a lint/extraction disagreement — also undetermined. Findings
@@ -79,8 +85,44 @@ object ChainState:
    * spec: chain-state-attribution — Requirement: A requirement whose obligations cannot be attributed is never counted as discharged
    * spec: chain-state-attribution — Requirement: An obligation that maps to no known requirement is reported separately, never dropped and never misattributed
    * spec: chain-state-attribution — Compile-Negative: ChainState.compute with a literal Nil requirement list
+   * spec: chain-state-undetermined-fidelity — Requirement: A verdict is produced only from a completed pre-pass
    */
   def compute(
+    prePass: PrePassOutcome,
+    ledger: Ledger.LedgerData,
+    reqs: RequirementSet,
+    specBaselines: Map[String, List[String]],
+    baseline: String,
+    resolvedBaseline: String,
+    change: String,
+    artifactUnchanged: (String, String) => Boolean
+  ): Either[ChainStateUndetermined, ChainStateReport] =
+    prePass match
+      case PrePassOutcome.DidNotRun(reason) =>
+        // The pre-pass did not run — no measurement exists, so the verdict
+        // is could-not-determine carrying the stated reason. The ledger,
+        // requirements and baselines are never consulted, and no report
+        // is constructed: counts require a completed pre-pass.
+        Left(ChainStateUndetermined(change, baseline, reason))
+      case completed @ PrePassOutcome.Completed(lints) =>
+        computeCompleted(
+          completed,
+          lints,
+          ledger,
+          reqs,
+          specBaselines,
+          baseline,
+          resolvedBaseline,
+          change,
+          artifactUnchanged
+        )
+
+  /**
+   * The measured fold over a COMPLETED pre-pass — split from `compute` so
+   * the completed token is in scope when the report is built.
+   */
+  private def computeCompleted(
+    completed: PrePassOutcome.Completed,
     lints: Map[String, Outcome[LintReport]],
     ledger: Ledger.LedgerData,
     reqs: RequirementSet,
@@ -108,7 +150,9 @@ object ChainState:
                 ChainStateUndetermined(
                   change,
                   baseline,
-                  s"spec-lint outcome for spec '$spec' did not complete ($reason); cannot determine bound/resolved"
+                  UndeterminedReason.stated(
+                    s"spec-lint outcome for spec '$spec' did not complete ($reason); cannot determine bound/resolved"
+                  )
                 )
               )
             case Some(Outcome.Finding(reason)) =>
@@ -116,7 +160,9 @@ object ChainState:
                 ChainStateUndetermined(
                   change,
                   baseline,
-                  s"spec-lint outcome for spec '$spec' did not complete ($reason); cannot determine bound/resolved"
+                  UndeterminedReason.stated(
+                    s"spec-lint outcome for spec '$spec' did not complete ($reason); cannot determine bound/resolved"
+                  )
                 )
               )
             case None =>
@@ -124,7 +170,9 @@ object ChainState:
                 ChainStateUndetermined(
                   change,
                   baseline,
-                  s"spec-lint outcome for spec '$spec' did not complete; cannot determine bound/resolved"
+                  UndeterminedReason.stated(
+                    s"spec-lint outcome for spec '$spec' did not complete; cannot determine bound/resolved"
+                  )
                 )
               )
         }
@@ -255,7 +303,8 @@ object ChainState:
           verdicts.count(_._2.contains(UnresolvedReason.Failed))
         val resolvedN: Int   = boundN - unresolvedN
         val dischargedN: Int = resolvedN - undischargedN
-        ChainStateReport.fromCounts(
+        ChainStateReport.from(
+          completed,
           change,
           baseline,
           total,
@@ -271,7 +320,9 @@ object ChainState:
               ChainStateUndetermined(
                 change,
                 baseline,
-                s"internal error — the assembled report does not satisfy its own contract ($clause)"
+                UndeterminedReason.stated(
+                  s"internal error — the assembled report does not satisfy its own contract ($clause)"
+                )
               )
             )
 

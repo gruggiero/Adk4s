@@ -307,7 +307,8 @@ final class BannerEngineSpec extends ProbatioSuite:
           ActiveChangeWithChainState(
             name = "test-change",
             artifacts = FactRead.Present(ArtifactScan(List("proposal.md"), None)),
-            chainState = Left(ChainStateUndetermined("test-change", "abc1234", "ledger unreadable"))
+            chainState =
+              Left(ChainStateUndetermined("test-change", "abc1234", UndeterminedReason.stated("ledger unreadable")))
           )
         )
       )
@@ -324,7 +325,8 @@ final class BannerEngineSpec extends ProbatioSuite:
           ActiveChangeWithChainState(
             name = "test-change",
             artifacts = FactRead.Present(ArtifactScan(List("proposal.md"), None)),
-            chainState = Left(ChainStateUndetermined("test-change", "abc1234", "ledger absent"))
+            chainState =
+              Left(ChainStateUndetermined("test-change", "abc1234", UndeterminedReason.stated("ledger absent")))
           )
         )
       )
@@ -498,7 +500,8 @@ final class BannerEngineSpec extends ProbatioSuite:
           ActiveChangeWithChainState(
             name = "my-change",
             artifacts = FactRead.Present(ArtifactScan(List("a.md"), None)),
-            chainState = Left(ChainStateUndetermined("my-change", "abc1234", "ledger absent"))
+            chainState =
+              Left(ChainStateUndetermined("my-change", "abc1234", UndeterminedReason.stated("ledger absent")))
           )
         )
       )
@@ -515,7 +518,7 @@ final class BannerEngineSpec extends ProbatioSuite:
           ActiveChangeWithChainState(
             name = "c",
             artifacts = FactRead.Present(ArtifactScan(List("a.md", "b.md"), None)),
-            chainState = Left(ChainStateUndetermined("c", "abc1234", "ledger absent"))
+            chainState = Left(ChainStateUndetermined("c", "abc1234", UndeterminedReason.stated("ledger absent")))
           )
         )
       )

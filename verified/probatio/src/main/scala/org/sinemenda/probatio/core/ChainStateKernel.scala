@@ -322,7 +322,7 @@ object ChainStateKernel:
   //
   // The fold reduces a requirement to an index, a verdict to 0/1/2
   // (unbound / bound / resolved), a ledger to the set of discharged
-  // indices, and the unreachable-obligation boundary to the set of
+  // indices, and the unreachable-obligation boundary to the set of // danger-scan:allow domain-term — the boundary's name, not a reachability claim
   // reachable-but-unattributable indices. `total` is the number of
   // requirements; `verdicts` is indexed by position — hence
   // `verdicts.size == total` (implied by the spec's bound <= total
@@ -370,7 +370,7 @@ object ChainStateKernel:
    * `filterOut(l, banned)` drops every `banned` element from `l`. The
    * unattributable exclusion is applied HERE, before the fold: an index
    * absent from the effective discharged set can never be discharged —
-   * that is the unreachable-obligation boundary.
+   * that is the unreachable-obligation boundary. // danger-scan:allow domain-term — the boundary's name, not a reachability claim
    */
   @pure
   def filterOut(l: List[BigInt], banned: List[BigInt]): List[BigInt] =
@@ -597,4 +597,143 @@ object ChainStateKernel:
     )
     res._1 == BigInt(2) && res._2 == BigInt(2) && res._3 == BigInt(2) &&
     res._4 == Cons(BigInt(0), Nil())
+  }.ensuring(_ == true)
+
+  // ---------------------------------------------------------------------------
+  // chain-state-undetermined-fidelity — the pre-pass boundary
+  //
+  // The verdict's data exists only when the mechanical pre-pass ran to
+  // completion. `PrePassOutcome` mirrors the shipped enum: `Completed`
+  // carries the run's observable result (reduced to its success bit —
+  // the kernel's lint abstraction); `DidNotRun` carries only a stated
+  // reason and can produce NO lint data at all — there is no field in
+  // which it could live.
+  //
+  // spec: chain-state-undetermined-fidelity — Formal Contracts (Ring 6)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The typed pre-pass boundary. `DidNotRun` cannot carry lint data — a
+   * did-not-run is a fact about the run, not a run.
+   */
+  sealed abstract class PrePassOutcome
+  case class PrePassCompleted(lintSuccess: Boolean) extends PrePassOutcome
+  case class PrePassDidNotRun(reason: BigInt)       extends PrePassOutcome
+
+  /**
+   * `compute` behind the typed boundary. `DidNotRun` short-circuits to
+   * `Left(Undetermined(reason))` — the verdicts, records and requirements
+   * are never consulted, so a populated evidence set can never be
+   * presented as a measured report. `Completed` is the only arm that
+   * reaches the fold.
+   *
+   * spec: chain-state-undetermined-fidelity — Requirement: A verdict is produced only from a completed pre-pass
+   */
+  @pure
+  def computeOutcome(
+    prePass: PrePassOutcome,
+    verdicts: Map[BigInt, Verdict],
+    ledgerRecords: List[LedgerRecord],
+    requirements: List[Requirement],
+    baseline: BigInt,
+    change: BigInt
+  ): Either[Undetermined, ChainStateReport] =
+    prePass match
+      case PrePassDidNotRun(reason) => Left(Undetermined(reason))
+      case PrePassCompleted(ran) =>
+        compute(ran, verdicts, ledgerRecords, requirements, baseline, change)
+
+  /**
+   * Law (boundary): a did-not-run yields `Left` even when every other
+   * input is populated — the deliberately-loaded witness proves the
+   * evidence is never consulted.
+   */
+  @pure
+  def didNotRunIgnoresPopulatedEvidence: Boolean = {
+    val verdicts: Map[BigInt, Verdict] =
+      stainless.lang.Map(BigInt(1) -> Resolved())
+    val records: List[LedgerRecord] =
+      Cons(LedgerRecord(BigInt(1), BigInt(1), Manual, BigInt(1), BigInt(1)), Nil())
+    val reqs: List[Requirement] =
+      Cons(Requirement(BigInt(1), BigInt(1)), Nil())
+    computeOutcome(
+      PrePassDidNotRun(BigInt(7)),
+      verdicts,
+      records,
+      reqs,
+      BigInt(1),
+      BigInt(1)
+    ).isLeft
+  }.ensuring(_ == true)
+
+  /**
+   * Law (named reason): a did-not-run carries its stated reason through
+   * — it is not replaced by a generic message and not dropped.
+   *
+   * spec: chain-state-undetermined-fidelity — Requirement: Every distinct could-not-determine reason is named
+   */
+  @pure
+  def didNotRunCarriesStatedReason: Boolean = {
+    computeOutcome(
+      PrePassDidNotRun(BigInt(7)),
+      stainless.lang.Map.empty[BigInt, Verdict],
+      Nil(),
+      Nil(),
+      BigInt(1),
+      BigInt(1)
+    ) match
+      case Left(u)  => u.reason == BigInt(7)
+      case Right(_) => false // danger-scan:allow boundary-witness — unreachable; the Left arm is the law
+  }.ensuring(_ == true)
+
+  /**
+   * Law (boundary completion): a completed pre-pass delegates to the
+   * measured fold — `Completed(ran)` agrees with `compute(ran, ...)`
+   * on the same inputs.
+   */
+  @pure
+  def completedOutcomeMatchesCompute: Boolean = {
+    val verdicts: Map[BigInt, Verdict] =
+      stainless.lang.Map(BigInt(1) -> Resolved())
+    val records: List[LedgerRecord] =
+      Cons(LedgerRecord(BigInt(1), BigInt(1), Manual, BigInt(1), BigInt(1)), Nil())
+    val reqs: List[Requirement] =
+      Cons(Requirement(BigInt(1), BigInt(1)), Nil())
+    computeOutcome(
+      PrePassCompleted(true),
+      verdicts,
+      records,
+      reqs,
+      BigInt(1),
+      BigInt(1)
+    ) == compute(true, verdicts, records, reqs, BigInt(1), BigInt(1))
+  }.ensuring(_ == true)
+
+  /**
+   * Law (count monotonicity): the shipped fold derives each count by
+   * subtracting a disjoint subset of the previous one —
+   * `bound = total − unbound`, `resolved = bound − unresolved`,
+   * `discharged = resolved − undischarged` — so the inequality
+   * `0 <= discharged <= resolved <= bound <= total` holds on every
+   * reachable report, structurally.
+   *
+   * spec: chain-state-undetermined-fidelity — Property: counts are monotone and bounded
+   */
+  @pure
+  def derivedCountsMonotone(
+    total: BigInt,
+    unbound: BigInt,
+    unresolved: BigInt,
+    undischarged: BigInt
+  ): Boolean = {
+    require(
+      total >= BigInt(0) &&
+        unbound >= BigInt(0) && unbound <= total &&
+        unresolved >= BigInt(0) && unresolved <= total - unbound &&
+        undischarged >= BigInt(0) && undischarged <= total - unbound - unresolved
+    )
+    val bound: BigInt      = total - unbound
+    val resolved: BigInt   = bound - unresolved
+    val discharged: BigInt = resolved - undischarged
+    discharged >= BigInt(0) && discharged <= resolved && resolved <= bound && bound <= total
   }.ensuring(_ == true)

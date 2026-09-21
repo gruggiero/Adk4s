@@ -610,7 +610,7 @@ final class RepositoryFactsSpec extends ProbatioCliSuite:
       chainOf(f) match
         case Left(u) =>
           assert(
-            u.reason.contains("chain-state.sh exit 2"),
+            u.reason.text.contains("chain-state.sh exit 2"),
             s"the reason must name the tool's exit code: ${u.reason}"
           )
         case Right(r) => fail(s"a failed tool must not produce a report: $r")
@@ -629,7 +629,7 @@ final class RepositoryFactsSpec extends ProbatioCliSuite:
       chainOf(f) match
         case Left(u) =>
           assert(
-            u.reason.contains("chain-state.sh exit 0"),
+            u.reason.text.contains("chain-state.sh exit 0"),
             s"the predecessor names the tool's exit code even for exit 0: ${u.reason}"
           )
         case Right(r) => fail(s"a non-numeric total must not produce a report: $r")
@@ -642,7 +642,7 @@ final class RepositoryFactsSpec extends ProbatioCliSuite:
       chainOf(f) match
         case Left(u) =>
           assert(
-            u.reason.contains("chain-state.sh exit 127"),
+            u.reason.text.contains("chain-state.sh exit 127"),
             s"a missing tool is exit 127, matching the predecessor: ${u.reason}"
           )
         case Right(r) => fail(s"no tool must not produce a report: $r")

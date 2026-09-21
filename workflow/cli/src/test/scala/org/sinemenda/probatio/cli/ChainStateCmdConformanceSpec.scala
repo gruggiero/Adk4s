@@ -62,7 +62,16 @@ final class ChainStateCmdConformanceSpec extends ProbatioCliSuite:
     val lints: Map[String, Outcome[LintReport]] = Map("test-spec" -> Outcome.Ran(lint))
     val noForgive: (String, String) => Boolean  = (_, _) => false
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(lints, ledger, extracted, Map.empty, "abc1234", "abc1234", "test-change", noForgive)
+      ChainState.compute(
+        PrePassOutcome.Completed(lints),
+        ledger,
+        extracted,
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "test-change",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.discharged, 1)
@@ -98,7 +107,16 @@ final class ChainStateCmdConformanceSpec extends ProbatioCliSuite:
     val lints: Map[String, Outcome[LintReport]] = Map("test-spec" -> Outcome.Ran(lint))
     val noForgive: (String, String) => Boolean  = (_, _) => false
     val result: Either[ChainStateUndetermined, ChainStateReport] =
-      ChainState.compute(lints, ledger, extracted, Map.empty, "abc1234", "abc1234", "test-change", noForgive)
+      ChainState.compute(
+        PrePassOutcome.Completed(lints),
+        ledger,
+        extracted,
+        Map.empty,
+        "abc1234",
+        "abc1234",
+        "test-change",
+        noForgive
+      )
     result match
       case Right(report) =>
         assertEquals(report.discharged, 0)
@@ -263,7 +281,7 @@ final class ChainStateCmdConformanceSpec extends ProbatioCliSuite:
 
   test("a rendered undetermined report satisfies chain-state-report-contract.jq"):
     val undetermined: ChainStateUndetermined =
-      ChainStateUndetermined("c", "b", "no ledger at /x")
+      ChainStateUndetermined("c", "b", UndeterminedReason.stated("no ledger at /x"))
     val rendered: String = StdoutRenderer[ChainStateUndetermined].render(undetermined)
     val (exit, out)      = contractCheck(rendered)
     assertEquals(exit, 0, s"the undetermined report must satisfy the jq contract: $out")

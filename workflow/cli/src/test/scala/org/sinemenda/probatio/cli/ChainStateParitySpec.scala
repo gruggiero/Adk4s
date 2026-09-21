@@ -103,6 +103,59 @@ final class ChainStateParitySpec extends ProbatioCliSuite:
             .log(s"exit-code mismatch on '${c.name}': port ${Outcome.toExitCode(portOutcome)} vs pred ${c.predExit}")
         )
 
+  // ── Property: parity-with-predecessor-on-the-undetermined-boundary ───
+  // spec: chain-state-undetermined-fidelity — Property: parity-with-predecessor-on-the-undetermined-boundary
+  //
+  // genChangeFixture — constructive over a small closed alphabet: spec
+  // shape {zero requirements, one requirement}, pre-pass behaviour drawn
+  // from {completes, absent, non-executable, exits outside range, no
+  // completion marker}, evidence record drawn from {absent, empty,
+  // populated, corrupt}. The predecessor is executed as the model — each
+  // stub terminates the way a real pre-pass would.
+
+  property("undetermined boundary agrees with the predecessor", coverConfig):
+    val corpus: List[ChainStateParitySpec.BoundaryCase] = ChainStateParitySpec.boundaryCorpus
+    val undetermined: List[ChainStateParitySpec.BoundaryCase] =
+      corpus.filter(_.predUndetermined)
+    val measured: List[ChainStateParitySpec.BoundaryCase] =
+      corpus.filter((c: ChainStateParitySpec.BoundaryCase) => !c.predUndetermined)
+    val buckets: List[(Int, Gen[ChainStateParitySpec.BoundaryCase])] =
+      List(60 -> undetermined, 40 -> measured).collect { case (w, first :: rest) =>
+        w -> Gen.element(first, rest)
+      }
+    val genCase: Gen[ChainStateParitySpec.BoundaryCase] =
+      buckets match
+        case (w, g) :: rest => Gen.frequency1(w -> g, rest*)
+        case Nil            => fail("boundary parity corpus is empty")
+    for c <- genCase.forAll
+        .cover(
+          40,
+          "boundary-undetermined",
+          (c: ChainStateParitySpec.BoundaryCase) => c.predUndetermined
+        )
+        .cover(
+          20,
+          "boundary-measured",
+          (c: ChainStateParitySpec.BoundaryCase) => !c.predUndetermined
+        )
+    yield
+      val (portStdout, _, portOutcome) = ChainStateParitySpec.runPortBoundary(c)
+      val portJson: ujson.Value        = ujson.read(portStdout.trim)
+      Result
+        .assert(ChainStateParitySpec.normalise(portJson) == c.predNormalised)
+        .log(
+          s"boundary parity mismatch on '${c.name}'\n" +
+            s"  port: $portStdout\n  pred: ${c.predStdout}"
+        )
+        .and(
+          Result
+            .assert(Outcome.toExitCode(portOutcome) == c.predExit)
+            .log(
+              s"boundary exit-code mismatch on '${c.name}': " +
+                s"port ${Outcome.toExitCode(portOutcome)} vs pred ${c.predExit}"
+            )
+        )
+
 /**
  * The corpus and the predecessor-model harness for `ChainStateParitySpec`.
  * In a companion object so the one-time materialisation and predecessor
@@ -579,6 +632,9 @@ object ChainStateParitySpec:
     fx
 
   private def runPredecessor(fx: Path, baselineArg: String): (String, Int) =
+    runPredecessor(fx, baselineArg, specLintOverride)
+
+  private def runPredecessor(fx: Path, baselineArg: String, specLint: Path): (String, Int) =
     val pb: ProcessBuilder = new ProcessBuilder(
       "bash",
       predecessor.toString,
@@ -591,7 +647,7 @@ object ChainStateParitySpec:
     )
     val env: java.util.Map[String, String] = pb.environment()
     env.put("OPENSPEC_ROOT", fx.resolve("no-openspec-root").toString)
-    env.put("SPEC_LINT_OVERRIDE", specLintOverride.toString)
+    env.put("SPEC_LINT_OVERRIDE", specLint.toString)
     pb.redirectError(ProcessBuilder.Redirect.DISCARD)
     val p: Process = pb.start()
     val out: String =
@@ -653,6 +709,176 @@ object ChainStateParitySpec:
         if undetermined then 0 else json.obj.get("unmapped_obligations").map(_.arr.length).getOrElse(0)
       )
     }
+
+  // ════════════════════════════════════════════════════════════════════
+  // The undetermined-boundary corpus — the spec 2 parity property's model
+  // runs. Each case pairs a fixture with the pre-pass behaviour the
+  // environment declares via SPEC_LINT_OVERRIDE, on both arms.
+  //
+  // spec: chain-state-undetermined-fidelity — Property: parity-with-predecessor-on-the-undetermined-boundary
+  // ════════════════════════════════════════════════════════════════════
+
+  /** How the pre-pass executable named by `SPEC_LINT_OVERRIDE` terminates. */
+  private enum BoundaryStub:
+    case Real          // the real spec-lint via the built-binary wrapper
+    case Absent        // a path that does not exist
+    case NonExecutable // a real file without the exec bit
+    case BadExit       // exits 42 — outside the declared outcome range
+    case NoMarker      // exits 1 with no recognised completion marker
+    case FindingsRun   // exits 1 WITH a recognised completion marker — a genuine findings run
+
+  /** The evidence-record state — the predecessor's `ledger.sh read` inputs. */
+  private enum BoundaryLedger:
+    case Absent, Empty, Populated, Corrupt
+
+  /** One boundary fixture plus the recorded predecessor result. */
+  final case class BoundaryCase(
+    name: String,
+    fixtureDir: Path,
+    baselineArg: String,
+    specLintOverride: Path,
+    predStdout: String,
+    predExit: Int,
+    predNormalised: ujson.Value,
+    predUndetermined: Boolean
+  )
+
+  private lazy val boundaryStubDir: Path =
+    Files.createTempDirectory("chain-state-boundary-stubs")
+
+  private def writeStub(name: String, body: String, executable: Boolean): Path =
+    val p: Path = boundaryStubDir.resolve(name)
+    if !Files.exists(p) then
+      Files.writeString(p, body, StandardCharsets.UTF_8)
+      p.toFile.setExecutable(executable)
+    p
+
+  private def boundaryStubPath(kind: BoundaryStub): Path = kind match
+    case BoundaryStub.Real   => specLintOverride
+    case BoundaryStub.Absent => boundaryStubDir.resolve("does-not-exist.sh")
+    case BoundaryStub.NonExecutable =>
+      writeStub("spec-lint-nonexec.sh", "#!/usr/bin/env bash\nexit 0\n", executable = false)
+    case BoundaryStub.BadExit =>
+      writeStub("spec-lint-badexit.sh", "#!/usr/bin/env bash\nexit 42\n", executable = true)
+    case BoundaryStub.NoMarker =>
+      writeStub(
+        "spec-lint-nomarker.sh",
+        "#!/usr/bin/env bash\necho 'spec-lint died inside find; no summary line'\nexit 1\n",
+        executable = true
+      )
+    case BoundaryStub.FindingsRun =>
+      // A genuine findings run: exit 1 (the declared lint-finding status)
+      // with the recognised completion marker. The stub enumerates the
+      // same `specs/**/spec.md` set both sides count, so the marker's N
+      // agrees with each arm's own enumeration. No F7/F9 finding lines —
+      // both sides then see an empty finding set and stay in parity.
+      writeStub(
+        "spec-lint-findings.sh",
+        "#!/usr/bin/env bash\n" +
+          "n=$(find \"$2/specs\" -name spec.md -type f 2>/dev/null | wc -l | tr -d ' ')\n" +
+          "echo \"spec-lint: $n spec file(s), 1 FAIL, 0 WARN\"\n" +
+          "exit 1\n",
+        executable = true
+      )
+
+  /**
+   * Materialise a boundary fixture — `specs/<spec>/spec.md` plus the
+   * evidence record in the drawn state (`Absent` writes no file at all).
+   */
+  private def materialiseBoundary(
+    name: String,
+    specs: Map[String, String],
+    ledgerKind: BoundaryLedger
+  ): Path =
+    val fx: Path = Files.createTempDirectory("chain-state-boundary-" + name)
+    specs.foreach { case (spec: String, text: String) =>
+      val dir: Path = fx.resolve("specs").resolve(spec)
+      Files.createDirectories(dir)
+      Files.writeString(dir.resolve("spec.md"), text, StandardCharsets.UTF_8)
+    }
+    ledgerKind match
+      case BoundaryLedger.Absent => ()
+      case BoundaryLedger.Empty =>
+        Files.writeString(fx.resolve("evidence-ledger.jsonl"), "", StandardCharsets.UTF_8)
+      case BoundaryLedger.Populated =>
+        Files.writeString(
+          fx.resolve("evidence-ledger.jsonl"),
+          ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline) + "\n",
+          StandardCharsets.UTF_8
+        )
+      case BoundaryLedger.Corrupt =>
+        Files.writeString(
+          fx.resolve("evidence-ledger.jsonl"),
+          "{not json\n",
+          StandardCharsets.UTF_8
+        )
+    Files.createDirectories(fx.resolve("no-openspec-root"))
+    fx
+
+  /**
+   * The boundary corpus: 3 spec shapes × 6 pre-pass behaviours × 4
+   * evidence-record states = 72 cases, each with the predecessor's
+   * recorded verdict (the executable model).
+   */
+  lazy val boundaryCorpus: List[BoundaryCase] =
+    val shapes: List[(String, Map[String, String])] = List(
+      "zero-req" -> oneSpec(specHeader + poHeader + "| n/a | n/a | n/a | n/a |\n"),
+      "one-req" -> oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      "three-req" -> oneSpec(
+        specHeader + reqBlock("Req 1") + reqBlock("Req 2") + reqBlock("Req 3") + poHeader +
+          titleRow("obl one", "Req 1", resolvesArtifact) +
+          titleRow("obl two", "Req 2", resolvesArtifact) +
+          titleRow("obl three", "Req 3", resolvesArtifact)
+      )
+    )
+    for
+      (shapeName, specs) <- shapes
+      stub               <- BoundaryStub.values.toList
+      ledger             <- BoundaryLedger.values.toList
+    yield
+      val name: String   = s"$shapeName-${stub.toString.toLowerCase}-${ledger.toString.toLowerCase}"
+      val fx: Path       = materialiseBoundary(name, specs, ledger)
+      val stubPath: Path = boundaryStubPath(stub)
+      val (out, exit)    = runPredecessor(fx, baseline, stubPath)
+      val json: ujson.Value =
+        try ujson.read(out.trim)
+        catch
+          case e: Exception =>
+            deleteTree(fx)
+            sys.error(s"predecessor produced no JSON report for boundary '$name': ${e.getMessage}\n$out")
+      BoundaryCase(
+        name,
+        fx,
+        baseline,
+        stubPath,
+        out,
+        exit,
+        normalise(json),
+        json.obj.get("undetermined").exists(_.bool)
+      )
+
+  /** The ported arm under the same declared pre-pass as the model. */
+  def runPortBoundary(c: BoundaryCase): (String, String, Outcome[Int]) =
+    StdoutCapture.captureBoth(
+      ChainStateCmd.run(
+        Array(
+          "--change-dir",
+          c.fixtureDir.toString,
+          "--change",
+          change,
+          "--baseline",
+          c.baselineArg
+        ),
+        Map(
+          "OPENSPEC_ROOT"        -> c.fixtureDir.resolve("no-openspec-root").toString,
+          "PROBATIO_SCANNER_DIR" -> scannerDir.toString,
+          "SPEC_LINT_OVERRIDE"   -> c.specLintOverride.toString
+        )
+      )
+    )
 
   private def deleteTree(p: Path): Unit =
     if Files.exists(p) then

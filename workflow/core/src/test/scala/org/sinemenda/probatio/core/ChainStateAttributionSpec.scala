@@ -172,7 +172,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
   // spec: chain-state-attribution — Compile-Negative: ChainState.compute with a literal Nil requirement list
   test("ChainState.compute does not accept a literal Nil requirement list"):
     val err: String = compileErrors(
-      "ChainState.compute(Map.empty, ???, Nil, Map.empty, \"b\", \"b\", \"c\", (a: String, b: String) => false)"
+      "ChainState.compute(PrePassOutcome.Completed(Map.empty), ???, Nil, Map.empty, \"b\", \"b\", \"c\", (a: String, b: String) => false)"
     )
     assert(
       err.nonEmpty,
@@ -182,7 +182,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
 
   test("ChainState.compute does not accept a bare List[Requirement]"):
     val err: String = compileErrors(
-      "ChainState.compute(Map.empty, ???, List.empty[ChainState.Requirement], Map.empty, \"b\", \"b\", \"c\", (a: String, b: String) => false)"
+      "ChainState.compute(PrePassOutcome.Completed(Map.empty), ???, List.empty[ChainState.Requirement], Map.empty, \"b\", \"b\", \"c\", (a: String, b: String) => false)"
     )
     assert(
       err.nonEmpty,
@@ -192,7 +192,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
 
   test("the old five-argument ChainState.compute no longer compiles"):
     val err: String = compileErrors(
-      "ChainState.compute(???, ???, ???, \"b\", \"b\", \"c\")"
+      "ChainState.compute(PrePassOutcome.Completed(???), ???, ???, \"b\", \"b\", \"c\")"
     )
     assert(
       err.nonEmpty,
@@ -286,7 +286,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       obl(12, "obl gamma", List("Gamma"), spec = "spec-b")
     )
     val set: RequirementSet = extracted.copy(obligations = obligations)
-    ChainState.compute(lints, ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(PrePassOutcome.Completed(lints), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
       case Right(report) =>
         assertEquals(report.total, 3, "total equals the number of declared requirements")
         assertEquals(report.discharged, 3)
@@ -304,7 +304,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     assert(extracted.isEmpty, "a spec with no requirement headings extracts empty")
     assertEquals(extracted.specNames, List("only"), "the spec was read — emptiness is a fact")
     ChainState.compute(
-      Map("only" -> lintRan(Nil, Map.empty, name = "only")),
+      PrePassOutcome.Completed(Map("only" -> lintRan(Nil, Map.empty, name = "only"))),
       ledgerOf(Nil),
       extracted,
       Map.empty,
@@ -340,7 +340,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     )
     val set: RequirementSet       = reqSet(reqs, obligations, FactSource.Degraded)
     val ledger: Ledger.LedgerData = ledgerOf(List(ledgerRow("s", "obl alpha")))
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           reasonsOf(report, "Beta"),
@@ -359,7 +368,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     val set: RequirementSet =
       reqSet(reqs, List(obl(12, "obl alpha", List("Alpha"))), FactSource.Degraded)
     val ledger: Ledger.LedgerData = ledgerOf(List(ledgerRow("s", "obl alpha")))
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(report.discharged, 1)
         assertEquals(report.unresolved, Nil)
@@ -376,7 +394,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     // The only evidence is at "oldsha", and nothing forgives it.
     val ledger: Ledger.LedgerData =
       ledgerOf(List(ledgerRow("s", "obl alpha", baseline = "oldsha")))
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           reasonsOf(report, "Alpha"),
@@ -399,7 +426,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       )
     )
     val forgiveAll: (String, String) => Boolean = (_, _) => true
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", forgiveAll) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      forgiveAll
+    ) match
       case Right(report) =>
         assertEquals(report.discharged, 1, "forgiven stale rows discharge")
         assertEquals(report.unresolved, Nil)
@@ -415,7 +451,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       reqSet(reqs, List(obl(12, "obl alpha", List("Alpha"))), FactSource.Degraded)
     val ledger: Ledger.LedgerData =
       ledgerOf(List(ledgerRow("s", "obl alpha", ring = Ring.Manual)))
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(report.discharged, 1, "manual rows are evidence — ledger.sh read does not filter by ring")
       case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
@@ -430,7 +475,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       reqSet(reqs, List(obl(12, "obl alpha", List("Alpha"))), FactSource.Degraded)
     val ledger: Ledger.LedgerData =
       ledgerOf(List(ledgerRow("s", "obl alpha", exit = 1)))
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           reasonsOf(report, "Alpha"),
@@ -466,7 +520,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     )
     val set: RequirementSet       = reqSet(reqs, obligations, FactSource.Degraded)
     val ledger: Ledger.LedgerData = ledgerOf(List(ledgerRow("s", "obl alpha")))
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assert(
           report.unmappedObligations.exists(u => u.spec == "s" && u.line == 13),
@@ -495,7 +558,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     )
     val set: RequirementSet =
       reqSet(reqs, List(obl(12, "obl alpha", List("Alpha"))), FactSource.Degraded)
-    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           reasonsOf(report, "Alpha"),
@@ -517,7 +589,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     )
     val set: RequirementSet =
       reqSet(reqs, List(obl(13, "obl beta", Nil, unmappable = true)), FactSource.Graph)
-    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           reasonsOf(report, "Beta"),
@@ -532,7 +613,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     val reqs: List[ChainState.Requirement] = List(req("Alpha", spec = "x"))
     val set: RequirementSet                = reqSet(reqs, Nil, FactSource.Degraded)
     // lints has no entry for spec "x" — the requirement's lint state is unknown.
-    ChainState.compute(Map.empty, ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map.empty),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Left(_) => () // undetermined — correct
       case Right(r) =>
         fail(s"a requirement whose spec was never linted must not produce a report, got $r")
@@ -541,7 +631,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     val reqs: List[ChainState.Requirement] = List(req("Alpha"))
     val set: RequirementSet                = reqSet(reqs, Nil, FactSource.Degraded)
     ChainState.compute(
-      Map("s" -> lintUndetermined),
+      PrePassOutcome.Completed(Map("s" -> lintUndetermined)),
       ledgerOf(Nil),
       set,
       Map.empty,
@@ -630,7 +720,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       List(obl(40, "obl stray", Nil, unmappable = true)),
       FactSource.Degraded
     )
-    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           report.unmappedObligations.map(_.artifact),
@@ -654,7 +753,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     )
     // Graph: b's F7 FAIL puts "Shared" in the flat set → BOTH unbound.
     ChainState.compute(
-      lints,
+      PrePassOutcome.Completed(lints),
       ledgerOf(Nil),
       reqSet(reqs, Nil, FactSource.Graph),
       Map.empty,
@@ -676,7 +775,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     // Degraded: spec_path+title keying keeps the verdict per-spec —
     // a's Shared is bound (then unattributable: no obligations map to it).
     ChainState.compute(
-      lints,
+      PrePassOutcome.Completed(lints),
       ledgerOf(Nil),
       reqSet(reqs, Nil, FactSource.Degraded),
       Map.empty,
@@ -702,7 +801,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     val reqs: List[ChainState.Requirement] = List(req("Alpha"))
     val lint: Outcome[LintReport]          = lintRan(List("Alpha"), Map.empty)
     val set: RequirementSet                = reqSet(reqs, Nil, FactSource.Degraded)
-    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           reasonsOf(report, "Alpha"),
@@ -824,7 +932,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
         )
     yield
       val (lints, ledger, reqs, baselines, baseline, change) = in
-      ChainState.compute(lints, ledger, reqs, baselines, baseline, baseline, change, noForgive) match
+      ChainState.compute(
+        PrePassOutcome.Completed(lints),
+        ledger,
+        reqs,
+        baselines,
+        baseline,
+        baseline,
+        change,
+        noForgive
+      ) match
         case Right(r) =>
           Result
             .assert(r.discharged <= r.resolved && r.resolved <= r.bound && r.bound <= r.total)
@@ -885,7 +1002,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
         )
     yield
       val (lints, ledger, reqs, unattrTitles) = in
-      ChainState.compute(lints, ledger, reqs, Map.empty, "base0", "base0", "c", noForgive) match
+      ChainState.compute(
+        PrePassOutcome.Completed(lints),
+        ledger,
+        reqs,
+        Map.empty,
+        "base0",
+        "base0",
+        "c",
+        noForgive
+      ) match
         case Right(r) =>
           unattrTitles.foldLeft(Result.success) { (res, title) =>
             res.and(
@@ -982,7 +1108,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
         )
     yield
       val (lints, ledger, reqs, expectedUnmapped) = in
-      ChainState.compute(lints, ledger, reqs, Map.empty, "base0", "base0", "c", noForgive) match
+      ChainState.compute(
+        PrePassOutcome.Completed(lints),
+        ledger,
+        reqs,
+        Map.empty,
+        "base0",
+        "base0",
+        "c",
+        noForgive
+      ) match
         case Right(r) =>
           Result
             .assert(r.unmappedObligations.map(u => (u.spec, u.line)).toSet == expectedUnmapped.toSet)
@@ -1070,7 +1205,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       Map("Solo Req" -> List(row(9, "Requirement: Solo Req"))),
       name = "only"
     )
-    ChainState.compute(Map("only" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("only" -> lint)),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           reasonsOf(report, "Solo Req"),
@@ -1085,7 +1229,7 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
 
   test("a spec-lint Finding outcome makes chain-state undetermined, naming spec and cause"):
     ChainState.compute(
-      Map("s" -> Outcome.Finding("lint exploded")),
+      PrePassOutcome.Completed(Map("s" -> Outcome.Finding("lint exploded"))),
       ledgerOf(Nil),
       reqSet(List(req("Alpha")), Nil, FactSource.Degraded),
       Map.empty,
@@ -1095,13 +1239,13 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       noForgive
     ) match
       case Left(u) =>
-        assert(u.reason.contains("'s'"), s"reason must name the spec: ${u.reason}")
-        assert(u.reason.contains("lint exploded"), s"reason must carry the cause: ${u.reason}")
+        assert(u.reason.text.contains("'s'"), s"reason must name the spec: ${u.reason}")
+        assert(u.reason.text.contains("lint exploded"), s"reason must carry the cause: ${u.reason}")
       case Right(_) => fail("expected undetermined")
 
   test("a spec with no lint outcome at all is undetermined, naming the spec"):
     ChainState.compute(
-      Map.empty,
+      PrePassOutcome.Completed(Map.empty),
       ledgerOf(Nil),
       reqSet(List(req("Alpha")), Nil, FactSource.Degraded),
       Map.empty,
@@ -1111,8 +1255,8 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       noForgive
     ) match
       case Left(u) =>
-        assert(u.reason.contains("'s'"), s"reason must name the spec: ${u.reason}")
-        assert(u.reason.contains("did not complete"), s"reason must name the cause: ${u.reason}")
+        assert(u.reason.text.contains("'s'"), s"reason must name the spec: ${u.reason}")
+        assert(u.reason.text.contains("did not complete"), s"reason must name the cause: ${u.reason}")
       case Right(_) => fail("expected undetermined")
 
   test("an F9 finding on ANY mapped obligation line makes the requirement unresolved"):
@@ -1129,7 +1273,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       List(obl(40, "obl a", List("Alpha")), obl(41, "obl b", List("Alpha"))),
       FactSource.Degraded
     )
-    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(reasonsOf(report, "Alpha"), List(UnresolvedReason.Unresolved))
       case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")
@@ -1145,7 +1298,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     )
     val ledger: Ledger.LedgerData =
       ledgerOf(List(ledgerRow(spec = "s", obligation = "obl a")))
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(reasonsOf(report, "Alpha"), List(UnresolvedReason.Undischarged))
         assertEquals(report.discharged, 0)
@@ -1166,7 +1328,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
         ledgerRow(spec = "s", obligation = "obl b", exit = 1)
       )
     )
-    ChainState.compute(Map("s" -> lint), ledger, set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledger,
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(reasonsOf(report, "Alpha"), List(UnresolvedReason.Failed))
         assertEquals(report.discharged, 0)
@@ -1184,7 +1355,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
       List(obl(40, "stray", Nil, unmappable = true)),
       FactSource.Degraded
     )
-    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(
           report.unmappedObligations.map(_.artifact),
@@ -1224,7 +1404,16 @@ final class ChainStateAttributionSpec extends ProbatioSuite:
     )
     val set: RequirementSet =
       reqSet(List(req("Alpha")), List(obligation, cleanObligation), FactSource.Graph)
-    ChainState.compute(Map("s" -> lint), ledgerOf(Nil), set, Map.empty, "base0", "base0", "c", noForgive) match
+    ChainState.compute(
+      PrePassOutcome.Completed(Map("s" -> lint)),
+      ledgerOf(Nil),
+      set,
+      Map.empty,
+      "base0",
+      "base0",
+      "c",
+      noForgive
+    ) match
       case Right(report) =>
         assertEquals(reasonsOf(report, "Alpha"), List(UnresolvedReason.Unresolved))
       case Left(u) => fail(s"expected Right, got undetermined: ${u.reason}")

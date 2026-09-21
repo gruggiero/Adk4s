@@ -111,12 +111,14 @@ final class ChainStateAttributionTypeContract extends ProbatioSuite:
   ) => RequirementSet = RequirementExtractor.extract
 
   // ── ChainState.compute — the pure attribution kernel ────────────────
-  // Per-spec lint outcomes, unfiltered ledger, RequirementSet, per-spec
-  // resolved baselines, the echoed effective baseline, the resolved
-  // staleness filter, change, injected forgiveness predicate — no default
-  // arguments, so none of them can be silently dropped.
+  // The pre-pass outcome (a completed run carries the per-spec lint
+  // outcomes; a did-not-run short-circuits to undetermined), unfiltered
+  // ledger, RequirementSet, per-spec resolved baselines, the echoed
+  // effective baseline, the resolved staleness filter, change, injected
+  // forgiveness predicate — no default arguments, so none of them can be
+  // silently dropped.
   val computeSig: (
-    Map[String, Outcome[LintReport]],
+    PrePassOutcome,
     Ledger.LedgerData,
     RequirementSet,
     Map[String, List[String]],
@@ -168,7 +170,9 @@ final class ChainStateAttributionTypeContract extends ProbatioSuite:
       )
 
   // ── ChainStateUndetermined — the could-not-determine side ───────────
-  val undeterminedFieldsSig: ChainStateUndetermined => (String, String, String) =
+  // The reason is a refined `UndeterminedReason` — non-empty by
+  // construction (spec 2, chain-state-undetermined-fidelity).
+  val undeterminedFieldsSig: ChainStateUndetermined => (String, String, UndeterminedReason) =
     (u: ChainStateUndetermined) => (u.change, u.baseline, u.reason)
 
   // ── UnmappedObligation — the separate report channel ────────────────

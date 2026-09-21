@@ -627,7 +627,7 @@ object GateCmd:
    * schemas/verified-scala3/scanner/<name>` — the predecessor's
    * `$SELF_DIR/../scanner`).
    */
-  private def scannerTool(
+  private[cli] def scannerTool(
     repo: Path,
     env: Map[String, String],
     overrideVar: String,
@@ -645,7 +645,7 @@ object GateCmd:
    * `None` when the process cannot be launched — a failed check is an
    * empty report, never a gate failure.
    */
-  private def runScanner(
+  private[cli] def runScanner(
     repo: Path,
     script: Path,
     args: List[String],
@@ -1850,7 +1850,7 @@ object ChainStateCmd:
             emitDiagnostics = true
           ) match
             case Left(reason) =>
-              emitUndetermined(change, baseline, reason)
+              emitUndetermined(change, baseline, UndeterminedReason.stated(reason))
             case Right(inputs) =>
               // Read + validate the ledger file. The predecessor reads it
               // ONCE PER MAPPED SPEC and once unfiltered: with a non-empty
@@ -1886,7 +1886,7 @@ object ChainStateCmd:
                   )
                   emitReport(
                     ChainState.compute(
-                      inputs.lints,
+                      inputs.prePass,
                       Ledger.fromRecords(Nil),
                       inputs.extracted,
                       inputs.specBaselines,
@@ -1898,11 +1898,11 @@ object ChainStateCmd:
                     baseline
                   )
                 case Left(reason) =>
-                  emitUndetermined(change, baseline, reason)
+                  emitUndetermined(change, baseline, UndeterminedReason.stated(reason))
                 case Right(ledger) =>
                   emitReport(
                     ChainState.compute(
-                      inputs.lints,
+                      inputs.prePass,
                       ledger,
                       inputs.extracted,
                       inputs.specBaselines,
@@ -1973,29 +1973,33 @@ object ChainStateCmd:
   /**
    * Emit the undetermined report on stdout and the diagnostic on stderr —
    * the `UNDETERMINED —` marker is written HERE, exactly once; the reason
-   * field carries no marker (it is data, not a diagnostic line).
+   * field carries no marker (it is data, not a diagnostic line). The
+   * reason is an `UndeterminedReason` — non-empty and naming the
+   * unreadable input by construction.
    *
    * spec: chain-state-attribution — Requirement: The undetermined diagnostic marker is emitted exactly once
+   * spec: chain-state-undetermined-fidelity — Requirement: Every distinct could-not-determine reason is named
    */
   private def emitUndetermined(
     change: String,
     baseline: String,
-    reason: String
+    reason: UndeterminedReason
   ): Outcome[Int] =
     val undetermined: ChainStateUndetermined = ChainStateUndetermined(change, baseline, reason)
     SubcommandWiring.emitStdout(StdoutRenderer[ChainStateUndetermined].render(undetermined) + "\n")
-    SubcommandWiring.emitStderr(s"chain-state: UNDETERMINED — $reason\n")
-    Outcome.Undetermined(reason)
+    SubcommandWiring.emitStderr(s"chain-state: UNDETERMINED — ${reason.text}\n")
+    Outcome.Undetermined(reason.text)
 
   /**
    * The bundle of measured facts `ChainState.compute` consumes — the
-   * extracted requirement set (with its FactSource), the per-spec lint
-   * outcomes, the per-spec baseline map, the resolved effective baseline,
-   * and the forgive-unchanged oracle.
+   * extracted requirement set (with its FactSource), the pre-pass outcome
+   * (the spec-lint run's completion boundary; `Completed` carries the
+   * per-spec lint outcomes it produced), the per-spec baseline map, the
+   * resolved effective baseline, and the forgive-unchanged oracle.
    */
   final private[cli] case class ChainStateInputs(
     extracted: RequirementSet,
-    lints: Map[String, Outcome[LintReport]],
+    prePass: PrePassOutcome,
     specBaselines: Map[String, List[String]],
     effectiveBaseline: String,
     resolvedBaseline: String,
@@ -2082,13 +2086,33 @@ object ChainStateCmd:
                       .getOrElse(Set.empty)
                     val artifactTracked: String => Boolean =
                       (base: String) => tracked.exists(_.contains(base))
-                    val lints: Map[String, Outcome[LintReport]] = namedSpecs.map { ns =>
-                      ns.name -> SpecLintEngine.lint(ns.document, context, checkArtifacts = true, artifactTracked)
-                    }.toMap
+                    // The pre-pass boundary is the EXTERNAL spec-lint run
+                    // — the same invocation the predecessor makes —
+                    // classified by its termination, never by hidden
+                    // in-process state. Only when it ran to completion do
+                    // the in-process per-spec lint results become the
+                    // verdict's data; a did-not-run can carry no lint map.
+                    val prePass: PrePassOutcome =
+                      ChainStatePrePass.probe(
+                        changeDir,
+                        discovered.length,
+                        exportJson.isDefined,
+                        root,
+                        env
+                      ) match
+                        case Left(reason) =>
+                          PrePassOutcome.DidNotRun(UndeterminedReason.stated(reason))
+                        case Right(()) =>
+                          PrePassOutcome.Completed(
+                            namedSpecs.map { (ns: RequirementExtractor.NamedSpec) =>
+                              ns.name -> SpecLintEngine
+                                .lint(ns.document, context, checkArtifacts = true, artifactTracked)
+                            }.toMap
+                          )
                     Right(
                       ChainStateInputs(
                         extracted,
-                        lints,
+                        prePass,
                         specBaselines,
                         effectiveBaseline,
                         resolvedBaseline,

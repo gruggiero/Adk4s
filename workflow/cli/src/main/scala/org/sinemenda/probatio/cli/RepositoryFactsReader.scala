@@ -13,6 +13,7 @@ import org.sinemenda.probatio.core.LintContext
 import org.sinemenda.probatio.core.RepositoryFacts
 import org.sinemenda.probatio.core.RootBase
 import org.sinemenda.probatio.core.StampFormat
+import org.sinemenda.probatio.core.UndeterminedReason
 import org.sinemenda.probatio.core.UnmappedObligation
 import org.sinemenda.probatio.core.UnresolvedEntry
 import org.sinemenda.probatio.core.UnresolvedReason
@@ -438,7 +439,9 @@ object RepositoryFactsReader:
         ChainStateUndetermined(
           name,
           baseline,
-          "chain state could not be computed (chain-state.sh exit 127)"
+          UndeterminedReason.stated(
+            "chain state could not be computed (chain-state.sh exit 127)"
+          )
         )
       )
     else
@@ -469,8 +472,10 @@ object RepositoryFactsReader:
                 ChainStateUndetermined(
                   name,
                   baseline,
-                  "chain state could not be computed " +
-                    "(report did not satisfy the contract)"
+                  UndeterminedReason.stated(
+                    "chain state could not be computed " +
+                      "(report did not satisfy the contract)"
+                  )
                 )
               )
         else
@@ -478,7 +483,9 @@ object RepositoryFactsReader:
             ChainStateUndetermined(
               name,
               baseline,
-              s"chain state could not be computed (chain-state.sh exit $code)"
+              UndeterminedReason.stated(
+                s"chain state could not be computed (chain-state.sh exit $code)"
+              )
             )
           )
       catch
@@ -487,7 +494,9 @@ object RepositoryFactsReader:
             ChainStateUndetermined(
               name,
               baseline,
-              s"chain state could not be computed (spawn failed: ${e.getMessage})"
+              UndeterminedReason.stated(
+                s"chain state could not be computed (spawn failed: ${e.getMessage})"
+              )
             )
           )
 

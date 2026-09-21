@@ -185,14 +185,43 @@ final case class ChainStateReport private (
 object ChainStateReport:
 
   /**
-   * The only construction route — the port of the predecessor's
-   * self-check, where a report that violates its own contract is a bug in
-   * the tool, never a fact about the change. `Left` names the violated
-   * clause (mirroring the jq checker's `fail` messages); `compute` maps a
-   * `Left` to `ChainStateUndetermined` with an internal-error reason, and
-   * wire readers map it to rejection.
+   * The verdict-path construction route — the only way `ChainState.compute`
+   * produces a report. The caller must hold the COMPLETED pre-pass whose
+   * measured facts the counts describe: `PrePassOutcome.DidNotRun` does not
+   * satisfy the parameter type, so a report cannot be built from a pre-pass
+   * that did not run — the exact defect this change repairs, made a compile
+   * error rather than a runtime discipline.
+   *
+   * spec: chain-state-undetermined-fidelity — Requirement: A verdict is produced only from a completed pre-pass
+   * spec: chain-state-undetermined-fidelity — Compile-Negative: a report built from a pre-pass that did not complete
    */
-  def fromCounts(
+  def from(
+    @scala.annotation.unused prePass: PrePassOutcome.Completed,
+    change: String,
+    baseline: String,
+    total: Int,
+    bound: Int,
+    resolved: Int,
+    discharged: Int,
+    unresolved: List[UnresolvedEntry],
+    unmappedObligations: List[UnmappedObligation]
+  ): Either[String, ChainStateReport] =
+    fromCounts(change, baseline, total, bound, resolved, discharged, unresolved, unmappedObligations)
+
+  /**
+   * The contract validator and wire-reconstruction route — the port of
+   * the predecessor's self-check, where a report that violates its own
+   * contract is a bug in the tool, never a fact about the change. `Left`
+   * names the violated clause (mirroring the jq checker's `fail`
+   * messages); `compute` maps a `Left` to `ChainStateUndetermined` with
+   * an internal-error reason, and wire readers map it to rejection.
+   *
+   * Package-scoped: a report decoded from the wire was measured by the
+   * PRODUCING process's completed pre-pass, so reconstruction does not
+   * need a `Completed` token — but outside `org.sinemenda.probatio` no
+   * route exists that builds a report without one.
+   */
+  private[probatio] def fromCounts(
     change: String,
     baseline: String,
     total: Int,
@@ -331,14 +360,16 @@ object ChainStateReport:
 /**
  * The undetermined result — chain state could not be computed.
  *
- * Carries a non-empty reason. The measured fields are absent (the report
- * shape has null counts, not zero counts — undetermined is NEVER collapsed
- * into a clean "0 discharged").
+ * Carries a non-empty `UndeterminedReason` naming the unreadable input —
+ * an empty reason is unconstructible, never merely discouraged. The
+ * measured fields are absent (the report shape has null counts, not zero
+ * counts — undetermined is NEVER collapsed into a clean "0 discharged").
  *
  * spec: probatio-core — Requirement: Undetermined is never collapsed into a finding
+ * spec: chain-state-undetermined-fidelity — Requirement: Every distinct could-not-determine reason is named
  */
 final case class ChainStateUndetermined(
   change: String,
   baseline: String,
-  reason: String
+  reason: UndeterminedReason
 ) derives ReadWriter
