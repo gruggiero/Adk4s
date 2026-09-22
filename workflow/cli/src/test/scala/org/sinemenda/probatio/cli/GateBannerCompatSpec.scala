@@ -24,6 +24,50 @@ import LiveFactFixtures.withTempDir
  */
 final class GateBannerCompatSpec extends ProbatioCliSuite:
 
+  // The completion-tier parity property runs the predecessor gate as a
+  // subprocess per generated case — subprocess-suite timeout.
+  override val munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(300, "s")
+
+  // ── spec-3 parity fixture vals (declared first: `val` order matters) ──
+
+  private val parityChange: String   = "parity-change"
+  private val paritySpecName: String = "parity-spec"
+  private val paritySession: String  = "parity-session"
+
+  /** One generated ledger-row plan for the completion fixture. */
+  final private case class CompletionRowPlan(
+    exit: Int,           // 0 = green claim, nonzero = red
+    atBaseline: Boolean, // recorded at the current baseline vs a stale one
+    corroborated: Boolean
+  )
+
+  final private case class CompletionFixturePlan(
+    rows: List[CompletionRowPlan],
+    priorRefusal: Boolean
+  )
+
+  // The draw is over closed SHAPES, weighted so both refusal-warrant
+  // arms (current-baseline and the declared stale-baseline divergence)
+  // and the corroborated/red arms all reach their cover classes —
+  // independent field draws starve the stale-only class once the
+  // current-baseline arm is frequent enough.
+  private val genCompletionRowPlan: Gen[CompletionRowPlan] =
+    Gen.frequency1(
+      22 -> Gen.constant(CompletionRowPlan(0, atBaseline = true, corroborated = false)),
+      25 -> Gen.constant(CompletionRowPlan(0, atBaseline = false, corroborated = false)),
+      18 -> Gen.constant(CompletionRowPlan(0, atBaseline = true, corroborated = true)),
+      8  -> Gen.constant(CompletionRowPlan(0, atBaseline = false, corroborated = true)),
+      12 -> Gen.constant(CompletionRowPlan(1, atBaseline = true, corroborated = false)),
+      15 -> Gen.constant(CompletionRowPlan(1, atBaseline = false, corroborated = false))
+    )
+
+  private val genCompletionFixturePlan: Gen[CompletionFixturePlan] =
+    for
+      rows: List[CompletionRowPlan] <- genCompletionRowPlan.list(Range.linear(0, 6))
+      prior: Boolean                <- Gen.boolean
+    yield CompletionFixturePlan(rows, prior)
+
   // ── Scenario: session-start emits the banner and exits 0
   // spec: cli-wiring — Scenario: session-start emits the banner and exits 0
 
@@ -371,4 +415,216 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
             Result.failure.log(
               s"hook-json output is not an object: $trimmed"
             ) // danger-scan:allow test assertion — non-object output fails the test
+    }
+
+  // ── completion-witness-refusal (spec 3 of repair-probatio-cutover) ──
+
+  private def parityRowJson(
+    exit: Int,
+    baseline: String,
+    command: String,
+    obligation: String,
+    ambient: Boolean
+  ): String =
+    val row: ujson.Obj = ujson.Obj(
+      "v"          -> ujson.Num(1),
+      "ts"         -> ujson.Str("2026-01-01T00:00:00Z"),
+      "change"     -> ujson.Str(parityChange),
+      "spec"       -> ujson.Str(paritySpecName),
+      "ring"       -> ujson.Str("R3"),
+      "obligation" -> ujson.Str(obligation),
+      "artifact"   -> ujson.Str("tests/x.bats"),
+      "command"    -> ujson.Str(command),
+      "exit"       -> ujson.Num(exit.toDouble),
+      "baseline"   -> ujson.Str(baseline)
+    )
+    if ambient then row("source") = ujson.Str("ambient")
+    ujson.write(row)
+
+  private def parityGit(repo: java.nio.file.Path, args: String*): Unit =
+    val code: Int =
+      ("git" +: "-C" +: repo.toString +: args.toList)
+        .!(ProcessLogger(_ => (), _ => ()))
+    assertEquals(code, 0, s"git ${args.mkString(" ")} must succeed")
+
+  /**
+   * Materialise a completion fixture: a git repo with a resolvable HEAD,
+   * a ledger of generated claims (corroborated greens gain an ambient
+   * witness row at the same key), the session's presentation marker, an
+   * optional spent refusal marker, and a clean chain-state stub that
+   * serves BOTH gates through CHAIN_STATE_OVERRIDE. Returns the state
+   * dir (for marker resets between runs).
+   */
+  private def writeParityFixture(
+    repo: java.nio.file.Path,
+    plan: CompletionFixturePlan
+  ): java.nio.file.Path =
+    java.nio.file.Files.createDirectories(
+      repo.resolve(s"openspec/changes/$parityChange/specs/$paritySpecName")
+    )
+    parityGit(repo, "init", "-q")
+    java.nio.file.Files.writeString(repo.resolve("seed.txt"), "seed")
+    parityGit(repo, "add", "-A")
+    parityGit(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed")
+    val base: String =
+      new String(
+        new ProcessBuilder("git", "-C", repo.toString, "rev-parse", "--short", "HEAD")
+          .start()
+          .getInputStream
+          .readAllBytes()
+      ).trim
+    assert(base.nonEmpty, "fixture HEAD must resolve")
+    val lines: List[String] =
+      plan.rows.zipWithIndex.flatMap { case (r: CompletionRowPlan, i: Int) =>
+        val b: String = if r.atBaseline then base else "0000000"
+        val claim: String =
+          parityRowJson(r.exit, b, s"cmd-$i", s"obl-$i", ambient = false)
+        val witness: List[String] =
+          if r.exit == 0 && r.corroborated then List(parityRowJson(0, b, s"cmd-$i", s"obl-$i", ambient = true))
+          else Nil
+        claim :: witness
+      }
+    java.nio.file.Files.writeString(
+      repo.resolve(s"openspec/changes/$parityChange/evidence-ledger.jsonl"),
+      if lines.isEmpty then "" else lines.mkString("", "\n", "\n")
+    )
+    val sd: java.nio.file.Path = repo.resolve(".git/verified-scala3-gate")
+    java.nio.file.Files.createDirectories(sd)
+    val enc: String = SessionId.fromRaw(paritySession).encoded
+    java.nio.file.Files.writeString(sd.resolve(s"presentation-$parityChange-$paritySpecName-$enc"), "h")
+    if plan.priorRefusal then java.nio.file.Files.writeString(sd.resolve(s"completion-refused-$enc"), "1")
+    val cs: java.nio.file.Path = repo.resolve("cs-clean.sh")
+    java.nio.file.Files.writeString(
+      cs,
+      "#!/usr/bin/env bash\n" +
+        "echo '{\"change\":\"x\",\"baseline\":\"b\",\"total\":0,\"bound\":0," +
+        "\"resolved\":0,\"discharged\":0,\"unresolved\":[],\"unmapped_obligations\":[]}'\n"
+    )
+    cs.toFile.setExecutable(true)
+    sd
+
+  private def portedCompletionExit(
+    repo: java.nio.file.Path,
+    cs: java.nio.file.Path
+  ): Int =
+    GateCmd.run(
+      Array(
+        "--repo",
+        repo.toString,
+        "--event",
+        "completion",
+        "--format",
+        "text",
+        "--session",
+        paritySession,
+        "--stop-hook-active",
+        "false"
+      ),
+      Map("CHAIN_STATE_OVERRIDE" -> cs.toString),
+      () => None
+    ) match
+      case Outcome.Ran(0)          => 0
+      case Outcome.Ran(n)          => n
+      case Outcome.Finding(_)      => 1
+      case Outcome.Undetermined(_) => 2
+
+  private def predecessorCompletionExit(
+    repo: java.nio.file.Path,
+    cs: java.nio.file.Path
+  ): Int =
+    val gate: String =
+      repoRoot
+        .resolve("openspec/schemas/verified-scala3/hooks/gate.sh.predecessor.bak")
+        .toString
+    val reconcile: String =
+      repoRoot
+        .resolve("openspec/schemas/verified-scala3/scanner/reconcile.sh.predecessor.bak")
+        .toString
+    // ProcessBuilder, not scala.sys.process: stdin must be /dev/null —
+    // the gate reads the hook payload from stdin and an inherited open
+    // pipe blocks it forever. stdout/stderr are discarded.
+    val pb: ProcessBuilder = new ProcessBuilder(
+      "bash",
+      gate,
+      "--repo",
+      repo.toString,
+      "--event",
+      "completion",
+      "--format",
+      "text",
+      "--stop-hook-active",
+      "false"
+    )
+    pb.environment().put("VERIFIED_SCALA3_SESSION_ID", paritySession)
+    pb.environment().put("CHAIN_STATE_OVERRIDE", cs.toString)
+    pb.environment().put("RECONCILE_OVERRIDE", reconcile)
+    pb.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
+    pb.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+    pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+    pb.start().waitFor()
+
+  // spec: completion-witness-refusal — Property: parity-with-predecessor-on-the-completion-tier
+  // Both gates evaluate the SAME generated fixture. Ported runs in-
+  // process; the predecessor is the reference script. The refusal
+  // marker is reset between the two runs so both see a fresh budget.
+  // The declared divergence is asserted, not excluded: a fixture whose
+  // only uncorroborated greens are stale-baseline is a predecessor
+  // warrant (unfiltered) but outside the port's current-baseline scope.
+  property("parity-with-predecessor-on-the-completion-tier"):
+    for plan: CompletionFixturePlan <- genCompletionFixturePlan.forAll
+        .cover(
+          20,
+          "current-baseline warrant",
+          (p: CompletionFixturePlan) =>
+            p.rows.exists((r: CompletionRowPlan) => r.exit == 0 && r.atBaseline && !r.corroborated)
+        )
+        .cover(
+          10,
+          "stale-only divergence arm",
+          (p: CompletionFixturePlan) =>
+            p.rows.exists((r: CompletionRowPlan) => r.exit == 0 && !r.atBaseline && !r.corroborated) &&
+              !p.rows.exists((r: CompletionRowPlan) => r.exit == 0 && r.atBaseline && !r.corroborated)
+        )
+        .cover(
+          20,
+          "prior-refusal budget arm",
+          (p: CompletionFixturePlan) => p.priorRefusal
+        )
+        .cover(
+          15,
+          "fully corroborated / red record",
+          (p: CompletionFixturePlan) => !p.rows.exists((r: CompletionRowPlan) => r.exit == 0 && !r.corroborated)
+        )
+    yield withTempDir("gate-parity") { (repo: java.nio.file.Path) =>
+      val sd: java.nio.file.Path     = writeParityFixture(repo, plan)
+      val cs: java.nio.file.Path     = repo.resolve("cs-clean.sh")
+      val enc: String                = SessionId.fromRaw(paritySession).encoded
+      val marker: java.nio.file.Path = sd.resolve(s"completion-refused-$enc")
+
+      val ported: Int = portedCompletionExit(repo, cs)
+      // Reset the budget ONLY when the ported run could have written the
+      // marker itself — a fixture-seeded marker (priorRefusal) is part of
+      // the state BOTH runs must see.
+      if !plan.priorRefusal then java.nio.file.Files.deleteIfExists(marker)
+      val model: Int = predecessorCompletionExit(repo, cs)
+
+      val uncorrAtBaseline: Boolean =
+        plan.rows.exists((r: CompletionRowPlan) => r.exit == 0 && r.atBaseline && !r.corroborated)
+      val uncorrStaleOnly: Boolean =
+        !uncorrAtBaseline && plan.rows.exists((r: CompletionRowPlan) => r.exit == 0 && !r.atBaseline && !r.corroborated)
+      val divergent: Boolean = uncorrStaleOnly && model == 1 && ported == 0
+
+      Result.all(
+        List(
+          Result
+            .assert(ported == model || divergent)
+            .log(s"ported=$ported model=$model plan=$plan"),
+          // The divergence can only run one way: the model refuses a
+          // stale warrant, the port allows it. The port must never
+          // refuse something the model allowed.
+          Result
+            .assert(!(ported == 1 && model == 0))
+            .log(s"port refused where the model allowed: plan=$plan")
+        )
+      )
     }

@@ -3,6 +3,8 @@ package org.sinemenda.probatio.core
 import hedgehog.*
 import hedgehog.Gen
 import hedgehog.Range
+import hedgehog.core.PropertyConfig
+import hedgehog.core.SuccessCount
 
 /**
  * Test oracle for the gate-checkpoint-lock spec (spec 9).
@@ -20,6 +22,10 @@ final class GateDecisionSpec extends ProbatioSuite:
 
   /** The escape hatch variable name, for render-string assertions. */
   private val escapeHatchVar: String = "PROBATIO_HOOKS"
+
+  /** The spec-3 oracle's test count (declared early: `val` order matters). */
+  private val coverConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(200))
 
   /**
    * genSpecPhase — constructive over the three phases.
@@ -371,3 +377,230 @@ final class GateDecisionSpec extends ProbatioSuite:
           Result.assert(reason == BlockReason.GrantRequired(name))
         case _ =>
           Result.failure
+
+  /** True when the verdict carries an uncorroborated claim. */
+  private def isUnwitnessed(v: WitnessVerdict): Boolean = v match
+    case WitnessVerdict.Unwitnessed(_)    => true
+    case WitnessVerdict.Witnessed         => false
+    case WitnessVerdict.Undeterminable(_) => false
+
+  // ════════════════════════════════════════════════════════════════════
+  // completion-witness-refusal (spec 3 of repair-probatio-cutover)
+  //
+  // The corroboration verdict and the bounded completion decision,
+  // derived from the SPEC — not the implementation. The verdict is
+  // computed from a reconcile report over a generated evidence record;
+  // the decision bounds it by the per-turn refusal budget.
+  // ════════════════════════════════════════════════════════════════════
+
+  // ── Scenario: every corroborated green result allows completion ─────
+  // spec: completion-witness-refusal — Scenario: Happy path — every green result is corroborated and completion proceeds
+  test("a fully witnessed record yields Witnessed and the decision allows"):
+    val key: ReconcileFixtures.ClaimKey =
+      ReconcileFixtures.ClaimKey("sp", Ring.R3, "base", "sbt test")
+    val records: List[ValidatedRecord] = List(
+      ReconcileFixtures.record(key, "chg", exit = 0, ReconcileFixtures.RecKind.Written),
+      ReconcileFixtures.record(key, "chg", exit = 0, ReconcileFixtures.RecKind.AmbientRow)
+    )
+    val report: ReconcileReport = ReconcileEngine.classify(records, "chg", None, None)
+    assertEquals(
+      GateDecisions.corroborationVerdict(report, "base"),
+      WitnessVerdict.Witnessed
+    )
+    assertEquals(
+      GateDecisions.decideCompletion(WitnessVerdict.Witnessed, RefusalBudget.full),
+      CompletionDecision.Allow
+    )
+
+  // ── Scenario: a single uncorroborated green result refuses ─────────
+  // spec: completion-witness-refusal — Scenario: Adversarial — a single uncorroborated green result refuses the turn
+  test("one uncorroborated claim among corroborated ones refuses and names it"):
+    val corroborated: ReconcileFixtures.ClaimKey =
+      ReconcileFixtures.ClaimKey("sp", Ring.R3, "base", "sbt test")
+    val unwitnessed: ReconcileFixtures.ClaimKey =
+      ReconcileFixtures.ClaimKey("sp", Ring.R3, "base", "make check")
+    val records: List[ValidatedRecord] = List(
+      ReconcileFixtures.record(corroborated, "chg", exit = 0, ReconcileFixtures.RecKind.Written),
+      ReconcileFixtures.record(corroborated, "chg", exit = 0, ReconcileFixtures.RecKind.AmbientRow),
+      ReconcileFixtures.record(unwitnessed, "chg", exit = 0, ReconcileFixtures.RecKind.Written)
+    )
+    val report: ReconcileReport = ReconcileEngine.classify(records, "chg", None, None)
+    val verdict: WitnessVerdict = GateDecisions.corroborationVerdict(report, "base")
+    verdict match
+      case WitnessVerdict.Unwitnessed(row) =>
+        assertEquals(row.command, "make check")
+      case other => // danger-scan:allow test assertion — the verdict must name the uncorroborated claim
+        fail(s"expected Unwitnessed naming the uncorroborated claim, got $other")
+    GateDecisions.decideCompletion(verdict, RefusalBudget.full) match
+      case CompletionDecision.Refuse(u) =>
+        assertEquals(u.row.command, "make check")
+      case other => // danger-scan:allow test assertion — an unspent budget must refuse
+        fail(s"expected Refuse naming the uncorroborated claim, got $other")
+
+  // ── Scenario: a non-green result needs no corroboration ─────────────
+  // spec: completion-witness-refusal — Scenario: Edge case — a non-green result needs no corroboration
+  test("a red row with no witness is exempt and allows"):
+    val key: ReconcileFixtures.ClaimKey =
+      ReconcileFixtures.ClaimKey("sp", Ring.R3, "base", "sbt test")
+    val records: List[ValidatedRecord] =
+      List(ReconcileFixtures.record(key, "chg", exit = 1, ReconcileFixtures.RecKind.Written))
+    val report: ReconcileReport = ReconcileEngine.classify(records, "chg", None, None)
+    assertEquals(
+      GateDecisions.corroborationVerdict(report, "base"),
+      WitnessVerdict.Witnessed
+    )
+
+  // ── Scenario: a stale-baseline-only uncorroborated claim is in scope ─
+  // spec: completion-witness-refusal — Property: parity-with-predecessor-on-the-completion-tier (declared divergence)
+  // The declared divergence: the predecessor's unfiltered reconcile
+  // refuses a stale-baseline uncorroborated claim; the spec-literal
+  // ported scope does not. The verdict over a record whose ONLY
+  // uncorroborated claims sit at a non-current baseline is Witnessed.
+  test("an uncorroborated claim at a non-current baseline does not warrant refusal"):
+    val stale: ReconcileFixtures.ClaimKey =
+      ReconcileFixtures.ClaimKey("sp", Ring.R3, "old-base", "sbt test")
+    val records: List[ValidatedRecord] =
+      List(ReconcileFixtures.record(stale, "chg", exit = 0, ReconcileFixtures.RecKind.Written))
+    val report: ReconcileReport = ReconcileEngine.classify(records, "chg", None, None)
+    assertEquals(
+      GateDecisions.corroborationVerdict(report, "base"),
+      WitnessVerdict.Witnessed
+    )
+
+  // ── Scenario: a second attempt in the same turn is not refused ──────
+  // spec: completion-witness-refusal — Scenario: Adversarial — a second attempt in the same turn is not refused
+  test("a spent budget does not refuse again on the same warrant"):
+    val claim: ClaimVerdict =
+      ClaimVerdict("sp", Ring.R3, "obl", "cmd", "base", "testimony", List.empty[Int])
+    assertEquals(
+      GateDecisions.decideCompletion(
+        WitnessVerdict.Unwitnessed(claim),
+        RefusalBudget.fromMarker(alreadyRefused = true)
+      ),
+      CompletionDecision.Allow
+    )
+
+  // ── Property: refusal-iff-an-uncorroborated-green-result-exists ─────
+  // spec: completion-witness-refusal — Property: refusal-iff-an-uncorroborated-green-result-exists
+  //
+  // The refusal fires iff an uncorroborated green row exists at the
+  // current baseline and the budget is unspent; a refusal names a row
+  // that justifies it. The stale-only cover label exercises the declared
+  // divergence shape — the predecessor would refuse it; the spec's
+  // current-baseline scope does not.
+  property("refusal-iff-an-uncorroborated-green-result-exists", coverConfig):
+    for (change: String, records: List[ValidatedRecord], plans: List[CompletionWitnessRefusalFixtures.RowPlan]) <-
+        CompletionWitnessRefusalFixtures.genEvidenceRecord.forAll
+          .cover(
+            5,
+            "empty-record",
+            (t: (String, List[ValidatedRecord], List[CompletionWitnessRefusalFixtures.RowPlan])) => t._3.isEmpty
+          )
+          .cover(
+            25,
+            "current-baseline-warrant",
+            (t: (String, List[ValidatedRecord], List[CompletionWitnessRefusalFixtures.RowPlan])) =>
+              t._3.exists(p => p.isGreen && p.atBaseline && !p.corroborated)
+          )
+          .cover(
+            10,
+            "stale-only-uncorroborated",
+            (t: (String, List[ValidatedRecord], List[CompletionWitnessRefusalFixtures.RowPlan])) =>
+              t._3.exists(p => p.isGreen && !p.atBaseline && !p.corroborated) &&
+                !t._3.exists(p => p.isGreen && p.atBaseline && !p.corroborated)
+          )
+          .cover(
+            10,
+            "contradicted-warrant",
+            (t: (String, List[ValidatedRecord], List[CompletionWitnessRefusalFixtures.RowPlan])) =>
+              t._3.exists(p => p.isGreen && p.atBaseline && !p.corroborated && p.contradicted)
+          )
+    yield
+      val report: ReconcileReport = ReconcileEngine.classify(records, change, None, None)
+      val verdict: WitnessVerdict =
+        GateDecisions.corroborationVerdict(report, CompletionWitnessRefusalFixtures.currentBaseline)
+      val expected: Boolean =
+        plans.exists(p => p.isGreen && p.atBaseline && !p.corroborated)
+      val decision: CompletionDecision =
+        GateDecisions.decideCompletion(verdict, RefusalBudget.full)
+      val firstWarrant: Option[Int] =
+        plans.zipWithIndex.collectFirst {
+          case (p: CompletionWitnessRefusalFixtures.RowPlan, i: Int) if p.isGreen && p.atBaseline && !p.corroborated =>
+            i
+        }
+      Result
+        .assert(decision.isRefusal == expected)
+        .and(
+          verdict match
+            case WitnessVerdict.Undeterminable(_) =>
+              Result.failure.log("a readable report can never be undeterminable")
+            case _ =>
+              Result.success
+            // danger-scan:allow verdict-shape — Witnessed/Unwitnessed are both reachable verdicts
+        )
+        .and(
+          decision match
+            case CompletionDecision.Refuse(u) =>
+              Result.assert(
+                firstWarrant.exists(i => u.row.command == CompletionWitnessRefusalFixtures.rowCommand(i))
+              )
+            case _ =>
+              Result.success
+            // danger-scan:allow decision-shape — only a refusal carries a named row
+        )
+
+  // ── Property: unreadable-state-never-refuses ────────────────────────
+  // spec: completion-witness-refusal — Property: unreadable-state-never-refuses
+  //
+  // An undeterminable corroboration check abstains with its stated
+  // reason — it never refuses, under either a fresh or a spent budget,
+  // and it never silently allows (a bare Allow would drop the reason).
+  property("unreadable-state-never-refuses"):
+    for
+      reason <- CompletionWitnessRefusalFixtures.genReason.forAll
+      budget <- CompletionWitnessRefusalFixtures.genBudget.forAll
+    yield GateDecisions.decideCompletion(WitnessVerdict.Undeterminable(reason), budget) match
+      case CompletionDecision.AllowUndetermined(r) =>
+        Result.assert(r == reason)
+      case CompletionDecision.Refuse(_) =>
+        Result.failure.log("unreadable corroboration state produced a refusal")
+      case CompletionDecision.Allow =>
+        Result.failure.log("unreadable corroboration state silently allowed — the stated reason was dropped")
+
+  // ── Property: refusal-budget-is-bounded-and-nonzero ─────────────────
+  // spec: completion-witness-refusal — Property: refusal-budget-is-bounded-and-nonzero
+  //
+  // Across any sequence of completion attempts within one turn: at most
+  // one refusal is issued, and exactly one when any attempt warrants.
+  // The budget is the injected turn state — a refusal spends it via
+  // `issue`, the marker-write the adapter performs.
+  property("refusal-budget-is-bounded-and-nonzero", coverConfig):
+    for attempts <- CompletionWitnessRefusalFixtures.genAttemptSequence.forAll
+        .cover(
+          20,
+          "first-attempt-warrants",
+          (vs: List[WitnessVerdict]) => vs.headOption.exists(isUnwitnessed)
+        )
+        .cover(
+          15,
+          "later-attempt-warrants",
+          (vs: List[WitnessVerdict]) => vs.drop(1).exists(isUnwitnessed)
+        )
+        .cover(
+          15,
+          "no-warrant",
+          (vs: List[WitnessVerdict]) => !vs.exists(isUnwitnessed)
+        )
+    yield
+      val folded: (Int, RefusalBudget) =
+        attempts.foldLeft((0, RefusalBudget.full)) { case ((n: Int, b: RefusalBudget), v: WitnessVerdict) =>
+          val decision: CompletionDecision = GateDecisions.decideCompletion(v, b)
+          if decision.isRefusal then (n + 1, b.issue.getOrElse(b))
+          else (n, b)
+        }
+      val refusals: Int = folded._1
+      val anyWarrant: Boolean =
+        attempts.exists(isUnwitnessed)
+      Result
+        .assert(refusals <= 1)
+        .and(Result.assert(refusals == (if anyWarrant then 1 else 0)))

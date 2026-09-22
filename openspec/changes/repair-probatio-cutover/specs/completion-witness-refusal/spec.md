@@ -51,6 +51,14 @@ exists, and it MUST NOT allow completion in that state.
 exists in the record
 **Then** completion is refused, and the refusal names the uncorroborated result
 
+**Applicability** (recorded at apply Ring 8): the refusal is scoped to a turn that
+*presents* a completion claim — the per-session checkpoint-presentation marker the
+harness writes before the Stop event. A session with no presentation marker makes no
+completion claim, so mid-work stops pass silently; this precondition is predecessor
+behaviour, not a relaxation of the refusal. Likewise the requirement quantifies over
+*enumerable* changes: a changes directory that cannot be enumerated yields no scan
+subjects, the same empty iteration the predecessor's `changes/*/` glob produces.
+
 **Rationale**: a green result recorded by the party that produced it is a self-report. The
 corroboration requirement is what makes the record evidence rather than testimony. The
 predecessor refuses here; the port allows, which removes the tier's only teeth.
@@ -208,21 +216,41 @@ property("at most one refusal per turn") {
 ### Property: parity-with-predecessor-on-the-completion-tier
 
 **Invariant**: for every generated change fixture, the ported tier's exit status equals
-the predecessor's for the same fixture, with the predecessor run as the model.
+the predecessor's for the same fixture, with the predecessor run as the model — **except
+on the declared divergence**: the predecessor's corroboration check is invoked without a
+baseline filter and refuses on an uncorroborated green row at ANY baseline, while this
+spec scopes the refusal to the current baseline (`decideCompletion`'s
+`r.baseline == baseline`). A fixture whose only refusal warrant is an uncorroborated
+green row at a non-current baseline therefore diverges BY DESIGN — the predecessor
+refuses, the port allows. The property does not exclude that shape from the corpus; it
+asserts the divergence is confined to it.
+
+**Declared divergence**: `model` refuses ∧ `ported` allows is permitted **iff** the
+record contains an uncorroborated green row at a non-current baseline AND no
+uncorroborated green row at the current baseline. Every other fixture is unconditional
+parity. (Recorded at apply Step 0 — the current-baseline scope was confirmed as the
+intended semantics against the measured predecessor behaviour.)
 
 **Generator strategy**: `genCompletionFixture` — constructive over change directories
 carrying an evidence record from `genEvidenceRecord`, a baseline, and a per-session state
 area in one of {absent, empty, carrying a prior refusal}. Model-based: the predecessor
 script runs as a subprocess on the same fixture. Determinism: recorded process outcomes
-and an injected clock seam; no sleeps.
+and an injected clock seam; no sleeps. Coverage: the divergent shape MUST be exercised —
+a parity property whose corpus never produces a stale-baseline claim is vacuous on
+exactly the case it declares.
 
 ```
-property("completion tier agrees with the predecessor") {
+property("completion tier agrees with the predecessor modulo the declared divergence") {
   for {
     fixture <- genCompletionFixture.forAll
     ported   = runPorted(fixture)
     model    = runPredecessor(fixture)
-  } yield Result.assert(ported.exitStatus == model.exitStatus)
+  } yield Result.assert(
+    ported.exitStatus == model.exitStatus ||
+      (model.isRefusal && ported.isAllow &&
+        fixture.record.hasStaleUncorroboratedGreen &&
+        !fixture.record.hasCurrentUncorroboratedGreen)
+  )
 }
 ```
 
@@ -275,8 +303,8 @@ A bridge property binds the shipped predicate to this model.
 | A second attempt in the same turn is not refused | Requirement: At most one refusal is issued per turn + Scenario: Adversarial — a second attempt in the same turn is not refused | bats oracle | `hook-tiers.bats` |
 | A new turn refuses again | Requirement: At most one refusal is issued per turn + Scenario: Edge case — a new turn refuses again | scenario test | `GateEventSpec` |
 | The per-turn bound holds over any attempt sequence | Property: refusal-budget-is-bounded-and-nonzero | Hedgehog property (injected turn identity and clock seam — no wall-clock) | `GateDecisionSpec` |
-| A two-variant witness verdict is unconstructible | Compile-Negative: A witness verdict with only two variants | compile-negative test | `GateEventCompletenessTypeContract` |
-| A refusal without its offending row is unconstructible | Compile-Negative: A refusal constructed without the offending row | compile-negative test | `GateEventCompletenessTypeContract` |
+| A two-variant witness verdict is unconstructible | Compile-Negative: A witness verdict with only two variants | compile-negative test | `CompletionWitnessRefusalCompileNegative` |
+| A refusal without its offending row is unconstructible | Compile-Negative: A refusal constructed without the offending row | compile-negative test | `CompletionWitnessRefusalCompileNegative` |
 | The tier agrees with the predecessor | Property: parity-with-predecessor-on-the-completion-tier | Hedgehog model-based property (predecessor run as a subprocess) | `GateBannerCompatSpec` |
 | The refusal predicate and bound are formally verified | Invariant: refusal iff uncorroborated-green-and-unbounded | Stainless verification + bridge property test | `GateKernel` (extended) + `GateBridgeSpec` |
 | The suite file reaches control parity | Criterion: this spec's exit criterion | bats oracle compared against the repaired differential control | `ambient-capture-wiring.bats` via `probatioOracleDiff` |

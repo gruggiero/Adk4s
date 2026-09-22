@@ -422,3 +422,30 @@ final class GateStateDirSpec extends ProbatioCliSuite:
         "an unparseable name yields no marker"
       )
     }
+
+  // ── completion-witness-refusal (spec 3 of repair-probatio-cutover) ──
+
+  // spec: completion-witness-refusal — Scenario: Happy path — an unavailable state area allows with a named reason
+  test("completion with no resolvable state area allows and names it"):
+    withTempDir("gate-completion-nostate") { (repo: Path) =>
+      // No git — `git rev-parse --absolute-git-dir` fails → no state dir
+      // resolves, and the tier must fail OPEN while saying why.
+      Files.createDirectories(repo.resolve("openspec/changes/test-change"))
+      val traceFile: Path = repo.resolve("trace.log")
+      val outcome: Outcome[Int] = GateCmd.run(
+        ("--repo" +: repo.toString +:
+          List("--event", "completion", "--format", "text", "--session", "t")).toArray,
+        Map("PROBATIO_HOOKS_TRACE" -> traceFile.toString),
+        () => None
+      )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"an unavailable state area fails open, got $other")
+      val trace: String =
+        if Files.isRegularFile(traceFile) then Files.readString(traceFile) else ""
+      assert(
+        trace.contains("STATE_DIR"),
+        s"the trace names the unavailable state area: $trace"
+      )
+    }

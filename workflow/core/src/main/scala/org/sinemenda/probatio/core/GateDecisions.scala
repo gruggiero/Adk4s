@@ -389,4 +389,46 @@ object GateDecisions:
     if entries.length > 10 then shown + s"\n    +${entries.length - 10} more"
     else shown
 
+  /**
+   * The completion corroboration verdict over one change's reconcile
+   * report, scoped to the CURRENT baseline: every uncorroborated claim
+   * (testimony or contradicted) whose `baseline` equals `baseline` is a
+   * refusal warrant; the FIRST such claim in record order is the row the
+   * verdict names. Claims at any other baseline are out of scope — the
+   * spec-literal scope, a declared divergence from the predecessor's
+   * unfiltered reconcile invocation.
+   *
+   * The report is already-read evidence: this function performs no I/O.
+   * An unreadable record never reaches it — the adapter constructs
+   * `WitnessVerdict.Undeterminable` at the read boundary instead.
+   *
+   * spec: completion-witness-refusal — Requirement: A turn is refused when a green result has no corroboration
+   * spec: completion-witness-refusal — Property: refusal-iff-an-uncorroborated-green-result-exists
+   */
+  def corroborationVerdict(report: ReconcileReport, baseline: String): WitnessVerdict =
+    report.uncorroborated.find((c: ClaimVerdict) => c.baseline == baseline) match
+      case Some(row: ClaimVerdict) => WitnessVerdict.Unwitnessed(row)
+      case None                    => WitnessVerdict.Witnessed
+
+  /**
+   * The completion decision — the corroboration verdict bounded by the
+   * per-turn refusal budget:
+   *
+   *  - `Witnessed` → `Allow`.
+   *  - `Undeterminable` → `AllowUndetermined` — fail-open with the
+   *    stated reason; abstention never consumes the budget.
+   *  - `Unwitnessed` → `Refuse` while the budget is unspent, `Allow`
+   *    once it is — at most one refusal per turn, and a spent budget
+   *    allows rather than refusing again.
+   *
+   * spec: completion-witness-refusal — Contract: decideCompletion
+   * spec: completion-witness-refusal — Requirement: At most one refusal is issued per turn
+   */
+  def decideCompletion(verdict: WitnessVerdict, budget: RefusalBudget): CompletionDecision =
+    verdict match
+      case WitnessVerdict.Witnessed              => CompletionDecision.Allow
+      case WitnessVerdict.Undeterminable(reason) => CompletionDecision.AllowUndetermined(reason)
+      case u @ WitnessVerdict.Unwitnessed(_) =>
+        if budget.exhausted then CompletionDecision.Allow else CompletionDecision.Refuse(u)
+
 end GateDecisions

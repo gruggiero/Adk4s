@@ -1283,70 +1283,163 @@ object GateCmd:
             trace(ctx, env, "completion: checkpoint presentation marker found, running chain-state")
             val gateBaseline: String =
               SpecLintCmd.gitOut(ctx.repo, List("rev-parse", "HEAD")).getOrElse("unknown")
+            val chgDirs: List[Path] = activeChangeDirs(ctx.repo)
+            // The corroboration scope compares against the baseline the
+            // ledger RECORDED — the post-bash writer's `--short` form,
+            // not the long sha chain-state receives. Resolved only when
+            // a ledger exists to compare against — the subprocess is
+            // skipped on the ledger-less path.
+            val ledgerBaseline: Option[String] =
+              if chgDirs.exists((d: Path) => Files.isRegularFile(d.resolve("evidence-ledger.jsonl")))
+              then SpecLintCmd.gitOut(ctx.repo, List("rev-parse", "--short", "HEAD"))
+              else None
             val scan: CompletionScan =
-              activeChangeDirs(ctx.repo).foldLeft(CompletionScan.Empty) { (acc: CompletionScan, chgDir: Path) =>
-                completionScanChange(ctx, env, chgDir, gateBaseline, acc)
+              chgDirs.foldLeft(CompletionScan.Empty) { (acc: CompletionScan, chgDir: Path) =>
+                completionScanChange(ctx, env, chgDir, gateBaseline, ledgerBaseline, acc)
               }
+            val decision: CompletionDecision =
+              GateDecisions.decideCompletion(scan.verdict, RefusalBudget.full)
             // Decision order: undetermined → uncorroborated →
             // unresolved (the predecessor's order — an unwitnessed
             // ledger poisons everything downstream of it).
             if scan.undetermined then
-              val reason: String = BlockReason.ChainStateUndetermined.render
-              val _              = GateStateDirReader.writeRefusal(dir, RefusalKind.Completion, ctx.session)
-              trace(ctx, env, "completion: refuse (undetermined)")
-              completionRefusal(ctx.format, reason, Outcome.Undetermined(_))
-            else if scan.uncorroborated.nonEmpty then
-              val reason: String = BlockReason.Uncorroborated(scan.uncorroborated).render
-              val _              = GateStateDirReader.writeRefusal(dir, RefusalKind.Completion, ctx.session)
-              trace(ctx, env, "completion: refuse (uncorroborated)")
-              completionRefusal(ctx.format, reason, Outcome.Finding(_))
-            else if scan.unresolved.nonEmpty then
-              val reason: String = BlockReason.CompletionUnresolved(scan.unresolved).render
-              val _              = GateStateDirReader.writeRefusal(dir, RefusalKind.Completion, ctx.session)
-              trace(ctx, env, "completion: refuse (unresolved)")
-              completionRefusal(ctx.format, reason, Outcome.Finding(_))
+              if !GateStateDirReader.writeRefusal(dir, RefusalKind.Completion, ctx.session) then
+                trace(ctx, env, "completion: failed to write refusal marker, failing open")
+                Outcome.Ran(0)
+              else
+                val reason: String = BlockReason.ChainStateUndetermined.render
+                trace(ctx, env, "completion: refuse (undetermined)")
+                completionRefusal(ctx.format, reason, Outcome.Undetermined(_))
+            else if decision.isRefusal then
+              if !GateStateDirReader.writeRefusal(dir, RefusalKind.Completion, ctx.session) then
+                trace(ctx, env, "completion: failed to write refusal marker, failing open")
+                Outcome.Ran(0)
+              else
+                val reason: String = BlockReason.Uncorroborated(scan.uncorroborated).render
+                trace(ctx, env, "completion: refuse (uncorroborated)")
+                completionRefusal(ctx.format, reason, Outcome.Finding(_))
             else
-              trace(ctx, env, "completion: allow (fully discharged)")
-              Outcome.Ran(0)
+              decision match
+                case CompletionDecision.AllowUndetermined(r: UndeterminedReason) =>
+                  trace(ctx, env, s"completion: corroboration undeterminable — ${r.text}, allow")
+                case _ => () // danger-scan:allow decision-shape — Allow carries nothing to state
+              if scan.unresolved.nonEmpty then
+                if !GateStateDirReader.writeRefusal(dir, RefusalKind.Completion, ctx.session) then
+                  trace(ctx, env, "completion: failed to write refusal marker, failing open")
+                  Outcome.Ran(0)
+                else
+                  val reason: String = BlockReason.CompletionUnresolved(scan.unresolved).render
+                  trace(ctx, env, "completion: refuse (unresolved)")
+                  completionRefusal(ctx.format, reason, Outcome.Finding(_))
+              else
+                trace(ctx, env, "completion: allow (fully discharged)")
+                Outcome.Ran(0)
 
   /** The per-change accumulators of the completion scan. */
   final private case class CompletionScan(
     undetermined: Boolean,
     unresolved: String,
+    verdict: WitnessVerdict,
     uncorroborated: String
   )
 
   private object CompletionScan:
-    val Empty: CompletionScan = CompletionScan(undetermined = false, "", "")
+    val Empty: CompletionScan =
+      CompletionScan(undetermined = false, "", WitnessVerdict.Witnessed, "")
+
+  /**
+   * Fold two change-dirs' corroboration verdicts: the first
+   * `Unwitnessed` wins (the refusal names its row); otherwise the first
+   * `Undeterminable`; `Witnessed` only when every change is witnessed.
+   */
+  private def mergeVerdict(a: WitnessVerdict, b: WitnessVerdict): WitnessVerdict =
+    (a, b) match
+      case (WitnessVerdict.Unwitnessed(_), _)    => a
+      case (_, WitnessVerdict.Unwitnessed(_))    => b
+      case (WitnessVerdict.Undeterminable(_), _) => a
+      case _                                     => b // danger-scan:allow verdict-fold — only Witnessed remains
 
   /**
    * Scan one active change dir for the completion decision: the
-   * reconcile tool's uncorroborated-evidence verdict (exit 1 only —
-   * exit 2 is chain-state's own undetermined signal) and the chain
-   * state tool's unresolved-requirements list.
+   * corroboration verdict over the change's evidence ledger — computed
+   * IN-CORE (`readLedgerFile` + `Ledger.readValidated` +
+   * `ReconcileEngine.classify` + `GateDecisions.corroborationVerdict`),
+   * no reconcile subprocess — and the chain state tool's
+   * unresolved-requirements list.
+   *
+   * The in-core read is the defect repair: the ported tool resolution
+   * anchored `reconcile.sh` at the repo under test, where fixtures
+   * never install it, silently skipping the corroboration check. An
+   * absent ledger, an unresolvable baseline, or a present-but-unreadable
+   * record is `Undeterminable` — fail-open with a stated reason naming
+   * the unreadable input, never a silent clean allow and never a
+   * refusal on unread state.
+   *
+   * spec: completion-witness-refusal — Requirement: A turn is refused when a green result has no corroboration
    */
   private def completionScanChange(
     ctx: GateContext,
     env: Map[String, String],
     chgDir: Path,
     gateBaseline: String,
+    ledgerBaseline: Option[String],
     acc: CompletionScan
   ): CompletionScan =
-    val name: String    = chgDir.getFileName.toString
-    val ledger: Path    = chgDir.resolve("evidence-ledger.jsonl")
-    val reconcile: Path = scannerTool(ctx.repo, env, "RECONCILE_OVERRIDE", "reconcile.sh")
-    val uncorroborated: String =
-      if Files.isRegularFile(ledger) && toolExists(reconcile) then
-        runScanner(
-          ctx.repo,
-          reconcile,
-          List("--file", ledger.toString, "--change", name, "--format", "text"),
-          mergeStderr = true
-        ) match
-          case Some((1, out: String)) => acc.uncorroborated + "\n  " + out
-          case _ => // danger-scan:allow non-1 reconcile exits carry no corroboration finding (exit 0 = corroborated; failure = predecessor silence)
-            acc.uncorroborated
-      else acc.uncorroborated
+    val name: String = chgDir.getFileName.toString
+    val ledger: Path = chgDir.resolve("evidence-ledger.jsonl")
+    val corr: (WitnessVerdict, String) = // verdict + refusal detail text
+      if !Files.isRegularFile(ledger) then
+        (
+          WitnessVerdict.Undeterminable(
+            UndeterminedReason.stated(s"$ledger: no evidence record")
+          ),
+          ""
+        )
+      else
+        ledgerBaseline match
+          case None =>
+            (
+              WitnessVerdict.Undeterminable(
+                UndeterminedReason.stated(
+                  s"baseline unresolvable — git rev-parse --short HEAD failed under ${ctx.repo}"
+                )
+              ),
+              ""
+            )
+          case Some(base: String) =>
+            SubcommandWiring.readLedgerFile(ledger.toString) match
+              case Outcome.Undetermined(reason: String) =>
+                (
+                  WitnessVerdict.Undeterminable(
+                    UndeterminedReason.stated(s"$ledger: $reason")
+                  ),
+                  ""
+                )
+              case Outcome.Finding(msg: String) =>
+                // readLedgerFile never yields Finding — direction-honest
+                // passthrough, still undeterminable rather than a warrant.
+                (
+                  WitnessVerdict.Undeterminable(
+                    UndeterminedReason.stated(s"$ledger: $msg")
+                  ),
+                  ""
+                ) // danger-scan:allow unreachable-branch — readLedgerFile's contract is Ran|Undetermined
+              case Outcome.Ran(rows: List[ujson.Value]) =>
+                Ledger.readValidated(rows) match
+                  case Left(err: LedgerReadError) =>
+                    (
+                      WitnessVerdict.Undeterminable(
+                        UndeterminedReason.stated(s"$ledger: ${err.description}")
+                      ),
+                      ""
+                    )
+                  case Right(records: List[ValidatedRecord]) =>
+                    val report: ReconcileReport =
+                      ReconcileEngine.classify(records, name, None, None)
+                    GateDecisions.corroborationVerdict(report, base) match
+                      case v @ WitnessVerdict.Unwitnessed(_) =>
+                        (v, "\n  " + StdoutRenderer[ReconcileReport].render(report))
+                      case v => (v, "") // danger-scan:allow verdict-shape — Witnessed/Undeterminable carry no detail text
     val chainState: Path = scannerTool(ctx.repo, env, "CHAIN_STATE_OVERRIDE", "chain-state.sh")
     val csResult: Option[(Int, String)] =
       if toolExists(chainState) then
@@ -1357,22 +1450,25 @@ object GateCmd:
           mergeStderr = false
         )
       else Some((127, "")) // the predecessor's missing-tool exit
+    val verdict: WitnessVerdict = mergeVerdict(acc.verdict, corr._1)
+    val uncorroborated: String  = acc.uncorroborated + corr._2
     csResult match
       case Some((code: Int, out: String)) if code == 0 || code == 1 =>
         parseChainStateTotal(out) match
           case None =>
             // Not a JSON object with a numeric .total — undetermined.
-            acc.copy(undetermined = true, uncorroborated = uncorroborated)
+            acc.copy(undetermined = true, verdict = verdict, uncorroborated = uncorroborated)
           case Some(obj: ujson.Obj) =>
             val unresolvedCount: Int = chainUnresolvedCount(obj)
             if unresolvedCount > 0 then
               acc.copy(
                 unresolved = acc.unresolved + s"\n  $name:\n" + chainUnresolvedNames(obj),
+                verdict = verdict,
                 uncorroborated = uncorroborated
               )
-            else acc.copy(uncorroborated = uncorroborated)
+            else acc.copy(verdict = verdict, uncorroborated = uncorroborated)
       case _ => // danger-scan:allow fail-closed — a non-{0,1} scanner exit or absent result is undetermined, never clean
-        acc.copy(undetermined = true, uncorroborated = uncorroborated)
+        acc.copy(undetermined = true, verdict = verdict, uncorroborated = uncorroborated)
 
   /**
    * The chain-state parse gate: a JSON object carrying a numeric

@@ -140,6 +140,23 @@ final case class ReconcileReport private (
   /** True when at least one claim is testimony or contradicted. */
   def hasFindings: Boolean = testimony.nonEmpty || contradicted.nonEmpty
 
+  /**
+   * The uncorroborated claims — testimony and contradicted — in record
+   * order. The completion tier's corroboration verdict is computed over
+   * this view.
+   *
+   * spec: completion-witness-refusal — Requirement: A turn is refused when a green result has no corroboration
+   */
+  def uncorroborated: List[ClaimVerdict] =
+    classifications.flatMap { (c: ReconcileEngine.Classified) =>
+      c.corroboration match
+        case Corroboration.Testimony          => List(verdictOf(c))
+        case Corroboration.Contradicted(_, _) => List(verdictOf(c))
+        case Corroboration.Witnessed(_, _, _) => List.empty[ClaimVerdict]
+        case Corroboration.SelfObserved       => List.empty[ClaimVerdict]
+        case Corroboration.Exempt             => List.empty[ClaimVerdict]
+    }
+
   /** Build a claim's verdict entry — the predecessor's verdict object. */
   private def verdictOf(c: ReconcileEngine.Classified): ClaimVerdict =
     val observed: List[Int] = c.corroboration match

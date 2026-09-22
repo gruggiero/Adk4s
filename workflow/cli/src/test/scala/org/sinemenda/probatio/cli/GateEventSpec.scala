@@ -27,6 +27,11 @@ import LiveFactFixtures.withTempDir
  */
 final class GateEventSpec extends ProbatioCliSuite:
 
+  // The suite drives hundreds of in-process gate invocations that each
+  // spawn git/bash subprocesses — the 30s default is too tight.
+  override val munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(120, "s")
+
   // ── fixtures ────────────────────────────────────────────────────────
 
   private val change: String   = "test-change"
@@ -1022,6 +1027,76 @@ final class GateEventSpec extends ProbatioCliSuite:
 
   private def traceLines(text: String, frag: String): Int =
     text.split("\n", -1).toList.count((l: String) => l.contains(frag))
+
+  // ── completion-witness-refusal fixtures (spec 3 of repair-probatio-cutover) ──
+
+  /**
+   * `git rev-parse --short HEAD` — the baseline form the ledger records
+   * (the post-bash writer's `--short`), so a "current baseline" claim
+   * matches what the corroboration check resolves.
+   */
+  private def shortHead(repo: Path): String =
+    new String(
+      new ProcessBuilder("git", "-C", repo.toString, "rev-parse", "--short", "HEAD")
+        .start()
+        .getInputStream
+        .readAllBytes()
+    ).trim
+
+  /**
+   * A validator-shaped ledger row for the completion fixtures: the 15
+   * contract fields plus `source: "ambient"` when the row is a witness.
+   */
+  private def ledgerRowJson(
+    exit: Int,
+    baseline: String,
+    command: String,
+    obligation: String,
+    ambient: Boolean
+  ): String =
+    val row: ujson.Obj = ujson.Obj(
+      "v"          -> ujson.Num(1),
+      "ts"         -> ujson.Str("2026-01-01T00:00:00Z"),
+      "change"     -> ujson.Str(change),
+      "spec"       -> ujson.Str(specName),
+      "ring"       -> ujson.Str("R3"),
+      "obligation" -> ujson.Str(obligation),
+      "artifact"   -> ujson.Str("tests/x.bats"),
+      "command"    -> ujson.Str(command),
+      "exit"       -> ujson.Num(exit.toDouble),
+      "baseline"   -> ujson.Str(baseline)
+    )
+    if ambient then row("source") = ujson.Str("ambient")
+    ujson.write(row)
+
+  /**
+   * A repo whose completion tier evaluates: a resolvable HEAD (the
+   * current baseline), the session's checkpoint-presentation marker,
+   * and a clean chain-state stub. Returns the short HEAD sha (the
+   * baseline form ledger rows record) and the stub path.
+   */
+  private def mkCompletionFixture(repo: Path): (String, Path) =
+    mkRepo(repo, withGit = true)
+    // mkRepo's dirs are empty — seed a worktree file so HEAD resolves.
+    Files.writeString(repo.resolve("seed.txt"), "seed")
+    gitCommitAll(repo)
+    val base: String = shortHead(repo)
+    assert(base.nonEmpty, "the fixture commit must resolve HEAD")
+    val sd: Path = stateDir(repo)
+    Files.createDirectories(sd)
+    Files.writeString(
+      sd.resolve(s"presentation-$change-$specName-${SessionId.fromRaw("t").encoded}"),
+      "h"
+    )
+    val chainState: Path = repo.resolve("cs-clean.sh")
+    Files.writeString(
+      chainState,
+      "#!/usr/bin/env bash\n" +
+        "echo '{\"change\":\"x\",\"baseline\":\"b\",\"total\":0,\"bound\":0,\"resolved\":0," +
+        "\"discharged\":0,\"unresolved\":[],\"unmapped_obligations\":[]}'\n"
+    )
+    chainState.toFile.setExecutable(true)
+    (base, chainState)
 
   test("the trace channel records the silent prologue skips"):
     withTempDir("gate-trace-skip") { (repo: Path) =>
@@ -2046,37 +2121,32 @@ final class GateEventSpec extends ProbatioCliSuite:
       )
     }
 
-  test("completion uncorroborated evidence refuses with the reconcile text"):
+  // ── completion-witness-refusal (spec 3 of repair-probatio-cutover) ──
+  //
+  // The corroboration verdict is computed IN-CORE — the adapter reads the
+  // evidence ledger itself (`readLedgerFile` + `Ledger.readValidated` +
+  // `ReconcileEngine.classify` + `GateDecisions.corroborationVerdict`), so
+  // no reconcile subprocess is involved and no tool resolution can skip
+  // the check (the defect this spec repairs). The refusal detail text is
+  // the reconcile report's own rendering — byte-identical to what the
+  // predecessor appended.
+
+  // spec: completion-witness-refusal — Requirement: A turn is refused when a green result has no corroboration
+  test("completion is refused when a green row has no witness"):
     withTempDir("gate-completion-uncorr") { (repo: Path) =>
-      mkRepo(repo, withGit = true)
-      val sd: Path = stateDir(repo)
-      Files.createDirectories(sd)
+      val (base: String, chainState: Path) = mkCompletionFixture(repo)
+      // A written green claim at the current baseline with no
+      // corroborating observation — testimony.
       Files.writeString(
-        sd.resolve(s"presentation-$change-$specName-${SessionId.fromRaw("t").encoded}"),
-        "h"
+        ledgerFile(repo),
+        ledgerRowJson(0, base, "sbt test", "the unwitnessed obligation", ambient = false) + "\n"
       )
-      // A ledger must exist for the reconcile tool to run.
-      Files.writeString(ledgerFile(repo), "{}\n")
-      // The uncorroborated marker rides on STDERR — runScanner merges it
-      // into the captured output (a mutant dropping stderr never sees
-      // the marker and allows).
-      val argvOut: Path   = repo.resolve("reconcile-argv.txt")
-      val reconcile: Path = repo.resolve("reconcile-stub.sh")
-      Files.writeString(
-        reconcile,
-        s"printf '%s\\n' \"$$@\" > $argvOut\necho UNCORROBORATED-EVIDENCE >&2\nexit 1\n"
-      )
-      val chainState: Path = repo.resolve("cs-clean.sh")
-      Files.writeString(chainState, "echo '{\"total\":0}'\n")
       val (out: String, traced: (String, Outcome[Int])) =
         StdoutCapture.captureOut(
           runTraced(
             repo,
             List("--event", "completion", "--format", "text", "--session", "t"),
-            Map(
-              "RECONCILE_OVERRIDE"   -> reconcile.toString,
-              "CHAIN_STATE_OVERRIDE" -> chainState.toString
-            )
+            Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
           )
         )
       val outcome: Outcome[Int] = traced._2
@@ -2084,26 +2154,204 @@ final class GateEventSpec extends ProbatioCliSuite:
         case Outcome.Finding(_) => ()
         case other => // danger-scan:allow test assertion — unexpected outcome fails the test
           fail(s"uncorroborated evidence must refuse (exit 1), got $other")
-      assert(out.contains("UNCORROBORATED-EVIDENCE"), s"reconcile text: $out")
-      assert(out.endsWith("\n"), s"the text refusal ends with a newline: $out")
+      assert(out.contains("uncorroborated"), s"refusal reason: $out")
       assert(
-        out.contains("\n  "),
-        s"the uncorroborated text is indented under the reason: $out"
+        out.contains("the unwitnessed obligation"),
+        s"the refusal names the offending row: $out"
       )
+      assert(
+        out.contains("sbt test"),
+        s"the refusal names the offending row's command: $out"
+      )
+      assert(out.endsWith("\n"), s"the text refusal ends with a newline: $out")
       assert(
         traced._1.contains("refuse (uncorroborated)"),
         s"missing uncorroborated trace: ${traced._1}"
       )
-      val argv: String = Files.readString(argvOut)
-      assert(argv.contains("--file"), s"reconcile argv: $argv")
-      assert(argv.contains(ledgerFile(repo).toString), s"reconcile argv: $argv")
-      assert(argv.contains("--change"), s"reconcile argv: $argv")
-      assert(argv.contains(change), s"reconcile argv: $argv")
-      assert(argv.contains("--format"), s"reconcile argv: $argv")
-      assert(
-        argv.split("\n").exists((a: String) => a == "text"),
-        s"reconcile argv must carry the text format token: $argv"
+    }
+
+  // spec: completion-witness-refusal — Scenario: Adversarial — a single uncorroborated green result refuses the turn
+  test("a single uncorroborated green result among corroborated ones refuses and names it"):
+    withTempDir("gate-completion-mixed") { (repo: Path) =>
+      val (base: String, chainState: Path) = mkCompletionFixture(repo)
+      // A corroborated claim (witnessed by an ambient row at the same
+      // key) alongside ONE uncorroborated claim at a different key.
+      Files.writeString(
+        ledgerFile(repo),
+        ledgerRowJson(0, base, "sbt test", "obl-witnessed", ambient = false) + "\n" +
+          ledgerRowJson(0, base, "sbt test", "obl-witnessed", ambient = true) + "\n" +
+          ledgerRowJson(0, base, "make check", "obl-lonely", ambient = false) + "\n"
       )
+      val (out: String, traced: (String, Outcome[Int])) =
+        StdoutCapture.captureOut(
+          runTraced(
+            repo,
+            List("--event", "completion", "--format", "text", "--session", "t"),
+            Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
+          )
+        )
+      traced._2 match
+        case Outcome.Finding(_) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"one uncorroborated claim among corroborated ones must refuse, got $other")
+      assert(
+        out.contains("obl-lonely"),
+        s"the refusal names the uncorroborated result: $out"
+      )
+      assert(
+        !out.contains("obl-witnessed"),
+        s"the corroborated claim is not named as uncorroborated: $out"
+      )
+    }
+
+  // spec: completion-witness-refusal — Scenario: Happy path — every green result is corroborated and completion proceeds
+  test("completion proceeds when every green row is witnessed"):
+    withTempDir("gate-completion-witnessed") { (repo: Path) =>
+      val (base: String, chainState: Path) = mkCompletionFixture(repo)
+      Files.writeString(
+        ledgerFile(repo),
+        ledgerRowJson(0, base, "sbt test", "obl-witnessed", ambient = false) + "\n" +
+          ledgerRowJson(0, base, "sbt test", "obl-witnessed", ambient = true) + "\n"
+      )
+      val outcome: Outcome[Int] = runGate(
+        repo,
+        List("--event", "completion", "--format", "text", "--session", "t"),
+        Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
+      )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"a fully witnessed record must allow, got $other")
+    }
+
+  // spec: completion-witness-refusal — Scenario: Edge case — a non-green result needs no corroboration
+  test("a red result with no witness needs no corroboration"):
+    withTempDir("gate-completion-red") { (repo: Path) =>
+      val (base: String, chainState: Path) = mkCompletionFixture(repo)
+      Files.writeString(
+        ledgerFile(repo),
+        ledgerRowJson(1, base, "sbt test", "obl-red", ambient = false) + "\n"
+      )
+      val outcome: Outcome[Int] = runGate(
+        repo,
+        List("--event", "completion", "--format", "text", "--session", "t"),
+        Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
+      )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"a red row is exempt from corroboration, got $other")
+    }
+
+  // spec: completion-witness-refusal — Property: parity-with-predecessor-on-the-completion-tier (declared divergence)
+  // The declared divergence, exercised directly: an uncorroborated green
+  // claim at a NON-current baseline is a warrant for the predecessor's
+  // unfiltered reconcile but out of the ported current-baseline scope —
+  // the port allows.
+  test("an uncorroborated claim at a stale baseline does not refuse"):
+    withTempDir("gate-completion-stale") { (repo: Path) =>
+      val (_: String, chainState: Path) = mkCompletionFixture(repo)
+      Files.writeString(
+        ledgerFile(repo),
+        ledgerRowJson(0, "0000000", "sbt test", "obl-stale", ambient = false) + "\n"
+      )
+      val outcome: Outcome[Int] = runGate(
+        repo,
+        List("--event", "completion", "--format", "text", "--session", "t"),
+        Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
+      )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"a stale-baseline claim is outside the current-baseline scope, got $other")
+    }
+
+  // spec: completion-witness-refusal — Scenario: Error path — an unreadable evidence record allows completion with a stated reason
+  test("an unreadable evidence record allows completion with a stated reason"):
+    withTempDir("gate-completion-badrecord") { (repo: Path) =>
+      val (_: String, chainState: Path) = mkCompletionFixture(repo)
+      // The record exists but cannot be parsed — the corroboration check
+      // cannot run, and the tier must SAY SO, naming the unreadable input.
+      Files.writeString(ledgerFile(repo), "this is not json\n")
+      val traced: (String, Outcome[Int]) =
+        runTraced(
+          repo,
+          List("--event", "completion", "--format", "text", "--session", "t"),
+          Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
+        )
+      traced._2 match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"an unreadable record fails open, got $other")
+      assert(
+        traced._1.contains("corroboration") && traced._1.contains("evidence-ledger"),
+        s"the trace must state the corroboration check could not run, naming the record: ${traced._1}"
+      )
+    }
+
+  // spec: completion-witness-refusal — Scenario: Adversarial — an unreadable record does not produce a refusal
+  test("an unparseable record does not produce a refusal"):
+    withTempDir("gate-completion-badrecord2") { (repo: Path) =>
+      val (_: String, chainState: Path) = mkCompletionFixture(repo)
+      Files.writeString(ledgerFile(repo), "this is not json\n")
+      val outcome: Outcome[Int] = runGate(
+        repo,
+        List("--event", "completion", "--format", "text", "--session", "t"),
+        Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
+      )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case Outcome.Ran(n) =>
+          fail(s"an unreadable record must not exit the tool: $n")
+        case Outcome.Finding(msg) =>
+          fail(s"an unreadable record must never refuse: $msg")
+        case Outcome.Undetermined(reason) =>
+          fail(s"an unreadable record must not refuse-undetermined: $reason")
+    }
+
+  // spec: completion-witness-refusal — Scenario: Adversarial — a second attempt in the same turn is not refused
+  test("a second completion attempt in the same turn proceeds after an uncorroborated refusal"):
+    withTempDir("gate-completion-second-uncorr") { (repo: Path) =>
+      val (base: String, chainState: Path) = mkCompletionFixture(repo)
+      Files.writeString(
+        ledgerFile(repo),
+        ledgerRowJson(0, base, "sbt test", "obl-lonely", ambient = false) + "\n"
+      )
+      val env: Map[String, String] = Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
+      val args: List[String] =
+        List("--event", "completion", "--format", "text", "--session", "t")
+      runGate(repo, args, env) match
+        case Outcome.Finding(_) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"the first attempt must refuse, got $other")
+      runGate(repo, args, env) match
+        case Outcome.Ran(0)       => ()
+        case Outcome.Finding(msg) => fail(s"the second refusal must not be issued: $msg")
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"expected allow, got $other")
+    }
+
+  // spec: completion-witness-refusal — Scenario: Edge case — a new turn refuses again
+  test("a new turn refuses again on an uncorroborated warrant"):
+    withTempDir("gate-completion-newturn") { (repo: Path) =>
+      val (base: String, chainState: Path) = mkCompletionFixture(repo)
+      Files.writeString(
+        ledgerFile(repo),
+        ledgerRowJson(0, base, "sbt test", "obl-lonely", ambient = false) + "\n"
+      )
+      val env: Map[String, String] = Map("CHAIN_STATE_OVERRIDE" -> chainState.toString)
+      val args: List[String] =
+        List("--event", "completion", "--format", "text", "--session", "t")
+      runGate(repo, args, env) match
+        case Outcome.Finding(_) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"the first attempt must refuse, got $other")
+      // A new turn starts: prompt-submit clears the session's refusal markers.
+      runGate(repo, List("--event", "prompt-submit", "--format", "text", "--session", "t"), env)
+      runGate(repo, args, env) match
+        case Outcome.Finding(_) => ()
+        case other => // danger-scan:allow test assertion — unexpected outcome fails the test
+          fail(s"a new turn must refuse again, got $other")
     }
 
   test("completion unresolved entries refuse with requirement and reasons"):
@@ -3998,29 +4246,24 @@ final class GateEventSpec extends ProbatioCliSuite:
       )
     }
 
-  test("completion runs the repo's default reconcile and chain-state scanners"):
+  test("completion reads the ledger in-core and runs the repo's default chain-state scanner"):
     withTempDir("gate-completion-defaults") { (repo: Path) =>
-      mkRepo(repo, withGit = true)
-      val sd: Path = stateDir(repo)
-      Files.createDirectories(sd)
+      val (base: String, _: Path) = mkCompletionFixture(repo)
+      // An uncorroborated green row at the current baseline — the
+      // corroboration verdict is computed IN-CORE from the ledger; no
+      // reconcile scanner is resolved at any path (the defect repair).
       Files.writeString(
-        sd.resolve(s"presentation-$change-$specName-${SessionId.fromRaw("t").encoded}"),
-        "h"
+        ledgerFile(repo),
+        ledgerRowJson(0, base, "sbt test", "obl-lonely", ambient = false) + "\n"
       )
-      Files.writeString(ledgerFile(repo), "{}\n")
-      // Default-path stubs — no *_OVERRIDE env — resolved under the
-      // schema's scanner dir inside the fixture repo.
+      // The chain-state leg still resolves the repo's default
+      // chain-state.sh under the schema's scanner dir — no override env.
       val scannerDir: Path =
         repo.resolve("openspec/schemas/verified-scala3/scanner")
       Files.createDirectories(scannerDir)
-      Files.writeString(
-        scannerDir.resolve("reconcile.sh"),
-        "echo DEFAULT-UNCORROBORATED >&2\nexit 1\n"
-      )
-      Files.writeString(
-        scannerDir.resolve("chain-state.sh"),
-        "echo '{\"total\":0}'\n"
-      )
+      val chainState: Path = scannerDir.resolve("chain-state.sh")
+      Files.writeString(chainState, "echo '{\"total\":0}'\n")
+      chainState.toFile.setExecutable(true)
       val (out: String, outcome: Outcome[Int]) =
         StdoutCapture.captureOut(
           runGate(
@@ -4032,10 +4275,10 @@ final class GateEventSpec extends ProbatioCliSuite:
       outcome match
         case Outcome.Finding(_) => ()
         case other => // danger-scan:allow test assertion — unexpected outcome fails the test
-          fail(s"the default reconcile stub's uncorroborated marker must refuse, got $other")
+          fail(s"an uncorroborated green row must refuse, got $other")
       assert(
-        out.contains("DEFAULT-UNCORROBORATED"),
-        s"the default-path reconcile output reaches the refusal: $out"
+        out.contains("obl-lonely"),
+        s"the refusal names the uncorroborated row: $out"
       )
     }
 

@@ -171,4 +171,147 @@ object GateKernel:
     ((shape == BigInt(1) || shape == BigInt(3) || shape == BigInt(4)) ==> (res == None[BigInt]()))
   }
 
+  // ── decideCompletion (spec: completion-witness-refusal) ──────────────
+
+  /**
+   * An evidence-record row, abstracted to the three facts the refusal
+   * decision reads: is the claim green, does its baseline equal the gate
+   * baseline (a real `BigInt` equality — the current-baseline scope the
+   * spec declares), and does an independent observation corroborate it.
+   */
+  case class EvidenceRow(isGreen: Boolean, baseline: BigInt, corroborated: Boolean)
+
+  /**
+   * The completion decision, abstracted: `CompletionAllow` is the clean
+   * proceed; `CompletionRefuse` carries the INDEX of a row that
+   * justifies the refusal — the model's `namedRow`. The fail-open
+   * `AllowUndetermined` arm is unmodelled: the kernel quantifies over
+   * already-read rows only, and an unreadable input can never reach the
+   * decision (the adapter abstains at the read boundary).
+   */
+  sealed abstract class CompletionDecision
+  case class CompletionAllow()                  extends CompletionDecision
+  case class CompletionRefuse(rowIndex: BigInt) extends CompletionDecision
+
+  /** True when the decision is a refusal. */
+  @pure
+  private def isCompletionRefusal(d: CompletionDecision): Boolean = d match
+    case CompletionRefuse(_) => true
+    case CompletionAllow()   => false
+
+  /** The row predicate a refusal is warranted by. */
+  @pure
+  private def uncorroboratedAtBaseline(r: EvidenceRow, baseline: BigInt): Boolean =
+    r.isGreen && r.baseline == baseline && !r.corroborated
+
+  /** Whether any row warrants a refusal. */
+  @pure
+  private def hasUncorroboratedAtBaseline(rows: List[EvidenceRow], baseline: BigInt): Boolean =
+    rows.exists((r: EvidenceRow) => uncorroboratedAtBaseline(r, baseline))
+
+  /** The index of the first refusal-warranting row, if any. */
+  @pure
+  private def firstUncorroborated(rows: List[EvidenceRow], baseline: BigInt, i: BigInt): Option[BigInt] =
+    rows match
+      case Nil() => None[BigInt]()
+      case Cons(h, t) =>
+        if uncorroboratedAtBaseline(h, baseline) then Some(i)
+        else firstUncorroborated(t, baseline, i + BigInt(1))
+
+  /**
+   * Soundness lemma: when `firstUncorroborated` returns `Some(k)`, `k`
+   * is in range and the row it names satisfies the warrant predicate —
+   * the refusal's `namedRow` justification.
+   */
+  @pure
+  private def fuSound(rows: List[EvidenceRow], baseline: BigInt, i: BigInt, k: BigInt): Unit = {
+    require(firstUncorroborated(rows, baseline, i) == Some(k))
+    decreases(rows.size)
+    rows match
+      case Nil() => ()
+      case Cons(h, t) =>
+        if uncorroboratedAtBaseline(h, baseline) then ()
+        else fuSound(t, baseline, i + BigInt(1), k)
+  }.ensuring { (_: Unit) =>
+    i <= k && k < i + rows.size &&
+    uncorroboratedAtBaseline(rows(k - i), baseline)
+  }
+
+  /**
+   * A satisfied predicate at an in-range index implies `exists` — the
+   * `Some` arm's contribution to the refusal-iff postcondition.
+   */
+  @pure
+  private def uncAtIndexImpliesExists(rows: List[EvidenceRow], baseline: BigInt, idx: BigInt): Unit = {
+    require(
+      BigInt(0) <= idx && idx < rows.size &&
+      uncorroboratedAtBaseline(rows(idx), baseline)
+    )
+    decreases(rows.size)
+    rows match
+      case Nil() => ()
+      case Cons(_, t) =>
+        if idx == BigInt(0) then ()
+        else uncAtIndexImpliesExists(t, baseline, idx - BigInt(1))
+  }.ensuring { (_: Unit) => hasUncorroboratedAtBaseline(rows, baseline) }
+
+  /**
+   * Completeness lemma: when `firstUncorroborated` finds nothing, no row
+   * warrants a refusal — the `None` arm's contribution to the
+   * refusal-iff postcondition.
+   */
+  @pure
+  private def fuComplete(rows: List[EvidenceRow], baseline: BigInt, i: BigInt): Unit = {
+    require(firstUncorroborated(rows, baseline, i) == None[BigInt]())
+    decreases(rows.size)
+    rows match
+      case Nil() => ()
+      case Cons(h, t) =>
+        if uncorroboratedAtBaseline(h, baseline) then ()
+        else fuComplete(t, baseline, i + BigInt(1))
+  }.ensuring { (_: Unit) => !hasUncorroboratedAtBaseline(rows, baseline) }
+
+  /**
+   * The completion decision: refuse — naming the first justifying row —
+   * exactly when an uncorroborated green row exists at the current
+   * baseline and the turn's refusal budget is unspent.
+   *
+   * Postcondition (the spec's `decideCompletion` contract):
+   *  - refusal iff a warrant exists and no prior refusal was issued;
+   *  - a refusal always names a row that justifies it;
+   *  - a spent budget never refuses.
+   *
+   * spec: completion-witness-refusal — Contract: decideCompletion
+   * spec: completion-witness-refusal — Property: refusal-iff-an-uncorroborated-green-result-exists
+   * spec: completion-witness-refusal — Requirement: At most one refusal is issued per turn
+   */
+  @pure
+  def decideCompletion(
+    rows: List[EvidenceRow],
+    baseline: BigInt,
+    priorRefusals: BigInt
+  ): CompletionDecision = {
+    require(priorRefusals >= 0)
+    if priorRefusals > 0 then CompletionAllow()
+    else
+      firstUncorroborated(rows, baseline, BigInt(0)) match
+        case Some(i) =>
+          fuSound(rows, baseline, BigInt(0), i)
+          uncAtIndexImpliesExists(rows, baseline, i)
+          CompletionRefuse(i)
+        case None() =>
+          fuComplete(rows, baseline, BigInt(0))
+          CompletionAllow()
+  }.ensuring { (res: CompletionDecision) =>
+    val warranted: Boolean = hasUncorroboratedAtBaseline(rows, baseline)
+    isCompletionRefusal(res) == (priorRefusals == 0 && warranted) &&
+    (res match
+      case CompletionRefuse(i) =>
+        i >= BigInt(0) && i < rows.size &&
+        uncorroboratedAtBaseline(rows(i), baseline)
+      case CompletionAllow() => true
+    ) &&
+    (priorRefusals > 0 ==> !isCompletionRefusal(res))
+  }
+
 end GateKernel
