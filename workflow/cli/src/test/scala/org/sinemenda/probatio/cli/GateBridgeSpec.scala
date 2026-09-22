@@ -5,8 +5,10 @@ import hedgehog.Range
 import hedgehog.Result
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
+import org.sinemenda.probatio.core.EventDispatch
 import org.sinemenda.probatio.core.RefusalBudget
 import org.sinemenda.probatio.core.ToolOutcome
+import org.sinemenda.probatio.verified.DispatchKernel
 import org.sinemenda.probatio.verified.GateKernel
 
 import scala.collection.immutable.List as ScalaList
@@ -92,3 +94,42 @@ final class GateBridgeSpec extends ProbatioCliSuite:
         Result.failure.log(
           s"divergence on shape=$shape code=$code: shipped=$shipped kernel=$kernel"
         )
+
+  // spec: gate-event-compatibility — Contract: classify (bridge)
+  //
+  // The shipped `EventDispatch.classify` run against the Stainless
+  // `DispatchKernel.classifyEvent` on the same generated names. The
+  // abstraction (shared with `DispatchKernel`'s own doc): names reduce
+  // to codes — `1..6` for the recognised names (position in
+  // `EventDispatch.recognisedNames`), `0` for every other string. The
+  // tier arm additionally re-checks the shipped event's own token, so a
+  // name→event mapping drift inside the shipped table is caught here
+  // and not only by the scenario pins.
+  property("bridge-classifyEvent — mirror equals the shipped event classification", coverConfig):
+    for name <- EventDispatchFixtures.genEventName.forAll
+    yield
+      val code: BigInt                              = EventDispatchFixtures.eventNameCode(name)
+      val shipped: EventDispatch                    = EventDispatch.classify(name)
+      val kernel: DispatchKernel.EventDispatchModel = DispatchKernel.classifyEvent(code)
+      (shipped, kernel) match
+        case (EventDispatch.Tier(event), DispatchKernel.EventTier(tierCode)) =>
+          Result
+            .assert(
+              EventDispatchFixtures.eventNameCode(EventDispatchFixtures.tokenOf(event)) == tierCode
+            )
+            .log(s"tier-code divergence for '$name': event=$event kernel=$tierCode")
+        case (EventDispatch.Injection(supplied), DispatchKernel.EventInjection(suppliedCode)) =>
+          Result.all(
+            List(
+              Result
+                .assert(supplied == name)
+                .log(s"the injection lost the supplied name: '$supplied' vs '$name'"),
+              Result
+                .assert(suppliedCode == code)
+                .log(s"kernel injection code drift: $suppliedCode vs $code")
+            )
+          )
+        case _ => // danger-scan:allow bridge assertion — a shape divergence fails the property
+          Result.failure.log(
+            s"dispatch shape divergence for '$name': shipped=$shipped kernel=$kernel"
+          )

@@ -185,17 +185,15 @@ object GateCmd:
           SubcommandWiring.emitStderr("gate: --event is required\n")
           Outcome.Finding("--event is required")
         case Some(eventStr) =>
-          parseEvent(eventStr) match
-            case Some(event) =>
-              val payload: Option[HarnessPayload] =
-                if HarnessPayloadReader.consumesPayload(event) ||
-                  parsed.flags.get("--repo").forall(_.isEmpty)
-                then channel().flatMap(HarnessPayloadReader.parse)
-                else None
-              runEvent(event, parsed, env, payload)
-            case None =>
-              SubcommandWiring.emitStderr(s"gate: unknown event '$eventStr'\n")
-              Outcome.Finding(s"unknown event: $eventStr")
+          val dispatch: EventDispatch = parseEvent(eventStr)
+          val consumes: Boolean = dispatch match
+            case EventDispatch.Tier(event)  => HarnessPayloadReader.consumesPayload(event)
+            case EventDispatch.Injection(_) => false
+          val payload: Option[HarnessPayload] =
+            if consumes || parsed.flags.get("--repo").forall(_.isEmpty)
+            then channel().flatMap(HarnessPayloadReader.parse)
+            else None
+          runEvent(dispatch, parsed, env, payload)
 
   /**
    * `--check-installed`: a pure read of the heartbeat — no state is ever
@@ -322,35 +320,40 @@ object GateCmd:
     catch
       case NonFatal(_) => 0L // danger-scan:allow fail-open — an unknown parent pid degrades to the ppid-0 session key
 
-  /** Parse the event name from the --event flag value. */
-  private def parseEvent(s: String): Option[Event] = s match
-    case "session-start" => Some(Event.SessionStart)
-    case "prompt-submit" => Some(Event.PromptSubmit)
-    case "tool-call"     => Some(Event.ToolCall)
-    case "post-edit"     => Some(Event.PostEdit)
-    case "post-bash"     => Some(Event.PostBash)
-    case "completion"    => Some(Event.Completion)
-    case _ => // danger-scan:allow string-rejection — unrecognized event name maps to None (error), never a valid Event
-      None
+  /**
+   * Parse the event name from the --event flag value. Total into
+   * `EventDispatch` — the parse can no longer fail: a recognised name
+   * yields `Tier`, every other name yields `Injection` carrying the
+   * supplied name (spec 4, the predecessor's permissive fallback made
+   * visible).
+   *
+   * spec: gate-event-compatibility — Requirement: An unrecognised event name routes to the injection tier
+   */
+  private[cli] def parseEvent(s: String): EventDispatch =
+    EventDispatch.classify(s)
 
   /**
    * The gate's per-invocation context, resolved once in the prologue:
    * repository, session, and state directory (absent when unresolvable
-   * — the tiers fail open from `None`).
+   * — the tiers fail open from `None`). `dispatch` is the classified
+   * `--event` decision — the heartbeat and trace record the SUPPLIED
+   * name for an `Injection` (predecessor `$EVENT` verbatim), while the
+   * hook-json envelope follows the predecessor's `*)` mapping.
    */
   final private case class GateContext(
     repo: Path,
     session: SessionId,
     stateDir: Option[GateStateDir],
     format: String,
-    event: Event
+    dispatch: EventDispatch
   )
 
   /**
-   * Run the gate for a specific event. The shared prologue is the
-   * predecessor's own order, applied to EVERY event:
+   * Run the gate for a classified `--event` dispatch. The shared
+   * prologue is the predecessor's own order, applied to EVERY supplied
+   * name — recognised or not:
    *   relevance guard → hook control → state directory → heartbeat →
-   *   checkpoint-output sweep → per-event dispatch.
+   *   checkpoint-output sweep → per-dispatch tier.
    *
    * The event tiers:
    * - SessionStart, PromptSubmit: Tier B — informational banner; the
@@ -360,12 +363,16 @@ object GateCmd:
    * - PostBash: Tier A′ — ambient evidence writer, never blocks.
    * - ToolCall: Tier A — the pre-execution blocking tier.
    * - Completion: Tier A — the completion blocking tier.
+   * - Injection: the predecessor's fallthrough — the context-injection
+   *   tier (banner path), reached by every name outside the recognised
+   *   set. NEVER an error status.
    *
    * spec: cli-wiring — Requirement: The gate subcommand wires to the 5-event tier logic and emits the hook banner
    * spec: gate-event-completeness — Requirement: The gate handles every event its installed adapters emit
+   * spec: gate-event-compatibility — Requirement: An unrecognised event name routes to the injection tier
    */
   private def runEvent(
-    event: Event,
+    dispatch: EventDispatch,
     parsed: GateArgs,
     env: Map[String, String],
     payload: Option[HarnessPayload]
@@ -379,10 +386,10 @@ object GateCmd:
     // Relevance guard: a repository that does not use this workflow gets
     // NOTHING — no output, and no state directory created.
     if !Files.isDirectory(repo.resolve("openspec")) then
-      trace(env, eventToken(event), format, repo, "skip: no openspec/ here")
+      trace(env, dispatchToken(dispatch), format, repo, "skip: no openspec/ here")
       Outcome.Ran(0)
     else if hooksControlValue(repo, env) == "off" then
-      trace(env, eventToken(event), format, repo, "skip: hook control env var=off")
+      trace(env, dispatchToken(dispatch), format, repo, "skip: hook control env var=off")
       Outcome.Ran(0)
     else
       val session: SessionId = SessionId.resolve(
@@ -400,11 +407,11 @@ object GateCmd:
             Some(d)
           catch case NonFatal(_) => None // danger-scan:allow fail-open — unwritable state dir means no persistence
         }
-      val ctx: GateContext = GateContext(repo, session, stateDir, format, event)
+      val ctx: GateContext = GateContext(repo, session, stateDir, format, dispatch)
       stateDir.foreach { (d: GateStateDir) =>
         GateStateDirReader.writeHeartbeat(
           d,
-          HeartbeatRecord(SubcommandWiring.stampTimestamp, eventToken(event), format)
+          HeartbeatRecord(SubcommandWiring.stampTimestamp, dispatchToken(dispatch), format)
         )
         GateStateDirReader
           .sweepCheckpointOutputs(d, SubcommandWiring.sha256OfFile)
@@ -412,42 +419,70 @@ object GateCmd:
             trace(ctx, env, s"presentation recorded for $chg/$spec (session $sess)")
           }
       }
-      event match
-        case Event.SessionStart =>
-          runBanner(ctx, env)
-        case Event.PromptSubmit =>
-          // New turn: clear this session's refusal markers and write
-          // grant tokens for presented-but-ungranted specs — the only
-          // event that writes grants (predecessor parity).
-          ctx.stateDir.foreach { (d: GateStateDir) =>
-            GateStateDirReader.clearRefusals(d, ctx.session)
-            writeSessionGrants(d, ctx, env)
-          }
-          runBanner(ctx, env)
-        case Event.PostEdit =>
-          // Tier A′ — informational findings only, NEVER blocks — same
-          // boundary guard as post-bash: a defect inside the tier
-          // degrades to no findings, never a blocked turn.
-          try runPostEdit(ctx, parsed, env, payload)
-          catch
-            case NonFatal(_) => // danger-scan:allow informational tier — a crash must not block
-              Outcome.Ran(0)
-        case Event.ToolCall =>
-          // Tier A — the pre-execution blocking tier.
-          runToolCall(ctx, parsed, env, payload)
-        case Event.PostBash =>
-          // Tier A′ — the ambient evidence writer, NEVER blocks. The
-          // boundary guard is the predecessor's `_post_bash_exit0`
-          // wrapper: post-bash exits 0 under ANY payload, so a defect
-          // inside the tier degrades to a skipped observation, never a
-          // blocked turn. (Ring 8: a classifier throw could escape.)
-          try runPostBash(ctx, parsed, env, payload)
-          catch
-            case NonFatal(_) => // danger-scan:allow observation-only — a crash skips a row, never blocks
-              Outcome.Ran(0)
-        case Event.Completion =>
-          // Tier A — the completion blocking tier.
-          runCompletion(ctx, parsed, env, payload)
+      dispatch match
+        case EventDispatch.Tier(event) =>
+          event match
+            case Event.SessionStart =>
+              runBanner(ctx, env)
+            case Event.PromptSubmit =>
+              // New turn: clear this session's refusal markers and write
+              // grant tokens for presented-but-ungranted specs — the only
+              // event that writes grants (predecessor parity).
+              ctx.stateDir.foreach { (d: GateStateDir) =>
+                GateStateDirReader.clearRefusals(d, ctx.session)
+                writeSessionGrants(d, ctx, env)
+              }
+              runBanner(ctx, env)
+            case Event.PostEdit =>
+              // Tier A′ — informational findings only, NEVER blocks — same
+              // boundary guard as post-bash: a defect inside the tier
+              // degrades to no findings, never a blocked turn.
+              try runPostEdit(ctx, parsed, env, payload)
+              catch
+                case NonFatal(_) => // danger-scan:allow informational tier — a crash must not block
+                  Outcome.Ran(0)
+            case Event.ToolCall =>
+              // Tier A — the pre-execution blocking tier.
+              runToolCall(ctx, parsed, env, payload)
+            case Event.PostBash =>
+              // Tier A′ — the ambient evidence writer, NEVER blocks. The
+              // boundary guard is the predecessor's `_post_bash_exit0`
+              // wrapper: post-bash exits 0 under ANY payload, so a defect
+              // inside the tier degrades to a skipped observation, never a
+              // blocked turn. (Ring 8: a classifier throw could escape.)
+              try runPostBash(ctx, parsed, env, payload)
+              catch
+                case NonFatal(_) => // danger-scan:allow observation-only — a crash skips a row, never blocks
+                  Outcome.Ran(0)
+            case Event.Completion =>
+              // Tier A — the completion blocking tier.
+              runCompletion(ctx, parsed, env, payload)
+        case EventDispatch.Injection(supplied) =>
+          runInjection(ctx, env, supplied)
+
+  /**
+   * The context-injection tier — the predecessor's fallthrough: every
+   * supplied name outside the recognised set lands here and terminates
+   * with the clean status, never an error status. The fallback is NOT
+   * silent: the diagnostic output names the supplied value (the
+   * predecessor's fallback was silent — this spec adds the line), and
+   * the heartbeat/trace record it verbatim (predecessor `$EVENT`).
+   * The tier itself is the banner path — the same path `session-start`
+   * runs.
+   *
+   * spec: gate-event-compatibility — Requirement: An unrecognised event name routes to the injection tier
+   * spec: gate-event-compatibility — Requirement: The supplied name survives into the diagnostic output
+   */
+  private def runInjection(
+    ctx: GateContext,
+    env: Map[String, String],
+    supplied: String
+  ): Outcome[Int] =
+    SubcommandWiring.emitStderr(
+      s"gate: unrecognised event '$supplied' — running the context-injection tier\n"
+    )
+    trace(ctx, env, s"injection: unrecognised event '$supplied'")
+    runBanner(ctx, env)
 
   /** The predecessor's `--event` token for a gate event (heartbeat field). */
   private def eventToken(event: Event): String = event match
@@ -457,6 +492,15 @@ object GateCmd:
     case Event.PostEdit     => "post-edit"
     case Event.PostBash     => "post-bash"
     case Event.Completion   => "completion"
+
+  /**
+   * The name the heartbeat and trace record — the predecessor's
+   * `$EVENT` verbatim: the canonical token for a tier dispatch, the
+   * RAW supplied name for an injection.
+   */
+  private def dispatchToken(dispatch: EventDispatch): String = dispatch match
+    case EventDispatch.Tier(event)         => eventToken(event)
+    case EventDispatch.Injection(supplied) => supplied
 
   /**
    * The predecessor's `trace()`: opt-in per-invocation diagnostics —
@@ -497,9 +541,9 @@ object GateCmd:
         catch case NonFatal(_) => () // danger-scan:allow predecessor `|| true` — trace must never affect the decision
       }
 
-  /** Trace with the resolved context's event/format/repo. */
+  /** Trace with the resolved context's dispatch/format/repo. */
   private def trace(ctx: GateContext, env: Map[String, String], msg: String): Unit =
-    trace(env, eventToken(ctx.event), ctx.format, ctx.repo, msg)
+    trace(env, dispatchToken(ctx.dispatch), ctx.format, ctx.repo, msg)
 
   // ── shared tier helpers ────────────────────────────────────────────
 
@@ -1595,20 +1639,28 @@ object GateCmd:
           GateStateDirReader.writeFingerprint(d, ctx.session, facts.fingerprint)
         )
         trace(ctx, env, s"emit: ${banner.payload.length} chars")
-        emitBanner(ctx.event, ctx.format, banner.payload)
+        emitBanner(ctx.dispatch, ctx.format, banner.payload)
         Outcome.Ran(0)
     catch case NonFatal(_) => Outcome.Ran(0) // danger-scan:allow fail-open — the gate never fails a session
 
   /**
    * Emit the banner payload: `hook-json` wraps it in the shared
-   * `hookSpecificOutput` envelope (prompt-submit maps to
-   * `UserPromptSubmit`, matching the predecessor); every other format
+   * `hookSpecificOutput` envelope. The `hookEventName` is the harness's
+   * own event name — for a tier dispatch, the event's harness name
+   * (prompt-submit maps to `UserPromptSubmit`, matching the
+   * predecessor); for an injection, the predecessor's `*)` arm maps
+   * every unrecognised name to `SessionStart`. Every other format
    * value — including `text` — prints the payload itself.
+   *
+   * spec: gate-event-compatibility — Requirement: The payload envelope reports the harness event name
    */
-  private def emitBanner(event: Event, format: String, payload: String): Unit =
+  private def emitBanner(dispatch: EventDispatch, format: String, payload: String): Unit =
     format match
       case "hook-json" =>
-        val hookEventName: String = GateEvent.harnessName(event)
+        val hookEventName: String = dispatch match
+          case EventDispatch.Tier(event) => GateEvent.harnessName(event)
+          case EventDispatch.Injection(_) =>
+            "SessionStart" // danger-scan:allow predecessor `*)` arm — every unrecognised name envelopes as SessionStart
         val envelope: ujson.Obj = ujson.Obj(
           "hookSpecificOutput" -> ujson.Obj(
             "hookEventName"     -> ujson.Str(hookEventName),

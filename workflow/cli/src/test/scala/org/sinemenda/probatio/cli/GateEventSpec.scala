@@ -124,21 +124,39 @@ final class GateEventSpec extends ProbatioCliSuite:
         case Outcome.Undetermined(reason) => fail(s"post-bash must not be undetermined: $reason")
     }
 
-  // ── Scenario: an event name no adapter sends is still rejected ──────
-  // spec: gate-event-completeness — Scenario: an event name no adapter sends is still rejected
+  // ── Scenario: an event name no adapter sends routes to the injection tier
+  // spec: gate-event-compatibility — Requirement: An unrecognised event name routes to the injection tier
+  // spec: gate-event-compatibility — Scenario: Adversarial — an arbitrary unrecognised name does not error
+  //
+  // SUPERSEDES gate-event-completeness's "still rejected" scenario:
+  // spec 4 of repair-probatio-cutover restores the predecessor's
+  // fallthrough — an unrecognised name runs the context-injection tier
+  // and terminates clean, never with an error status.
 
-  test("an event name no adapter sends is rejected"):
+  test("an event name no adapter sends routes to the injection tier and exits clean"):
     withTempDir("gate-bad-event") { (repo: Path) =>
       mkRepo(repo, withGit = false)
-      val outcome: Outcome[Int] = runGate(
-        repo,
-        List("--event", "inject", "--format", "text"),
-        Map.empty
-      )
+      val (out: String, err: String, outcome: Outcome[Int]) =
+        StdoutCapture.captureBoth(
+          runGate(
+            repo,
+            List("--event", "inject", "--format", "text"),
+            Map.empty
+          )
+        )
       outcome match
-        case Outcome.Finding(_)           => ()
-        case Outcome.Ran(n)               => fail(s"unknown event should be rejected, got Ran($n)")
-        case Outcome.Undetermined(reason) => fail(s"unknown event should be a Finding, got: $reason")
+        case Outcome.Ran(0)               => ()
+        case Outcome.Ran(n)               => fail(s"an unrecognised event must exit clean, got Ran($n)")
+        case Outcome.Finding(msg)         => fail(s"an unrecognised event must not error: $msg")
+        case Outcome.Undetermined(reason) => fail(s"an unrecognised event must not be undetermined: $reason")
+      assert(
+        err.contains("unrecognised event 'inject'"),
+        s"the diagnostic output must name the supplied event: $err"
+      )
+      assert(
+        out.nonEmpty,
+        "the injection tier ran — the banner path emits output for a repo carrying the workflow"
+      )
     }
 
   // ── Obligation: every adapter-configured event name is handled ──────
@@ -4347,5 +4365,335 @@ final class GateEventSpec extends ProbatioCliSuite:
       assert(
         !trace.contains("prior session"),
         s"a same-session grant must not scan prior sessions: $trace"
+      )
+    }
+
+  // ── gate-event-compatibility (spec 4 of repair-probatio-cutover) ──
+  //
+  // The dispatch-compatibility oracle: every recognised name reaches its
+  // own tier, every other name routes to the injection tier and
+  // terminates clean (never an error status), and the supplied name
+  // survives into the diagnostic output. Derived from the SPEC and the
+  // predecessor's fallthrough — NOT from the implementation.
+  //
+  // spec: gate-event-compatibility — all Requirements, all Properties
+
+  // ── Scenario: Happy path — each recognised name reaches its tier
+  // spec: gate-event-compatibility — Scenario: Happy path — each recognised name reaches its tier
+
+  test("each recognised event name dispatches to its own tier"):
+    EventDispatchFixtures.recognisedPairs.foreach { case (name: String, expected: GateEvent) =>
+      EventDispatch.classify(name) match
+        case EventDispatch.Tier(event) =>
+          assertEquals(event, expected, s"'$name' must dispatch to $expected")
+        case EventDispatch.Injection(
+              _
+            ) => // danger-scan:allow test assertion — a recognised name on injection fails the test
+          fail(s"recognised name '$name' routed to the injection tier")
+    }
+    // no two names reach the same tier — the mapping is injective
+    val events: List[GateEvent] =
+      EventDispatchFixtures.recognisedPairs.map((p: (String, GateEvent)) => p._2)
+    assertEquals(events.distinct.length, events.length, "two recognised names share a tier")
+
+  test("each recognised event name runs its tier end-to-end without the injection diagnostic"):
+    // Decision-level pinning alone leaves the dispatch→tier hand-off
+    // unobserved: run every recognised name through the gate and assert
+    // a tier outcome with NO unrecognised-name diagnostic — the
+    // observable that separates a tier run from an injection run.
+    EventDispatchFixtures.recognisedPairs.foreach { case (name: String, event: GateEvent) =>
+      withTempDir("gate-recognised-tier") { (repo: Path) =>
+        mkRepo(repo, withGit = false)
+        val (_: String, err: String, outcome: Outcome[Int]) =
+          StdoutCapture.captureBoth(
+            runGate(
+              repo,
+              List("--event", name, "--format", "text", "--session", "t"),
+              Map.empty
+            )
+          )
+        outcome match
+          case Outcome.Ran(_)     => () // the tier allowed
+          case Outcome.Finding(_) => () // the tier blocked — also a tier outcome
+          case Outcome.Undetermined(reason) =>
+            fail(s"'$name' ($event) must be determinable in a minimal repo, got: $reason")
+        assert(
+          !err.contains("unrecognised") && !err.contains("not recognised"),
+          s"recognised name '$name' produced an unrecognised-name diagnostic: $err"
+        )
+      }
+    }
+
+  // ── Scenario: Adversarial — a recognised name is not absorbed by the injection tier
+  // spec: gate-event-compatibility — Scenario: Adversarial — a recognised name is not absorbed by the injection tier
+
+  test("the pre-execution tier's recognised name is not absorbed by the injection tier"):
+    // `tool-call` is the pre-execution tier's name.
+    EventDispatch.classify("tool-call") match
+      case EventDispatch.Tier(GateEvent.ToolCall) => ()
+      case other => // danger-scan:allow test assertion — the misclassification fails the test
+        fail(s"'tool-call' must classify as Tier(ToolCall), got $other")
+    withTempDir("gate-toolcall-tier") { (repo: Path) =>
+      mkRepo(repo, withGit = false)
+      val (_: String, err: String, outcome: Outcome[Int]) =
+        StdoutCapture.captureBoth(
+          runGate(
+            repo,
+            List("--event", "tool-call", "--format", "text", "--session", "t"),
+            Map.empty
+          )
+        )
+      outcome match
+        case Outcome.Ran(_)     => ()
+        case Outcome.Finding(_) => ()
+        case Outcome.Undetermined(reason) =>
+          fail(s"the pre-execution tier must be determinable, got: $reason")
+      assert(
+        !err.contains("unrecognised") && !err.contains("not recognised"),
+        s"a recognised name produced an unrecognised-name diagnostic: $err"
+      )
+    }
+
+  // ── Scenario: Happy path — the alternate prompt-event name injects context
+  // spec: gate-event-compatibility — Scenario: Happy path — the alternate prompt-event name injects context
+
+  test("the alternate prompt-event name routes to the injection tier"):
+    // `user-prompt-submit` — the recorded devin adapter name
+    // (workflow-hygiene.bats). It is NOT `prompt-submit`: the injection
+    // tier must run, the diagnostic must name the supplied name, none of
+    // prompt-submit's side effects (grant writes) may fire, and the
+    // heartbeat records the supplied name verbatim (predecessor $EVENT).
+    withTempDir("gate-alt-prompt") { (repo: Path) =>
+      mkRepo(repo, withGit = true)
+      val sd: Path           = stateDir(repo)
+      val session: SessionId = SessionId.fromRaw("t")
+      Files.createDirectories(sd)
+      Files.writeString(sd.resolve(s"presentation-$change-$specName-${session.encoded}"), "h")
+      val (out: String, err: String, outcome: Outcome[Int]) =
+        StdoutCapture.captureBoth(
+          runGate(
+            repo,
+            List("--event", "user-prompt-submit", "--format", "text", "--session", "t"),
+            Map.empty
+          )
+        )
+      outcome match
+        case Outcome.Ran(0)               => ()
+        case Outcome.Ran(n)               => fail(s"the alternate name must exit clean, got Ran($n)")
+        case Outcome.Finding(msg)         => fail(s"the alternate name must not error: $msg")
+        case Outcome.Undetermined(reason) => fail(s"the alternate name must not be undetermined: $reason")
+      assert(
+        err.contains("unrecognised event 'user-prompt-submit'"),
+        s"the diagnostic output must name the supplied event: $err"
+      )
+      assert(out.nonEmpty, "the injection tier ran — the banner emitted")
+      assert(
+        !Files.exists(sd.resolve(s"grant-$change-$specName-${session.encoded}")),
+        "an injection must not write prompt-submit's grant tokens"
+      )
+      val heartbeat: Option[HeartbeatRecord] =
+        GateStateDirReader.resolve(repo).flatMap(GateStateDirReader.readHeartbeat)
+      heartbeat match
+        case Some(record) => assertEquals(record.event, "user-prompt-submit")
+        case None         => fail("the injection run must record a heartbeat")
+    }
+
+  // ── Scenario: Edge case — an empty event name routes to the injection tier
+  // spec: gate-event-compatibility — Scenario: Edge case — an empty event name routes to the injection tier
+
+  test("an empty event name routes to the injection tier"):
+    withTempDir("gate-empty-event") { (repo: Path) =>
+      mkRepo(repo, withGit = false)
+      val (out: String, err: String, outcome: Outcome[Int]) =
+        StdoutCapture.captureBoth(
+          runGate(
+            repo,
+            List("--event", "", "--format", "text"),
+            Map.empty
+          )
+        )
+      outcome match
+        case Outcome.Ran(0)               => ()
+        case Outcome.Ran(n)               => fail(s"an empty event name must exit clean, got Ran($n)")
+        case Outcome.Finding(msg)         => fail(s"an empty event name must not error: $msg")
+        case Outcome.Undetermined(reason) => fail(s"an empty event name must not be undetermined: $reason")
+      assert(
+        err.nonEmpty && err.contains("unrecognised"),
+        s"the injection diagnostic must state the name was not recognised: $err"
+      )
+      assert(out.nonEmpty, "the injection tier ran — the banner emitted")
+    }
+
+  // ── Scenario: Happy path — an unrecognised name is named in the diagnostic
+  // spec: gate-event-compatibility — Scenario: Happy path — an unrecognised name is named in the diagnostic
+
+  test("an unrecognised event name is named in the diagnostic output"):
+    withTempDir("gate-named-diagnostic") { (repo: Path) =>
+      mkRepo(repo, withGit = false)
+      val (_: String, err: String, outcome: Outcome[Int]) =
+        StdoutCapture.captureBoth(
+          runGate(
+            repo,
+            List("--event", "xyzzy-plugh", "--format", "text"),
+            Map.empty
+          )
+        )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — a non-clean outcome fails the test
+          fail(s"an unrecognised name must exit clean, got $other")
+      assert(
+        err.contains("'xyzzy-plugh'"),
+        s"the diagnostic output must reproduce the supplied name: $err"
+      )
+    }
+
+  test("the injection fallback is recorded in the opt-in trace"):
+    withTempDir("gate-injection-trace") { (repo: Path) =>
+      mkRepo(repo, withGit = false)
+      val (trace: String, outcome: Outcome[Int]) =
+        runTraced(
+          repo,
+          List("--event", "xyzzy-plugh", "--format", "text", "--session", "t"),
+          Map.empty
+        )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — a non-clean outcome fails the test
+          fail(s"an unrecognised name must exit clean, got $other")
+      assert(
+        trace.contains("injection: unrecognised event 'xyzzy-plugh'"),
+        s"the trace must record the fallback with the supplied name: $trace"
+      )
+    }
+
+  // ── Scenario: Adversarial — a recognised name produces no unrecognised-name diagnostic
+  // spec: gate-event-compatibility — Scenario: Adversarial — a recognised name produces no unrecognised-name diagnostic
+
+  test("a recognised event name produces no unrecognised-name diagnostic"):
+    withTempDir("gate-no-diagnostic") { (repo: Path) =>
+      mkRepo(repo, withGit = false)
+      val (_: String, err: String, outcome: Outcome[Int]) =
+        StdoutCapture.captureBoth(
+          runGate(
+            repo,
+            List("--event", "prompt-submit", "--format", "text", "--session", "t"),
+            Map.empty
+          )
+        )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — a non-clean outcome fails the test
+          fail(s"prompt-submit should exit clean in a minimal repo, got $other")
+      assert(
+        !err.contains("unrecognised") && !err.contains("not recognised"),
+        s"a recognised name produced an unrecognised-name diagnostic: $err"
+      )
+    }
+
+  // ── Envelope fidelity: an injection under hook-json names SessionStart
+  // spec: gate-event-compatibility — Requirement: The payload envelope reports the harness event name
+  // The predecessor's `*)` arm maps every unrecognised name to
+  // SessionStart — the wildcard envelope branch this spec preserves.
+
+  test("an injection under hook-json emits the SessionStart envelope"):
+    withTempDir("gate-injection-envelope") { (repo: Path) =>
+      mkRepo(repo, withGit = false)
+      val (out: String, _: String, outcome: Outcome[Int]) =
+        StdoutCapture.captureBoth(
+          runGate(
+            repo,
+            List("--event", "xyzzy-plugh", "--format", "hook-json"),
+            Map.empty
+          )
+        )
+      outcome match
+        case Outcome.Ran(0) => ()
+        case other => // danger-scan:allow test assertion — a non-clean outcome fails the test
+          fail(s"an unrecognised name must exit clean, got $other")
+      ujson.read(out.trim)("hookSpecificOutput")("hookEventName") match
+        case ujson.Str("SessionStart") => ()
+        case other => // danger-scan:allow test assertion — a wrong envelope name fails the test
+          fail(s"the injection envelope must name SessionStart (predecessor `*)`), got: $other")
+    }
+
+  // ── Property: event-dispatch-is-total
+  // spec: gate-event-compatibility — Property: event-dispatch-is-total
+
+  property("event-dispatch-is-total"):
+    for name <- EventDispatchFixtures.genEventName.forAll
+    yield
+      val dispatch: EventDispatch = EventDispatch.classify(name)
+      val carriesName: Boolean = dispatch match
+        case EventDispatch.Injection(supplied) => supplied == name
+        case EventDispatch.Tier(_)             => true
+      Result.all(
+        List(
+          Result
+            .assert(dispatch.isTier || dispatch.isInjection)
+            .log(s"classify('$name') = $dispatch"),
+          Result
+            .assert(carriesName)
+            .log(s"the injection lost the supplied name '$name'")
+        )
+      )
+
+  // ── Property: recognised-names-never-fall-back
+  // spec: gate-event-compatibility — Property: recognised-names-never-fall-back
+  //
+  // Enumerated, not sampled — the domain is the closed six-name set, so
+  // the property loops over the full enumeration. The shipped table is
+  // additionally compared to the oracle's own closed set, so a drift in
+  // the implementation's table fails even when its self-consistency
+  // still holds.
+
+  property("recognised-names-never-fall-back"):
+    for _ <- Gen.constant(()).forAll
+    yield
+      val names: List[String] = EventDispatch.recognisedNames
+      val oracleNames: List[String] =
+        EventDispatchFixtures.recognisedPairs.map((p: (String, GateEvent)) => p._1)
+      Result.all(
+        List(
+          Result
+            .assert(names.forall((n: String) => EventDispatch.classify(n).isTier))
+            .log("a recognised name fell back to the injection tier"),
+          Result
+            .assert(names.map(EventDispatch.classify).distinct.length == names.length)
+            .log("the name→tier mapping is not injective"),
+          Result
+            .assert(names.sorted == oracleNames.sorted)
+            .log(s"the recognised set drifted: shipped=$names oracle=$oracleNames")
+        )
+      )
+
+  // ── Property: unrecognised-names-exit-clean
+  // spec: gate-event-compatibility — Property: unrecognised-names-exit-clean
+
+  property("unrecognised-names-exit-clean"):
+    for name <- EventDispatchFixtures.genUnrecognisedName.forAll
+    yield withTempDir("gate-unrecognised-prop") { (repo: Path) =>
+      mkRepo(repo, withGit = false)
+      val (_: String, err: String, outcome: Outcome[Int]) =
+        StdoutCapture.captureBoth(
+          runGate(
+            repo,
+            List("--event", name, "--format", "text", "--session", "t"),
+            Map.empty
+          )
+        )
+      // `contains("")` is vacuously true — the empty name's diagnostic is
+      // the presence of the unrecognised-name line itself.
+      val named: Boolean =
+        if name.isEmpty then err.contains("unrecognised") else err.contains(s"'$name'")
+      Result.all(
+        List(
+          Result
+            .assert(outcome == Outcome.Ran(0))
+            .log(s"'$name' did not terminate clean: $outcome"),
+          Result
+            .assert(named)
+            .log(s"the diagnostic did not name '$name': $err")
+        )
       )
     }

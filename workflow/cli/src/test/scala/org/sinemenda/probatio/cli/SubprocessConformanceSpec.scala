@@ -1,7 +1,16 @@
 package org.sinemenda.probatio.cli
 
+import hedgehog.Gen
+import hedgehog.Result
+import org.sinemenda.probatio.core.EventDispatch
+import org.sinemenda.probatio.core.Outcome
+
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
 import scala.sys.process.*
+
+import LiveFactFixtures.withTempDir
 
 /**
  * Subprocess conformance tests for spec: cli-entrypoint-contract
@@ -20,6 +29,11 @@ import scala.sys.process.*
  * spec: cli-entrypoint-contract — Property: subprocess-agrees-with-in-process
  */
 final class SubprocessConformanceSpec extends ProbatioCliSuite:
+
+  // The event-dispatch parity property runs the predecessor gate as a
+  // subprocess per generated case — subprocess-suite timeout.
+  override val munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(300, "s")
 
   /** Helper: construct an InvocationName from a raw string. */
   private def inv(name: String): InvocationName =
@@ -47,9 +61,7 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
       .unfold(java.nio.file.Paths.get("").toAbsolutePath.normalize)((p: java.nio.file.Path) =>
         Option(p.getParent).map((par: java.nio.file.Path) => p -> par)
       )
-      .find((p: java.nio.file.Path) =>
-        java.nio.file.Files.isDirectory(p.resolve("openspec/schemas/verified-scala3"))
-      )
+      .find((p: java.nio.file.Path) => java.nio.file.Files.isDirectory(p.resolve("openspec/schemas/verified-scala3")))
       .getOrElse(java.nio.file.Paths.get("").toAbsolutePath)
     repoRoot.resolve("workflow/cli/target/native-image/probatio").toString
 
@@ -157,5 +169,130 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
         subExitInvalid,
         inProcExitInvalid,
         s"subprocess vs in-process mismatch for ${Subcommand.cliName(sub)} invalid args: $subExitInvalid vs $inProcExitInvalid"
+      )
+    }
+
+  // ── gate-event-compatibility (spec 4 of repair-probatio-cutover) ──
+  // spec: gate-event-compatibility — Property: parity-with-predecessor-on-event-dispatch
+  //
+  // Model-based comparison: the predecessor gate runs as the reference
+  // subprocess; the ported gate runs in-process, its `Outcome` mapped to
+  // the exit status the binary's own boundary reports. Per the spec's
+  // determinism rule only the exit status and the presence of output are
+  // observed — no clock, no subprocess timing. STDERR is deliberately
+  // NOT compared: the spec's diagnostic line is an intended divergence
+  // (the predecessor's fallback is silent); the tier that runs and the
+  // exit status are what must agree.
+
+  /** The schema directory, walked up from the test working directory. */
+  private def schemaDir: Path =
+    val start: Path = Path.of("").toAbsolutePath.normalize
+    Iterator
+      .unfold(start)((p: Path) => Option(p.getParent).map((par: Path) => p -> par))
+      .find((p: Path) => Files.isDirectory(p.resolve("openspec/schemas/verified-scala3")))
+      .getOrElse(sys.error(s"could not locate the repository root from $start"))
+      .resolve("openspec/schemas/verified-scala3")
+
+  /**
+   * The ported gate, in-process: `(exit status, stdout produced
+   * output)`. The Outcome→status mapping is the binary boundary's own
+   * (Ran carries the status, Finding is the error status, Undetermined
+   * the undetermined status).
+   */
+  private def portedEventExit(repo: Path, name: String): (Int, Boolean) =
+    val (out: String, _: String, outcome: Outcome[Int]) =
+      StdoutCapture.captureBoth(
+        GateCmd.run(
+          Array(
+            "--repo",
+            repo.toString,
+            "--event",
+            name,
+            "--format",
+            "text",
+            "--session",
+            "parity"
+          ),
+          Map("VERIFIED_SCALA3_SESSION_ID" -> "parity"),
+          () => None
+        )
+      )
+    val status: Int = outcome match
+      case Outcome.Ran(n)          => n
+      case Outcome.Finding(_)      => 1
+      case Outcome.Undetermined(_) => 2
+    (status, out.nonEmpty)
+
+  /**
+   * The predecessor gate as the reference subprocess:
+   * `(exit status, stdout produced output)`. stdin is `/dev/null` — the
+   * gate reads the hook payload from stdin and an inherited open pipe
+   * blocks it forever.
+   */
+  private def predecessorEventExit(repo: Path, name: String): (Int, Boolean) =
+    val gate: String = schemaDir.resolve("hooks/gate.sh.predecessor.bak").toString
+    val pb: java.lang.ProcessBuilder = new java.lang.ProcessBuilder(
+      "bash",
+      gate,
+      "--repo",
+      repo.toString,
+      "--event",
+      name,
+      "--format",
+      "text"
+    )
+    pb.environment().put("VERIFIED_SCALA3_SESSION_ID", "parity")
+    pb.redirectInput(java.lang.ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
+    pb.redirectError(java.lang.ProcessBuilder.Redirect.DISCARD)
+    val process: java.lang.Process = pb.start()
+    val stdout: String =
+      new String(process.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    (process.waitFor(), stdout.nonEmpty)
+
+  /**
+   * Wipe the shared state dir between the two runs — both gates
+   * fingerprint the emitted facts under the same session, so without a
+   * reset the second run suppresses a banner the first emitted, and the
+   * output-presence comparison would fault the fixture, not the port
+   * (the spec-3 marker-reset convention).
+   */
+  private def resetGateState(repo: Path): Unit =
+    Option(repo.resolve(".git/verified-scala3-gate").toFile.listFiles())
+      .foreach(_.foreach((f: File) => if f.isFile then f.delete() else ()))
+
+  /**
+   * A parity fixture: `withWorkflow` repos carry `openspec/` (the
+   * relevance guard passes), the rest do not — the spec's two-arm
+   * repository draw. Every fixture is a git repo so the state-dir
+   * paths are exercised.
+   */
+  private def writeDispatchParityRepo(repo: Path, withWorkflow: Boolean): Unit =
+    if withWorkflow then Files.createDirectories(repo.resolve("openspec/changes/parity-change/specs/parity-spec"))
+    val code: Int =
+      List("git", "-C", repo.toString, "init", "-q").!(ProcessLogger(_ => (), _ => ()))
+    assertEquals(code, 0, "git init must succeed")
+
+  property("parity-with-predecessor-on-event-dispatch"):
+    for
+      name <- EventDispatchFixtures.genEventName.forAll
+        .cover(15, "recognised", (n: String) => EventDispatch.recognisedNames.contains(n))
+        .cover(15, "unrecognised", (n: String) => !EventDispatch.recognisedNames.contains(n))
+      withWorkflow <- Gen.boolean.forAll
+    yield withTempDir("gate-dispatch-parity") { (repo: Path) =>
+      writeDispatchParityRepo(repo, withWorkflow)
+      val ported: (Int, Boolean) = portedEventExit(repo, name)
+      resetGateState(repo)
+      val model: (Int, Boolean) = predecessorEventExit(repo, name)
+      Result.all(
+        List(
+          Result
+            .assert(ported._1 == model._1)
+            .log(s"exit drift for '$name' (withWorkflow=$withWorkflow): ported=${ported._1} model=${model._1}"),
+          Result
+            .assert(ported._2 == model._2)
+            .log(
+              s"output-presence drift for '$name' (withWorkflow=$withWorkflow): ported=${ported._2} model=${model._2}"
+            )
+        )
       )
     }

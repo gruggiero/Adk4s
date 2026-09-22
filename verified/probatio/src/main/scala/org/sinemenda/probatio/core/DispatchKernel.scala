@@ -76,7 +76,7 @@ object DispatchKernel:
       case None() =>
         val effective: List[BigInt] = tokens match
           case Cons(h, t) if h == Sep => t
-          case _                      => tokens
+          case _ => tokens // danger-scan:allow non-Sep head — the input is kept verbatim, no variant is remapped
         effective match
           case Cons(h, t) => if isTool(h) then Some((h, t)) else None()
           case Nil()      => None()
@@ -174,4 +174,94 @@ object DispatchKernel:
     resolveAndSplit(nameTool, tokens) match
       case None()          => true
       case Some((_, rest)) => rest.length <= tokens.length
+  }.ensuring(_ == true)
+
+  // ---------------------------------------------------------------------------
+  // Gate event-name classification (spec: gate-event-compatibility)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The dispatch decision over a supplied event name, abstracted: names
+   * reduce to codes — `1..6` for the six recognised names (the index
+   * into `recognisedEventNames`), every other code an unrecognised
+   * name. `EventInjection` carries the supplied code so the fallback
+   * preserves what it fell back from; the shipped `Injection` carries
+   * the supplied string itself.
+   *
+   * spec: gate-event-compatibility — Contract: classify
+   */
+  sealed abstract class EventDispatchModel
+  case class EventTier(event: BigInt)         extends EventDispatchModel
+  case class EventInjection(supplied: BigInt) extends EventDispatchModel
+
+  /** The six recognised event names as codes — the closed name set. */
+  val recognisedEventNames: List[BigInt] =
+    List(BigInt(1), BigInt(2), BigInt(3), BigInt(4), BigInt(5), BigInt(6))
+
+  /** Whether the dispatch selects a tier. */
+  @pure
+  def isEventTier(d: EventDispatchModel): Boolean = d match
+    case EventTier(_)      => true
+    case EventInjection(_) => false
+
+  /** Whether the dispatch routes to the injection tier. */
+  @pure
+  def isEventInjection(d: EventDispatchModel): Boolean = !isEventTier(d)
+
+  /**
+   * The total event-name classification — the mirror of the shipped
+   * `EventDispatch.classify`. Every input lands in exactly one arm: a
+   * recognised code yields `EventTier` for that code, every other code
+   * yields `EventInjection` carrying the supplied code.
+   *
+   * Postcondition (the spec's `classify` contract):
+   *  - totality: every input lands in exactly one arm (structural —
+   *    the sealed two-variant type has no third shape);
+   *  - recognised names land on a tier, and only they do;
+   *  - the fallback preserves what it fell back from.
+   *
+   * spec: gate-event-compatibility — Contract: classify
+   * spec: gate-event-compatibility — Property: event-dispatch-is-total
+   * spec: gate-event-compatibility — Property: recognised-names-never-fall-back
+   */
+  @pure
+  def classifyEvent(name: BigInt): EventDispatchModel = {
+    if recognisedEventNames.contains(name) then EventTier(name)
+    else EventInjection(name)
+  }.ensuring { (res: EventDispatchModel) =>
+    (isEventTier(res) || isEventInjection(res)) &&
+    (recognisedEventNames.contains(name) == isEventTier(res)) &&
+    (res match
+      case EventInjection(n) => n == name
+      case EventTier(_)      => true
+    )
+  }
+
+  /**
+   * Law: the recognised-name mapping is injective — two recognised
+   * names that classify to the same tier are the same name. Holds
+   * because `EventTier` wraps the supplied code itself.
+   * spec: gate-event-compatibility — Property: recognised-names-never-fall-back
+   */
+  @pure
+  def classifyEventInjective(a: BigInt, b: BigInt): Boolean = {
+    require(recognisedEventNames.contains(a) && recognisedEventNames.contains(b))
+    (classifyEvent(a) == classifyEvent(b)) == (a == b)
+  }.ensuring(_ == true)
+
+  /** Structural no-duplicates check (stainless `List` has no `distinct`). */
+  @pure
+  private def noDup(l: List[BigInt]): Boolean = l match
+    case Nil()      => true
+    case Cons(h, t) => !t.contains(h) && noDup(t)
+
+  /**
+   * Law: the recognised set is closed and duplicate-free — the six
+   * codes are pairwise distinct, so the enumerated domain and the
+   * shipped six-name table cannot drift apart silently.
+   * spec: gate-event-compatibility — Property: recognised-names-never-fall-back
+   */
+  @pure
+  def recognisedEventNamesDistinct: Boolean = {
+    recognisedEventNames.length == BigInt(6) && noDup(recognisedEventNames)
   }.ensuring(_ == true)

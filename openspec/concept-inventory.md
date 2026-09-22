@@ -724,6 +724,19 @@ both pure, no I/O),
 ∪ contradicted in record order, the verdict's warrant set),
 `GateKernel` (gained the `decideCompletion` mirror — see the new row).
 
+### repair-probatio-cutover change — gate-event-compatibility spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `EventDispatch` | closed enum (`Tier(event: GateEvent)` — a recognised `--event` name routes to its own tier; `Injection(suppliedName: String)` — every other supplied name routes to the context-injection tier carrying the name verbatim, so a fallback that discards what it fell back from is unconstructible) + `isTier`/`isInjection`; `EventDispatch.classify: String => EventDispatch` — **total** (no `Option`, no `Either` — a failable parse is unconstructible), single-sourced on `recognisedTable` (the six (token, event) pairs in predecessor dispatch order); `recognisedNames` derived from the same table so the closed set and the classification cannot drift | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/gate-event-compatibility` |
+| `DispatchKernel.classifyEvent` | Ring 6 contract extension (`EventDispatchModel`{`EventTier(event: BigInt)`|`EventInjection(supplied: BigInt)`} — supplied modelled by name-code, 0 = unrecognised; `recognisedEventNames` = codes 1–6; `classifyEvent(code)` with the spec's three postcondition clauses — totality, recognised⇔tier, injection-carries-name) + laws `classifyEventInjective`, `recognisedEventNamesDistinct` (`noDup` helper — stainless `List` has no `distinct`) | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/gate-event-compatibility` |
+
+Existing rows modified by this spec (annotated in place above): none —
+`GateContext.event: GateEvent` became `dispatch: EventDispatch` inside
+`SubcommandEntrypoints` (cli entrypoint plumbing, not an inventoried
+concept), and `DispatchKernel` gained the `classifyEvent` mirror (see the
+new row).
+
 ### complete-probatio-porting change — hook-cutover spec concepts
 
 | Concept | Kind | Package | Status |

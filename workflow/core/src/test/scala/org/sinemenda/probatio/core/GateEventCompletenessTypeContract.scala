@@ -48,6 +48,8 @@ package org.sinemenda.probatio.core
  * spec: gate-event-completeness — Requirement: The gate handles every event its installed adapters emit
  * spec: gate-event-completeness — Compile-Negative: A ToolOutcome.Exit constructed from a harness response classified as a refusal
  * spec: gate-event-completeness — Compile-Negative: A file read or environment-variable read inside probatio-core's gate decision functions
+ * spec: gate-event-compatibility — Compile-Negative: An event classification that can fail
+ * spec: gate-event-compatibility — Compile-Negative: An injection dispatch built without the supplied name
  */
 final class GateEventCompletenessTypeContract extends ProbatioSuite:
 
@@ -129,6 +131,29 @@ final class GateEventCompletenessTypeContract extends ProbatioSuite:
 
   def sessionOps(s: SessionId): (String, String) = (s.raw, s.encoded)
 
+  // ── EventDispatch — spec: gate-event-compatibility (Step 1) ────────
+  //
+  // The total classification of a supplied `--event` name: `Tier` for a
+  // recognised name, `Injection` carrying the supplied name for every
+  // other. The classification is a total function INTO `EventDispatch`
+  // — never an optional, never an either — so a failable parse (the
+  // shape that produced the error status this spec removes) is
+  // unconstructible.
+  val dispatchClassifySig: String => EventDispatch =
+    EventDispatch.classify
+
+  val dispatchTierSig: GateEvent => EventDispatch.Tier =
+    EventDispatch.Tier.apply
+
+  val dispatchInjectionSig: String => EventDispatch.Injection =
+    EventDispatch.Injection.apply
+
+  val dispatchRecognisedSig: List[String] =
+    EventDispatch.recognisedNames
+
+  val dispatchProbesSig: EventDispatch => (Boolean, Boolean) =
+    (d: EventDispatch) => (d.isTier, d.isInjection)
+
   test("six GateEvent cases are distinct"):
     val events: List[GateEvent] =
       List(eventSig1, eventSig2, eventSig3, eventSig4, eventSig5, eventSig6)
@@ -152,6 +177,50 @@ final class GateEventCompletenessTypeContract extends ProbatioSuite:
     assertEquals(
       budgetFoldSig(List(false, true, true)),
       List(false, true, false)
+    )
+
+  test("classify is total and lands every name in exactly one arm"):
+    EventDispatch.recognisedNames.foreach { (name: String) =>
+      assert(dispatchClassifySig(name).isTier, s"recognised name '$name' must dispatch to a tier")
+    }
+    val injected: EventDispatch = dispatchClassifySig("no-such-event")
+    assert(injected.isInjection)
+    injected match
+      case EventDispatch.Injection(supplied) => assertEquals(supplied, "no-such-event")
+      case EventDispatch.Tier(_)             => fail("an unrecognised name must not reach a tier")
+
+  test("the recognised name set is closed and injective"):
+    assertEquals(dispatchRecognisedSig.length, 6)
+    assertEquals(dispatchRecognisedSig.distinct.length, 6)
+    val tiers: List[GateEvent] =
+      dispatchRecognisedSig.map(dispatchClassifySig).collect { case EventDispatch.Tier(e) => e }
+    assertEquals(tiers.distinct.length, 6, "no two recognised names may reach the same tier")
+
+  // spec: gate-event-compatibility — Compile-Negative: An event classification that can fail
+  // A failable parse is what produces the error status this spec
+  // removes — `classify` returns `EventDispatch`, not an optional or
+  // an either, so assigning it to `Option[EventDispatch]` must not
+  // compile.
+  test("a failable event classification does not compile"):
+    val err: String = compileErrors(
+      """val e: Option[EventDispatch] = EventDispatch.classify("x")"""
+    )
+    assert(
+      err.nonEmpty,
+      "classify must return EventDispatch, not Option[EventDispatch] — the parse cannot fail"
+    )
+
+  // spec: gate-event-compatibility — Compile-Negative: An injection dispatch built without the supplied name
+  // A fallback that discards what it fell back from is the silent
+  // drift this spec keeps visible — `Injection` requires the supplied
+  // name.
+  test("an injection dispatch without the supplied name does not compile"):
+    val err: String = compileErrors(
+      """EventDispatch.Injection()"""
+    )
+    assert(
+      err.nonEmpty,
+      "EventDispatch.Injection must require the supplied name — the fallback names what it fell back from"
     )
 
 end GateEventCompletenessTypeContract
