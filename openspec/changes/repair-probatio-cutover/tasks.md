@@ -40,17 +40,17 @@ no spec qualifies for a combined gate.
 
 ## 3. completion-witness-refusal
 
-- [ ] Step 1 — typed contract: `WitnessVerdict` with three variants including the unreadable case, a refusal that requires the offending row (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 9 scenarios + 4 properties (`refusal-iff-an-uncorroborated-green-result-exists`, `unreadable-state-never-refuses`, `refusal-budget-is-bounded-and-nonzero`, `parity-with-predecessor-on-the-completion-tier`) + 2 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: the corroboration predicate in the decision core; the completion tier wired to it; fail open with a stated reason; bounded to one refusal per turn
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan on the diff
-- [ ] Ring 2 — dependency lint clean; the predicate reads no file
-- [ ] Ring 3 — property + scenario suites green (injected turn identity and clock seam, no wall-clock); **its acceptance file at parity**
-- [ ] Ring 5 — retarget the mutate list to the gate decision files; read the score (90%)
-- [ ] Ring 6 — extend the gate kernel with the corroboration contract; bridge property green
-- [ ] Ring 8 — fresh-context adversarial review; check the tier as a subprocess, not as a function
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Step 1 — typed contract: `WitnessVerdict` with three variants including the unreadable case, a refusal that requires the offending row (compiles; **human gate**)
+- [x] Step 2 — test oracle: 9 scenarios + 4 properties (`refusal-iff-an-uncorroborated-green-result-exists`, `unreadable-state-never-refuses`, `refusal-budget-is-bounded-and-nonzero`, `parity-with-predecessor-on-the-completion-tier`) + 2 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: the corroboration predicate in the decision core; the completion tier wired to it; fail open with a stated reason; bounded to one refusal per turn
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan on the diff
+- [x] Ring 2 — dependency lint clean; the predicate reads no file
+- [x] Ring 3 — property + scenario suites green (injected turn identity and clock seam, no wall-clock); **its acceptance file at parity**
+- [x] Ring 5 — retarget the mutate list to the gate decision files; read the score (90%)
+- [x] Ring 6 — extend the gate kernel with the corroboration contract; bridge property green
+- [x] Ring 8 — fresh-context adversarial review; check the tier as a subprocess, not as a function
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 4. gate-event-compatibility
 

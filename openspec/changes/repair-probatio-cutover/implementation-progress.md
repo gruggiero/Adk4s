@@ -129,7 +129,7 @@
 
 ### 3. completion-witness-refusal
 
-- **Status**: in-progress — all rings green (0,1,2,3,5,6,8); concept-delta + inventory done; checkpoint pending
+- **Status**: VALIDATED — human checkpoint approved (R8 freshness attested: review ran as isolated subagent `408db1c1` on spec + changed production files only); all rings green at commit baseline `67416c2`
 - **BASELINE SHA**: `f3fe75be44876852c1fbdfbc819cd46720980923`
 
 ### Step Progress
@@ -174,9 +174,9 @@
 - [x] Ring 6 — Stainless **480/480 VCs valid** (+49 over spec 2): `EvidenceRow`, `CompletionDecision`{`CompletionAllow`,`CompletionRefuse(rowIndex)`}, `firstUncorroborated`, `hasUncorroboratedAtBaseline`, and the three discharge lemmas (`fuSound` — `Some(k)` ⇒ in-range ∧ `rows(k-i)` satisfies the warrant; `uncAtIndexImpliesExists` — satisfied predicate ⇒ `exists`; `fuComplete` — `None` ⇒ `!exists`) instantiated in `decideCompletion`'s body; postcondition discharges the spec's three clauses (refusal-iff, named in-range justifying row, spent budget never refuses). The `verified` (adk4s) module shows 9 pre-existing invalids in `PredictorKernel`/`StackKernel` (untouched since Aug 17 — out of scope)
 - [x] Ring 8 — adversarial review → `ring8-completion-witness-refusal.md`: **fresh-context: yes** (isolated read-only subagent `408db1c1`, inputs: spec + changed production files only) — 3 PASS / 7 PARTIAL at review; **3 MAJOR remediated** (`"unknown"` baseline sentinel → `Option[String]` + `Undeterminable` naming the baseline resolution; absent record → `Undeterminable` naming the ledger — both were silent clean allows discarding warrants/violating namesInput; all 3 refuse paths discarded `writeRefusal`'s bound → now the tool-call-tier `!writeRefusal ⇒ fail open` idiom); **2 MINOR resolved** (presentation-marker precondition + changes-enumeration silent allow recorded in the spec's new Applicability paragraph — both predecessor-exact). Post-remediation: 146 focused tests green, native image rebuilt, `ambient-capture-wiring.bats` 32/32 re-verified, spec-lint 0 FAIL
 - [x] Concept-delta + inventory update — `concept-inventory.md`: spec-3 section appended (`WitnessVerdict`, `CompletionDecision`, `GateKernel.decideCompletion` rows, provenance `spec:repair-probatio-cutover/completion-witness-refusal`); `GateDecisions`, `ReconcileReport`, `GateKernel` rows annotated in place (+`corroborationVerdict`/`decideCompletion`, +`uncorroborated`, +`decideCompletion` mirror — provenance preserved). Behavioural concept delta: none needed — `strangler-migration-protocol` already covers the completion tier as the `GateLast` seam; spec 3 changes no action/synchronization shape (verified at Step 0). registry-check re-run: OK (803 tokens, 13 spec refs, 5 pre-existing weak bindings). spec-lint post-amendment: 0 FAIL, 42 WARN
-- [ ] Checkpoint — commit + PO-exact evidence rows + checkpoint report
+- [x] Checkpoint — implementation committed `67416c2`; 26 evidence rows re-recorded at the commit baseline (9 ring-summary + 17 PO-exact; discharge requires `r.obligation ==` the spec's PO-table cell text AND `r.change == --change`; R8 row carries `--session devin-subagent-408db1c1` per the R8 contract); `hook-tiers.bats` **27/27** run for the two PO rows citing it (first-refusal-issued, second-attempt-not-refused); chain-state report: 46 total / 46 bound / 46 resolved / **11 discharged** (spec-1's 5 + spec-2's 3 + spec-3's 3; remaining 35 belong to specs 4–11; `unmapped_obligations: []`); `checkpoint.sh report` → R0/R1/R2/R3/R5/R6 all green, R8 `unverified-session` pending human attestation (same as specs 1–2)
 
-| Commit | _(pending)_ |
+| Commit | `67416c2` |
 
 ---
 
