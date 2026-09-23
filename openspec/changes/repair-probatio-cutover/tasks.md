@@ -81,7 +81,7 @@ no spec qualifies for a combined gate.
 - [x] Ring 5 — retarget the mutate list to the graph model, parsers and entrypoint; read the score (90% core / 80% adapter)
 - [x] Ring 6 — new reachability kernel with grounded/complete/conserving contracts, terminating by explicit fuel; bridge property green
 - [x] Ring 8 — fresh-context adversarial review; check that an unparsed row is reported rather than dropped
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 6. feature-freeze-guard-integrity
 

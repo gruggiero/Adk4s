@@ -1,6 +1,7 @@
 # Ring 8: Adversarial Spec-Compliance Review — graph-tool-port
 
-- **Fresh context**: yes — isolated read-only subagent, inputs limited to the spec
+- **Fresh context**: yes — isolated read-only subagent `devin-subagent-3fae7c0c`,
+  inputs limited to the spec
   (`specs/graph-tool-port/spec.md`), the typed contract
   (`GraphToolPortTypeContract.scala`), and the implementation diff
   (38 files, +6151, new files intent-to-added so the diff covered them).
