@@ -5,6 +5,12 @@ import hedgehog.Range
 import hedgehog.Result
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
+import org.sinemenda.probatio.guard.CorpusResolution
+import org.sinemenda.probatio.guard.FeatureFreezeGuard
+import org.sinemenda.probatio.guard.FeatureFreezeVerdict
+import org.sinemenda.probatio.guard.FeatureFreezeViolation
+import org.sinemenda.probatio.guard.FixtureCorpus
+import org.sinemenda.probatio.guard.GuardCorpusFixtures
 import org.sinemenda.probatio.verified.SpecLintKernel
 
 import scala.collection.immutable.List as ScalaList
@@ -125,5 +131,90 @@ final class SpecLintBridgeSpec extends ProbatioSuite:
           shipped._1 == stainlessListToScala(kern._1).map(_.toInt) && shipped._2 == kern._2.toInt
         )
         .log(s"shipped $shipped != kernel (${kern._1}, ${kern._2}) on n=$n targets=$targets")
+
+  // ---------------------------------------------------------------------------
+  // guardOutcome bridge (spec: feature-freeze-guard-integrity — Contract: guardOutcome)
+  // ---------------------------------------------------------------------------
+
+  private val genVerdict: Gen[String] =
+    Gen.element("clean", ScalaList("findings", "undetermined"))
+
+  private val genAlteration: Gen[FeatureFreezeViolation.VerdictAlteration] =
+    for
+      fixture  <- Gen.string(Gen.alphaNum, Range.linear(3, 12)).map(n => s"$n/spec.md")
+      expected <- genVerdict
+      actual   <- genVerdict
+    yield FeatureFreezeViolation.VerdictAlteration(fixture, expected, actual)
+
+  /**
+   * The guard classification a shipped `Outcome` reports: undetermined /
+   * upheld / violation. `Ran` carrying a non-`Accepted` verdict is not a
+   * guard outcome — `guardOutcome` never produces it.
+   */
+  private def shippedClasses(
+    outcome: Outcome[FeatureFreezeVerdict]
+  ): (Boolean, Boolean, Boolean) =
+    outcome match
+      case Outcome.Undetermined(_)                       => (true, false, false)
+      case Outcome.Ran(FeatureFreezeVerdict.Accepted(_)) => (false, true, false)
+      case Outcome.Finding(_)                           => (false, false, true)
+      case Outcome.Ran(_)                               => (false, false, false)
+
+  // spec: feature-freeze-guard-integrity — Contract: guardOutcome (bridge)
+  property("bridge-guardOutcome — mirror equals the shipped classification on generated inputs"):
+    val genInput: Gen[(Boolean, ScalaList[FeatureFreezeViolation.VerdictAlteration])] =
+      for
+        resolved <- Gen.boolean
+        ds       <- genAlteration.list(Range.linear(0, 5))
+      yield (resolved, ds)
+    for (resolved, disagreements) <- genInput.forAll
+        .cover(40, "resolved", (p: (Boolean, ScalaList[FeatureFreezeViolation.VerdictAlteration])) => p._1)
+        .cover(40, "not-resolved", (p: (Boolean, ScalaList[FeatureFreezeViolation.VerdictAlteration])) => !p._1)
+        .cover(30, "has-disagreements", (p: (Boolean, ScalaList[FeatureFreezeViolation.VerdictAlteration])) => p._2.nonEmpty)
+        .cover(
+          20,
+          "resolved-with-disagreements",
+          (p: (Boolean, ScalaList[FeatureFreezeViolation.VerdictAlteration])) => p._1 && p._2.nonEmpty
+        )
+    yield
+      // `resolved` collapses the corpus resolution to located/not-located —
+      // a located corpus is materialised through the real resolver.
+      val resolution: CorpusResolution =
+        GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+          if resolved then
+            GuardCorpusFixtures.placeActive(
+              openspec,
+              "change-x",
+              ScalaList("cap/spec.md" -> "# Spec: X\n")
+            )
+          FixtureCorpus.resolve("change-x", openspec)
+        }
+      val shipped: Outcome[FeatureFreezeVerdict] =
+        FeatureFreezeGuard.guardOutcome(resolution, disagreements)
+      val (shUnd, shUp, shViol): (Boolean, Boolean, Boolean) = shippedClasses(shipped)
+
+      val fixtureIdxs: ScalaList[BigInt] =
+        disagreements.zipWithIndex.map((_, i) => BigInt(i))
+      val kern: SpecLintKernel.GuardResult =
+        SpecLintKernel.guardOutcome(resolved, scalaToStainlessList(fixtureIdxs))
+
+      Result
+        .assert(
+          shUnd == kern.isUndetermined && shUp == kern.isUpheld && shViol == kern.isViolation
+        )
+        .log(
+          s"shipped ($shUnd,$shUp,$shViol) != kernel (${kern.isUndetermined},${kern.isUpheld},${kern.isViolation}) " +
+            s"on resolved=$resolved disagreements=${disagreements.length}"
+        )
+        .and(
+          Result
+            .assert(!shViol || disagreements.nonEmpty)
+            .log("a violation must name at least one fixture")
+        )
+        .and(
+          Result
+            .assert(!shUnd || !shUp)
+            .log("could-not-determine must never be upheld")
+        )
 
 end SpecLintBridgeSpec

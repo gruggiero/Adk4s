@@ -762,6 +762,23 @@ concepts); the chain-state verdict report states `degraded: true` when
 the graph read degraded — a wire-level field, `ChainStateReport` shape
 unchanged.
 
+### repair-probatio-cutover change — feature-freeze-guard-integrity spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/feature-freeze-guard-integrity`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `FixtureCorpus` | final class, **private** ctor (`ArmTree` precedent — a private case-class ctor still emits public `copy`, which would reopen the empty-corpus hole); `specs` are fixture paths relative to `origin` so active/archived placements compare equal; `resolve(name, openspecDir)`/`searchedLocations` probe the active area then `changes/archive/<date>-<name>` (`== name \|\| endsWith("-name")`); `fixturePath(spec)` | `org.sinemenda.probatio.guard` | test-only; `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+| `CorpusResolution` | enum (`Resolved(corpus)` / `NotFound(searched: List[os.Path])` — searched is a required field, so an undiagnosable not-found is unconstructible) + `isResolved`/`isNotFound`/`corpusOption` | `org.sinemenda.probatio.guard` | test-only; `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+| `FeatureFreezeGuard` | object — the guard's decisions: `corpusChangeName`, `reviewFeatureFreeze(violation)` (always `Rejected`; acceptance only flows through `guardOutcome`), `unknownCheckIds(emitted)` (closed F1–F10 set), `guardOutcome(resolution, disagreements): Outcome[FeatureFreezeVerdict]` (`NotFound → Undetermined` naming searched; `Resolved+Nil → Ran(Accepted)`; `Resolved+ds → Finding` naming each fixture + both verdicts) | `org.sinemenda.probatio.guard` | test-only; `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+| `GuardResult` | final case class in `SpecLintKernel` (isUndetermined, isUpheld, isViolation, namedFixtures) + `guardOutcome(resolved, disagreements)` — the Stainless mirror of the shipped three-way classification; postcondition = the spec contract verbatim | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+| `GuardCorpusFixtures` | test-oracle object — `withTempOpenspec`/`placeActive`/`placeArchived`/`placeAbsence` materialisers, `genCorpus`, `genEmptyCorpusCondition` (ChangeAbsent/LocationEmpty/LocationUnreadable), `genFixture` (predecessor clause-shape alphabet), `emittedCheckIds` | `org.sinemenda.probatio.guard` | test-only; `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+
+Existing rows modified by this spec (annotated in place above):
+`FeatureFreezeVerdict` (`Accepted` → `Accepted(corpus: FixtureCorpus)` —
+freeze-upheld is unconstructible without a resolved corpus);
+`SpecLintKernel` (+`GuardResult`, +`guardOutcome` mirror — 661/661 VCs).
+
 ### complete-probatio-porting change — hook-cutover spec concepts
 
 | Concept | Kind | Package | Status |
@@ -774,7 +791,7 @@ unchanged.
 | Concept | Kind | Package | Status |
 |---------|------|---------|--------|
 | `FeatureFreezeViolation` | enum (NewLintCheck(checkId), VerdictAlteration(fixture, expected, actual), NewWorkflowFeature(featureDescription)) | `org.sinemenda.probatio.guard` | test-only |
-| `FeatureFreezeVerdict` | enum (Accepted, Rejected(violation, reason)) | `org.sinemenda.probatio.guard` | test-only |
+| `FeatureFreezeVerdict` | enum (Accepted(corpus: FixtureCorpus), Rejected(violation, reason)) — `Accepted` narrowed 2026-09-23 by `spec:repair-probatio-cutover/feature-freeze-guard-integrity`: the verdict carries the resolved corpus it was earned against | `org.sinemenda.probatio.guard` | test-only |
 | `KnownCheckId` | enum (F1–F10 closed set — allIds, isKnown) | `org.sinemenda.probatio.guard` | test-only |
 | `FixtureVerdict` | final case class (fixture, verdict, warnings) | `org.sinemenda.probatio.guard` | test-only |
 | `DependencyModule` | final case class (organization, name) | `org.sinemenda.probatio.guard` | test-only |
@@ -887,7 +904,7 @@ The following concepts were introduced by `spec:complete-probatio-cutover/spec-l
 | `SpecLintEngine` | object (`lint(document, context, artifactTracked): LintReport` — pure total function emitting F1–F10/W1–W7 in predecessor order; `obligationSources`, `reachabilityFold` exposed for verification) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
 | `CheckOutcome` | enum derives ReadWriter (Pass(check), Fail(check, line, message), Warn(warning)) — the emitted finding stream, predecessor emission order | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
 | `LintContext` | final case class (schemaVersion/registry/registryConcepts/inventoryTypes/profile: FactRead, installRoots) — injected repository facts; `hasRegistry` gates F10/W7, `codeIdentifiers` is the predecessor `comm -23` | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
-| `SpecLintKernel` | object — Ring 6 mirror of `reachabilityFold` (`numRequirements, rowTargets: List[BigInt] => (unenforced, unresolvableCount)`): `uncoveredFrom` same-shaped soundness postcondition + `uncoveredComplete` inductive lemma + four fixed-size law lemmas | `org.sinemenda.probatio.core` (verified/probatio) | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SpecLintKernel` | object — Ring 6 mirror of `reachabilityFold` (`numRequirements, rowTargets: List[BigInt] => (unenforced, unresolvableCount)`): `uncoveredFrom` same-shaped soundness postcondition + `uncoveredComplete` inductive lemma + four fixed-size law lemmas; +`GuardResult`/`guardOutcome` added 2026-09-23 by `spec:repair-probatio-cutover/feature-freeze-guard-integrity` (the guard's three-way classification mirrored alongside the lint kernel, 661/661 VCs) | `org.sinemenda.probatio.core` (verified/probatio) | `spec:complete-probatio-cutover/spec-lint-engine`; extended by `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
 
 Existing rows modified by this spec (annotated in place above): `LintReport`
 (re-shaped — verdicts + finding stream + applicability + resolvedRows/

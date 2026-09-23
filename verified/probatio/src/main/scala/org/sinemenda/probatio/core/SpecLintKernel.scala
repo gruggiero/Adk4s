@@ -173,4 +173,44 @@ object SpecLintKernel:
     res._1 == Cons(BigInt(0), Cons(BigInt(2), Nil())) && res._2 == BigInt(1)
   }.ensuring(_ == true)
 
+  // ---------------------------------------------------------------------------
+  // guardOutcome — the feature-freeze guard's three-way classification
+  // (spec: feature-freeze-guard-integrity — Contract: guardOutcome)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The guard's report classification, mirrored. The shipped outcome is
+   * `Outcome[FeatureFreezeVerdict]`; the kernel reduces it to the three
+   * decision classes plus the fixtures a violation names.
+   */
+  case class GuardResult(
+    isUndetermined: Boolean,
+    isUpheld: Boolean,
+    isViolation: Boolean,
+    namedFixtures: List[BigInt]
+  )
+
+  /**
+   * The guard's three-way report, mirrored.
+   *
+   * `resolved` is the corpus resolution collapsed to located/not-located —
+   * the shipped side's non-empty corpus is a type-level guarantee
+   * (`FixtureCorpus`'s private constructor), not a decision input.
+   * `disagreements` are the fixture indices whose ported and predecessor
+   * verdicts differ.
+   *
+   * spec: feature-freeze-guard-integrity — Contract: guardOutcome
+   */
+  @pure
+  def guardOutcome(resolved: Boolean, disagreements: List[BigInt]): GuardResult = {
+    if !resolved then GuardResult(true, false, false, Nil())
+    else if disagreements.isEmpty then GuardResult(false, true, false, Nil())
+    else GuardResult(false, false, true, disagreements)
+  }.ensuring { (result: GuardResult) =>
+    (!resolved ==> result.isUndetermined) &&
+    (result.isUndetermined ==> !result.isUpheld) &&
+    (result.isUpheld == (resolved && disagreements.isEmpty)) &&
+    (result.isViolation ==> result.namedFixtures.nonEmpty)
+  }
+
 end SpecLintKernel

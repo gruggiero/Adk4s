@@ -1,6 +1,9 @@
 package org.sinemenda.probatio.guard
 
 import hedgehog.*
+import hedgehog.core.PropertyConfig
+import hedgehog.core.SuccessCount
+import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.ProbatioSuite
 
 /**
@@ -18,29 +21,11 @@ import org.sinemenda.probatio.core.ProbatioSuite
  */
 
 // ══ Types (R-X1, R-X2, R-X3) ═════════════════════════════════════════════
-
-/** The feature-freeze contract (R-X1). */
-enum FeatureFreezeViolation:
-  case NewLintCheck(checkId: String)
-  case VerdictAlteration(fixture: String, expected: String, actual: String)
-  case NewWorkflowFeature(featureDescription: String)
-
-enum FeatureFreezeVerdict:
-  case Accepted
-  case Rejected(violation: FeatureFreezeViolation, reason: String)
-
-enum KnownCheckId:
-  case F1, F2, F3, F4, F5, F6, F7, F8, F9, F10
-
-object KnownCheckId:
-  val allIds: Set[String]          = values.map(_.toString).toSet
-  def isKnown(id: String): Boolean = allIds.contains(id)
-
-final case class FixtureVerdict(
-  fixture: String,
-  verdict: String,
-  warnings: Set[String]
-)
+//
+// The feature-freeze types (`FeatureFreezeViolation`, `FeatureFreezeVerdict`,
+// `KnownCheckId`, `FixtureVerdict`) live in `GuardTypes.scala` — they are
+// part of the Ring-5 move-to-main set and must not be defined inside a test
+// class.
 
 final case class DependencyModule(
   organization: String,
@@ -120,11 +105,32 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
   import FeatureFreezeViolation.*
   import FeatureFreezeVerdict.*
 
+  // The corpus scenario + verdict-stability property run the predecessor
+  // bash and the ported native binary as subprocesses.
+  override val munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(300, "s")
+
+  private val stabilityConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(40))
+
+  /**
+   * The repository root via `git rev-parse` — NOT `os.pwd`: the Ring-5
+   * Stryker sandbox runs the suite from a `target/stryker4s-*` directory,
+   * and `rev-parse` still resolves the real worktree root (spec-1's
+   * debugging trail; same rule as `SpecLintParitySpec.repoRoot`).
+   */
+  private val repoRoot: os.Path =
+    val result: os.CommandResult = os
+      .proc("git", "rev-parse", "--show-toplevel")
+      .call(check = false, stdout = os.Pipe, stderr = os.Pipe)
+    if result.exitCode == 0 then os.Path(result.out.text().trim)
+    else os.pwd
+
   // ══ Helpers: pattern-match-based type checks (no isInstanceOf) ═══════════
 
   private def isRejected(v: FeatureFreezeVerdict): Boolean = v match
     case Rejected(_, _) => true
-    case Accepted       => false
+    case Accepted(_)    => false
 
   private def isClean(r: DependencyBoundaryResult): Boolean = r match
     case DependencyBoundaryResult.Clean(_)        => true
@@ -139,7 +145,7 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
   // ── Scenario: New lint check rejected as out of scope
   // spec: non-goals-guard — Scenario: New lint check rejected as out of scope
   test("F11 lint check is rejected as a feature-freeze violation"):
-    val verdict: FeatureFreezeVerdict = reviewFeatureFreeze(Some(NewLintCheck("F11")))
+    val verdict: FeatureFreezeVerdict = FeatureFreezeGuard.reviewFeatureFreeze(NewLintCheck("F11"))
     verdict match
       case Rejected(NewLintCheck(id), _) => assertEquals(id, "F11")
       case other                         => fail(s"expected Rejected(NewLintCheck), got $other")
@@ -152,20 +158,23 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
       expected = "bound",
       actual = "discharged"
     )
-    val verdict: FeatureFreezeVerdict = reviewFeatureFreeze(Some(alteration))
+    val verdict: FeatureFreezeVerdict = FeatureFreezeGuard.reviewFeatureFreeze(alteration)
     assert(isRejected(verdict))
 
   // ── Scenario: New workflow feature rejected
   // spec: non-goals-guard — Scenario: New workflow feature rejected
   test("new gate tier is rejected as a workflow feature"):
     val feature: FeatureFreezeViolation = NewWorkflowFeature("post-completion blocking tier")
-    val verdict: FeatureFreezeVerdict   = reviewFeatureFreeze(Some(feature))
+    val verdict: FeatureFreezeVerdict   = FeatureFreezeGuard.reviewFeatureFreeze(feature)
     assert(isRejected(verdict))
 
   // ── Scenario: Pure port accepted (no behavior delta)
   test("a pure port with no behavior delta is accepted"):
-    val verdict: FeatureFreezeVerdict = reviewFeatureFreeze(None)
-    assertEquals(verdict, Accepted)
+    val resolution: CorpusResolution =
+      FixtureCorpus.resolve(FeatureFreezeGuard.corpusChangeName, repoRoot / "openspec")
+    FeatureFreezeGuard.guardOutcome(resolution, Nil) match
+      case Outcome.Ran(Accepted(_)) => ()
+      case other                    => fail(s"expected Ran(Accepted(corpus)), got $other")
 
   // ══ R-X2: Copy-based consumer payload stability scenarios ════════════════
 
@@ -183,14 +192,14 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
   // spec: non-goals-guard — Scenario: Schema template or ring definition change rejected
   test("schema template change is rejected as out of scope"):
     val violation: FeatureFreezeViolation = NewWorkflowFeature("schema template modification")
-    val verdict: FeatureFreezeVerdict     = reviewFeatureFreeze(Some(violation))
+    val verdict: FeatureFreezeVerdict     = FeatureFreezeGuard.reviewFeatureFreeze(violation)
     assert(isRejected(verdict))
 
   // ── Scenario: sbt 1.x to 2.x build migration rejected
   // spec: non-goals-guard — Scenario: sbt 1.x to 2.x build migration rejected
   test("sbt 1.x to 2.x migration is rejected as out of scope"):
     val violation: FeatureFreezeViolation = NewWorkflowFeature("sbt 2.x build migration")
-    val verdict: FeatureFreezeVerdict     = reviewFeatureFreeze(Some(violation))
+    val verdict: FeatureFreezeVerdict     = FeatureFreezeGuard.reviewFeatureFreeze(violation)
     assert(isRejected(verdict))
 
   // ══ R-X3: Allowed-dependency set scenarios ═══════════════════════════════
@@ -233,6 +242,342 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
     val module: DependencyModule = DependencyModule("co.fs2", "fs2-core")
     assert(AllowedDependencySet.isForbidden(module))
 
+  // ══ Spec 6: feature-freeze-guard-integrity — corpus resolution ═══════════
+  //
+  // The guard's corpus used to be read from one hardcoded active-area
+  // path; archiving the change moved it, the corpus read as empty, and the
+  // guard failed outright. These tests pin the repair: resolution across
+  // both areas, could-not-determine on every empty or unresolvable
+  // corpus, the closed check-identifier set, and verdict stability
+  // measured against the predecessor.
+
+  private def isUndetermined(o: Outcome[?]): Boolean = o match
+    case Outcome.Undetermined(_) => true
+    case _                     => false
+
+  private def isUpheld(o: Outcome[FeatureFreezeVerdict]): Boolean = o match
+    case Outcome.Ran(Accepted(_)) => true
+    case _                        => false
+
+  // ── Scenario: Happy path — an active change's corpus resolves
+  // spec: feature-freeze-guard-integrity — Scenario: Happy path — an active change's corpus resolves
+  test("an active change's corpus resolves"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      val fixtures: List[(String, String)] = List(
+        "alpha/spec.md" -> "# Spec: A\n",
+        "beta/spec.md"  -> "# Spec: B\n"
+      )
+      GuardCorpusFixtures.placeActive(openspec, "change-x", fixtures)
+      FixtureCorpus.resolve("change-x", openspec) match
+        case CorpusResolution.Resolved(corpus) =>
+          assertEquals(corpus.specs.sorted, fixtures.map(_._1).sorted)
+        case other => fail(s"expected Resolved, got $other")
+    }
+
+  // ── Scenario: Happy path — an archived change's corpus resolves
+  // spec: feature-freeze-guard-integrity — Scenario: Happy path — an archived change's corpus resolves
+  test("an archived change's corpus resolves"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      val fixtures: List[(String, String)] = List(
+        "alpha/spec.md" -> "# Spec: A\n",
+        "beta/spec.md"  -> "# Spec: B\n"
+      )
+      GuardCorpusFixtures.placeArchived(openspec, "change-x", "2026-09-20-", fixtures)
+      FixtureCorpus.resolve("change-x", openspec) match
+        case CorpusResolution.Resolved(corpus) =>
+          assertEquals(corpus.specs.sorted, fixtures.map(_._1).sorted)
+        case other => fail(s"expected Resolved, got $other")
+    }
+
+  // ── Scenario: Adversarial — a corpus present in neither location is not silently accepted
+  // spec: feature-freeze-guard-integrity — Scenario: Adversarial — a corpus present in neither location is not silently accepted
+  test("a corpus present in neither location reports not-found naming every location searched"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      os.makeDir.all(openspec / "changes" / "other-change" / "specs")
+      os.makeDir.all(openspec / "changes" / "archive" / "2026-01-01-unrelated" / "specs")
+      FixtureCorpus.resolve("absent-change", openspec) match
+        case CorpusResolution.NotFound(searched) =>
+          assertEquals(searched, FixtureCorpus.searchedLocations("absent-change", openspec))
+          assert(searched.nonEmpty, "a not-found must name at least one searched location")
+        case other => fail(s"expected NotFound, got $other")
+    }
+
+  // ── Surgical kills (Ring 5 survivors): archive matching, spec.md filter
+  // A non-matching archived directory must not resolve even when it holds
+  // fixtures; a bare-name archived directory does; a specs directory
+  // holding files that are not spec.md does not.
+  test("an archived change holding fixtures under a non-matching name is not the corpus"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      GuardCorpusFixtures.placeArchived(
+        openspec,
+        "other-change",
+        "2026-01-01-",
+        List("cap/spec.md" -> "# Spec: X\n")
+      )
+      FixtureCorpus.resolve("absent-change", openspec) match
+        case CorpusResolution.NotFound(searched) => assert(searched.nonEmpty)
+        case other                               => fail(s"expected NotFound, got $other")
+    }
+
+  test("an archived change directory named exactly the change resolves"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      GuardCorpusFixtures.placeArchived(
+        openspec,
+        "change-x",
+        "",
+        List("cap/spec.md" -> "# Spec: X\n")
+      )
+      FixtureCorpus.resolve("change-x", openspec) match
+        case CorpusResolution.Resolved(corpus) => assertEquals(corpus.specs, List("cap/spec.md"))
+        case other                             => fail(s"expected Resolved, got $other")
+    }
+
+  // A change name that is a *suffix* of an archived name must not resolve
+  // that archive's corpus — `probatio-cutover` is not
+  // `complete-probatio-cutover`, and silently taking its corpus is exactly
+  // the "present in neither location is not silently accepted" failure.
+  test("an archived directory whose name merely ends in the change name is not the corpus"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      GuardCorpusFixtures.placeArchived(
+        openspec,
+        "complete-probatio-cutover",
+        "2026-01-01-",
+        List("cap/spec.md" -> "# Spec: X\n")
+      )
+      FixtureCorpus.resolve("probatio-cutover", openspec) match
+        case CorpusResolution.NotFound(searched) => assert(searched.nonEmpty)
+        case other                               => fail(s"expected NotFound, got $other")
+      FixtureCorpus.resolve("complete-probatio-cutover", openspec) match
+        case CorpusResolution.Resolved(corpus) => assertEquals(corpus.specs, List("cap/spec.md"))
+        case other                             => fail(s"expected Resolved, got $other")
+    }
+
+  test("a specs directory holding no spec.md fixtures does not resolve"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      val specsDir: os.Path = openspec / "changes" / "change-x" / "specs"
+      os.makeDir.all(specsDir)
+      os.write(specsDir / "readme.txt", "not a fixture")
+      FixtureCorpus.resolve("change-x", openspec) match
+        case CorpusResolution.NotFound(searched) =>
+          assert(searched.contains(specsDir), s"must name the specs dir probed: $searched")
+        case other => fail(s"expected NotFound, got $other")
+    }
+
+  test("the resolution projections report the located and absent cases"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      GuardCorpusFixtures.placeActive(openspec, "change-x", List("cap/spec.md" -> "# Spec: X\n"))
+      val resolved: CorpusResolution = FixtureCorpus.resolve("change-x", openspec)
+      assert(resolved.isResolved)
+      assert(!resolved.isNotFound)
+      resolved match
+        case CorpusResolution.Resolved(corpus) =>
+          resolved.corpusOption match
+            case Some(c) => assertEquals(c.specs, corpus.specs)
+            case None    => fail("corpusOption must be Some on a resolved corpus")
+        case other => fail(s"expected Resolved, got $other")
+      val absent: CorpusResolution = FixtureCorpus.resolve("absent-change", openspec)
+      assert(absent.isNotFound)
+      assert(!absent.isResolved)
+      assertEquals(absent.corpusOption, None)
+    }
+
+  // ── Scenario: Adversarial — an unresolvable corpus does not report the freeze upheld
+  // spec: feature-freeze-guard-integrity — Scenario: Adversarial — an unresolvable corpus does not report the freeze upheld
+  test("an unresolvable corpus does not report the freeze upheld"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      GuardCorpusFixtures.placeAbsence(
+        openspec,
+        GuardCorpusFixtures.EmptyCorpusCondition.ChangeAbsent("absent-change")
+      )
+      val resolution: CorpusResolution = FixtureCorpus.resolve("absent-change", openspec)
+      val outcome: Outcome[FeatureFreezeVerdict] =
+        FeatureFreezeGuard.guardOutcome(resolution, Nil)
+      outcome match
+        case Outcome.Undetermined(reason) =>
+          assert(reason.contains("absent-change"), s"undetermined must name the corpus: $reason")
+        case other => fail(s"expected Undetermined, got $other")
+      assert(!isUpheld(outcome), "could-not-determine must never be freeze-upheld")
+    }
+
+  // ── Scenario: Adversarial — a resolved but empty corpus does not report the freeze upheld
+  // spec: feature-freeze-guard-integrity — Scenario: Adversarial — a resolved but empty corpus does not report the freeze upheld
+  test("a resolved-but-empty corpus does not report the freeze upheld"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      GuardCorpusFixtures.placeAbsence(
+        openspec,
+        GuardCorpusFixtures.EmptyCorpusCondition.LocationEmpty("empty-change")
+      )
+      val resolution: CorpusResolution = FixtureCorpus.resolve("empty-change", openspec)
+      resolution match
+        case CorpusResolution.NotFound(searched) =>
+          assert(
+            searched.exists((p: os.Path) => p.toString.contains("empty-change")),
+            s"not-found must name the empty corpus location: $searched"
+          )
+        case other => fail(s"an empty specs dir must not resolve, got $other")
+      val outcome: Outcome[FeatureFreezeVerdict] =
+        FeatureFreezeGuard.guardOutcome(resolution, Nil)
+      assert(isUndetermined(outcome), s"expected Undetermined, got $outcome")
+      assert(!isUpheld(outcome), "could-not-determine must never be freeze-upheld")
+    }
+
+  // ── Scenario: Happy path — the ported implementation emits only known identifiers
+  // spec: feature-freeze-guard-integrity — Scenario: Happy path — the ported implementation emits only known identifiers
+  test("the ported implementation emits only known check identifiers over the corpus"):
+    val binary: os.Path = repoRoot / "workflow" / "cli" / "target" / "native-image" / "probatio"
+    if !os.exists(binary) then
+      fail(s"probatio binary not found at $binary — closed-set check FAILS, does not skip")
+    val resolution: CorpusResolution =
+      FixtureCorpus.resolve(FeatureFreezeGuard.corpusChangeName, repoRoot / "openspec")
+    resolution match
+      case CorpusResolution.Resolved(corpus) =>
+        corpus.specs.foreach { (spec: String) =>
+          val (_, emitted) = probatioSpecLint(corpus.fixturePath(spec).toString)
+          val unknown: Set[String] = FeatureFreezeGuard.unknownCheckIds(emitted)
+          assert(unknown.isEmpty, s"unknown check identifiers emitted on $spec: $unknown")
+        }
+      case other => fail(s"expected Resolved, got $other")
+    // Non-vacuity: the archived corpus is conformant and may emit zero
+    // FAIL identifiers — an empty emitted set makes the closed-set check
+    // vacuous. A violating document guarantees real inputs, and F4's
+    // summary shape (`FAIL F4:` — no line number) exercises the other
+    // emitted-id format end-to-end.
+    val violatingDoc: String =
+      """# Spec: Violating
+        |
+        |## ADDED Requirements
+        |
+        |### Requirement: r
+        |The system frobs.
+        |
+        |#### Scenario: s
+        |**Given** a precondition
+        |**When** an action
+        |**Then** an observable outcome
+        |""".stripMargin
+    val (_, emittedOnViolation) = probatioSpecLintText(violatingDoc)
+    assert(emittedOnViolation.nonEmpty, "a violating document must emit FAIL identifiers")
+    assert(
+      emittedOnViolation.contains("F4"),
+      s"the summary-format identifier F4 must be collected, got $emittedOnViolation"
+    )
+    assert(
+      FeatureFreezeGuard.unknownCheckIds(emittedOnViolation).isEmpty,
+      s"unknown check identifiers emitted: $emittedOnViolation"
+    )
+
+  // The emitted-id parser must collect BOTH output shapes the arms
+  // produce: line-numbered (`FAIL F7 line 30: …`) and summary
+  // (`FAIL F4: …` — no line number). Missing the summary shape lets a new
+  // check escape the closed-set guard entirely.
+  test("emitted check identifiers collect the line-numbered and summary FAIL formats"):
+    val output: String =
+      """  spec-lint: CONTEXT — repository facts.
+        |FAIL F1 line 12: requirement 'r' does not state SHALL or MUST
+        |FAIL F4: this spec has no "## Proof Obligations" section
+        |WARN W2 line 3: proof-obligations rows (0) < requirements (1)
+        |FAIL F11: a check the closed set does not know
+        |""".stripMargin
+    assertEquals(
+      GuardCorpusFixtures.emittedCheckIds(output),
+      Set("F1", "F4", "F11")
+    )
+
+  // ── Scenario: Adversarial — an unknown identifier is a violation
+  // spec: feature-freeze-guard-integrity — Scenario: Adversarial — an unknown identifier is a violation
+  test("an unknown check identifier is a freeze violation naming that identifier"):
+    val emitted: Set[String]      = Set("F1", "F5", "F11")
+    val unknown: Set[String]      = FeatureFreezeGuard.unknownCheckIds(emitted)
+    assertEquals(unknown, Set("F11"))
+    unknown.foreach { (id: String) =>
+      FeatureFreezeGuard.reviewFeatureFreeze(NewLintCheck(id)) match
+        case Rejected(NewLintCheck(named), reason) =>
+          assertEquals(named, "F11")
+          assert(reason.contains("F11"), s"violation must name the identifier: $reason")
+        case other => fail(s"expected Rejected(NewLintCheck), got $other")
+    }
+
+  // ── Scenario: Adversarial — a differing verdict is reported with both values
+  // spec: feature-freeze-guard-integrity — Scenario: Adversarial — a differing verdict is reported with both values
+  test("a differing verdict is reported with both values"):
+    GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+      GuardCorpusFixtures.placeActive(openspec, "change-x", List("cap/spec.md" -> "# Spec: S\n"))
+      val resolution: CorpusResolution = FixtureCorpus.resolve("change-x", openspec)
+      val outcome: Outcome[FeatureFreezeVerdict] = FeatureFreezeGuard.guardOutcome(
+        resolution,
+        List(VerdictAlteration("cap/spec.md", "clean", "findings"))
+      )
+      outcome match
+        case Outcome.Finding(description) =>
+          assert(description.contains("cap/spec.md"), s"must name the fixture: $description")
+          assert(description.contains("clean"), s"must name the predecessor's verdict: $description")
+          assert(description.contains("findings"), s"must name the ported verdict: $description")
+        case other => fail(s"expected Finding, got $other")
+    }
+
+  // ── Compile-Negative: A fixture corpus built from an empty list
+  // spec: feature-freeze-guard-integrity — Compile-Negative: A fixture corpus built from an empty list
+  test("compile-negative: a fixture corpus built from an empty list does not compile"):
+    val err: String = compileErrors("FixtureCorpus(Nil, os.pwd)")
+    assert(err.nonEmpty, "FixtureCorpus(Nil, origin) should not compile — the constructor is private")
+
+  // ── Compile-Negative: A not-found resolution without the locations searched
+  // spec: feature-freeze-guard-integrity — Compile-Negative: A not-found resolution without the locations searched
+  test("compile-negative: a not-found resolution without searched locations does not compile"):
+    val err: String = compileErrors("CorpusResolution.NotFound()")
+    assert(err.nonEmpty, "NotFound() should not compile — the variant requires the searched list")
+
+  // ── Compile-Negative: A freeze verdict constructed for an unresolved corpus
+  // spec: feature-freeze-guard-integrity — Compile-Negative: A freeze verdict constructed for an unresolved corpus
+  test("compile-negative: a freeze verdict for an unresolved corpus does not compile"):
+    val err: String = compileErrors("FeatureFreezeVerdict.Accepted(CorpusResolution.NotFound(Nil))")
+    assert(err.nonEmpty, "Accepted(NotFound) should not compile — the accepted variant takes a resolved corpus")
+
+  // ── Property: corpus-resolution-is-location-independent
+  // spec: feature-freeze-guard-integrity — Property: corpus-resolution-is-location-independent
+  property("corpus-resolution-is-location-independent"):
+    for corpus <- GuardCorpusFixtures.genCorpus.forAll
+    yield
+      GuardCorpusFixtures.withTempOpenspec { (active: os.Path) =>
+        GuardCorpusFixtures.withTempOpenspec { (archived: os.Path) =>
+          GuardCorpusFixtures.placeActive(active, "change-x", corpus)
+          GuardCorpusFixtures.placeArchived(archived, "change-x", "2026-01-01-", corpus)
+          (
+            FixtureCorpus.resolve("change-x", active),
+            FixtureCorpus.resolve("change-x", archived)
+          ) match
+            case (CorpusResolution.Resolved(a), CorpusResolution.Resolved(b)) =>
+              Result
+                .assert(a.specs == b.specs)
+                .log(s"active ${a.specs} != archived ${b.specs}")
+            case other =>
+              Result.failure.log(s"expected both resolved, got $other")
+        }
+      }
+
+  // ── Property: empty-corpus-never-passes
+  // spec: feature-freeze-guard-integrity — Property: empty-corpus-never-passes
+  property("empty-corpus-never-passes"):
+    for condition <- GuardCorpusFixtures.genEmptyCorpusCondition.forAll
+    yield
+      GuardCorpusFixtures.withTempOpenspec { (openspec: os.Path) =>
+        val unreadable: Option[os.Path] = GuardCorpusFixtures.placeAbsence(openspec, condition)
+        try
+          val name: String = condition match
+            case GuardCorpusFixtures.EmptyCorpusCondition.ChangeAbsent(n)        => n
+            case GuardCorpusFixtures.EmptyCorpusCondition.LocationEmpty(n)       => n
+            case GuardCorpusFixtures.EmptyCorpusCondition.LocationUnreadable(n)  => n
+          val outcome: Outcome[FeatureFreezeVerdict] = FeatureFreezeGuard.guardOutcome(
+            FixtureCorpus.resolve(name, openspec),
+            Nil
+          )
+          Result
+            .assert(isUndetermined(outcome) && !isUpheld(outcome))
+            .log(s"expected could-not-determine and not-upheld on $condition, got $outcome")
+        finally // scalafix:ok DisableSyntax.NoKeywordFinally
+          unreadable.foreach((d: os.Path) => os.perms.set(d, "rwx------"))
+      }
+
   // ══ Compile-Negative obligations ═════════════════════════════════════════
 
   // ── Compile-Negative: A new F11 check in the ported spec-lint
@@ -246,31 +591,46 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
   // spec: non-goals-guard — Compile-Negative: A new gate tier in the ported gate
   test("compile-negative: 'post-completion blocking tier' is a NewWorkflowFeature"):
     val violation: FeatureFreezeViolation = NewWorkflowFeature("post-completion blocking tier")
-    val verdict: FeatureFreezeVerdict     = reviewFeatureFreeze(Some(violation))
+    val verdict: FeatureFreezeVerdict     = FeatureFreezeGuard.reviewFeatureFreeze(violation)
     assert(isRejected(verdict))
 
   // ══ Properties (Ring 3) ══════════════════════════════════════════════════
 
-  // ── Property: F1–F10 verdict stability across the port
-  // spec: non-goals-guard — Property: F1–F10 verdict stability across the port
-  // The verdicts are cached so spec-lint.sh is invoked once per fixture, not
-  // once per Hedgehog iteration (200 subprocess calls would time out).
-  property("F1–F10 verdict stability across the port"):
-    val fixtures: List[String] = allFixtures
-    val bashVerdicts: Map[String, FixtureVerdict] =
-      fixtures.map(f => f -> bashSpecLint(f)).toMap
-    val probatioVerdicts: Map[String, FixtureVerdict] =
-      fixtures.map(f => f -> probatioSpecLint(f)).toMap
-    fixtures match
-      case first :: rest =>
-        for fixture <- Gen.element(first, rest).forAll
-        yield
-          val expected: FixtureVerdict = bashVerdicts(fixture)
-          val actual: FixtureVerdict   = probatioVerdicts(fixture)
-          Result.diff(actual, expected)((a, e) => a.verdict == e.verdict && a.warnings == e.warnings)
-      case Nil =>
-        for _ <- Gen.constant(()).forAll
-        yield Result.failure.log("no spec fixtures under complete-probatio-cutover/specs")
+  // ── Scenario: Happy path — every corpus fixture's verdict agrees
+  // spec: feature-freeze-guard-integrity — Scenario: Happy path — every fixture's verdict agrees
+  test("every corpus fixture's verdict agrees with the predecessor"):
+    val resolution: CorpusResolution =
+      FixtureCorpus.resolve(FeatureFreezeGuard.corpusChangeName, repoRoot / "openspec")
+    val disagreements: List[VerdictAlteration] = resolution match
+      case CorpusResolution.Resolved(corpus) =>
+        corpus.specs.flatMap { (spec: String) =>
+          val path: String              = corpus.fixturePath(spec).toString
+          val (expected, _)             = bashSpecLint(path)
+          val (actual, _)               = probatioSpecLint(path)
+          if actual.verdict == expected.verdict && actual.warnings == expected.warnings then None
+          else Some(VerdictAlteration(spec, expected.verdict, actual.verdict))
+        }
+      case CorpusResolution.NotFound(_) => Nil
+    FeatureFreezeGuard.guardOutcome(resolution, disagreements) match
+      case Outcome.Ran(Accepted(_)) => ()
+      case other                    => fail(s"expected Ran(Accepted(corpus)), got $other")
+
+  // ── Property: verdict-stability-across-the-port (spec 6)
+  // spec: feature-freeze-guard-integrity — Property: verdict-stability-across-the-port
+  // Model-based: the predecessor bash spec-lint runs as the model; the
+  // ported native binary is the implementation under test. Only verdicts
+  // and warnings are compared — no timing is observed. The limit is kept
+  // low: each iteration costs two subprocess invocations.
+  property("verdict-stability-across-the-port", stabilityConfig):
+    for fixture <- GuardCorpusFixtures.genFixture.forAll
+    yield
+      val expected: FixtureVerdict          = bashSpecLintText(fixture)
+      val (actual, emitted): (FixtureVerdict, Set[String]) = probatioSpecLintText(fixture)
+      val unknown: Set[String]              = FeatureFreezeGuard.unknownCheckIds(emitted)
+      Result
+        .assert(unknown.isEmpty)
+        .log(s"unknown check identifiers emitted by the ported arm: $unknown")
+        .and(Result.diff(actual, expected)((a, e) => a.verdict == e.verdict && a.warnings == e.warnings))
 
   // ── Property: dependency boundary is closed
   // spec: non-goals-guard — Property: dependency boundary is closed
@@ -298,26 +658,10 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
 
   // ══ Implementations (Step 3 — GREEN run) ═════════════════════════════════
 
-  /**
-   * Reviews a proposed change against the feature-freeze contract (R-X1).
-   * Returns `Accepted` if the change is a pure port (no violation),
-   * `Rejected` with the violation and a reason if it introduces a behavior
-   * delta. Any non-None violation is a feature-freeze breach — the three
-   * violation classes (NewLintCheck, VerdictAlteration, NewWorkflowFeature)
-   * are all out-of-scope for a port.
-   */
-  def reviewFeatureFreeze(violation: Option[FeatureFreezeViolation]): FeatureFreezeVerdict =
-    violation match
-      case None => FeatureFreezeVerdict.Accepted
-      case Some(v) =>
-        val reason: String = v match
-          case NewLintCheck(id) =>
-            s"new lint check $id is a workflow feature, not a port — file separately"
-          case VerdictAlteration(fixture, expected, actual) =>
-            s"verdict on $fixture changed from $expected to $actual — behavior delta, not a port bug"
-          case NewWorkflowFeature(desc) =>
-            s"$desc is a new workflow feature, not a port — file separately"
-        FeatureFreezeVerdict.Rejected(v, reason)
+  // `reviewFeatureFreeze` and `guardOutcome` live in `FeatureFreezeGuard`
+  // (spec 6): a proposed violation is always rejected — acceptance names
+  // the resolved corpus it was earned against and is reachable only
+  // through `guardOutcome`, which owns the corpus run.
 
   /**
    * Compares two hook payloads for byte-stability across the rename (R-X2).
@@ -339,78 +683,89 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
     else PayloadStabilityResult.Stable
 
   /**
-   * The fixture corpus for the verdict-stability property (R-X1).
+   * Run one spec-lint arm on a specification document. The tools take a
+   * change directory, not a spec file — the document is wrapped in a
+   * temporary `<dir>/specs/spec.md` shape. Exits 0 (clean), 1 (findings),
+   * or 2 (undetermined); any other exit is surfaced as `error-<code>` so a
+   * crashed arm can never masquerade as a legitimate undetermined. The
+   * verdict string, the warning set and the emitted `FAIL F#` check
+   * identifiers are parsed from stdout.
    *
-   * The corpus is the set of spec files in this change — each spec is a
-   * known input to spec-lint with a known expected verdict. The property
-   * asserts the ported spec-lint produces the same verdict as the
-   * predecessor bash spec-lint on each fixture.
+   * Returns the fixture verdict plus the emitted check identifiers —
+   * the closed-set comparison's inputs (spec 6).
    */
-  def allFixtures: List[String] =
-    val specsDir: os.Path = os.pwd / "openspec" / "changes" / "complete-probatio-cutover" / "specs"
-    if os.exists(specsDir) then
-      os.walk(specsDir)
-        .filter(_.last == "spec.md")
-        .map(_.toString)
-        .sorted
-        .toList
-    else Nil
-
-  /**
-   * Run one spec-lint arm on a fixture. The tools take a change
-   * directory, not a spec file — the fixture is wrapped in a temporary
-   * `<dir>/specs/spec.md` shape. Exits 0 (clean), 1 (findings), or 2
-   * (undetermined). The verdict string and warning set are parsed from
-   * stdout; finding lines are indented two spaces under the per-file
-   * header in both arms' text output.
-   */
-  private def runSpecLintArm(fixture: String, command: List[String]): FixtureVerdict =
+  private def runSpecLintArmText(
+    text: String,
+    label: String,
+    command: List[String]
+  ): (FixtureVerdict, Set[String]) =
     val tmp: os.Path = os.temp.dir(prefix = "non-goals-spec-lint")
     try
       os.makeDir(tmp / "specs")
-      os.copy(os.Path(fixture), tmp / "specs" / "spec.md")
+      os.write(tmp / "specs" / "spec.md", text)
       val result: os.CommandResult = os
         .proc(command ++ List(tmp.toString))
         .call(
           check = false,
           stdout = os.Pipe,
           stderr = os.Pipe,
-          cwd = os.pwd
+          cwd = repoRoot
         )
       val verdict: String = result.exitCode match
-        case 0 => "clean"
-        case 1 => "findings"
-        case _ => "undetermined"
-      val warnings: Set[String] = result.out
-        .text()
+        case 0     => "clean"
+        case 1     => "findings"
+        case 2     => "undetermined"
+        case other => s"error-$other"
+      val output: String        = result.out.text()
+      val warnings: Set[String] = output
         .linesIterator
         .map(_.trim)
         .filter(_.startsWith("WARN "))
         .toSet
-      FixtureVerdict(fixture, verdict, warnings)
+      (FixtureVerdict(label, verdict, warnings), GuardCorpusFixtures.emittedCheckIds(output))
     finally os.remove.all(tmp) // scalafix:ok DisableSyntax.NoKeywordFinally
+
+  /** Run one spec-lint arm on a fixture file path. */
+  private def runSpecLintArm(fixture: String, command: List[String]): (FixtureVerdict, Set[String]) =
+    runSpecLintArmText(os.read(os.Path(fixture)), fixture, command)
 
   /**
    * Runs the predecessor (bash) spec-lint on a fixture and returns the
-   * verdict (R-X1). The true predecessor is `spec-lint.sh.predecessor.bak` —
-   * `spec-lint.sh` is now a shim execing the probatio binary.
+   * verdict and emitted identifiers. The true predecessor is
+   * `spec-lint.sh.predecessor.bak` — `spec-lint.sh` is now a shim execing
+   * the probatio binary.
    */
-  def bashSpecLint(fixture: String): FixtureVerdict =
+  def bashSpecLint(fixture: String): (FixtureVerdict, Set[String]) =
     val script: os.Path =
-      os.pwd / "openspec" / "schemas" / "verified-scala3" / "scanner" / "spec-lint.sh.predecessor.bak"
-    if !os.exists(script) then FixtureVerdict(fixture, "undetermined", Set(s"predecessor not found at $script"))
+      repoRoot / "openspec" / "schemas" / "verified-scala3" / "scanner" / "spec-lint.sh.predecessor.bak"
+    if !os.exists(script) then
+      (FixtureVerdict(fixture, "undetermined", Set(s"predecessor not found at $script")), Set.empty)
     else runSpecLintArm(fixture, List("bash", script.toString))
+
+  /** The predecessor arm on document text rather than a fixture path. */
+  def bashSpecLintText(text: String): FixtureVerdict =
+    val script: os.Path =
+      repoRoot / "openspec" / "schemas" / "verified-scala3" / "scanner" / "spec-lint.sh.predecessor.bak"
+    if !os.exists(script) then FixtureVerdict("<generated>", "undetermined", Set(s"predecessor not found"))
+    else runSpecLintArmText(text, "<generated>", List("bash", script.toString))._1
 
   /**
    * Runs the ported (Scala) spec-lint on a fixture and returns the verdict
-   * (R-X1). The spec-lint subcommand is ported — this invokes the probatio
-   * native binary. The property asserts the verdicts are identical to the
-   * predecessor's — any divergence is a behavior delta, not a port bug.
+   * and emitted identifiers. The spec-lint subcommand is ported — this
+   * invokes the probatio native binary.
    */
-  def probatioSpecLint(fixture: String): FixtureVerdict =
-    val binary: os.Path = os.pwd / "workflow" / "cli" / "target" / "native-image" / "probatio"
-    if !os.exists(binary) then FixtureVerdict(fixture, "undetermined", Set(s"probatio binary not found at $binary"))
+  def probatioSpecLint(fixture: String): (FixtureVerdict, Set[String]) =
+    val binary: os.Path = repoRoot / "workflow" / "cli" / "target" / "native-image" / "probatio"
+    if !os.exists(binary) then
+      (FixtureVerdict(fixture, "undetermined", Set(s"probatio binary not found at $binary")), Set.empty)
     else runSpecLintArm(fixture, List(binary.toString, "spec-lint"))
+
+  /** The ported arm on document text rather than a fixture path. */
+  def probatioSpecLintText(text: String): (FixtureVerdict, Set[String]) =
+    val binary: os.Path = repoRoot / "workflow" / "cli" / "target" / "native-image" / "probatio"
+    if !os.exists(binary) then
+      (FixtureVerdict("<generated>", "undetermined", Set(s"probatio binary not found")), Set.empty)
+    else runSpecLintArmText(text, "<generated>", List(binary.toString, "spec-lint"))
 
   /**
    * Checks a subproject's classpath for a forbidden dependency (R-X3,
@@ -430,7 +785,7 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
     subproject: WorkflowSubproject,
     module: DependencyModule
   ): DependencyBoundaryResult =
-    val buildFile: os.Path = os.pwd / "build.sbt"
+    val buildFile: os.Path = repoRoot / "build.sbt"
     if !os.exists(buildFile) then DependencyBoundaryResult.Clean(subproject)
     else
       val buildText: String = os.read(buildFile)
@@ -535,7 +890,7 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
           )
           .call(check = false, stdout = os.Pipe, stderr = os.Pipe)
         val atCommit: String     = showResult.out.text()
-        val workingTree: os.Path = os.pwd / oracleDir / file
+        val workingTree: os.Path = repoRoot / oracleDir / file
         if !os.exists(workingTree) then true // file was deleted — that's a modification
         else atCommit != os.read(workingTree)
       }

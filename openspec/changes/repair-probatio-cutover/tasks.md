@@ -85,17 +85,17 @@ no spec qualifies for a combined gate.
 
 ## 6. feature-freeze-guard-integrity
 
-- [ ] Step 1 — typed contract: `FixtureCorpus` unconstructible from an empty list, `CorpusResolution` carrying the searched locations, the accepted verdict taking a resolved corpus (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 10 scenarios + 3 properties (`corpus-resolution-is-location-independent`, `empty-corpus-never-passes`, `verdict-stability-across-the-port`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: resolve the corpus from the active and archived areas; report could-not-determine on an empty or unresolvable corpus; keep the check-identifier set closed; compare every fixture's verdict against the predecessor
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan on the diff
-- [ ] Ring 2 — dependency lint clean
-- [ ] Ring 3 — property + scenario suites green; **the guard suite green, and red on an empty corpus**
-- [ ] Ring 5 — move the guard sources to main, retarget, run, move back; read the score (80%)
-- [ ] Ring 6 — extend the spec-lint kernel with the guard outcome contract; bridge property green
-- [ ] Ring 8 — fresh-context adversarial review; check that the repaired guard cannot pass vacuously
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Step 1 — typed contract: `FixtureCorpus` unconstructible from an empty list, `CorpusResolution` carrying the searched locations, the accepted verdict taking a resolved corpus (compiles; **human gate** — approved)
+- [x] Step 2 — test oracle: 10 scenarios + 3 properties (`corpus-resolution-is-location-independent`, `empty-corpus-never-passes`, `verdict-stability-across-the-port`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate** — approved)
+- [x] Step 3 — implementation: resolve the corpus from the active and archived areas; report could-not-determine on an empty or unresolvable corpus; keep the check-identifier set closed; compare every fixture's verdict against the predecessor
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan on the diff
+- [x] Ring 2 — dependency lint clean
+- [x] Ring 3 — property + scenario suites green; **the guard suite green, and red on an empty corpus**
+- [x] Ring 5 — move the guard sources to main, retarget, run, move back; read the score (80%) — **87.1%**, re-run post-Ring-8 remediation
+- [x] Ring 6 — extend the spec-lint kernel with the guard outcome contract; bridge property green — 661/661 VCs
+- [x] Ring 8 — fresh-context adversarial review; check that the repaired guard cannot pass vacuously — 3 majors found + fixed (`ring8-feature-freeze-guard-integrity.md`)
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 7. install-tool-surface-parity
 
