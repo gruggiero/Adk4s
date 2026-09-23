@@ -299,7 +299,7 @@
 
 ### 6. feature-freeze-guard-integrity
 
-- **Status**: IMPLEMENTED — all steps + rings 0–8 complete; checkpoint pending human approval
+- **Status**: VALIDATED — human checkpoint approved (R8 freshness attested: review ran as isolated subagent `b7a88d9f` on spec + typed contract + implementation diff only); all rings green at commit baseline `95bc7e2`
 - **BASELINE SHA**: `4bcb653c5330005f91a502aacd796e470e5e6587`
 
 ### Step Progress
@@ -345,9 +345,9 @@
   - **F6/F9 accepted**: `NotFound(Nil)` remains constructible (spec required the field, not non-emptiness; `resolve` never produces it); bare-name archived dirs resolve deliberately (pinned by test).
   - **Post-remediation**: NonGoalsGuardSpec 38 tests, 37 green, sole failure = pre-existing `oracle immutability`; SpecLintBridgeSpec 3/3. **Ring 5 re-run on the remediated sources** (findings F1–F3 changed mutated code): same procedure, **87.1%** (32 mutants, 27 killed, 4 survived — identical justified-equivalent set; all new `matchesArchived` mutants killed). Report: `ring8-feature-freeze-guard-integrity.md`.
 - [x] Concept-delta + inventory update — `concept-inventory.md` spec-6 section appended (5 rows: `FixtureCorpus`, `CorpusResolution`, `FeatureFreezeGuard`, `GuardResult`, `GuardCorpusFixtures`); `FeatureFreezeVerdict` row annotated in place (`Accepted` → `Accepted(corpus)`); `SpecLintKernel` row annotated (+`GuardResult`/`guardOutcome`). registry-check OK — 817 impl-map tokens, same 5 pre-existing weak bindings.
-- [x] Checkpoint — 7 evidence rows recorded (R0/R1/R2/R3/R5/R6/R8 ring-summaries) at the commit baseline. Residual: pre-existing `oracle immutability at every migration step` falsification (R-X2 property compares historical bats files against the working tree; `fact-extraction.bats` legitimately changed by ancestor `c3e3d54`) — documented, outside spec-6 scope.
+- [x] Checkpoint — implementation committed `95bc7e2`; 23 evidence rows recorded at the commit baseline (7 ring-summary + 16 PO-exact; discharge requires `r.obligation ==` the spec's PO-table cell text AND `r.change == --change`; R8 row carries `session: devin-subagent-b7a88d9f` per the R8 record contract); chain-state report: 46 total / 46 bound / 46 resolved / **22 discharged** with **0 feature-freeze-guard-integrity requirements unresolved**; `checkpoint report` → R0/R1/R2/R3/R5/R6 green, R8 `unverified-session` pending human attestation (same as specs 1–5). Residual: pre-existing `oracle immutability at every migration step` falsification (R-X2 property compares historical bats files against the working tree; `fact-extraction.bats` legitimately changed by ancestor `c3e3d54`) — the R3 discharge command runs the suite with that test excluded via `--tests` regex (visible in the recorded command); documented, outside spec-6 scope.
 
-| Commit | _(pending)_ |
+| Commit | `95bc7e2` |
 
 ---
 
