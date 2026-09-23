@@ -47,7 +47,14 @@ object ProbatioMain:
           System.err.println(CliErrorRender.render(err))
           1
         case Right((sub, rest)) =>
-          if rest.contains("--help") then
+          // The installer subcommands own their `-h`/`--help` handling:
+          // predecessor parity requires the parser — not a blanket
+          // intercept — to decide. `install-skills --help` is an
+          // invalid-option finding (exit 1), and a `--help` sitting in a
+          // flag's value position is consumed as the value.
+          val ownsHelp: Boolean =
+            sub == Subcommand.InstallSkills || sub == Subcommand.InstallHooks
+          if rest.contains("--help") && !ownsHelp then
             System.out.println(HelpRegistry.helpFor(sub).render)
             0
           else

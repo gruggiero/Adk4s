@@ -601,7 +601,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `FlagHelp` | final case class (name, description, default) | `org.sinemenda.probatio.cli` | shipped |
 | `ExitCodeDoc` | final case class (code, label, condition) | `org.sinemenda.probatio.cli` | shipped |
 | `CliErrorRender` | object (render: CliError → String) | `org.sinemenda.probatio.cli` | shipped |
-| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `ReconcileCmd` / `DangerScanCmd` / `MetalsCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints; 6 unported entrypoints removed: RegistryCheckCmd, ScanCmd, RemovalAuditCmd, ImpactScanCmd, ConceptScannerCmd, GraphCmd; SpecLintCmd implemented by spec-lint-engine: positional change-dir, `--context-only`, `--artifacts`, `--format json`, nested `specs/` discovery) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract`; SpecLintCmd implemented by `spec:complete-probatio-cutover/spec-lint-engine`; LedgerCmd `validate`→`verify` + `run` rework and CheckpointCmd `report`/`regenerate-tasks` implemented by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `ReconcileCmd` / `DangerScanCmd` / `MetalsCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints; 6 unported entrypoints removed: RegistryCheckCmd, ScanCmd, RemovalAuditCmd, ImpactScanCmd, ConceptScannerCmd, GraphCmd; SpecLintCmd implemented by spec-lint-engine: positional change-dir, `--context-only`, `--artifacts`, `--format json`, nested `specs/` discovery) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract`; SpecLintCmd implemented by `spec:complete-probatio-cutover/spec-lint-engine`; LedgerCmd `validate`→`verify` + `run` rework and CheckpointCmd `report`/`regenerate-tasks` implemented by `spec:complete-probatio-cutover/ledger-checkpoint-parity`; InstallSkillsCmd/InstallHooksCmd predecessor surfaces restored by `spec:repair-probatio-cutover/install-tool-surface-parity` |
 
 ### port-scanner-to-probatio change — sbt-plugin spec concepts
 
@@ -779,6 +779,25 @@ Existing rows modified by this spec (annotated in place above):
 freeze-upheld is unconstructible without a resolved corpus);
 `SpecLintKernel` (+`GuardResult`, +`guardOutcome` mirror — 661/661 VCs).
 
+### repair-probatio-cutover change — install-tool-surface-parity spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/install-tool-surface-parity`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `InstallTarget` | enum (`AllPresentHarnesses` / `NamedHarness(name)` — no single-directory variant exists; `name` keeps the supplied token verbatim so unknown harnesses are diagnosed at install time, not rejected at construction) | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+| `InstallMode` | enum (`DryRun` / `Apply`) + `writes` probe — a required parameter with no default, so a write-by-default installer is unconstructible | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+| `PrerequisiteProbe` | final case class (`name`, `present`) — one probed tool | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+| `PrerequisiteReport` | final case class (`probes: List[PrerequisiteProbe]`) — holds probes, never names alone; `missing`/`missingCount`/`allPresent` are derived, so the report cannot disagree with its own count | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+| `InstallSurface` | object — the predecessor's closed sets verbatim: `prerequisites` (bash, git, jq, python3, shellcheck, bats, shfmt), `skillAgentDirs` (.claude/skills, .pi/skills, .devin/skills), `knownHarnesses`, `markerDirs`, hook destinations | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+
+Existing rows modified by this spec (annotated in place above):
+`InstallSkillsCmd`/`InstallHooksCmd` (predecessor argument surfaces
+restored — `[project-root]` + `--check-installed` probe; `--agent` /
+`--apply` / `--project` / `-h,--help` with dry-run default, harness
+detection, claude merge and devin no-clobber), `SubcommandWiring`
+(+`schemaDirOf`).
+
 ### complete-probatio-porting change — hook-cutover spec concepts
 
 | Concept | Kind | Package | Status |
@@ -858,7 +877,7 @@ The following concepts were introduced by `spec:complete-probatio-porting/cli-wi
 |---------|------|---------|--------|
 | `CliContext` | final case class (repoRoot, changeDir, ledgerFile, gitDir: String; escapeHatch: Boolean) — resolved paths + env-var overrides read once at entrypoint start + `hooksControl(env, schemaVersion): EnvResolution` — the `PROBATIO_HOOKS`/`VERIFIED_SCALA3_HOOKS` alias window resolved through `SchemaPolicy` (`off` under either name skips the gate; the inverted `=1` reader is removed) | `org.sinemenda.probatio.cli` | shipped; +`hooksControl` by `spec:complete-probatio-cutover/gate-event-completeness` |
 | `StdoutRenderer[A]` | trait (render(value: A): String) — typeclass for byte-compatible stdout rendering; given instances for ChainStateReport, ChainStateUndetermined, LintReport, GatePayload, BannerOutput, LintContext | `org.sinemenda.probatio.cli` | shipped; +LintContext instance by `spec:complete-probatio-cutover/spec-lint-engine` |
-| `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int]; spec 7 added `repoContaining`/`gitExit`/`forgivePredicate` (moved from `ChainStateCmd`), `repoRootOf`, `sha256OfFile`/`sha256Hex`, `shellParses`, `replayCommand`, `executeCaptured`, `readTextFile`/`writeTextFile`, `absoluteGitDirOf`, boolean-aware `parseArgs` | `org.sinemenda.probatio.cli` | shipped; extended by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int]; spec 7 added `repoContaining`/`gitExit`/`forgivePredicate` (moved from `ChainStateCmd`), `repoRootOf`, `sha256OfFile`/`sha256Hex`, `shellParses`, `replayCommand`, `executeCaptured`, `readTextFile`/`writeTextFile`, `absoluteGitDirOf`, boolean-aware `parseArgs`; `install-tool-surface-parity` added `schemaDirOf` (PROBATIO_SCHEMA_DIR → repo-relative schema path) | `org.sinemenda.probatio.cli` | shipped; extended by `spec:complete-probatio-cutover/ledger-checkpoint-parity` and `spec:repair-probatio-cutover/install-tool-surface-parity` |
 
 ### complete-probatio-cutover change — live-fact-banner spec concepts
 

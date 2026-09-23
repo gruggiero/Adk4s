@@ -233,6 +233,22 @@ object SubcommandWiring:
   private[cli] def repoRootOf(ledgerDir: java.nio.file.Path): java.nio.file.Path =
     repoContaining(ledgerDir).getOrElse(ledgerDir)
 
+  /**
+   * The verified-scala3 schema directory — `PROBATIO_SCHEMA_DIR` when set,
+   * else `<repo>/openspec/schemas/verified-scala3` derived from `projectRoot`'s
+   * containing work tree, else `projectRoot/openspec/schemas/verified-scala3`
+   * when `projectRoot` itself carries an `openspec/` tree. The ported binary
+   * sits inside the schema tree (`bin/probatio`), so sources are always
+   * schema-relative — never a CLI flag (the predecessor rejects `--dir`).
+   */
+  private[cli] def schemaDirOf(env: Map[String, String], projectRoot: java.nio.file.Path): java.nio.file.Path =
+    env.get("PROBATIO_SCHEMA_DIR").map(java.nio.file.Paths.get(_)) match
+      case Some(dir) => dir
+      case None =>
+        repoContaining(projectRoot) match
+          case Some(repo) => repo.resolve("openspec/schemas/verified-scala3")
+          case None       => projectRoot.resolve("openspec/schemas/verified-scala3")
+
   /** `git <args>` under `dir`, returning the exit code. */
   private[cli] def gitExit(dir: java.nio.file.Path, args: List[String]): Int =
     try

@@ -145,7 +145,8 @@ object HelpRegistry:
   private val installSkillsHelp: HelpOutput = HelpOutput(
     Subcommand.InstallSkills,
     List(
-      FlagHelp("--dir", "skills directory", "required")
+      FlagHelp("[project-root]", "project root to install the schema's skills into", "current directory"),
+      FlagHelp("--check-installed", "probe the declared prerequisite set and report each as present or MISSING", "none")
     ),
     HelpOutput.threeWayExit
   )
@@ -153,7 +154,10 @@ object HelpRegistry:
   private val installHooksHelp: HelpOutput = HelpOutput(
     Subcommand.InstallHooks,
     List(
-      FlagHelp("--dir", "hooks directory", "required")
+      FlagHelp("--agent", "which harness to wire: claude|pi|devin|all", "all present"),
+      FlagHelp("--apply", "actually write; without it, prints the plan and changes nothing", "dry-run"),
+      FlagHelp("--project", "project root", "git toplevel, else cwd"),
+      FlagHelp("-h, --help", "print usage", "none")
     ),
     HelpOutput.threeWayExit
   )

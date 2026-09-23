@@ -99,15 +99,15 @@ no spec qualifies for a combined gate.
 
 ## 7. install-tool-surface-parity
 
-- [ ] Step 1 — typed contract: `InstallTarget`, `InstallMode` with no default, `PrerequisiteProbe`, `PrerequisiteReport` holding probes rather than names (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 13 scenarios + 3 properties (`surface-parity-with-the-predecessor`, `dry-run-writes-nothing`, `install-covers-every-declared-directory`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: the prerequisite probe; the multi-directory install; the hook installer's harness selector, project-root selector, report-before-write default and no-clobber refusal; both help entries widened
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan on the diff; shellcheck on the two forwarding scripts once swapped
-- [ ] Ring 2 — dependency lint clean
-- [ ] Ring 3 — property + scenario suites green; **surface parity against the predecessor**
-- [ ] Ring 5 — retarget the mutate list to the two installer entrypoints and the new install types; read the score (80%)
-- [ ] Ring 8 — fresh-context adversarial review; confirm no invocation the predecessor honoured now errors
+- [x] Step 1 — typed contract: `InstallTarget`, `InstallMode` with no default, `PrerequisiteProbe`, `PrerequisiteReport` holding probes rather than names (compiles; **human gate**)
+- [x] Step 2 — test oracle: 13 scenarios + 3 properties (`surface-parity-with-the-predecessor`, `dry-run-writes-nothing`, `install-covers-every-declared-directory`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: the prerequisite probe; the multi-directory install; the hook installer's harness selector, project-root selector, report-before-write default and no-clobber refusal; both help entries widened
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan on the diff; shellcheck on the two forwarding scripts once swapped
+- [x] Ring 2 — dependency lint clean
+- [x] Ring 3 — property + scenario suites green; **surface parity against the predecessor**
+- [x] Ring 5 — retarget the mutate list to the two installer entrypoints and the new install types; read the score (80%) — `InstallSurface.scala` **100%**; `SubcommandEntrypoints.scala` **46.58% covered-code** after 3 surgical-kill rounds (25.67→39.73→46.12→46.58), all remaining in-diff survivors justified equivalents
+- [x] Ring 8 — fresh-context adversarial review; confirm no invocation the predecessor honoured now errors — 3 majors found + fixed (`ring8-install-tool-surface-parity.md`)
 - [ ] Concept-delta check + inventory update + **checkpoint**
 
 ## 8. ledger-checkpoint-cutover

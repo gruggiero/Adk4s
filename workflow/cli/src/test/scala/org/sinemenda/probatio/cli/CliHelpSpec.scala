@@ -82,6 +82,22 @@ final class CliHelpSpec extends ProbatioCliSuite:
     List("<target>", "<concept>").foreach { arg =>
       assert(rendered.contains(arg), s"graph help missing argument '$arg'")
     }
-    List("exit 0", "exit 1", "exit 2").foreach { st =>
-      assert(rendered.contains(st), s"graph help missing $st")
+    List("exit 0", "exit 1", "exit 2").foreach(st => assert(rendered.contains(st), s"graph help missing $st"))
+
+  // ── install-tool-surface-parity — the widened help entries ─────────
+  // spec: install-tool-surface-parity — Scenario: Consumer surface — the help output names the harness selector and the write instruction
+  test("install-hooks help names the harness selector, the write instruction, and the three statuses"):
+    val rendered: String = HelpRegistry.helpFor(Subcommand.InstallHooks).render
+    List("--agent", "--project", "--apply").foreach { f =>
+      assert(rendered.contains(f), s"install-hooks help missing '$f'")
     }
+    List("exit 0", "exit 1", "exit 2").foreach { st =>
+      assert(rendered.contains(st), s"install-hooks help missing $st")
+    }
+
+  // The skill installer's help names the prerequisite probe and the
+  // positional project root (both entries widen at Step 3).
+  test("install-skills help names the prerequisite probe and the project root"):
+    val rendered: String = HelpRegistry.helpFor(Subcommand.InstallSkills).render
+    assert(rendered.contains("--check-installed"), "install-skills help missing '--check-installed'")
+    assert(rendered.contains("project"), "install-skills help missing the project root")
