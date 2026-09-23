@@ -27,6 +27,7 @@ object HelpRegistry:
       case Subcommand.Metals        => metalsHelp
       case Subcommand.InstallSkills => installSkillsHelp
       case Subcommand.InstallHooks  => installHooksHelp
+      case Subcommand.Graph         => graphHelp
 
   /** Renders top-level usage listing all available subcommands. */
   def topLevelUsage: String =
@@ -153,6 +154,21 @@ object HelpRegistry:
     Subcommand.InstallHooks,
     List(
       FlagHelp("--dir", "hooks directory", "required")
+    ),
+    HelpOutput.threeWayExit
+  )
+
+  private val graphHelp: HelpOutput = HelpOutput(
+    Subcommand.Graph,
+    List(
+      FlagHelp("export", "emit the traceability graph as JSON", "none"),
+      FlagHelp("stats", "node/edge counts by kind and warning count", "none"),
+      FlagHelp("impact", "what a node affects — <target> required", "required"),
+      FlagHelp("obligations", "requirement-to-artifact reachability audit — [change] optional", "none"),
+      FlagHelp("concept-code", "code a concept's implementation map binds — <concept> required", "required"),
+      FlagHelp("--output", "export output file (export)", "stdout"),
+      FlagHelp("--change-dir", "restrict export to a change dir (export)", "none"),
+      FlagHelp("--change", "restrict export/audit to a change (export, obligations)", "none")
     ),
     HelpOutput.threeWayExit
   )

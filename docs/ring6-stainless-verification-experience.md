@@ -512,7 +512,44 @@ infer the measure. Add `decreases(inputs.field.size)` explicitly.
 
 ---
 
-## 12. Summary: The Verification Checklist
+## 12. The Cross-Site Lambda Identity Trap
+
+### The Problem
+
+Two alpha-equivalent lambda literals at **different source sites** are
+different terms to the solver — Stainless lifts each literal to its own
+function symbol, so `(x: BigInt) => !p(x)` in a lemma's postcondition and
+`(r: BigInt) => !p(r)` in a caller are *not* equal.
+
+Consequence: a lemma that proves a fact about `f(l, (x) => !p(x))` gives
+the caller a hypothesis it cannot use on `f(l, (r) => !p(r))`. The VC
+then degenerates into unbounded unfolding of the recursive `f` — a hang
+indistinguishable from the §4 trap, but immune to `decreases` fixes.
+
+Observed on `ReachabilityKernel` (graph-tool-port): six verification
+runs stalled at varying VC counts until `filterConserves` (postcondition
+on `filterOf(l, (x) => !p(x))`) was replaced by a single-pass
+`partitionOf` whose postcondition mentions only its own result.
+
+### The Fix
+
+- **Never let a lambda literal cross a function boundary.** If a lemma's
+  contract must name a predicate application, wrap it in a named `def`
+  (`pathToAny`, `disjoint`) so the literal lives at exactly one site, or
+  pass the predicate as a `val`-bound term shared by caller and callee.
+- Prefer **self-verifying postconditions**: a function whose `ensuring`
+  speaks only of its own result and parameters (e.g.
+  `res._1.size + res._2.size == l.size` on a partition) discharges by
+  induction without any cross-function predicate matching.
+- Express negation as a boolean expression (`!p(x)`), not a negated
+  predicate term — `!p(x)` in an `ensuring` needs no second lambda.
+- To prove `!l.contains(h)` under `p(h)` when members of `l` satisfy
+  `!p`, call a membership lemma inside `if l.contains(h) then …` — the
+  branch becomes infeasible, which is what discharges the goal.
+
+---
+
+## 13. Summary: The Verification Checklist
 
 Before running verification, check every function in the mirror module:
 
@@ -521,6 +558,8 @@ Before running verification, check every function in the mirror module:
 - [ ] Every recursive function has a `decreases` clause
 - [ ] No `ensuring` clause calls the function being verified
 - [ ] Law lemmas only use fixed-size list inputs (Nil or Cons(x, Nil))
+- [ ] No lambda literal is referenced from two source sites — predicate
+      applications live behind named `def`s or shared `val`s (see §12)
 - [ ] All functions are `@pure`
 - [ ] Imports are `stainless.lang._`, `stainless.collection._`,
       `stainless.annotation._`

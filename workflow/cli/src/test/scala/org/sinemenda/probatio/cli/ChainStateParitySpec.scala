@@ -678,13 +678,22 @@ object ChainStateParitySpec:
    * the flag and identity fields only; determined reports compare whole.
    */
   def normalise(json: ujson.Value): ujson.Value =
-    if json.obj.get("undetermined").exists(_.bool) then
+    // `degraded` is the port's stated fact-source marker (spec:
+    // graph-tool-port requires the report to declare when the graph did
+    // not supply the requirement set). The predecessor has no vocabulary
+    // for it — projected away so parity compares the measured surface.
+    val projected: ujson.Value = json match
+      case obj: ujson.Obj =>
+        obj.value.remove("degraded")
+        obj
+      case other => other
+    if projected.obj.get("undetermined").exists(_.bool) then
       ujson.Obj(
-        "change"       -> json("change"),
-        "baseline"     -> json("baseline"),
+        "change"       -> projected("change"),
+        "baseline"     -> projected("baseline"),
         "undetermined" -> ujson.Bool(true)
       )
-    else json
+    else projected
 
   lazy val corpus: List[CorpusCase] =
     fixtures.map { (f: Fixture) =>

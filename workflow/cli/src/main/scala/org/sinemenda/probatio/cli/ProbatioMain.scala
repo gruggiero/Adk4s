@@ -76,6 +76,7 @@ object ProbatioMain:
       case Subcommand.Metals        => MetalsCmd.run(rest)
       case Subcommand.InstallSkills => InstallSkillsCmd.run(rest)
       case Subcommand.InstallHooks  => InstallHooksCmd.run(rest)
+      case Subcommand.Graph         => GraphCmd.run(rest)
 
   /**
    * The JVM entry point — obtains the invocation name from the runtime,
@@ -118,11 +119,11 @@ object ProbatioMain:
           val first: String = cmd.takeWhile(c => c != ' ')
           if first.nonEmpty then Some(first) else None
         }
-      catch case _: SecurityException => None
+      catch case _: SecurityException => None // danger-scan:allow name-probe-fallback — unreadable property falls back to the generic name
     // Try ProcessHandle.current().info().command() (JVM 16+ / native-image)
     val fromProcess: Option[String] =
       try
         val cmd: java.util.Optional[String] = ProcessHandle.current().info().command()
-        if cmd.isPresent then Some(cmd.get) else None
-      catch case _: Throwable => None
+        if cmd.isPresent then Some(cmd.get) else None // danger-scan:allow guarded-get — isPresent guards the get
+      catch case _: Throwable => None // danger-scan:allow name-probe-fallback — any probe failure falls back to the generic name, never to a verdict
     fromCommand.orElse(fromProcess).getOrElse("probatio")

@@ -25,11 +25,34 @@ setup() {
   SPEC_LINT="$SCHEMA/scanner/spec-lint.sh"
   GRAPH="$SCHEMA/scanner/openspec-graph.py"
   INSTALL_SKILLS="$SCHEMA/scanner/install-skills.sh"
+  # The launcher resolves its binary relative to the repository it sits
+  # in — inside a differential arm worktree no build exists there. The
+  # ported seam shim execs the ORIGIN schema's launcher, so direct
+  # invocations follow it when present (a predecessor arm's real script
+  # has no exec line and keeps the in-arm path).
+  PROBATIO="$SCHEMA/bin/probatio"
+  if grep -q '^exec ".*bin/probatio"' "$CHAIN_STATE" 2>/dev/null; then
+    PROBATIO="$(sed -n 's/^exec "\(.*bin\/probatio\)" .*$/\1/p' "$CHAIN_STATE")"
+  fi
   FX="$BATS_TEST_TMPDIR/repo"
 }
 
 mk_repo() {
   mkdir -p "$FX/openspec/changes/test-change/specs/only"
+  # The ported graph requires all three sources readable: the behavioural
+  # registry, the type inventory, and the active specs.
+  mkdir -p "$FX/openspec/concepts"
+  cat >"$FX/openspec/concept-inventory.md" <<'INV'
+# Concept Inventory
+
+## Workflow
+
+| Concept | Kind | Package | Provenance |
+|---------|------|---------|------------|
+| TestReq | final case class | org.test | this change |
+INV
+  mkdir -p "$FX/tests"
+  : > "$FX/tests/test.bats"
   cat >"$FX/openspec/changes/test-change/specs/only/spec.md" <<'SPEC'
 # Spec: Test
 
@@ -74,31 +97,33 @@ SPEC
   BASELINE_SHA="$(cd "$FX" && git rev-parse HEAD)"
 }
 
-# ── D5: openspec-graph.py export ──────────────────────────────────────────
+# ── D5: probatio graph export (ported; openspec-graph.py stays the model) ──
 
-@test "D5: openspec-graph.py export emits structured JSON with obligations" {
+@test "D5: probatio graph export emits structured JSON with obligations" {
   mk_repo
-  run bash -c "cd '$FX' && OPENSPEC_ROOT='$FX' python3 '$GRAPH' export --change-dir '$FX/openspec/changes/test-change' --change test-change 2>/dev/null"
+  run bash -c "cd '$FX' && OPENSPEC_ROOT='$FX' '$PROBATIO' graph export --change-dir '$FX/openspec/changes/test-change' --change test-change 2>/dev/null"
   [ "$status" -eq 0 ]
   # The JSON should contain obligation objects with spec, obligation, artifact fields
   echo "$output" | jq -e '.obligations | length >= 1'
   echo "$output" | jq -e '.obligations[0] | has("spec") and has("obligation") and has("artifact")'
 }
 
-@test "D5: chain-state.sh consumes graph JSON (not awk parsing)" {
+@test "D5: probatio chain-state consumes the traceability graph (not text parsing)" {
   mk_repo
-  # Set OPENSPEC_ROOT so openspec-graph.py can find the test repo's openspec/ dir.
-  # Chain-state should call openspec-graph.py export and consume its JSON.
-  # We verify by checking stderr for the graph-consumption trace OR by checking
-  # that the report is valid and the graph was actually used (no degraded trace).
-  run env OPENSPEC_ROOT="$FX" bash "$CHAIN_STATE" \
+  # OPENSPEC_ROOT tells the ported graph builder where the test repo's
+  # openspec/ tree lives — the predecessor's own contract, kept.
+  # bats `run` merges stderr into $output — the JSON report is the line
+  # that opens with `{`; trace lines ride along on stderr.
+  run env OPENSPEC_ROOT="$FX" "$PROBATIO" chain-state \
     --change-dir "$FX/openspec/changes/test-change" \
     --change "test-change" \
     --baseline "$BASELINE_SHA"
   # Should produce a valid report on stdout (stderr has trace lines)
-  echo "$output" | jq -e '.total != null' 2>/dev/null
-  # The degraded-mode trace should NOT appear (graph succeeded)
-  ! echo "$output" | grep -q "degraded bash-only mode"
+  echo "$output" | grep '^{' | jq -e '.total != null' 2>/dev/null
+  # The graph was actually consumed — no degraded-mode statement, and the
+  # report itself declares the graph fact source.
+  ! echo "$output" | grep -q "graph unavailable"
+  echo "$output" | grep '^{' | jq -e '.degraded == false'
 }
 
 @test "D5: unattributable escape hatch is deleted (graph resolves uniformly)" {
@@ -109,8 +134,11 @@ SPEC
     --change-dir "$FX/openspec/changes/test-change" \
     --change "test-change" \
     --baseline "$BASELINE_SHA"
-  # No unattributable reason in the output (parse only the JSON on stdout)
-  ! echo "$output" | jq -r '.unresolved[]?.reasons[]?' 2>/dev/null | grep -qxF "unattributable"
+  # No unattributable reason in the report — bats `run` merges stderr into
+  # $output, so filter to the JSON line before jq (otherwise this check is
+  # vacuous: jq on mixed output emits nothing).
+  echo "$output" | grep '^{' | jq -e 'type == "object"'
+  ! echo "$output" | grep '^{' | jq -r '.unresolved[]?.reasons[]?' 2>/dev/null | grep -qxF "unattributable"
 }
 
 # ── D5: spec-lint.sh --format json ────────────────────────────────────────
@@ -179,10 +207,12 @@ SPEC
     --change-dir "$FX/openspec/changes/test-change" \
     --change "test-change" \
     --baseline "$BASELINE_SHA"
-  # The report should be valid (chain-state consumed JSON, not regex)
-  echo "$output" | jq -e '.total != null' 2>/dev/null
-  # No degraded mode trace (graph mode used spec-lint --format json)
-  ! echo "$output" | grep -q "degraded bash-only mode"
+  # The report should be valid (chain-state consumed JSON, not regex).
+  # bats `run` merges stderr into $output — filter to the JSON line.
+  echo "$output" | grep '^{' | jq -e '.total != null' 2>/dev/null
+  # No degraded-mode statement (graph mode used spec-lint --format json)
+  ! echo "$output" | grep -q "graph unavailable"
+  echo "$output" | grep '^{' | jq -e '.degraded == false'
 }
 
 # ── D5: python3 declared as prerequisite ──────────────────────────────────
@@ -199,41 +229,40 @@ SPEC
   [ "$status" -eq 0 ]
 }
 
-# ── D5: degraded mode without python3 ─────────────────────────────────────
+# ── D5: degraded mode when the graph cannot be produced ───────────────────
+#
+# Retargeted (spec: graph-tool-port): the predecessor's degraded trigger was
+# an absent python3 interpreter. The ported tool has no interpreter to lose —
+# its unavailability condition is an unreadable graph source. The degraded
+# statement must name the source, never silently narrow the requirement set.
 
-@test "D5: degraded mode is documented when python3 unavailable" {
+@test "D5: degraded mode is documented when a graph source is unreadable" {
   mk_repo
-  # Mock python3 as unavailable by using a PATH that contains no python3.
-  # This FORCES the degraded mode trace line, which the prior test could not
-  # verify because it had an if/else escape hatch that passed either way.
-  # We need a PATH with bash, git, jq (declared prereqs) but NOT python3.
-  # We symlink every tool chain-state.sh needs but NOT python3.
-  FAKE_BIN="$BATS_TEST_TMPDIR/fakebin"
-  mkdir -p "$FAKE_BIN"
-  for tool in bash git jq find grep sed awk dirname basename cat printf head tail cut tr wc sort mkdir cp mktemp rm comm date sha256sum file; do
-    p="$(command -v "$tool" 2>/dev/null)" && [ -n "$p" ] && ln -sf "$p" "$FAKE_BIN/$tool"
-  done
-  run env PATH="$FAKE_BIN" bash "$CHAIN_STATE" \
+  # Remove the type inventory — the ported graph cannot be produced.
+  rm -f "$FX/openspec/concept-inventory.md"
+  run env OPENSPEC_ROOT="$FX" "$PROBATIO" chain-state \
     --change-dir "$FX/openspec/changes/test-change" \
     --change "test-change" \
     --baseline "$BASELINE_SHA"
-  # The trace line MUST appear — this is the spec requirement, not optional
-  echo "$output" | grep -q "python3 unavailable; using degraded bash-only mode"
+  # The statement MUST appear and MUST name the unreadable source —
+  # this is the spec requirement, not optional.
+  echo "$output" | grep -q "graph unavailable"
+  echo "$output" | grep -q "concept-inventory"
 }
 
-@test "D5: degraded mode still produces a valid report" {
+@test "D5: degraded mode still produces a report, not a verdict" {
   mk_repo
-  # Even without python3, chain-state should produce a valid JSON report
-  # via the awk fallback. Stderr is suppressed so $output is pure stdout.
-  FAKE_BIN="$BATS_TEST_TMPDIR/fakebin"
-  mkdir -p "$FAKE_BIN"
-  for tool in bash git jq find grep sed awk dirname basename cat printf head tail cut tr wc sort mkdir cp mktemp rm comm date sha256sum file; do
-    p="$(command -v "$tool" 2>/dev/null)" && [ -n "$p" ] && ln -sf "$p" "$FAKE_BIN/$tool"
-  done
-  run bash -c 'PATH="'"$FAKE_BIN"'" bash "'"$CHAIN_STATE"'" \
-    --change-dir "'"$FX"'/openspec/changes/test-change" \
-    --change "test-change" \
-    --baseline "'"$BASELINE_SHA"'" 2>/dev/null'
-  # Should always produce a valid JSON report (via awk fallback)
-  echo "$output" | jq -e '.total != null'
+  rm -f "$FX/openspec/concept-inventory.md"
+  # Even with the graph unavailable, chain-state must not emit a verdict
+  # computed from a silently narrowed requirement set — the report is
+  # either absent (could-not-determine) or carries the degraded statement.
+  run bash -c "OPENSPEC_ROOT='$FX' '$PROBATIO' chain-state \
+    --change-dir '$FX/openspec/changes/test-change' \
+    --change 'test-change' \
+    --baseline '$BASELINE_SHA' 2>/dev/null"
+  if echo "$output" | jq -e . >/dev/null 2>&1; then
+    # A report was emitted — it must be the could-not-determine shape,
+    # never a verdict pretending the graph ran.
+    echo "$output" | jq -e '.undetermined == true or .graph_unavailable == true or .degraded == true'
+  fi
 }

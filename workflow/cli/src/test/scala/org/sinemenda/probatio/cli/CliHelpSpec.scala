@@ -71,3 +71,17 @@ final class CliHelpSpec extends ProbatioCliSuite:
       Result
         .assert(allPresent)
         .and(Result.assert(flags.forall(f => rendered.contains(f.default))))
+
+  // ── graph-tool-port — help names the five operations ────────────────
+  // spec: graph-tool-port — Scenario: Consumer surface — the help output names the five operations and their arguments
+  test("graph help names the five operations, their arguments, and the three statuses"):
+    val rendered: String = HelpRegistry.helpFor(Subcommand.Graph).render
+    List("export", "stats", "impact", "obligations", "concept-code").foreach { op =>
+      assert(rendered.contains(op), s"graph help missing operation '$op'")
+    }
+    List("<target>", "<concept>").foreach { arg =>
+      assert(rendered.contains(arg), s"graph help missing argument '$arg'")
+    }
+    List("exit 0", "exit 1", "exit 2").foreach { st =>
+      assert(rendered.contains(st), s"graph help missing $st")
+    }

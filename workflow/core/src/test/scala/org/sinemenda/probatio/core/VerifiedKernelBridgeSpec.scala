@@ -1,5 +1,7 @@
 package org.sinemenda.probatio.core
 
+import hedgehog.*
+
 import org.sinemenda.probatio.verified.BannerEngineKernel
 import org.sinemenda.probatio.verified.ChainStateKernel
 import org.sinemenda.probatio.verified.LedgerValidatorKernel
@@ -23,7 +25,8 @@ import scala.collection.immutable.List as ScalaList
  *   3. `BannerEngineKernel` — purity / idempotence of the banner engine
  *
  * Uses MUnit native assertions (`assertEquals`, `assert`, `fail`) so that
- * Stryker4s can detect killed mutants. Does NOT use Hedgehog.
+ * Stryker4s can detect killed mutants. Uses Hedgehog only for the
+ * graph reachability bridge property (the PO table pins it here).
  *
  * spec: probatio-core — Formal Contracts (Ring 6 bridge)
  */
@@ -806,3 +809,68 @@ final class VerifiedKernelBridgeSpec extends ProbatioSuite:
       modelWarnings.nonEmpty,
       "model: version mismatch (schema=13, found=12) should produce warnings"
     )
+
+  // ── graph-tool-port — ReachabilityKernel bridge ─────────────────────
+  //
+  // The kernel's reaches/audit are ??? until Step 3 — the bridge is RED
+  // at polarity by design.
+  //
+  // spec: graph-tool-port — Ring 6 Contract: reachability is grounded and complete
+  // spec: graph-tool-port — Ring 6 Contract: the audit conserves requirements
+
+  test("bridge-reachability — shipped audit agrees with the kernel on a generated graph"):
+    val gen: GraphFixtures.GeneratedGraph =
+      GraphFixtures.GeneratedGraph(
+        TraceabilityGraph(
+          Vector(
+            GraphNode.Spec("ch", "cap", "f"),
+            GraphNode.Requirement("ch/cap", 1, "r1"),
+            GraphNode.Requirement("ch/cap", 2, "r2"),
+            GraphNode.Obligation("ch/cap", 1, "o", "t", None),
+            GraphNode.Artifact("a/t.scala")
+          ),
+          List(
+            Edge.plain("spec:ch/cap", GraphEdge.HasRequirement, "req:ch/cap#1"),
+            Edge.plain("spec:ch/cap", GraphEdge.HasRequirement, "req:ch/cap#2"),
+            Edge("req:ch/cap#1", GraphEdge.EnforcedBy, "oblig:ch/cap#1", None, Some(ObligationLink.Explicit)),
+            Edge.plain("oblig:ch/cap#1", GraphEdge.VerifiedBy, "artifact:a/t.scala")
+          ),
+          Nil
+        ),
+        Set("a/t.scala")
+      )
+    val shipped: Option[ReachabilityResult] =
+      GraphAudit.audit(gen.graph, None, (p: String) => gen.resolving.contains(p))
+    shipped match
+      case Some(result) =>
+        assertEquals(result.reaching.map(_.ordinal), List(1))
+        assertEquals(result.unenforcedRequirements.map(_.ordinal), List(2))
+      case None => fail("shipped audit must run on a graph with spec nodes")
+
+    val (reqs, edges, artifacts) =
+      GraphFixtures.encodeForKernel(gen.graph, gen.resolving.contains)
+    val (modelReaching, modelUnenforced): (stainless.collection.List[BigInt], stainless.collection.List[BigInt]) =
+      org.sinemenda.probatio.verified.ReachabilityKernel.audit(reqs, edges, artifacts)
+    // req ids are 1-based node positions: spec=1, req1=2, req2=3
+    assertEquals(stainlessListToScala(modelReaching), ScalaList(BigInt(2)))
+    assertEquals(stainlessListToScala(modelUnenforced), ScalaList(BigInt(3)))
+
+  property("bridge-reachability — shipped and kernel audit agree over genGraph"):
+    for gen <- GraphFixtures.genGraph.forAll
+    yield GraphAudit.audit(gen.graph, None, gen.resolving.contains) match
+      case Some(result) =>
+        val (reqs, edges, artifacts) =
+          GraphFixtures.encodeForKernel(gen.graph, gen.resolving.contains)
+        val (modelReaching, modelUnenforced) =
+          org.sinemenda.probatio.verified.ReachabilityKernel.audit(reqs, edges, artifacts)
+        val ids: Map[String, BigInt] =
+          gen.graph.nodes.zipWithIndex.map { case (n: GraphNode, i: Int) => n.id -> BigInt(i + 1) }.toMap
+        val shippedReaching: Set[BigInt]    = result.reaching.flatMap((r: GraphNode.Requirement) => ids.get(r.id)).toSet
+        val shippedUnenforced: Set[BigInt]  = result.unenforcedRequirements.flatMap((r: GraphNode.Requirement) => ids.get(r.id)).toSet
+        Result
+          .assert(GraphFixtures.stainlessListToScala(modelReaching).toSet == shippedReaching)
+          .and(Result.assert(GraphFixtures.stainlessListToScala(modelUnenforced).toSet == shippedUnenforced))
+      case None =>
+        if gen.graph.nodes.exists((n: GraphNode) => n match { case _: GraphNode.Spec => true; case _ => false }) then
+          Result.failure.log("audit returned None on a graph with spec nodes")
+        else Result.assert(true)

@@ -230,3 +230,24 @@ final class SpecLintEngineTypeContract extends ProbatioSuite:
     )
     assert(!report.lintSuccess, "a Fail finding must force lintSuccess=false")
     assertEquals(report.failures.length, 1)
+
+  // ── graph-tool-port compile-negatives (spec 5, Step 2 oracle) ───────
+  // spec: graph-tool-port — Compile-Negative: A graph built without its unlinkable set
+  test("graph-tool-port: a graph cannot be built without its unlinkable set"):
+    val err: String = compileErrors("TraceabilityGraph(Vector.empty, List.empty)")
+    assert(err.nonEmpty, "TraceabilityGraph(nodes, edges) should not compile — unlinkable is required")
+
+  // spec: graph-tool-port — Compile-Negative: An unlinkable row without a reason
+  test("graph-tool-port: an unlinkable row cannot omit its reason"):
+    val err: String = compileErrors("UnlinkableRow(\"src\", 1, \"text\")")
+    assert(err.nonEmpty, "UnlinkableRow(src, 1, text) should not compile — reason is required")
+
+  // spec: graph-tool-port — Compile-Negative: A node kind written as a free string
+  test("graph-tool-port: a node kind written as a free string does not compile"):
+    val err: String = compileErrors("GraphNode.of(\"conceptt\", \"id\")")
+    assert(err.nonEmpty, "GraphNode.of(kind, id) should not compile — node kinds are a sealed hierarchy")
+
+  // spec: graph-tool-port — Compile-Negative: A reachability result that is only a count
+  test("graph-tool-port: a reachability result that is only a count does not compile"):
+    val err: String = compileErrors("ReachabilityResult(3)")
+    assert(err.nonEmpty, "ReachabilityResult(n) should not compile — the lists are required")

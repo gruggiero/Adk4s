@@ -65,9 +65,13 @@ final class EntrypointContractTypeContract extends ProbatioCliSuite:
     val err: String = compileErrors("Subcommand.ConceptScanner")
     assert(err.nonEmpty, "Subcommand.ConceptScanner should not exist — unported tool removed")
 
-  test("Subcommand.Graph does not compile (unported tool removed)"):
-    val err: String = compileErrors("Subcommand.Graph")
-    assert(err.nonEmpty, "Subcommand.Graph should not exist — unported tool removed")
+  // spec: graph-tool-port — Type-Constraint: the subcommand enum gains the traceability-tool case
+  // The cli-entrypoint-contract removal is inverted: graph-tool-port supplies
+  // the implementation, so the case exists and must compile.
+  test("Subcommand.Graph compiles and parses (ported tool)"):
+    val sub: Subcommand = Subcommand.Graph
+    assertEquals(Subcommand.cliName(sub), "graph")
+    assertEquals(Subcommand.fromString("graph"), Right(Subcommand.Graph))
 
   // ── Compile-negative: the old two-argument resolve shape ────────────────
   // spec: cli-entrypoint-contract — Compile-Negative: MulticallDispatch.resolve(argv0, argv1)

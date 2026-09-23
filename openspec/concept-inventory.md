@@ -589,7 +589,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `MetalsClient.LspMessage` | final case class | `org.sinemenda.probatio.core` | shipped |
 | `MetalsClient.MetalsError` | sealed trait (FramingError, HandshakeFailed, Timeout) | `org.sinemenda.probatio.core` | shipped |
 | `MetalsClient.MetalsSession` | final case class | `org.sinemenda.probatio.core` | shipped |
-| `Subcommand` | enum (10 cases: Gate, SpecLint, ChainState, Ledger, Checkpoint, Reconcile, DangerScan, Metals, InstallSkills, InstallHooks — shrunk from 16 by removing 6 unported tools: RegistryCheck, Scan, RemovalAudit, ImpactScan, ConceptScanner, Graph) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
+| `Subcommand` | enum (11 cases: Gate, SpecLint, ChainState, Ledger, Checkpoint, Reconcile, DangerScan, Metals, InstallSkills, InstallHooks, Graph — shrunk from 16 by removing 6 unported tools: RegistryCheck, Scan, RemovalAudit, ImpactScan, ConceptScanner, Graph; `Graph` restored 2026-09-23 by `repair-probatio-cutover/graph-tool-port` — the traceability tool is now ported) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract`, widened by `spec:repair-probatio-cutover/graph-tool-port` |
 | `ExitCode` | enum (3 cases: Clean, Finding, Undetermined) | `org.sinemenda.probatio.cli` | shipped |
 | `CliError` | sealed abstract class (UnknownSubcommand, MissingValue, InvalidEnum, UnknownFlag) | `org.sinemenda.probatio.cli` | shipped |
 | `MulticallDispatch` | object (resolveAndSplit: InvocationName + ProgramArgs → Either[CliError, (Subcommand, ProgramArgs)] — replaces old resolve(argv0, argv1)) | `org.sinemenda.probatio.cli` | shipped; updated by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
@@ -736,6 +736,31 @@ Existing rows modified by this spec (annotated in place above): none —
 `SubcommandEntrypoints` (cli entrypoint plumbing, not an inventoried
 concept), and `DispatchKernel` gained the `classifyEvent` mirror (see the
 new row).
+
+### repair-probatio-cutover change — graph-tool-port spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `GraphNode` | sealed trait, nine kinds (`Concept`, `Action`, `Sync`, `TypeEntry`, `Spec`, `Requirement`, `Obligation`, `Artifact`, `Code`) — `id` derived per the predecessor convention (`concept:X`, `req:change/cap#N`, `artifact:path`, …), never stored; no `of("kind", id)` constructor, so a free-string kind is unconstructible | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphEdge` / `Edge` / `ObligationLink` | closed enum of the nine relations (`Declares`, `DefinesSync`, `ImplementedBy`, `Cites`, `Uses`, `Introduces`, `HasRequirement`, `EnforcedBy`, `VerifiedBy`) + `Edge` record (from, rel, to, `planned: Option[Boolean]` — `Cites`-only; `link: Option[ObligationLink]` — `EnforcedBy`-only) + `ObligationLink` (`Explicit`/`Title`/`Inferred` — the obligation-link basis); `wireName` gives the predecessor's lowercase rel/link words | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `UnlinkableRow` / `UnlinkableReason` | final case class (source, line, text, reason) + opaque `UnlinkableReason` over String (no public `apply` — a reasonless unlinkable row is unconstructible; `of` validates) | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `TraceabilityGraph` | final case class (nodes: `Vector[GraphNode]`, edges: `List[Edge]`, `unlinkable: List[UnlinkableRow]`) — the unlinkable set is a **required field**, a graph built without it is unconstructible; `node`/`outgoing`/`incoming`/`requirements`/`obligations`; `TraceabilityGraph.build` is pure — resolver predicates injected, no I/O | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphBuild` | final case class (graph, warnings, rowsRead, rowsBound) — the conservation accounting: rowsRead = rowsBound + unlinkable.size | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `ConceptRegistryDoc` / `InventoryDoc` / `SpecGraphDoc` | objects — the three document parsers (concept registry, concept inventory, spec tables incl. obligation marker rows and typed-source classification); `GraphParse` holds the shared row/section helpers | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphQuery` | closed enum of the five operations (`Export`, `Stats`, `Impact`, `Obligations`, `ConceptCode`) — an unknown operation word is unconstructible | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphAudit` / `ReachabilityResult` | object `GraphAudit` (`audit` — follows `EnforcedBy` (requirement→obligation) then `VerifiedBy` (obligation→artifact); unresolving artifacts are transparent; fuel = edge count) + `ReachabilityResult` (reaching, unenforcedRequirements, artifactlessObligations — **lists, not counts**) | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphWire` / `ExportedGraph` | object (`export`/`readExport`/`writeChangePayload`) + `ExportedGraph` — the predecessor's JSON wire object extended with the `unlinkable` array; malformed reads are `Left`, never partial | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `ReachabilityKernel` | Ring 6 mirror (`verified/probatio`): `reachF`/`scan` fuel-bounded DFS on `BigInt` ids (scalar encoded measure `(fuel+1)*(E+1)` / `fuel*(E+1)+rem.size`); `reaches` postcondition = grounded ∧ complete iff over `pathToAny` (`gwRF`/`gwScan` witness recursion + `monoRF`/`monoScan` monotonicity recursion + `pathToAnyIntro`/`pathToAnyWit`); `audit` postcondition = size conservation + `disjoint` (self-verifying `partitionOf` + `memFirst`/`memSecond`/`disjointExtend`/`partitionDisjoint`); 658/658 VCs valid | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphConformance` / `diffExports` | test-only differential comparator — filters exactly the two sanctioned divergence classes (ported-only `unlinkable` rows; predecessor-only binds explained by a ported unlinkable/warning) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/graph-tool-port` |
+
+Existing rows modified by this spec (annotated in place above):
+`Subcommand` (+`Graph` — 10 → 11 cases, the traceability tool is ported).
+`SubcommandEntrypoints` gained the `GraphCmd` entrypoint and the
+`ChainStateCmd` graph seam now exports in-process via
+`GraphCmd.exportObligations` (cli entrypoint plumbing, not inventoried
+concepts); the chain-state verdict report states `degraded: true` when
+the graph read degraded — a wire-level field, `ChainStateReport` shape
+unchanged.
 
 ### complete-probatio-porting change — hook-cutover spec concepts
 

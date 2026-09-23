@@ -207,10 +207,17 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
 
   test("the graph extraction path names the transitive extractor as the source"):
     LiveFactFixtures.withTempDir("chain-state-graph") { (fx: Path) =>
-      // An openspec/ tree under the fixture root so the export succeeds;
-      // the scanner dir supplies openspec-graph.py itself.
+      // A minimal readable openspec/ tree — all three sources present so
+      // the in-process graph build succeeds (the ported extractor is
+      // GraphCmd.exportObligations, not a subprocess).
       val root: Path = fx.resolve("graph-root")
-      Files.createDirectories(root.resolve("openspec"))
+      Files.createDirectories(root.resolve("openspec/concepts"))
+      Files.createDirectories(root.resolve("openspec/changes"))
+      Files.writeString(
+        root.resolve("openspec/concept-inventory.md"),
+        "# Concept Inventory\n\n## Workflow\n\n| Concept | Kind | Package | Provenance |\n|---|---|---|---|\n",
+        StandardCharsets.UTF_8
+      )
       writeSpec(
         fx,
         "only",
@@ -224,7 +231,7 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
       )
       val (_, stderr, _) = runCmd(fx, env)
       assert(
-        stderr.contains("openspec-graph"),
+        stderr.contains("traceability graph"),
         s"the diagnostic channel must name the transitive extractor, got: $stderr"
       )
       assert(
@@ -530,21 +537,16 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
     }
 
   /**
-   * R8-F3: a parseable export that fails the `.obligations` usability
-   * gate takes the degraded path and is announced as invalid JSON — the
-   * "extractor ran" diagnostic may only name the graph path when the
-   * export is actually usable.
+   * R8-F3 (retargeted, spec: graph-tool-port): the subprocess stub that
+   * produced an unusable export is gone — the in-process builder either
+   * produces a conformant payload or fails by name, so the degraded
+   * trigger is an unreadable source. The statement must reach BOTH
+   * channels: stderr names the source, and the emitted report itself
+   * carries `degraded: true` — a verdict without the graph is marked,
+   * never indistinguishable from a graph-backed one.
    */
-  test("a parseable export without .obligations is announced as invalid JSON, never as graph"):
+  test("an unreadable graph source is announced on stderr and stated in the report"):
     LiveFactFixtures.withTempDir("chain-state-unusable-export") { (fx: Path) =>
-      assume(pythonAvailable(), "the graph-export probe needs python3")
-      val stubDir: Path = fx.resolve("stub-scanner")
-      Files.createDirectories(stubDir)
-      Files.writeString(
-        stubDir.resolve("openspec-graph.py"),
-        "import sys\nprint('{\"requirements\": []}')\n",
-        StandardCharsets.UTF_8
-      )
       writeSpec(
         fx,
         "only",
@@ -552,18 +554,37 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
           s"| obl | Requirement: Solo Req | manual | `$resolvesArtifact` |\n"
       )
       writeLedger(fx, Nil)
-      val env: Map[String, String] = Map(
-        "OPENSPEC_ROOT"        -> fx.toString,
-        "PROBATIO_SCANNER_DIR" -> stubDir.toString
+      // An openspec/ tree missing the behavioural registry — the build
+      // fails naming openspec/concepts.
+      val root: Path = fx.resolve("graph-root")
+      Files.createDirectories(root.resolve("openspec/changes"))
+      Files.writeString(
+        root.resolve("openspec/concept-inventory.md"),
+        "# Concept Inventory\n",
+        StandardCharsets.UTF_8
       )
-      val (_, stderr, _) = runCmd(fx, env)
+      val env: Map[String, String] = Map(
+        "OPENSPEC_ROOT"        -> root.toString,
+        "PROBATIO_SCANNER_DIR" -> scannerDir.toString
+      )
+      val (stdout, stderr, _) = runCmd(fx, env)
       assert(
-        stderr.contains("produced invalid JSON"),
-        s"an unusable export is announced as invalid JSON, got: $stderr"
+        stderr.contains("graph unavailable"),
+        s"the degraded statement must appear on the diagnostic channel, got: $stderr"
+      )
+      assert(
+        stderr.contains("openspec/concepts"),
+        s"the diagnostic must name the unreadable source, got: $stderr"
       )
       assert(
         !stderr.contains("export (graph)"),
         s"the graph-path diagnostic may not name an unusable export, got: $stderr"
+      )
+      val parsed: ujson.Value = ujson.read(stdout.trim)
+      assertEquals(
+        parsed.obj.get("degraded").map(_.bool),
+        Some(true),
+        s"the report must state its degraded fact source, got: $stdout"
       )
     }
 
@@ -636,8 +657,3 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
         case other =>
           fail(s"a v:2 row must refuse the whole read, not discharge: $other — $stdout")
     }
-
-  /** `python3` is runnable — the graph-export probe's own prerequisite. */
-  private def pythonAvailable(): Boolean =
-    try new ProcessBuilder("python3", "-c", "pass").start().waitFor() == 0
-    catch case NonFatal(_) => false

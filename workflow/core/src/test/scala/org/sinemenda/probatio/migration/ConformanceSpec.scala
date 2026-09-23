@@ -430,3 +430,82 @@ final class ConformanceSpec extends ProbatioSuite:
       json = violated,
       violatedClause = Some(clause)
     )
+
+  // ═══════════════════════════════════════════════════════════════════
+  // graph-tool-port — Step 2 oracle (wire format + predecessor agreement)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── Property: export-round-trips (Ring 4 wire format) ───────────────
+  // spec: graph-tool-port — Property: export-round-trips
+  property("graph export round-trips — node set, edge set, unlinkable set preserved"):
+    for gen <- GraphFixtures.genGraph.forAll
+    yield
+      val build: GraphBuild = GraphBuild(gen.graph, Nil, 0, 0)
+      GraphWire.readExport(GraphWire.writeExport(build)) match
+        case Right(back) =>
+          Result
+            .assert(back.graph.nodes == gen.graph.nodes)
+            .log("node set changed")
+            .and(Result.assert(back.graph.edges == gen.graph.edges).log("edge set changed"))
+            .and(Result.assert(back.graph.unlinkable == gen.graph.unlinkable).log("unlinkable set changed"))
+        case Left(e) => Result.failure.log(s"readExport rejected its own export: $e")
+
+  // ── Scenario: the two exports agree on the repository corpus ────────
+  // spec: graph-tool-port — Scenario: Happy path — the two exports agree on the repository corpus
+  test("graph: exported graph agrees with the predecessor on the repository corpus"):
+    (GraphConformance.exportPorted(os.pwd), GraphConformance.exportPredecessor(os.pwd)) match
+      case (Right(ported), Right(model)) =>
+        val diffs: List[String] = GraphConformance.diffExports(ported, model)
+        assert(diffs.isEmpty, diffs.mkString("export divergence:\n  ", "\n  ", ""))
+      case (Left(e), _) => fail(s"ported export failed on the repo corpus: $e")
+      case (_, Left(e)) => fail(s"predecessor export failed on the repo corpus: $e")
+
+  // ── Property: export-agrees-with-the-predecessor (generated corpora) ─
+  // spec: graph-tool-port — Property: export-agrees-with-the-predecessor
+  property("graph export agrees with the predecessor on generated corpora",
+           (c: hedgehog.core.PropertyConfig) => c.copy(testLimit = hedgehog.core.SuccessCount(20))):
+    for corpus <- GraphFixtures.genSourceCorpus.forAll
+    yield
+      val dir: os.Path = os.temp.dir(prefix = "graph-conformance-")
+      try
+        GraphConformance.materialise(corpus, dir)
+        (GraphConformance.exportPorted(dir), GraphConformance.exportPredecessor(dir)) match
+          case (Right(ported), Right(model)) =>
+            val diffs: List[String] = GraphConformance.diffExports(ported, model)
+            if diffs.isEmpty then Result.success
+            else Result.failure.log(diffs.mkString("export divergence:\n  ", "\n  ", ""))
+          case (Left(e), _) => Result.failure.log(s"ported export failed: $e")
+          case (_, Left(e)) => Result.failure.log(s"predecessor export failed: $e")
+      finally os.remove.all(dir)
+
+  // ── Scenario: Adversarial — disagreement reported per node ──────────
+  // spec: graph-tool-port — Scenario: Adversarial — a disagreement is reported per node, not summarised
+  test("graph: an export disagreement names each differing node and edge"):
+    val ported: ujson.Value = ujson.Obj(
+      "nodes" -> ujson.Arr(
+        ujson.Obj("id" -> "concept:A", "kind" -> "concept"),
+        ujson.Obj("id" -> "type:OnlyPorted", "kind" -> "type")
+      ),
+      "edges" -> ujson.Arr(
+        ujson.Obj("from" -> "spec:x/y", "rel" -> "cites", "to" -> "concept:A"),
+        ujson.Obj("from" -> "spec:x/y", "rel" -> "uses", "to" -> "type:OnlyPorted")
+      ),
+      "warnings"   -> ujson.Arr(),
+      "unlinkable" -> ujson.Arr()
+    )
+    val model: ujson.Value = ujson.Obj(
+      "nodes" -> ujson.Arr(
+        ujson.Obj("id" -> "concept:A", "kind" -> "concept"),
+        ujson.Obj("id" -> "type:OnlyModel", "kind" -> "type")
+      ),
+      "edges" -> ujson.Arr(
+        ujson.Obj("from" -> "spec:x/y", "rel" -> "cites", "to" -> "concept:A"),
+        ujson.Obj("from" -> "spec:x/y", "rel" -> "uses", "to" -> "type:OnlyModel")
+      ),
+      "warnings" -> ujson.Arr()
+    )
+    val diffs: List[String] = GraphConformance.diffExports(ported, model)
+    assert(diffs.exists(_.contains("type:OnlyPorted")), s"node diff must name OnlyPorted: $diffs")
+    assert(diffs.exists(_.contains("type:OnlyModel")), s"node diff must name OnlyModel: $diffs")
+    assert(diffs.exists(_.contains("uses")), s"edge diff must name the differing edges: $diffs")
+    assertEquals(diffs.length, 4, s"expected 2 node + 2 edge diffs, got: $diffs")

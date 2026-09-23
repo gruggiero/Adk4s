@@ -41,9 +41,10 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
   private val exposedToolNames: Set[String] =
     Subcommand.values.map(Subcommand.cliName).toSet
 
-  /** The removed tool names (unported — must be unnameable). */
+  /** The removed tool names (unported — must be unnameable). `graph` is
+    * ported (graph-tool-port), so it left this list. */
   private val removedToolNames: List[String] =
-    List("registry-check", "scan", "removal-audit", "impact-scan", "concept-scanner", "graph")
+    List("registry-check", "scan", "removal-audit", "impact-scan", "concept-scanner")
 
   /** The mutation tool names (must be unnameable). */
   private val mutationToolNames: List[String] =
@@ -267,9 +268,12 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
     val err: String = compileErrors("Subcommand.ConceptScanner")
     assert(err.nonEmpty, "Subcommand.ConceptScanner should not exist — unported tool removed")
 
-  test("Compile-Negative: Subcommand.Graph does not compile"):
-    val err: String = compileErrors("Subcommand.Graph")
-    assert(err.nonEmpty, "Subcommand.Graph should not exist — unported tool removed")
+  // spec: graph-tool-port — Type-Constraint: the subcommand enum gains the traceability-tool case
+  // The removal is inverted: graph-tool-port supplies the implementation,
+  // so the case exists and dispatches.
+  test("Subcommand.Graph exists and round-trips (ported tool)"):
+    assertEquals(Subcommand.cliName(Subcommand.Graph), "graph")
+    assertEquals(Subcommand.fromString("graph"), Right(Subcommand.Graph))
 
   test("Compile-Negative: MulticallDispatch.resolve(argv0, argv1) does not compile"):
     val err: String = compileErrors("MulticallDispatch.resolve(\"probatio\", Some(\"gate\"))")

@@ -5,12 +5,16 @@ package org.sinemenda.probatio.cli
  * described work.
  *
  * A subcommand whose behaviour has not been ported is NOT in this enum — it
- * is unparseable rather than recognised-and-silent. The seven removed names
+ * is unparseable rather than recognised-and-silent. The removed names
  * (`registry-check`, `scan`, `removal-audit`, `impact-scan`,
- * `concept-scanner`, `graph`, plus the mutation commands `update`/`delete`/
+ * `concept-scanner`, plus the mutation commands `update`/`delete`/
  * `rewrite`/`edit`) all produce `UnknownSubcommand` when supplied as a
  * token. Their predecessor implementations remain live and are invoked
  * directly.
+ *
+ * `graph` IS in the enum: `graph-tool-port` supplies its implementation, so
+ * the entrypoint contract's rule — a tool with no implementation is not
+ * nameable — is satisfied rather than violated.
  *
  * No mutation subcommand (`update`, `delete`, `rewrite`, `edit`) exists in
  * this enum — the append-only ledger invariant (§4.2) is enforced by the
@@ -19,10 +23,11 @@ package org.sinemenda.probatio.cli
  *
  * spec: cli-entrypoint-contract — Requirement: A tool that has no implementation is not nameable on the tool surface
  * spec: cli-protocol — Requirement: Append-only ledger surface — no mutation subcommands
+ * spec: graph-tool-port — Requirement: The tool surface names the five operations
  */
 enum Subcommand:
   case Gate, SpecLint, ChainState, Ledger, Checkpoint, Reconcile,
-    DangerScan, Metals, InstallSkills, InstallHooks
+    DangerScan, Metals, InstallSkills, InstallHooks, Graph
 
 object Subcommand:
 
@@ -55,3 +60,4 @@ object Subcommand:
     case Metals        => "metals"
     case InstallSkills => "install-skills"
     case InstallHooks  => "install-hooks"
+    case Graph         => "graph"

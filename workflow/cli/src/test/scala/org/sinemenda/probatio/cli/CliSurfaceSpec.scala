@@ -1,5 +1,7 @@
 package org.sinemenda.probatio.cli
 
+import org.sinemenda.probatio.core.Outcome
+
 /**
  * CLI surface snapshot test — enumerates subcommands, asserts 1:1 with the
  * predecessor script set, and asserts no mutation subcommands exist.
@@ -10,8 +12,9 @@ package org.sinemenda.probatio.cli
 final class CliSurfaceSpec extends ProbatioCliSuite:
 
   // The exposed tool set — only tools that perform their described work.
-  // Six unported tools removed (registry-check, scan, removal-audit,
-  // impact-scan, concept-scanner, graph).
+  // Five unported tools remain removed (registry-check, scan, removal-audit,
+  // impact-scan, concept-scanner); `graph` is exposed — graph-tool-port
+  // supplies its implementation.
   private val exposedToolSet: Set[String] = Set(
     "gate",
     "spec-lint",
@@ -22,7 +25,8 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
     "danger-scan",
     "metals",
     "install-skills",
-    "install-hooks"
+    "install-hooks",
+    "graph"
   )
 
   // ── Scenario: Every exposed tool has a corresponding subcommand
@@ -31,9 +35,9 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
     val subcommandNames: Set[String] = Subcommand.values.map(Subcommand.cliName).toSet
     assertEquals(subcommandNames, exposedToolSet)
 
-  // ── Scenario: the subcommand count is exactly 10
-  test("the subcommand count is exactly 10 (ported tools only)"):
-    assertEquals(Subcommand.values.length, 10)
+  // ── Scenario: the subcommand count is exactly 11
+  test("the subcommand count is exactly 11 (ported tools only)"):
+    assertEquals(Subcommand.values.length, 11)
 
   // ── Scenario: Unknown subcommand is rejected
   // spec: cli-protocol — Scenario: Unknown subcommand is rejected
@@ -92,3 +96,32 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
         case Right(parsed) => assertEquals(parsed, sub)
         case Left(err)     => fail(s"round-trip failed for $name: $err")
     }
+
+  // ── graph-tool-port — Step 2 oracle ─────────────────────────────────
+  // GraphCmd.run is ??? until Step 3 — these dispatch tests are RED at
+  // polarity by design.
+
+  // spec: graph-tool-port — Scenario: Happy path — each of the five operations dispatches
+  test("graph: each of the five operations dispatches"):
+    val ops: List[Array[String]] = List(
+      Array("export"),
+      Array("stats"),
+      Array("impact", "concept:Agent"),
+      Array("obligations"),
+      Array("concept-code", "Agent")
+    )
+    ops.foreach { (opArgs: Array[String]) =>
+      GraphCmd.run(opArgs) match
+        case Outcome.Ran(_)          => () // dispatched and ran
+        case Outcome.Finding(_)      => () // a finding is a ran operation's verdict
+        case Outcome.Undetermined(r) =>
+          fail(s"op '${opArgs.mkString(" ")}' reported could-not-determine: $r")
+    }
+
+  // spec: graph-tool-port — Scenario: Adversarial — an unimplemented operation name is rejected
+  test("graph: an unimplemented operation name is rejected, naming it"):
+    GraphCmd.run(Array("transmogrify")) match
+      case Outcome.Ran(_) =>
+        fail("an unknown operation must not terminate with the clean status")
+      case Outcome.Finding(d)      => assert(d.contains("transmogrify"), s"must name the op: $d")
+      case Outcome.Undetermined(r) => assert(r.contains("transmogrify"), s"must name the op: $r")

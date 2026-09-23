@@ -69,18 +69,18 @@ no spec qualifies for a combined gate.
 
 ## 5. graph-tool-port
 
-- [ ] Prerequisite — confirm the predecessor traceability tool runs on this host, so it is usable as the executable model for the agreement property
-- [ ] Step 1 — typed contract: the nine node kinds, the nine edge kinds, the graph requiring its unlinkable set, the five operations as a closed set, the reachability result carrying lists rather than counts, the subcommand enum regaining its case (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 15 scenarios + 4 properties (`unlinkable-rows-are-conserved`, `reachability-is-transitive-and-grounded`, `export-round-trips`, `export-agrees-with-the-predecessor`) + 4 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: the registry and inventory parsers in the decision core, reusing the existing spec parser; the graph model and the five operations; the reading confined to the new entrypoint; the correctness verdict's graph seam and its stated degradation
-- [ ] Ring 0 — compile clean; the new subcommand case forces every match over the subcommand enum
-- [ ] Ring 1 — lint clean; dangerous-pattern scan on the diff
-- [ ] Ring 2 — dependency lint clean; **the no-I/O rule proves the parsers read no file**
-- [ ] Ring 3 — property + scenario suites green; **its acceptance file at parity**
-- [ ] Ring 4 — the export round-trips and agrees with the predecessor on the repository corpus and on generated corpora; labels with quotes, newlines and non-ASCII characters covered
-- [ ] Ring 5 — retarget the mutate list to the graph model, parsers and entrypoint; read the score (90% core / 80% adapter)
-- [ ] Ring 6 — new reachability kernel with grounded/complete/conserving contracts, terminating by explicit fuel; bridge property green
-- [ ] Ring 8 — fresh-context adversarial review; check that an unparsed row is reported rather than dropped
+- [x] Prerequisite — confirm the predecessor traceability tool runs on this host, so it is usable as the executable model for the agreement property
+- [x] Step 1 — typed contract: the nine node kinds, the nine edge kinds, the graph requiring its unlinkable set, the five operations as a closed set, the reachability result carrying lists rather than counts, the subcommand enum regaining its case (compiles; **human gate**)
+- [x] Step 2 — test oracle: 15 scenarios + 4 properties (`unlinkable-rows-are-conserved`, `reachability-is-transitive-and-grounded`, `export-round-trips`, `export-agrees-with-the-predecessor`) + 4 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: the registry and inventory parsers in the decision core, reusing the existing spec parser; the graph model and the five operations; the reading confined to the new entrypoint; the correctness verdict's graph seam and its stated degradation
+- [x] Ring 0 — compile clean; the new subcommand case forces every match over the subcommand enum
+- [x] Ring 1 — lint clean; dangerous-pattern scan on the diff
+- [x] Ring 2 — dependency lint clean; **the no-I/O rule proves the parsers read no file**
+- [x] Ring 3 — property + scenario suites green; **its acceptance file at parity**
+- [x] Ring 4 — the export round-trips and agrees with the predecessor on the repository corpus and on generated corpora; labels with quotes, newlines and non-ASCII characters covered
+- [x] Ring 5 — retarget the mutate list to the graph model, parsers and entrypoint; read the score (90% core / 80% adapter)
+- [x] Ring 6 — new reachability kernel with grounded/complete/conserving contracts, terminating by explicit fuel; bridge property green
+- [x] Ring 8 — fresh-context adversarial review; check that an unparsed row is reported rather than dropped
 - [ ] Concept-delta check + inventory update + **checkpoint**
 
 ## 6. feature-freeze-guard-integrity
