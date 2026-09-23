@@ -65,7 +65,7 @@ no spec qualifies for a combined gate.
 - [x] Ring 5 — retarget the mutate list to the event-parse and gate-entry files; read the score (80% adapter) — core 100%; cli 77.26% covered-code with in-diff survivor analysis recorded
 - [x] Ring 6 — extend the dispatch kernel with totality and fallback fidelity; bridge property green — 490/490 VCs
 - [x] Ring 8 — fresh-context adversarial review; confirm the restored fallback changes no verdict
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 5. graph-tool-port
 
