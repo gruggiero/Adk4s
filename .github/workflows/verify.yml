@@ -1,0 +1,117 @@
+# Verification pipeline — runs on every change.
+#
+# Runs the workflow's own acceptance suite (bats), the differential
+# comparison (probatioOracleDiff), the concept-registry and spec-lint
+# checks, the shell lint/format gates, and every module test suite. Each
+# step is fail-fast: a suite that does not run cannot report success.
+#
+# spec: repair-probatio-cutover/workflow-delivery-hygiene — Requirement: Continuous integration runs the acceptance suite and the module suites
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the shfmt scope diffs added files against the base
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Install prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck jq python3
+          sudo npm install -g bats@1.14.0
+          sudo npm install -g @openspec/cli
+          curl -fsSL -o /tmp/shfmt \
+            https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
+          sudo install -m 0755 /tmp/shfmt /usr/local/bin/shfmt
+
+      - name: Verify prerequisites are present
+        run: |
+          set -euo pipefail
+          for t in bash git java sbt shellcheck shfmt bats openspec; do
+            command -v "$t" >/dev/null || { echo "missing prerequisite: $t"; exit 1; }
+            printf '%-12s %s\n' "$t" "$(command -v "$t")"
+          done
+
+      - name: Ring 1 - shellcheck
+        run: |
+          git ls-files 'openspec/schemas/verified-scala3/**/*.sh' \
+                       'openspec/schemas/verified-scala3/**/*.bash' \
+            | xargs -r shellcheck -f gcc
+
+      - name: Ring 1 - shfmt (added files only)
+        run: |
+          set -euo pipefail
+          # -i 2 -ci matches the project's observed convention (2-space
+          # indent, indented case arms); bare shfmt defaults to tabs.
+          # Scoped to ADDED files: shfmt -d checks a whole file, so gating
+          # on changed files would fail unrelated edits on pre-existing
+          # formatting (see openspec/schemas/verified-scala3/ci/README.md).
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "no base to diff against; skipping (scoped check)"
+          else
+            added="$(git diff --name-only --diff-filter=A "$base" -- '*.sh' '*.bash' || true)"
+            [ -z "$added" ] || printf '%s\n' "$added" | xargs -r shfmt -i 2 -ci -d
+          fi
+
+      # bin/probatio prefers the native image and falls back to the
+      # assembly JAR; the JAR is the portable target a JDK runner can
+      # build, and the bats suites invoke the tools through it.
+      - name: Build the probatio assembly (launcher target)
+        run: sbt -batch 'probatio-cli/assembly'
+
+      - name: Ring 3 - acceptance suite
+        run: bats openspec/schemas/verified-scala3/tests
+
+      - name: Concept-registry drift check
+        run: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
+
+      - name: Spec lint (active changes)
+        run: ./openspec/schemas/verified-scala3/bin/probatio spec-lint .
+
+      - name: Dependency lint (allowed-dependency rules)
+        run: sbt -batch dependencyLint
+
+      - name: Differential comparison (predecessor vs ported)
+        run: sbt -batch probatioOracleDiff
+
+      - name: Module test suites
+        run: |
+          sbt -batch \
+            "structured-llm/test" \
+            "structured-llm-test-models/test" \
+            "adk4s-core/test" \
+            "adk4s-harness-api/test" \
+            "adk4s-harness-testkit/test" \
+            "adk4s-memory-api/test" \
+            "adk4s-memory-testkit/test" \
+            "adk4s-optimize/test" \
+            "adk4s-eval/test" \
+            "adk4s-record/test" \
+            "adk4s-orchestration/test" \
+            "adk4s-examples/test" \
+            "probatio-core/test" \
+            "probatio-cli/test" \
+            "sbt-probatio/test"

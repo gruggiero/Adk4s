@@ -77,4 +77,4 @@ jobs:
         run: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
 
       - name: Spec lint (active changes)
-        run: ./openspec/schemas/verified-scala3/scanner/spec-lint.sh .
+        run: ./openspec/schemas/verified-scala3/bin/probatio spec-lint .

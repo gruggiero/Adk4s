@@ -617,7 +617,7 @@ The following concepts were introduced by `spec:port-scanner-to-probatio/probati
 | `probatioLedgerAppend` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
 | `probatioGateShim` | sbt TaskKey[File] | `org.sinemenda.probatio.plugin` | shipped |
 | `probatioUninstall` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
-| `ShimGenerator` | object (generateShim: ResolutionResult → Either[String, String] — pure 3-line shim generator bound to the resolution result; blocked resolution or an unquotable target path → Left(reason), no shim) — signature changed by `spec:complete-probatio-cutover/native-gate-delivery` | `org.sinemenda.probatio.plugin` | shipped |
+| `ShimGenerator` | object (generateShim: (ResolutionResult, ShimTargetScope[, subcommand]) → Either[String, String] — pure shim generator bound to the resolution result; blocked resolution, scope/resolution disagreement, non-absolute `AbsoluteInstall`, or an unquotable target → Left(reason), no shim; `RepositoryRelative` emits the `SCRIPT_DIR` self-resolution form) — scope parameter added by `spec:repair-probatio-cutover/workflow-delivery-hygiene`; earlier signature change by `spec:complete-probatio-cutover/native-gate-delivery` | `org.sinemenda.probatio.plugin` | shipped |
 | `ExitCodeMapping` | object (mapExitCode: (String, Int, String) → Either[String, Unit] — three-way exit protocol mapping) | `org.sinemenda.probatio.plugin` | shipped |
 | `InstallResolver` | object (resolve: ResolutionScenario → ResolutionResult, resolveForShim: (scenario, subcommand, platformHasNative) → ResolutionResult — pure install resolution model; resolveForShim blocks a launcher resolution for a per-turn subcommand on a native platform) — member added by `spec:complete-probatio-cutover/native-gate-delivery` | `org.sinemenda.probatio.plugin` | shipped |
 | `ResolutionScenario` | sealed trait (PrebuiltAvailable, PrebuiltChecksumInvalid, JarFallback, NativeImage) | `org.sinemenda.probatio.plugin` | shipped |
@@ -818,6 +818,21 @@ constructors), `ToolId` (`predecessorSource(Ledger|Checkpoint)` →
 `.predecessor.bak` post-swap), `LedgerRecord`/`LedgerRecordOptional`
 (`v`/`exit`/`wallTime` → BigInt), `ClaimVerdict` (`observed` → BigInt),
 `ReplayVerdict` (`classify`'s recorded-exit argument → BigInt).
+
+### repair-probatio-cutover change — workflow-delivery-hygiene spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/workflow-delivery-hygiene`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ShimTargetScope` | sealed abstract class, `Serializable` product (`RepositoryRelative(fromShimToBinary: RelPath)`, `AbsoluteInstall(path: String)`) — the scope argument `generateShim`/`writeShim` now REQUIRE rather than infer from path shape: in-repository forwarding scripts are `RepositoryRelative` (emit `SCRIPT_DIR` self-resolution); a user-level install is `AbsoluteInstall` (validated absolute, must equal `resolution.path`, shell-quotable) | `org.sinemenda.probatio.plugin` | shipped; introduced by `spec:repair-probatio-cutover/workflow-delivery-hygiene` |
+| `ShimTargetScope.RelPath` | `final class … extends AnyVal`, PRIVATE constructor + `RelPath.from: String → Either[String, RelPath]` — the validated relative-path type: refuses empty, root-anchored (`/…`), home-anchored (`~…`), drive-anchored (`C:…` incl. bare `C:`), and UNC (`\\…`) inputs, so `RepositoryRelative` can never carry an absolute target | `org.sinemenda.probatio.plugin` | shipped; introduced by `spec:repair-probatio-cutover/workflow-delivery-hygiene` |
+
+Existing rows modified by this spec: `ShimGenerator.generateShim` (both
+arities gained the required `scope: ShimTargetScope` parameter),
+`ProbatioPlugin.writeShim` (same). The seven committed forwarding
+scripts were regenerated to the `RepositoryRelative` three-line shape
+(`SCRIPT_DIR` from `BASH_SOURCE`, then `exec "$SCRIPT_DIR/../bin/probatio"`).
 
 ### complete-probatio-porting change — hook-cutover spec concepts
 

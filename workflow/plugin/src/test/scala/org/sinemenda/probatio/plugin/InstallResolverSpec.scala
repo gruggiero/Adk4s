@@ -273,6 +273,42 @@ final class InstallResolverSpec extends ProbatioPluginSuite {
     assertEquals(ProbatioPlugin.stripTag("z"), "z")
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // workflow-delivery-hygiene (spec 9) — the install scope produces an
+  // absolute target
+  // spec: workflow-delivery-hygiene — Requirement: The generated script states which scope it resolved
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── Scenario: Happy path — an install request produces an absolute
+  //    target
+  // spec: workflow-delivery-hygiene — Scenario: Happy path — an install request produces an absolute target
+  test("an install request produces an absolute target") {
+    val resolution: ResolutionResult = InstallResolver.resolveForShim(
+      ResolutionScenario.PrebuiltAvailable,
+      "spec-lint",
+      platformHasNative = true
+    )
+    val installed: String =
+      resolution.path.getOrElse(fail("a prebuilt resolution must carry a target"))
+    assert(
+      new java.io.File(installed).isAbsolute,
+      s"the install resolution must yield an absolute path: $installed"
+    )
+    ShimGenerator.generateShim(
+      resolution,
+      ShimTargetScope.AbsoluteInstall(installed),
+      "spec-lint"
+    ) match {
+      case Right(shim) =>
+        assert(
+          shim.contains(s"""exec "$installed" spec-lint "$$@""""),
+          s"the install shim must exec the absolute installed path verbatim: $shim"
+        )
+      case Left(reason) =>
+        fail(s"an install request must produce a shim, got Left($reason)")
+    }
+  }
+
   test("uninstallArtifacts removes existing files and reports the count") {
     val dir: java.io.File = java.nio.file.Files.createTempDirectory("probatio-uninstall").toFile
     val present: java.io.File = new java.io.File(dir, "present")

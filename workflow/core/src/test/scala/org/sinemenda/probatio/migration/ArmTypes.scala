@@ -196,10 +196,12 @@ object ArmTree:
           Right(SeamResolution(seam, ContentDigest.ofFile(armSeam), armSeam))
       case Some(Implementation.Ported) =>
         // Always write the canonical ported shim — never keep the baseline's
-        // file. At a swapped baseline the committed shim is byte-identical to
-        // what this writes; at a pre-swap baseline the committed file is the
-        // predecessor implementation, and keeping it would silently put
-        // predecessor bytes in the ported arm.
+        // file. The committed shim is the self-relative form (it resolves
+        // $SCRIPT_DIR/../bin/probatio); the arm shim intentionally execs the
+        // ORIGIN's launcher instead, because the materialised arm tree
+        // carries no built binary. At a pre-swap baseline the committed file
+        // is the predecessor implementation, and keeping it would silently
+        // put predecessor bytes in the ported arm.
         val subcommand: String = os.RelPath(ToolId.seamPath(seam)).last.stripSuffix(".sh")
         os.write.over(
           armSeam,

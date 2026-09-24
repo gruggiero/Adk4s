@@ -494,15 +494,45 @@
 
 ### 9. workflow-delivery-hygiene
 
-- **Status**: pending
-- **BASELINE SHA**: _(recorded at spec start)_
+- **Status**: checkpoint presented — pending human approval
+- **BASELINE SHA**: `8b1e6047021c7a1a425a4ab562b038540eb5937d`
+- Gate installation check: `{"installed":true,"last_run":"2026-09-24T09:54:55Z","event":"post-edit"}`
+- inventory snapshot: `inventory-snapshots/workflow-delivery-hygiene-before.md` (11 opaque, 143 sealed, 509 case classes, 18 service traits, 62 Smithy, 471 generators)
 
 ### Step Progress
-- [ ] Step 1 — Typed contract: `ShimTargetScope` required parameter (human gate)
-- [ ] Step 2 — Test oracle: 11 scenarios + 3 properties + 2 compile-negatives (human gate)
-- [ ] Step 3 — Implementation
-- [ ] Rings 0,1,2,3,5,8
-- [ ] Concept-delta + inventory update + checkpoint
+- [x] Step 1 — Typed contract: `ShimTargetScope` required parameter — **APPROVED** (user: "approved"). `ShimTargetScope.scala` new: `RepositoryRelative(RelPath)` + `AbsoluteInstall(String)`; `RelPath` value class, private ctor, `RelPath.from` refuses empty/root/home/drive/UNC anchors. `generateShim` gains required `scope` at both arities (body `???`); `writeShim` forwards scope; `probatioGateShim` passes `AbsoluteInstall(installed.getAbsolutePath)`. `WorkflowDeliveryHygieneTypeContract.scala`: 6 signature pins + 3 real `compileErrors` compile-negatives + 2 `RelPath.from` pins; `NativeGateDeliveryPluginTypeContract` pins re-signed; all existing call sites migrated to `AbsoluteInstall`.
+- [x] Step 2 — Test oracle written; ORACLE POLARITY run done — **APPROVED** (user: "approved")
+  - Coverage: all 12 spec scenarios + 3 properties + 2 compile-negatives mapped. `HookCutoverShimSpec` +2 scenarios + 1 property (probe planted at the copy's `workflow/cli/target/native-image/probatio`; `git clone --no-local` / `git worktree add --detach` / `git archive`-materialised copies at sibling/nested/spaces/non-ASCII/worktree/two-copies placements, invoked from a neutral cwd; asserts exit 42 + `PROBE_REACHED <copy-root>`). `ShimGeneratorSpec` +4 tests + 1 property (`genTargetPath`: safe/unsafe × absolute/relative + edge-empty + edge-only-unsafe, cover labels). `InstallResolverSpec` +1 scenario. `PluginSourceLintSpec` +1 enumerated property + 3 tests (committed-shim absolute-path property discovered via `git ls-files`; on-change-workflow enumeration with `if:`/`continue-on-error` counted as skipped — checked on 3 synthetic configs; template tool-resolution check — token extraction excludes glob/expansion alphabets, "replaced" detected via `.predecessor.bak` sibling OR pure-`exec`-shim shape). Two PO obligations are manual-evidence only (deliberately regressing/breaking branches → evidence ledger, Step 12); exit criterion is the bats parity run via `probatioOracleDiff` from a fresh clone.
+  - POLARITY: **12 RED** — 6 at `???` (`generateShim` unimplemented: repo-relative scenario, unsafe-char refusal, scope/resolution disagreement, non-absolute install refusal, unquotable-targets property, install-absolute scenario); **6 RED on the demonstrated defect** (clone/worktree/property reach the MAIN checkout's real probatio — `danger-scan: UNDETERMINED`, `chain-state: --change-dir is required` — never the copy's probe; absolute-path property enumerates all 7 committed shims incl. spec-8's `checkpoint.sh`/`ledger.sh`; no on-change workflow exists — release is tag-gated; all 3 templates name the REPLACED `scanner/spec-lint.sh`). **GREEN-BY-DESIGN 8** — skipped-acceptance-step check (synthetic config), removed-tool check (synthetic template + replaced-tool arm), TypeContract 5 (signature pins, 3 `compileErrors`, `RelPath.from` refusal — validator implemented at Step 1 per approved contract). Preservation: ~20 migrated pre-existing tests red via `???` only — assert no spec-9 semantics.
+  - Oracle bugs fixed during build: Scala 2.12 s-interpolator quoting (`$$@` in triple-quoted), WartRemover (`head`/`tail`/`reduce` → `headOption`/`reduceOption`/`Gen.element1`), glob pathspecs (`**/*.sh`) initially extracted as tool tokens.
+  - Placement-property harness verified sound: probe at the copy's native-image slot means any shim reaching the copy's `bin/probatio` yields 42 regardless of subcommand args — the observed real-tool outputs ARE the red signal, not a harness defect.
+- [x] Step 3 — Implementation
+  - `ShimGenerator.generateShim` implemented: blocked resolution → `Left(reason)` unchanged; `AbsoluteInstall` refuses non-absolute paths, scope/resolution disagreement, unquotable targets; `RepositoryRelative` emits `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` + `exec "$SCRIPT_DIR/<rel>" <subcommand> "$@"`.
+  - All 7 committed forwarding shims regenerated to `../bin/probatio` (hooks/ and scanner/ are both siblings of bin/) — absolute checkout path eliminated.
+  - `.github/workflows/verify.yml` added — on-change pipeline: shellcheck, shfmt (added-files scope), assembly build, bats acceptance, registry-check, `bin/probatio spec-lint`, dependencyLint, `probatioOracleDiff`, all 15 module test suites. NOTE: `.github` is in the user's global gitignore — the file requires `git add -f` (repo already tracks `release-probatio.yml` there).
+  - 3 shipped CI templates updated: `scanner/spec-lint.sh` → `bin/probatio spec-lint` (replaced tool → ported surface); `registry-check.sh` kept (unported).
+  - `fact-extraction.bats` shim-follower updated for the 3-line shape (`$SCRIPT_DIR` expanded against the shim's dir) — the only suite regression; all other bats failures verified identical at baseline worktree (20 pre-existing).
+  - `isForwardingShim` (HookCutoverShimSpec) updated to recognise shebang + assignment + exec shape.
+  - Scalafmt run on touched test files only; unrelated churn reverted (`ExitCodeMappingSpec`, `InstallResolver.scala`, pre-existing `ProbatioPlugin.scala` regions) — baseline carries formatting drift; project convention does not reformat untouched code.
+- [x] Ring 0 — `sbt sbt-probatio/compile sbt-probatio/Test/compile` green (contract file's `compileErrors` negatives compile-checked)
+- [x] Ring 1 — shellcheck clean over schema `.sh`; `shfmt -i 2 -ci -d` clean on the 7 regenerated shims; scalafmt baseline drift recorded (ExitCodeMappingSpec/InstallResolverSpec/ProbatioPlugin unformatted regions untouched); danger-scan OK since baseline
+- [x] Ring 2 — `sbt dependencyLint` clean
+- [x] Ring 3 — `sbt-probatio` suite 87/87 green; `bats openspec/schemas/verified-scala3/tests` exits 1 on carried baseline residuals reproduced in a baseline worktree (chain-state 6, schema-version 1, grant-lock 4, oracle-ordering 7, workflow-hygiene 2 — none introduced by this spec; fact-extraction shim-follower fixed for the 3-line shape)
+- [x] Ring 5 — `sbt sbt-probatio/stryker` (targets `ShimGenerator.scala` + `ShimTargetScope.scala`): **92.98%** — 57 mutants, 53 killed; first run surfaced a `>=`→`>` boundary survivor (bare `C:` accepted) killed by a `RelPath.from("C:")` pin and a refusal-message survivor killed by extending the names-the-character assertion to `RepositoryRelative`; 4 remaining survivors are diagnostic `StringLiteral`s in `RelPath.from` (justified-equivalent class)
+- [x] Ring 8 — three-pass fresh-context adversarial review → `ring8-workflow-delivery-hygiene.md`; operative pass 3 by isolated read-only subagent `devin-subagent-040ca8da` (inputs: spec + post-remediation 27-file diff only): **APPROVE WITH NOTES** — pass-1 F1–F4 and pass-2 N1–N4 remediations all CONFIRMED (git-ls-files workflow enumeration, job-level + marker-line + comment + literal-block neutraliser arms, conditional shebang exemption); residual notes N8–N10 fail-safe heuristic gaps only; all requirements PASS
+- [x] Concept-delta + inventory update — `inventory-snapshots/workflow-delivery-hygiene-after.md` diff vs `-before`: `ShimTargetScope` + variants + `RelPath` (recorded as part of the scope concept per approved Step-1 contract) + 7 test-side generators only — matches Concepts Introduced; `concept-inventory.md` spec-9 section appended + `ShimGenerator` row annotated in place; spec-lint `--artifacts` 0 FAIL 42 WARN (W3 class, unchanged); build-dep delta: none; removal-audit `--suggest`: nothing removed; registry-check OK (817 tokens, 5 pre-existing weak bindings)
+- [x] Checkpoint — 21 evidence rows recorded at the spec baseline `8b1e604` (6 ring-summary + 13 R3 PO-exact + 2 manual PO-exact + R8 carries `--session devin-subagent-040ca8da`); manual PO evidence observed: scratch-worktree bats regression → `bats` exit 1; temporary `DeliberateBreakSpec` → `sbt -batch sbt-probatio/test` exit 1 (file deleted after); chain-state: 46 total / 46 bound / 46 resolved / **27 discharged** with **0 workflow-delivery-hygiene requirements unresolved**; `checkpoint report` → R0/R1/R2/R5/R8 green, **R3 FAILED** honestly recorded — the control-parity PO row is exit 1: `workflow-hygiene.bats` ported=2/pred=0 is the carried spec-4 deferred residual (tests 9/10, chain-state report contract — improved from spec-8's +3, test 3 green under the new shims); `fact-extraction.bats` ported=0/pred=3 (better)
+
+**Rings:**
+
+    checkpoint: repair-probatio-cutover/workflow-delivery-hygiene @ 8b1e6047021c7a1a425a4ab562b038540eb5937d
+      R0: green (sbt sbt-probatio/compile sbt-probatio/Test/compile)
+      R1: green (git ls-files 'openspec/schemas/verified-scala3/**/*.sh' | xargs shellcheck; shfmt -i 2 -ci -d on the 7 shims; scanner/danger-scan.sh)
+      R2: green (sbt dependencyLint)
+      R3: FAILED (sbt probatioOracleDiff probatioOracleControl — arms genuinely diverge, control reproduced exactly; fact-extraction.bats ported=0 vs pred=3 (better); workflow-hygiene.bats ported=2 vs pred=0 — carried spec-4 deferred residual (tests 9/10 chain-state report contract, deferred per human decision; improved from spec-8's +3, test 3 green under the new shims), exit 1)
+      R5: green (sbt sbt-probatio/stryker (targets: ShimGenerator.scala ShimTargetScope.scala))
+      R8: green (ring8-workflow-delivery-hygiene.md APPROVE WITH NOTES (pass 3))
+      chain state: total 46  bound 46  resolved 46  discharged 27  unresolved 19
 
 | Commit | _(pending)_ |
 

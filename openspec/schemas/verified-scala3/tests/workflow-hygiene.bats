@@ -26,7 +26,7 @@ setup() {
   # that actually exists (scanner/install-skills.sh), not the dangling
   # reference (verified-scala3/sync-skills.sh). The message lives in the
   # ported implementation's source — the workflow/ Scala tree — not in
-  # the spec-lint.sh shim, which is a 2-line exec carrying no text.
+  # the spec-lint.sh shim, which is a bare exec forwarder carrying no text.
   local root
   root="$(repo_root)"
   run grep -rl 'sync-skills\.sh' "$root/workflow" --include='*.scala'
@@ -82,7 +82,7 @@ setup() {
   # operation (update|delete|rewrite|edit) — is asserted at the
   # implementation the seam now resolves to. The predecessor's shell
   # case dispatch is gone under the ported arm (the live ledger.sh is a
-  # 2-line exec shim); the ported dispatch surface is the Subcommand
+  # bare exec shim); the ported dispatch surface is the Subcommand
   # enum, whose mutation names are absent — unparseable, not merely
   # denylisted. The Scala contract pins the enum cases; this test pins
   # the source surface the bats suite can see.
@@ -103,7 +103,7 @@ setup() {
 @test "D8: gate.sh extracts cwd from hook JSON using jq, not sed" {
   # The ported payload reader (HarnessPayloadReader.scala) extracts cwd
   # via structured JSON parsing — the jq equivalent — not regex/sed over
-  # the payload text. The gate.sh shim is a 2-line exec carrying no
+  # the payload text. The gate.sh shim is a bare exec forwarder carrying no
   # parsing logic.
   local root reader
   root="$(repo_root)"

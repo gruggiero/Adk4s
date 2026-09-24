@@ -154,13 +154,19 @@ object SeamSwapRunner:
     if predecessorRel == seamRel then
       val backup: os.Path = schemaDir / os.RelPath(ToolId.seamPath(seam) + ".predecessor.bak")
       os.copy(liveSeam, backup, replaceExisting = true)
-    // The exec shim is byte-identical to the canonical ported resolution
-    // the ported arm was measured with.
+    // The committed shim resolves the launcher relative to itself — the
+    // same shape ShimGenerator emits under RepositoryRelative. The
+    // measured ported arm used the absolute-into-origin form because an
+    // arm carries no build; the two are dispatch-equivalent.
     val subcommand: String = seamRel.last.stripSuffix(".sh")
     val binary: os.Path    = schemaDir / "bin" / "probatio"
+    val relToBinary: String = binary.relativeTo(liveSeam / os.up).toString
     os.write.over(
       liveSeam,
-      s"#!/usr/bin/env bash\nexec \"$binary\" $subcommand \"$$@\"\n"
+      s"""#!/usr/bin/env bash
+SCRIPT_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")" && pwd)"
+exec "$$SCRIPT_DIR/$relToBinary" $subcommand "$$@"
+"""
     )
     os.perms.set(liveSeam, "rwxr-xr-x")
     val schemaRel: String = schemaDir.relativeTo(repoRoot).toString

@@ -23,12 +23,13 @@ final class NativeGateDeliveryPluginTypeContract extends FunSuite {
   // ── Signature pins (eta-expanded against the real implementation) ────────
   // These pins make "signatures stay as approved" compiler-checked.
 
-  // ShimGenerator.generateShim: (ResolutionResult, String) => Either[String, String]
-  val generateShimSig: (ResolutionResult, String) => Either[String, String] =
+  // ShimGenerator.generateShim: (ResolutionResult, ShimTargetScope, String) => Either[String, String]
+  // (scope gained as a required parameter by workflow-delivery-hygiene)
+  val generateShimSig: (ResolutionResult, ShimTargetScope, String) => Either[String, String] =
     ShimGenerator.generateShim _
 
-  // ShimGenerator.generateShim: ResolutionResult => Either[String, String]
-  val generateShimGateSig: ResolutionResult => Either[String, String] =
+  // ShimGenerator.generateShim: (ResolutionResult, ShimTargetScope) => Either[String, String]
+  val generateShimGateSig: (ResolutionResult, ShimTargetScope) => Either[String, String] =
     ShimGenerator.generateShim _
 
   // InstallResolver.resolveForShim: (ResolutionScenario, String, Boolean) => ResolutionResult
@@ -43,8 +44,8 @@ final class NativeGateDeliveryPluginTypeContract extends FunSuite {
   val currentPlatformHasNativeSig: Boolean =
     ProbatioPlugin.currentPlatformHasNative
 
-  // ProbatioPlugin.writeShim: (ResolutionResult, String, File) => Either[String, File]
-  val writeShimSig: (ResolutionResult, String, File) => Either[String, File] =
+  // ProbatioPlugin.writeShim: (ResolutionResult, ShimTargetScope, String, File) => Either[String, File]
+  val writeShimSig: (ResolutionResult, ShimTargetScope, String, File) => Either[String, File] =
     ProbatioPlugin.writeShim _
 
   // ── Compile-negative: a shim cannot be generated from a literal path ────

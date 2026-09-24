@@ -73,5 +73,5 @@ steps:
   - bash: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
     displayName: registry-check (concept registry drift)
 
-  - bash: ./openspec/schemas/verified-scala3/scanner/spec-lint.sh .
+  - bash: ./openspec/schemas/verified-scala3/bin/probatio spec-lint .
     displayName: spec-lint (active changes)

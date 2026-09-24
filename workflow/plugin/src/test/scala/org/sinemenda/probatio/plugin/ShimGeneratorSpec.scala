@@ -143,8 +143,10 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
         .cover(30, "launcher", (i: ShimInput) => i.isLauncher)
         .cover(15, "path-with-space", (i: ShimInput) => i.hasSpacePath)
     } yield {
-      val a: Either[String, String] = ShimGenerator.generateShim(input.resolution, input.subcommand)
-      val b: Either[String, String] = ShimGenerator.generateShim(input.resolution, input.subcommand)
+      val a: Either[String, String] =
+        ShimGenerator.generateShim(input.resolution, scopeOf(input.resolution), input.subcommand)
+      val b: Either[String, String] =
+        ShimGenerator.generateShim(input.resolution, scopeOf(input.resolution), input.subcommand)
       a match {
         case Right(content) =>
           Result
@@ -165,11 +167,13 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
   //    is repeatable
   // spec: native-gate-delivery — Scenario: Happy path — a resolved target is written and the write is repeatable
   test("a resolved target is written and the write is repeatable") {
-    val dir: File          = Files.createTempDirectory("probatio-shim-write").toFile
-    val target: File       = new File(dir, "gate")
-    val resolution         = ResolutionResult(Some("/usr/local/bin/probatio"), Nil)
-    val first: Either[String, File]  = ProbatioPlugin.writeShim(resolution, "gate", target)
-    val second: Either[String, File] = ProbatioPlugin.writeShim(resolution, "gate", target)
+    val dir: File    = Files.createTempDirectory("probatio-shim-write").toFile
+    val target: File = new File(dir, "gate")
+    val resolution   = ResolutionResult(Some("/usr/local/bin/probatio"), Nil)
+    val first: Either[String, File] =
+      ProbatioPlugin.writeShim(resolution, ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"), "gate", target)
+    val second: Either[String, File] =
+      ProbatioPlugin.writeShim(resolution, ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"), "gate", target)
     (first, second) match {
       case (Right(f1), Right(_)) =>
         val content: String = new String(Files.readAllBytes(f1.toPath), "UTF-8")
@@ -190,7 +194,12 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
     val blocker: File = Files.createTempFile("probatio-blocker", ".tmp").toFile
     val target: File  = new File(blocker, "gate") // parent is a regular file — unwritable
     val result: Either[String, File] =
-      ProbatioPlugin.writeShim(ResolutionResult(Some("/usr/local/bin/probatio"), Nil), "gate", target)
+      ProbatioPlugin.writeShim(
+        ResolutionResult(Some("/usr/local/bin/probatio"), Nil),
+        ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"),
+        "gate",
+        target
+      )
     result match {
       case Left(reason) =>
         assert(
@@ -217,7 +226,12 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
     val dir: File    = Files.createTempDirectory("probatio-shim-nested").toFile
     val target: File = new File(new File(dir, "hooks"), "gate") // parent absent
     val result: Either[String, File] =
-      ProbatioPlugin.writeShim(ResolutionResult(Some("/usr/local/bin/probatio"), Nil), "gate", target)
+      ProbatioPlugin.writeShim(
+        ResolutionResult(Some("/usr/local/bin/probatio"), Nil),
+        ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"),
+        "gate",
+        target
+      )
     result match {
       case Right(file) =>
         assert(file.exists, s"shim must be written: $file")
@@ -232,6 +246,7 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
   test("a blocked resolution's Left joins its reason lines") {
     ShimGenerator.generateShim(
       ResolutionResult(None, List("[warn] first reason", "second reason")),
+      ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"),
       "gate"
     ) match {
       case Left(reason) =>
@@ -244,7 +259,11 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
 
   test("a resolved path that cannot be safely quoted is reported, not emitted") {
     List("/opt/pro\"batio/probatio", "/opt/pro$batio/probatio", "/opt/probatio\nprobatio").foreach { path =>
-      ShimGenerator.generateShim(ResolutionResult(Some(path), Nil), "gate") match {
+      ShimGenerator.generateShim(
+        ResolutionResult(Some(path), Nil),
+        ShimTargetScope.AbsoluteInstall(path),
+        "gate"
+      ) match {
         case Left(reason) =>
           assert(reason.contains("cannot be safely quoted"), s"unquotable path must be reported: $reason")
         case Right(shim) => fail(s"a corrupt shim must never be emitted for $path: $shim")
@@ -254,7 +273,11 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
 
   test("a blocked resolution with no recorded reason reports the absence") {
     List(List.empty[String], List("", "")).foreach { lines =>
-      ShimGenerator.generateShim(ResolutionResult(None, lines), "gate") match {
+      ShimGenerator.generateShim(
+        ResolutionResult(None, lines),
+        ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"),
+        "gate"
+      ) match {
         case Left(reason) =>
           assert(
             reason.contains("no target and no reason"),
@@ -265,12 +288,256 @@ final class ShimGeneratorSpec extends ProbatioPluginSuite {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // workflow-delivery-hygiene (spec 9) — the generated script states the
+  // scope it resolved, and unsafe targets are refused under either scope
+  // spec: workflow-delivery-hygiene — Requirement: The generated script states which scope it resolved
+  // spec: workflow-delivery-hygiene — Requirement: An in-repository forwarding script resolves its target relative to itself
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── Scenario: Happy path — a repository-relative request produces a
+  //    relative target
+  // spec: workflow-delivery-hygiene — Scenario: Happy path — a repository-relative request produces a relative target
+  test("a repository-relative request produces a target relative to the script's own location") {
+    val rel: ShimTargetScope.RelPath =
+      ShimTargetScope.RelPath.from("../bin/probatio") match {
+        case Right(r)     => r
+        case Left(reason) => fail(s"a relative path must construct: $reason")
+      }
+    // Under RepositoryRelative the resolution still reports the artifact's
+    // location in THIS checkout — the generated script must not embed it.
+    val resolution: ResolutionResult = ResolutionResult(
+      Some("/home/dev/checkouts/proj/openspec/schemas/verified-scala3/bin/probatio"),
+      Nil
+    )
+    ShimGenerator.generateShim(resolution, ShimTargetScope.RepositoryRelative(rel), "spec-lint") match {
+      case Right(shim) =>
+        assert(shim.startsWith("#!/usr/bin/env bash\n"), s"missing shebang: $shim")
+        assert(
+          shim.contains("SCRIPT_DIR") || shim.contains("BASH_SOURCE"),
+          s"a repository-relative shim must resolve its own location at runtime: $shim"
+        )
+        assert(
+          shim.contains("../bin/probatio"),
+          s"the exec target must carry the declared relative path: $shim"
+        )
+        assert(
+          shim.contains("spec-lint \"$@\""),
+          s"the subcommand and forwarded arguments must survive: $shim"
+        )
+        assert(
+          !shim.contains("/home/dev/checkouts"),
+          s"the resolution's absolute location must not be embedded: $shim"
+        )
+      case Left(reason) =>
+        fail(s"a repository-relative request must generate, got Left($reason)")
+    }
+  }
+
+  // ── Scenario: Error path — a target that cannot be safely quoted is
+  //    refused
+  // spec: workflow-delivery-hygiene — Scenario: Error path — a target that cannot be safely quoted is refused
+  test("a target that cannot be safely quoted is refused naming the character") {
+    List(
+      ("/opt/pro\"batio/probatio", '"'),
+      ("/opt/pro$batio/probatio", '$'),
+      ("/opt/pro`batio/probatio", '`'),
+      ("/opt/pro\\batio/probatio", '\\')
+    ).foreach { case (path: String, ch: Char) =>
+      ShimGenerator.generateShim(
+        ResolutionResult(Some(path), Nil),
+        ShimTargetScope.AbsoluteInstall(path),
+        "gate"
+      ) match {
+        case Left(reason) =>
+          assert(
+            reason.contains(ch.toString),
+            s"the refusal must name the unsafe character '$ch': $reason"
+          )
+        case Right(shim) =>
+          fail(s"a corrupt shim must never be emitted for $path: $shim")
+      }
+    }
+    // The same naming obligation holds under the repository-relative
+    // scope — the refusal there must name the unsafe character too.
+    List(
+      ("pro\"batio/probatio", '"'),
+      ("pro$batio/probatio", '$'),
+      ("pro`batio/probatio", '`'),
+      ("pro\\batio/probatio", '\\')
+    ).foreach { case (path: String, ch: Char) =>
+      val rel: ShimTargetScope.RelPath = ShimTargetScope.RelPath.from(path) match {
+        case Right(r)     => r
+        case Left(reason) => fail(s"a relative path with an unsafe char must still construct as a RelPath: $reason")
+      }
+      ShimGenerator.generateShim(
+        ResolutionResult(Some("/resolved/here/bin/probatio"), Nil),
+        ShimTargetScope.RepositoryRelative(rel),
+        "gate"
+      ) match {
+        case Left(reason) =>
+          assert(
+            reason.contains(ch.toString),
+            s"the refusal must name the unsafe character '$ch': $reason"
+          )
+        case Right(shim) =>
+          fail(s"a corrupt shim must never be emitted for $path: $shim")
+      }
+    }
+    // Control characters are refused as unsafe even though their printed
+    // form in the reason is described rather than literal.
+    List("/opt/probatio\nprobatio", "/opt/probatio\rprobatio").foreach { path =>
+      ShimGenerator.generateShim(
+        ResolutionResult(Some(path), Nil),
+        ShimTargetScope.AbsoluteInstall(path),
+        "gate"
+      ) match {
+        case Left(reason) =>
+          assert(reason.nonEmpty, s"a control-character refusal must still report a reason: $reason")
+        case Right(shim) =>
+          fail(s"a corrupt shim must never be emitted for $path: $shim")
+      }
+    }
+  }
+
+  // ── Step-1 contract pins — the scope supplies the target; the
+  //    resolution supplies the blocked/present verdict
+  // spec: workflow-delivery-hygiene — typed contract: an install scope and a
+  // resolution naming different artifacts are refused, never silently resolved
+  test("an install scope disagreeing with the resolution is refused") {
+    ShimGenerator.generateShim(
+      ResolutionResult(Some("/usr/local/bin/probatio"), Nil),
+      ShimTargetScope.AbsoluteInstall("/opt/other/probatio"),
+      "gate"
+    ) match {
+      case Left(reason) =>
+        assert(reason.nonEmpty, s"a scope/resolution disagreement must report a reason: $reason")
+      case Right(shim) =>
+        fail(s"two different targets must never produce one shim: $shim")
+    }
+  }
+
+  test("an install scope carrying a non-absolute path is refused") {
+    ShimGenerator.generateShim(
+      ResolutionResult(Some("bin/probatio"), Nil),
+      ShimTargetScope.AbsoluteInstall("bin/probatio"),
+      "gate"
+    ) match {
+      case Left(reason) =>
+        assert(reason.nonEmpty, s"a non-absolute install target must report a reason: $reason")
+      case Right(shim) =>
+        fail(s"an install shim must exec an absolute target: $shim")
+    }
+  }
+
+  // ── Property: generation-refuses-unquotable-targets
+  // spec: workflow-delivery-hygiene — Property: generation-refuses-unquotable-targets
+  //
+  // Generator: genTargetPath — constructive over the union of safe paths and
+  // paths seeded with each unsafe character independently, in both scopes,
+  // so both branches are covered by construction rather than by filtering.
+  // Edge cases: the empty path (refused at RelPath construction — a scope
+  // that cannot be constructed cannot produce a script; refusal at scope
+  // construction IS refusal to generate), a path of only an unsafe
+  // character, and an unsafe character at the boundary (lead for relative
+  // paths, tail/mid for absolute ones so the absolute anchor survives).
+  final private case class TargetCase(
+    path: String,
+    repoScope: Boolean,
+    expectRefusal: Boolean,
+    label: String
+  )
+
+  // The character set is the same one the generator guards: `"` and `\`
+  // alter quoting; `$`, `` ` `` and the line breaks invite expansion or
+  // injection.
+  private def genUnsafeChar: Gen[Char] =
+    Gen.element1('"', '\\', '$', '`', '\n', '\r')
+
+  private def insertAt(path: String, ch: Char, pos: String): String =
+    pos match {
+      case "lead" => ch.toString + path
+      case "tail" => path + ch.toString
+      case _ =>
+        val mid: Int = path.length / 2
+        path.substring(0, mid) + ch.toString + path.substring(mid)
+    }
+
+  private def genTargetPath: Gen[TargetCase] = {
+    val safeAbsolute: Gen[String] =
+      Gen.string(Gen.alphaNum, linear(1, 20)).map(s => s"/opt/probatio/$s")
+    val safeRelative: Gen[String] =
+      Gen.string(Gen.alphaNum, linear(1, 20)).map(s => s"bin/$s")
+    val unsafeAbsolute: Gen[String] =
+      for {
+        ch   <- genUnsafeChar
+        pos  <- Gen.element1("mid", "tail")
+        base <- safeAbsolute
+      } yield insertAt(base, ch, pos)
+    val unsafeRelative: Gen[String] =
+      for {
+        ch   <- genUnsafeChar
+        pos  <- Gen.element1("lead", "mid", "tail")
+        base <- safeRelative
+      } yield insertAt(base, ch, pos)
+    Gen.frequency1(
+      3 -> safeAbsolute.map(p => TargetCase(p, repoScope = false, expectRefusal = false, label = "safe-absolute")),
+      4 -> unsafeAbsolute.map(p => TargetCase(p, repoScope = false, expectRefusal = true, label = "unsafe-absolute")),
+      3 -> safeRelative.map(p => TargetCase(p, repoScope = true, expectRefusal = false, label = "safe-relative")),
+      4 -> unsafeRelative.map(p => TargetCase(p, repoScope = true, expectRefusal = true, label = "unsafe-relative")),
+      2 -> Gen.constant(TargetCase("", repoScope = true, expectRefusal = true, label = "edge-empty")),
+      2 -> genUnsafeChar
+        .map(ch => TargetCase(ch.toString, repoScope = true, expectRefusal = true, label = "edge-only-unsafe"))
+    )
+  }
+
+  property("generation refuses unquotable targets", coverConfig) {
+    for {
+      tc <- genTargetPath.forAll
+        .cover(10, "safe-absolute", (t: TargetCase) => t.label == "safe-absolute")
+        .cover(10, "unsafe-absolute", (t: TargetCase) => t.label == "unsafe-absolute")
+        .cover(10, "safe-relative", (t: TargetCase) => t.label == "safe-relative")
+        .cover(10, "unsafe-relative", (t: TargetCase) => t.label == "unsafe-relative")
+        .cover(3, "edge", (t: TargetCase) => t.label.startsWith("edge"))
+    } yield {
+      val out: Either[String, String] =
+        if (tc.repoScope)
+          ShimTargetScope.RelPath.from(tc.path) match {
+            case Left(reason) => Left(reason)
+            case Right(rel) =>
+              ShimGenerator.generateShim(
+                // the repository artifact's absolute location — legitimately
+                // different from the script-relative reference it emits
+                ResolutionResult(
+                  Some("/abs/repo/openspec/schemas/verified-scala3/bin/probatio"),
+                  Nil
+                ),
+                ShimTargetScope.RepositoryRelative(rel),
+                "gate"
+              )
+          }
+        else
+          ShimGenerator.generateShim(
+            ResolutionResult(Some(tc.path), Nil),
+            ShimTargetScope.AbsoluteInstall(tc.path),
+            "gate"
+          )
+      Result
+        .assert(out.isLeft == tc.expectRefusal)
+        .log(s"${tc.label}: path=${tc.path} expectedRefusal=${tc.expectRefusal} got=$out")
+    }
+  }
+
   // ── Helper: bind a resolved path through the resolution result ──────────
   // The shim's target is the artifact the resolution returned — a resolved
   // (non-blocked) result carries `path = Some(...)`.
   private def shimFor(path: String): String =
-    ShimGenerator.generateShim(ResolutionResult(Some(path), Nil)) match {
+    ShimGenerator.generateShim(ResolutionResult(Some(path), Nil), ShimTargetScope.AbsoluteInstall(path)) match {
       case Right(content) => content
       case Left(reason)   => fail(reason)
     }
+
+  /** The install scope naming the resolution's own path (or a stand-in when blocked). */
+  private def scopeOf(resolution: ResolutionResult): ShimTargetScope =
+    ShimTargetScope.AbsoluteInstall(resolution.path.getOrElse("/usr/local/bin/probatio"))
 }

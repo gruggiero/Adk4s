@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-exec "/home/gruggiero/git/rs/adk4s/openspec/schemas/verified-scala3/bin/probatio" gate "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/../bin/probatio" gate "$@"

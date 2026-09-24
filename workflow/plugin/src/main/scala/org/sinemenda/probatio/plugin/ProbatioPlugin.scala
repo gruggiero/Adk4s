@@ -253,7 +253,7 @@ object ProbatioPlugin extends AutoPlugin {
           val installed: File = probatioInstall.value
           val bound: ResolutionResult =
             resolution.copy(path = Some(installed.getAbsolutePath))
-          writeShim(bound, "gate", gateShimPath) match {
+          writeShim(bound, ShimTargetScope.AbsoluteInstall(installed.getAbsolutePath), "gate", gateShimPath) match {
             case Right(file)  => file
             case Left(reason) => sys.error(s"probatioGateShim: $reason — no shim written")
           }
@@ -373,10 +373,11 @@ object ProbatioPlugin extends AutoPlugin {
    */
   private[plugin] def writeShim(
     resolution: ResolutionResult,
+    scope: ShimTargetScope,
     subcommand: String,
     target: File
   ): Either[String, File] =
-    ShimGenerator.generateShim(resolution, subcommand) match {
+    ShimGenerator.generateShim(resolution, scope, subcommand) match {
       case Left(reason) => Left(reason)
       case Right(content) =>
         val parent: File = target.getParentFile

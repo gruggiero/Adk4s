@@ -33,7 +33,7 @@ verified-scala3-gate:
     # Ring 3 — the workflow's own shell suites.
     - bats openspec/schemas/verified-scala3/tests/
     - ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
-    - ./openspec/schemas/verified-scala3/scanner/spec-lint.sh .
+    - ./openspec/schemas/verified-scala3/bin/probatio spec-lint .
   rules:
     - changes:
         - "openspec/**/*"

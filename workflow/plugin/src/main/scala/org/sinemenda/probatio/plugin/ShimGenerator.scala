@@ -1,13 +1,13 @@
 package org.sinemenda.probatio.plugin
 
 /**
- * Pure function that generates 3-line hook shims idempotently (R-S5),
+ * Pure function that generates hook shims idempotently (R-S5),
  * bound to the resolution result (native-gate-delivery).
  *
- * Each shim is exactly three lines:
- *   1. `#!/usr/bin/env bash`  (shebang)
- *   2. `exec "<resolved-path>" <subcommand> "$@"`  (exec line)
- *   3. trailing newline
+ * The emitted shape depends on the declared `ShimTargetScope`:
+ *   - `AbsoluteInstall`: shebang + `exec "<resolved-path>" <sub> "$@"`
+ *   - `RepositoryRelative`: shebang + a `SCRIPT_DIR` self-location line +
+ *     `exec "$SCRIPT_DIR/<rel>" <sub> "$@"`
  *
  * The shim's target is the artifact the resolution RETURNED — never a
  * literal path. A resolution that is blocked (`ResolutionResult.path` is
@@ -28,41 +28,44 @@ package org.sinemenda.probatio.plugin
 object ShimGenerator {
 
   /**
-   * Generates the 3-line shim content for the artifact a resolution
-   * returned, using the `gate` subcommand.
+   * Generates the shim content for the artifact a resolution returned,
+   * using the `gate` subcommand.
    *
    * @param resolution the binary-resolution result the shim binds to
+   * @param scope the resolution scope the generated script states —
+   *   required, never inferred from the target's shape
    * @return Right(shim content) for a resolved target, Left(reason) when
    *   the resolution is blocked
    */
-  def generateShim(resolution: ResolutionResult): Either[String, String] =
-    generateShim(resolution, "gate")
+  def generateShim(resolution: ResolutionResult, scope: ShimTargetScope): Either[String, String] =
+    generateShim(resolution, scope, "gate")
 
   /**
-   * Generates the 3-line shim content for the artifact a resolution
-   * returned and subcommand.
+   * Generates the shim content for the artifact a resolution returned,
+   * the stated scope and subcommand.
    *
-   * The output for a resolved target is always:
+   * For `AbsoluteInstall(path)` the output is the 3-line exec shim:
    *   `#!/usr/bin/env bash\nexec "<path>" <subcommand> "$@"\n`
+   * For `RepositoryRelative(fromShimToBinary)` the script resolves its
+   * own directory at runtime and execs the target relative to it.
    *
    * This is a pure function — same inputs always produce same output.
    * The trailing newline ensures the file ends cleanly.
    *
    * @param resolution the binary-resolution result the shim binds to
+   * @param scope the resolution scope the generated script states
    * @param subcommand the probatio subcommand to invoke (e.g. "gate",
    *   "spec-lint", "chain-state", "danger-scan", "reconcile")
    * @return Right(shim content) for a resolved target, Left(reason) when
    *   the resolution is blocked — no shim is written and the reason is
    *   reported
    */
-  def generateShim(resolution: ResolutionResult, subcommand: String): Either[String, String] =
+  def generateShim(
+    resolution: ResolutionResult,
+    scope: ShimTargetScope,
+    subcommand: String
+  ): Either[String, String] =
     resolution.path match {
-      case Some(path) if !isShimQuotable(path) =>
-        Left(s"shim target path cannot be safely quoted for the exec line: $path")
-      case Some(path) =>
-        Right(s"""#!/usr/bin/env bash
-exec "$path" $subcommand "$$@"
-""")
       case None =>
         val reason: String =
           resolution.logLines.filter(_.nonEmpty).mkString(" ") match {
@@ -70,6 +73,30 @@ exec "$path" $subcommand "$$@"
             case blocked => blocked
           }
         Left(reason)
+      case Some(resolvedPath) =>
+        scope match {
+          case ShimTargetScope.AbsoluteInstall(path) =>
+            if (!path.startsWith("/"))
+              Left(s"an install-scope shim target must be an absolute path: $path")
+            else if (path != resolvedPath)
+              Left(
+                s"the install scope names a different artifact than the resolution: scope=$path resolved=$resolvedPath"
+              )
+            else if (!isShimQuotable(path))
+              Left(s"shim target path cannot be safely quoted for the exec line: $path")
+            else
+              Right(s"""#!/usr/bin/env bash
+exec "$path" $subcommand "$$@"
+""")
+          case ShimTargetScope.RepositoryRelative(rel) =>
+            if (!isShimQuotable(rel.value))
+              Left(s"shim target path cannot be safely quoted for the exec line: ${rel.value}")
+            else
+              Right(s"""#!/usr/bin/env bash
+SCRIPT_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")" && pwd)"
+exec "$$SCRIPT_DIR/${rel.value}" $subcommand "$$@"
+""")
+        }
     }
 
   /**

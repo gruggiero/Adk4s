@@ -32,7 +32,10 @@ setup() {
   # has no exec line and keeps the in-arm path).
   PROBATIO="$SCHEMA/bin/probatio"
   if grep -q '^exec ".*bin/probatio"' "$CHAIN_STATE" 2>/dev/null; then
-    PROBATIO="$(sed -n 's/^exec "\(.*bin\/probatio\)" .*$/\1/p' "$CHAIN_STATE")"
+    # The shim may resolve its target relative to itself via $SCRIPT_DIR —
+    # expand that token against the shim's own directory here.
+    raw_probatio="$(sed -n 's/^exec "\(.*bin\/probatio\)" .*$/\1/p' "$CHAIN_STATE")"
+    PROBATIO="${raw_probatio/\$SCRIPT_DIR/$(dirname "$CHAIN_STATE")}"
   fi
   FX="$BATS_TEST_TMPDIR/repo"
 }

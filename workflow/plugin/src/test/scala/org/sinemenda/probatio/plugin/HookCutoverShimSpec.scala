@@ -2,6 +2,8 @@ package org.sinemenda.probatio.plugin
 
 import hedgehog._
 import hedgehog.Range._
+import hedgehog.core.PropertyConfig
+import hedgehog.core.SuccessCount
 
 /**
  * Test oracle for the hook-cutover spec — shim-idempotency property and
@@ -93,7 +95,7 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
       resolution.logLines.exists(_.contains("native")),
       s"the block must name that a native artifact is required: ${resolution.logLines}"
     )
-    ShimGenerator.generateShim(resolution, "gate") match {
+    ShimGenerator.generateShim(resolution, ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"), "gate") match {
       case Left(reason) =>
         assert(reason.nonEmpty, "the reported reason must be non-empty")
       case Right(shim) =>
@@ -108,7 +110,7 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
       platformHasNative = true
     )
     assert(resolution.path.isEmpty, s"a checksum-invalid prebuilt must not resolve a shim target: $resolution")
-    ShimGenerator.generateShim(resolution, "gate") match {
+    ShimGenerator.generateShim(resolution, ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"), "gate") match {
       case Left(_)  => ()
       case Right(s) => fail(s"a blocked resolution must write no shim, got: $s")
     }
@@ -119,7 +121,7 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
   test("a blocked resolution writes no shim and the reason is reported") {
     val blocked: ResolutionResult =
       ResolutionResult(None, List("[warn] probatio gate: native artifact required on this platform"))
-    ShimGenerator.generateShim(blocked, "gate") match {
+    ShimGenerator.generateShim(blocked, ShimTargetScope.AbsoluteInstall("/usr/local/bin/probatio"), "gate") match {
       case Left(reason) =>
         assert(reason.nonEmpty, s"a blocked resolution must report a reason: $reason")
       case Right(shim) =>
@@ -138,7 +140,7 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
     )
     resolution.path match {
       case Some(nativePath) =>
-        ShimGenerator.generateShim(resolution, "gate") match {
+        ShimGenerator.generateShim(resolution, ShimTargetScope.AbsoluteInstall(nativePath), "gate") match {
           case Right(shim) =>
             assert(shim.contains(nativePath), s"shim must point at the native artifact $nativePath: $shim")
           case Left(reason) =>
@@ -237,13 +239,18 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
     }
   }
 
-  /** A swapped seam is a forwarding shim: shebang plus one `exec` line. */
+  /**
+   * A swapped seam is a forwarding shim: a shebang, optional `VAR=...`
+   * self-location lines (the repository-relative form), and a single
+   * trailing `exec` line.
+   */
   private def isForwardingShim(f: java.io.File): Boolean = {
     val src: scala.io.Source = scala.io.Source.fromFile(f, "UTF-8")
     try
       src.getLines().toList.filter(_.nonEmpty) match {
-        case shebang :: exec :: Nil =>
-          shebang.startsWith("#!") && exec.startsWith("exec ")
+        case shebang :: rest if shebang.startsWith("#!") && rest.nonEmpty =>
+          rest.lastOption.exists(_.startsWith("exec ")) &&
+          rest.dropRight(1).forall(l => l.matches("[A-Za-z_][A-Za-z0-9_]*=.*"))
         case _ => false
       }
     finally src.close()
@@ -251,6 +258,307 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
 
   private def listFiles(dir: java.io.File): List[java.io.File] =
     dir.listFiles.toList.flatMap(f => if (f.isDirectory) listFiles(f) else List(f))
+
+  // ══════════════════════════════════════════════════════════════════════
+  // workflow-delivery-hygiene (spec 9) — in-repository forwarding scripts
+  // resolve their target relative to themselves, so a clone, worktree or CI
+  // runner reaches the tool inside its own copy — never another checkout's.
+  // spec: workflow-delivery-hygiene — Requirement: An in-repository forwarding script resolves its target relative to itself
+  // ══════════════════════════════════════════════════════════════════════
+
+  // The probe stands in for the built tool at exactly the location the
+  // committed launcher execs (`bin/probatio` prefers the native image). It
+  // reports its own directory and exits with a distinctive status, so a test
+  // can tell WHICH copy's tool was reached and that the tool's own status
+  // propagated through both execs.
+  private val probeMarker: String  = "PROBE_REACHED"
+  private val probeExitCode: Int   = 42
+  private val probeRelPath: String = "workflow/cli/target/native-image/probatio"
+
+  private def repoRootDir: java.io.File = {
+    val fromRepoRoot: java.io.File =
+      new java.io.File("openspec/schemas/verified-scala3")
+    if (fromRepoRoot.isDirectory) new java.io.File(".").getCanonicalFile
+    else new java.io.File("../..").getCanonicalFile
+  }
+
+  private def readFileUtf8(f: java.io.File): String = {
+    val src: scala.io.Source = scala.io.Source.fromFile(f, "UTF-8")
+    try src.mkString
+    finally src.close()
+  }
+
+  private def runProcess(args: List[String], cwd: java.io.File): (Int, String) = {
+    val lines: java.util.concurrent.atomic.AtomicReference[List[String]] =
+      new java.util.concurrent.atomic.AtomicReference(List.empty)
+    val logger: scala.sys.process.ProcessLogger = scala.sys.process.ProcessLogger(
+      (o: String) => { val _ = lines.updateAndGet((xs: List[String]) => xs :+ o); () },
+      (e: String) => { val _ = lines.updateAndGet((xs: List[String]) => xs :+ e); () }
+    )
+    val code: Int = scala.sys.process.Process(args, cwd).!(logger)
+    (code, lines.get().mkString("\n"))
+  }
+
+  // Every .sh file in the copy whose body forwards to bin/probatio —
+  // discovered at test time, never listed, so a newly swapped seam is
+  // covered automatically.
+  private def forwardingShimsIn(root: java.io.File): List[java.io.File] = {
+    val schemaDir: java.io.File =
+      new java.io.File(root, "openspec/schemas/verified-scala3")
+    listFiles(schemaDir)
+      .filter(_.getName.endsWith(".sh"))
+      .filter { f =>
+        readFileUtf8(f).linesIterator.exists(line => line.startsWith("exec ") && line.contains("bin/probatio"))
+      }
+  }
+
+  private def writeProbeTool(copyRoot: java.io.File): java.io.File = {
+    val probe: java.io.File = new java.io.File(copyRoot, probeRelPath)
+    val _dirs: Boolean      = probe.getParentFile.mkdirs()
+    val _w: java.nio.file.Path = java.nio.file.Files.write(
+      probe.toPath,
+      ("#!/usr/bin/env bash\n" +
+        "printf '" + probeMarker + " %s\\n' \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\n" +
+        "exit " + probeExitCode.toString + "\n").getBytes("UTF-8")
+    )
+    val _x: Boolean = probe.setExecutable(true)
+    probe
+  }
+
+  // Copy the tracked file set with working-tree content into dest —
+  // the same files a fresh clone or linked worktree carries once this
+  // change is committed. `git archive HEAD`/`git worktree add` see only
+  // the committed tree, but the oracle must exercise the implementation
+  // BEFORE the checkpoint commit; the tracked set is the clone's content.
+  private def copyTrackedWorkingTree(dest: java.io.File): Unit = {
+    val _d: Boolean = dest.mkdirs()
+    val (code, out): (Int, String) = runProcess(
+      List("git", "-C", repoRootDir.getAbsolutePath, "ls-files", "-z"),
+      repoRootDir
+    )
+    assertEquals(code, 0, s"git ls-files must succeed: $out")
+    out.split("\u0000").toList.filter(_.nonEmpty).foreach { rel =>
+      val srcF: java.io.File = new java.io.File(repoRootDir, rel)
+      val dstF: java.io.File = new java.io.File(dest, rel)
+      val _pd: Boolean       = dstF.getParentFile.mkdirs()
+      val _c: java.nio.file.Path = java.nio.file.Files.copy(
+        srcF.toPath,
+        dstF.toPath,
+        java.nio.file.StandardCopyOption.REPLACE_EXISTING
+      )
+      if (srcF.canExecute) { val _x: Boolean = dstF.setExecutable(true); () }
+      ()
+    }
+    assert(
+      new java.io.File(dest, "openspec/schemas/verified-scala3/bin/probatio").isFile,
+      s"the materialised copy must carry the launcher: ${dest.getAbsolutePath}"
+    )
+  }
+
+  private def materialiseCopy(dest: java.io.File): Unit =
+    copyTrackedWorkingTree(dest)
+
+  // The placement property's domain is the placement SHAPE, not the
+  // repository's contents — a copy needs only the schema subtree (the
+  // forwarding scripts and the launcher) plus the probe slot the launcher
+  // execs. Materialising the whole tree per generated case would spend
+  // the test budget on copying files nothing resolves.
+  private def materialiseSchemaCopy(dest: java.io.File): Unit = {
+    val _d: Boolean = dest.mkdirs()
+    val (code, out): (Int, String) = runProcess(
+      List("git", "-C", repoRootDir.getAbsolutePath, "ls-files", "-z", "--", "openspec/schemas/verified-scala3"),
+      repoRootDir
+    )
+    assertEquals(code, 0, s"git ls-files must succeed: $out")
+    out.split("\u0000").toList.filter(_.nonEmpty).foreach { rel =>
+      val srcF: java.io.File = new java.io.File(repoRootDir, rel)
+      val dstF: java.io.File = new java.io.File(dest, rel)
+      val _pd: Boolean       = dstF.getParentFile.mkdirs()
+      val _c: java.nio.file.Path = java.nio.file.Files.copy(
+        srcF.toPath,
+        dstF.toPath,
+        java.nio.file.StandardCopyOption.REPLACE_EXISTING
+      )
+      if (srcF.canExecute) { val _x: Boolean = dstF.setExecutable(true); () }
+      ()
+    }
+    assert(
+      new java.io.File(dest, "openspec/schemas/verified-scala3/bin/probatio").isFile,
+      s"the materialised copy must carry the launcher: ${dest.getAbsolutePath}"
+    )
+  }
+
+  // A real linked worktree (git-managed), then overlaid with working-tree
+  // content for the same reason as materialiseCopy.
+  private def materialiseWorktree(dest: java.io.File): Unit = {
+    val (code, out): (Int, String) = runProcess(
+      List("git", "-C", repoRootDir.getAbsolutePath, "worktree", "add", "--detach", dest.getAbsolutePath, "HEAD"),
+      repoRootDir
+    )
+    assertEquals(code, 0, s"git worktree add must succeed: $out")
+    copyTrackedWorkingTree(dest)
+  }
+
+  private def removeWorktree(dest: java.io.File): Unit = {
+    val _ignored: (Int, String) = runProcess(
+      List("git", "-C", repoRootDir.getAbsolutePath, "worktree", "remove", "--force", dest.getAbsolutePath),
+      repoRootDir
+    )
+    ()
+  }
+
+  private def reachedWithin(output: String, copyRoot: String): Boolean =
+    output.linesIterator.exists { line =>
+      line.startsWith(probeMarker) &&
+      line.substring(probeMarker.length).trim.startsWith(copyRoot)
+    }
+
+  private def assertCopyReachesOwnTool(copy: java.io.File): Unit = {
+    val _probe: java.io.File      = writeProbeTool(copy)
+    val shims: List[java.io.File] = forwardingShimsIn(copy)
+    assert(shims.nonEmpty, s"no forwarding scripts discovered in ${copy.getAbsolutePath}")
+    // Invoke from a directory unrelated to any copy — a forwarding script
+    // that depended on the caller's cwd would resolve the wrong tree.
+    val neutralCwd: java.io.File =
+      java.nio.file.Files.createTempDirectory("probatio-neutral-cwd").toFile
+    val copyRoot: String = copy.getCanonicalPath
+    shims.foreach { shim =>
+      val (code, out): (Int, String) =
+        runProcess(List("bash", shim.getAbsolutePath), neutralCwd)
+      assertEquals(
+        code,
+        probeExitCode,
+        s"${shim.getName} must terminate with the tool's own status, got $code:\n$out"
+      )
+      assert(
+        reachedWithin(out, copyRoot),
+        s"${shim.getName} must reach the tool within its own copy $copyRoot, got:\n$out"
+      )
+    }
+  }
+
+  // ── Scenario: Happy path — a script invoked from a fresh clone reaches
+  //    the tool
+  // spec: workflow-delivery-hygiene — Scenario: Happy path — a script invoked from a fresh clone reaches the tool
+  test("a forwarding script invoked from a fresh clone reaches the tool within that clone") {
+    val parent: java.io.File =
+      java.nio.file.Files.createTempDirectory("probatio-fresh-clone").toFile
+    val clone: java.io.File = new java.io.File(parent, "clone")
+    val (cloneCode, cloneOut): (Int, String) = runProcess(
+      List("git", "clone", "--quiet", "--no-local", repoRootDir.getAbsolutePath, clone.getAbsolutePath),
+      parent
+    )
+    assertEquals(cloneCode, 0, s"git clone must succeed: $cloneOut")
+    // A clone carries HEAD only; overlay the working tree so the
+    // oracle exercises the implementation ahead of the checkpoint commit.
+    copyTrackedWorkingTree(clone)
+    assertCopyReachesOwnTool(clone)
+  }
+
+  // ── Scenario: Happy path — a script invoked from a linked worktree
+  //    reaches the tool
+  // spec: workflow-delivery-hygiene — Scenario: Happy path — a script invoked from a linked worktree reaches the tool
+  test("a forwarding script invoked from a linked worktree reaches the tool within that worktree") {
+    val parent: java.io.File =
+      java.nio.file.Files.createTempDirectory("probatio-linked-worktree").toFile
+    val worktree: java.io.File = new java.io.File(parent, "linked")
+    materialiseWorktree(worktree)
+    try assertCopyReachesOwnTool(worktree)
+    finally removeWorktree(worktree)
+  }
+
+  // ── Property: shim-resolves-from-any-location
+  // spec: workflow-delivery-hygiene — Property: shim-resolves-from-any-location
+  //
+  // Generator: genRepositoryPlacement — constructive over the spec's closed
+  // set of copy shapes: a sibling directory, a nested directory, a path
+  // containing spaces, a path containing a non-ASCII character, a linked
+  // worktree, and the two-copies edge case (a script reaching the wrong
+  // copy is the failure that case exists to catch). The repository copy is
+  // materialised at each; every discovered forwarding script in the copy is
+  // invoked.
+  sealed abstract private class Placement extends Product with Serializable
+  private case object SiblingCopy         extends Placement
+  private case object NestedCopy          extends Placement
+  private case object SpacesCopy          extends Placement
+  private case object NonAsciiCopy        extends Placement
+  private case object LinkedWorktree      extends Placement
+  private case object TwoCopies           extends Placement
+
+  private def genRepositoryPlacement: Gen[Placement] =
+    Gen.element1(SiblingCopy, NestedCopy, SpacesCopy, NonAsciiCopy, LinkedWorktree, TwoCopies)
+
+  // Returns every materialised copy; the head is the copy whose scripts
+  // are invoked (under TwoCopies the second copy exists only to be
+  // reached-by-mistake).
+  private def materialisePlacement(placement: Placement, base: java.io.File): List[java.io.File] = {
+    val names: List[String] = placement match {
+      case SiblingCopy    => List("sibling-copy")
+      case NestedCopy     => List("nested/deep/copy")
+      case SpacesCopy     => List("copy with spaces")
+      case NonAsciiCopy   => List("cøpy-prøbatio")
+      case LinkedWorktree => List("linked-worktree")
+      case TwoCopies      => List("copy-a", "copy-b")
+    }
+    val copies: List[java.io.File] = names.map(n => new java.io.File(base, n))
+    copies.foreach { c =>
+      placement match {
+        case LinkedWorktree => materialiseWorktree(c)
+        case _              => materialiseSchemaCopy(c)
+      }
+    }
+    copies
+  }
+
+  // 36 runs over a closed 6-shape domain — each materialisation is a real
+  // filesystem copy, so the run count is bounded while every shape is
+  // still covered by the cover labels (~99.9% all-class hit).
+  private def placementConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(36))
+
+  property("a shim resolves from any location", placementConfig) {
+    for {
+      placement <- genRepositoryPlacement.forAll
+        .cover(5, "sibling", (p: Placement) => p == SiblingCopy)
+        .cover(5, "nested", (p: Placement) => p == NestedCopy)
+        .cover(5, "spaces", (p: Placement) => p == SpacesCopy)
+        .cover(5, "non-ascii", (p: Placement) => p == NonAsciiCopy)
+        .cover(5, "worktree", (p: Placement) => p == LinkedWorktree)
+        .cover(5, "two-copies", (p: Placement) => p == TwoCopies)
+    } yield {
+      val base: java.io.File =
+        java.nio.file.Files.createTempDirectory("probatio-placement").toFile
+      val copies: List[java.io.File] = materialisePlacement(placement, base)
+      copies.foreach(c => writeProbeTool(c))
+      val invoked: java.io.File =
+        copies.headOption.getOrElse(fail("materialisePlacement produced no copies"))
+      val result: Result =
+        try {
+          val shims: List[java.io.File] = forwardingShimsIn(invoked)
+          if (shims.isEmpty)
+            Result.failure.log(s"no forwarding scripts discovered in ${invoked.getAbsolutePath}")
+          else {
+            val invokedRoot: String = invoked.getCanonicalPath
+            shims
+              .map { shim =>
+                val (code, out): (Int, String) =
+                  runProcess(List("bash", shim.getAbsolutePath), base)
+                Result
+                  .assert(code == probeExitCode)
+                  .log(s"${shim.getName}: expected the tool's own status $probeExitCode, got $code\n$out")
+                  .and(
+                    Result
+                      .assert(reachedWithin(out, invokedRoot))
+                      .log(s"${shim.getName}: must reach the tool within its own copy $invokedRoot, got:\n$out")
+                  )
+              }
+              .reduceOption((a: Result, b: Result) => a.and(b))
+              .getOrElse(Result.failure.log("no forwarding scripts discovered"))
+          }
+        } finally if (placement == LinkedWorktree) copies.foreach(c => removeWorktree(c))
+      result
+    }
+  }
 
   // ── Generator: genBinaryPath
   // Constructive over absolute file paths with varying depths, special
@@ -273,7 +581,7 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
   // The shim's target is the artifact the resolution returned — a resolved
   // (non-blocked) result carries `path = Some(...)`.
   private def shimFor(path: String): String =
-    ShimGenerator.generateShim(ResolutionResult(Some(path), Nil)) match {
+    ShimGenerator.generateShim(ResolutionResult(Some(path), Nil), ShimTargetScope.AbsoluteInstall(path)) match {
       case Right(content) => content
       case Left(reason)   => fail(reason)
     }
