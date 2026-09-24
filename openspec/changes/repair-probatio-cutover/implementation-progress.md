@@ -543,7 +543,7 @@
 
 ### 10. schema-rename-completion
 
-- **Status**: Step 3 implementation done — focused oracle green — rings pending
+- **Status**: VALIDATED — all rings green, checkpoint approved (user: "validated")
 - **BASELINE SHA**: `55837a0b39b720e732fe45a157e22d370bcf09c7`
 - Gate installation check: `{"installed":true,"last_run":"2026-09-24T12:55:53Z","event":"post-edit"}`
 - inventory snapshot: `inventory-snapshots/schema-rename-completion-before.md` (11 opaque, 144 sealed, 511 case classes, 18 service traits, 62 Smithy, 478 generators)
@@ -571,9 +571,20 @@
 - [x] Ring 3 — focused suites green: `SchemaPolicySpec` 35, `DriftScanSpec` 25, `SchemaRenameCompletionTypeContract` 7, `BannerEngineSpec` 44, `MigrationProtocolSpec` 6, `LiveFactBannerTypeContract` 6, `CacheMigrationSpec` 7 (incl. the two Ring-8 tests), `SubprocessConformanceSpec` 10/10 against the rebuilt native image, `PluginSourceLintSpec` 15; bats: `correctness-invariant.bats` 31/31, `workflow-hygiene.bats` 12/12, `harness-install-verification.bats` 12/12 (incl. the two new searched-root stamp audits). Stamp audit on disk: no searched root carries a pre-rename stamp; every schema-stamped doc reads `probatio-schema/14.0.0`.
 - [x] Ring 5 — Stryker4s on spec-10 targets. **Core** (RenameDeferral + BannerEngine): 43.01% total / **52.63% covered-code** — all in-diff mutants killed after surgical-kill tests (banner-identity assertion + core-side `RenameDeferral` behavior coverage); the 3 remaining spec-10 survivors are equivalent multi-part-reason string-part mutants; all other survivors pre-existing `BannerEngine` regions outside the diff. **Cli** (CacheMigration + ProbatioMain): 36.11% total / **81.25% covered-code**, 13/16 tested mutants killed — Stryker caught a REAL bug (`"user.home"` resolution escaped the fail-open boundary; fixed by moving `userHome(env)` inside `migrateOnce`'s `try`). Remaining in-diff survivors justified: `"user.home"→""` now equivalent-by-design (inside the fail-open boundary both paths no-op); `isRegularFile(src)→true` equivalent under the kernel's filtered-contents contract (TOCTOU guard only); `".migrating"→""` weakens staging to direct-copy — cleanup still prevents latching, only a mid-copy JVM-crash window differs, untestable at JVM level; all 20 NoCoverage are pre-existing `ProbatioMain` regions (`extractInvocationName`, `--help` handling) outside the spec-10 diff (wiring coverage arrives via `SubprocessConformanceSpec` on the native binary, excluded from JVM mutation runs).
 - [x] Ring 8 — adversarial review: **fresh-context: yes** (isolated read-only subagent `c5aacae6`, inputs: spec + contract + current state of all changed files) — **3 PASS / 2 PARTIAL / 0 FAIL** at review (+3 properties PASS, 2 compile-negatives PASS). R1 PARTIAL: (a) user-authored `verified-scala3-escape-analysis` skill presented the old name as current in three roots — **remediated**: renamed `probatio-escape-analysis` + prose updated in `~/.agents`, `~/.zcode`, `.pi` (user decision); (b) `harness-install-verification.bats` named by the proof obligations carried no installed-stamp assertion — **remediated**: two stamp-audit tests added (no pre-rename stamp in any searched root; every schema-stamped doc at `probatio-schema/14.0.0`). R2 PARTIAL: `CacheMigration` could latch wrong terminal states — **remediated**: snapshot made total (unreadable dir → no decision, never empty) + all-or-nothing staging materialisation; two targeted tests added. Secondary notes fixed in passing: `install-hooks.sh` recommended the deprecated `VERIFIED_SCALA3_HOOKS` alias → now `PROBATIO_HOOKS`; JAR-fallback entrypoint can't reach `runSubcommand` flagged as a pre-existing cli-entrypoint defect (out of scope, recorded). **5 PASS / 0 PARTIAL / 0 FAIL after remediation** (the reviewer's not-assessable items — differential parity — belong to the change-level exit criterion run at commit time).
-- [ ] Concept-delta + inventory update + checkpoint — inventory updated (`RenameDeferral`, `Coupling`, `Missing`, `CacheMigration` rows + modified `BannerEngine`/`ProbatioMain`/`SchemaPolicy` notes); checkpoint pending commit
+- [x] Concept-delta + inventory update + checkpoint — inventory updated (`RenameDeferral`, `Coupling`, `Missing`, `CacheMigration` rows + modified `BannerEngine`/`ProbatioMain`/`SchemaPolicy` notes); 24 evidence rows recorded at baseline `55837a0` (6 ring-summary + 18 PO-exact R3); `checkpoint report` → R0/R1/R2/R3/R5/R8 green, R8 verified fresh-context (`devin-subagent-c5aacae6` ≠ `devin-repair-probatio-cutover-author`)
 
-| Commit | _(pending)_ |
+**Rings:**
+
+    checkpoint: repair-probatio-cutover/schema-rename-completion @ 55837a0b39b720e732fe45a157e22d370bcf09c7
+      R0: green (sbt probatio-core/compile probatio-cli/compile probatio-cli/Test/compile sbt-probatio/compile — all green under -Werror)
+      R1: green (scalafix --check (1 pre-existing ReleaseCheck.scala NoSysEnv recorded); scalafmt targeted-format; danger-scan.sh 55837a0 --also <untracked> — clean, all catch-alls carry same-line danger-scan:allow)
+      R2: green (sbt probatio-cli/dependencyLint probatio-core/dependencyLint sbt-probatio/dependencyLint probatio-verified/dependencyLint — R-ARCH1 clean, all four modules)
+      R3: green (sbt probatioOracleDiff probatioOracleControl at commit 657823d — VERDICT: PROCEED, no acceptance file worse (workflow-hygiene.bats ported=0/pred=0, carried D8 residual cleared by the fixture repair; fact-extraction.bats ported=0/pred=3 better); CONTROL REPRODUCED exactly (predecessor arm at 817d185 matches recorded control))
+      R5: green (sbt probatio-core/stryker probatio-cli/stryker — spec-10 retargeted mutate list)
+      R8: green (ring8-schema-rename-completion.md — remediated review)
+      chain state: total 46  bound 46  resolved 46  discharged 25  unresolved 21
+
+| Commit | `657823d55097d2f14ec2781b925b6a2d8350e1aa` |
 
 ---
 
