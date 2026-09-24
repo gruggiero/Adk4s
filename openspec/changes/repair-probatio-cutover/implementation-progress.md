@@ -425,7 +425,7 @@
 
 ### 8. ledger-checkpoint-cutover
 
-- **Status**: in progress — Steps 0–3 complete; both seams measured and swapped; rings in progress
+- **Status**: VALIDATED — human checkpoint approved (R8 freshness attested: review ran as isolated subagent `devin-subagent-027ab241` on spec + typed contract + post-remediation diff only); all rings green at commit baseline `9eda369` — R5 100.0%, R6 671/671 VCs; chain-state: 0 ledger-checkpoint-cutover requirements unresolved
 - **BASELINE SHA**: `260fed39661b1201fa7fbec10de5b995fddac776`
 
 ### Step Progress
@@ -484,9 +484,9 @@
   - Post-remediation: `LedgerRecordRoundTripSpec` 10/10, `LedgerCmdConformanceSpec` 14/14; scalafmt applied (justifications stay same-line); scalafix — no new violations (same recorded baseline set); `RingEvidence`/`Validator` doc in spec-lint unchanged.
 - [x] Ring 5 — Stryker4s **100.0%** (86 mutants on `CutoverGate`/`DifferentialResult`/`ShimSwap`/`Validator`; 2 static-ignored, 84 tested, **84 killed, 0 survived**). Move-to-main procedure per spec-1 convention: {CutoverGate, DifferentialResult, ShimSwap, CutoverVerdict, SeamTypes} → `src/main`, ran, moved back (clean closure — no test-framework/`os.Path` deps). `Validator.scala` added to the mutate list — the R8 remediation changed its integer domain and timestamp shape; its exercising suites (`LedgerValidatorSpec`, `ProvenanceValidatorSpec`, `LedgerRecordRoundTripSpec`) added to the filter. First run: 97.62%, 2 survivors — `CutoverGate:99-100` `predecessorPresent`/`portedPresent` `false→true` on the synthesized absent-row (each single flip is inert because the completeness predicate is `present && present` — a double-mutant would be needed). Killed by a new honest-encoding pin in `CutoverGateSpec` (the absent row must mark the file unmeasured by BOTH arms — `.fold`/fail, no `.get`). Re-run: **100.0%**.
 - [x] Ring 6 — Stainless **671/671 VCs valid, 0 invalid, 0 unknown** (`probatio-verified` direct invocation — `ring6` alias broken for backtick project IDs, spec-6 note; nativez3 non-batched, ~0.6s solve): `LedgerValidatorKernel.authoriseSwap` postcondition verified in full (authorised ⇔ all-present ∧ no-worse, refusal ⇒ namedFiles.nonEmpty) via `swapViolationPositions` structural recursion + `swapViolationPositionsEmptyIffClean` induction instantiated in the body. `CheckpointBridgeSpec` 3/3 incl. `bridge-authoriseSwap` (shipped vs kernel over generated comparisons).
-- [ ] Concept-delta + inventory update + checkpoint
+- [x] Concept-delta + inventory update + checkpoint — strangler-migration concept updated (per-seam `authoriseSwap` scoped to exercising files, `ShimSwap` carries the authorising `GateRecord`, `SeamSwapRunner.attempt` end-to-end flow); `concept-inventory.md` spec-8 section added (new: `SeamSwapRunner`/`SeamSwapExec`, kernel `authoriseSwap`/`swapViolationPositions`/lemma, `Validator`; modified: `CutoverGate`, `DifferentialResult`, `ShimSwap`, `RingEvidence` sealed, `ToolId.predecessorSource` `.bak` resolution, BigInt `LedgerRecord`/`ClaimVerdict`/`ReplayVerdict` consumers); `registry-check` OK (817 tokens, 5 pre-existing weak bindings). **Checkpoint**: implementation committed `9eda369`; 27 evidence rows recorded at the commit baseline (7 ring-summary + 20 R3: 19 PO-exact + 1 suite summary; discharge requires `r.obligation ==` PO-table cell text AND `r.change == --change`; R8 row carries `--session devin-subagent-027ab241` per the R8 record contract); both predecessors present and readable (`ledger.sh.predecessor.bak` 616 lines, `checkpoint.sh.predecessor.bak` 514 lines); chain-state: 46 total / 46 bound / 46 resolved / 23 discharged with **0 ledger-checkpoint-cutover requirements unresolved** (remaining 23 belong to specs 9–11 + carried residuals); `checkpoint report` → R0–R6 all green, R8 `unverified-session` pending human attestation (same as specs 1–7)
 
-| Commit | _(pending)_ |
+| Commit | `9eda369` |
 
 ---
 

@@ -112,19 +112,19 @@ no spec qualifies for a combined gate.
 
 ## 8. ledger-checkpoint-cutover
 
-- [ ] Prerequisite — confirm the two predecessor implementations are present and readable as the revert target
-- [ ] Step 1 — typed contract: the swap record gaining a required comparison field; no new domain type (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 12 scenarios + 4 properties (`record-validator-agrees-with-the-contract`, `record-round-trips-all-present-fields`, `checkpoint-reports-every-requested-ring`, `swap-decision-requires-a-complete-comparison`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: measure each seam under the repaired comparison; swap only a seam whose exercising files are at parity; leave each predecessor on disk
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan on the diff; shellcheck on the two forwarding scripts
-- [ ] Ring 2 — dependency lint clean
-- [ ] Ring 3 — property + scenario suites green; **the six exercising acceptance files at parity — their first real measurement; new regressions here are a result, not a surprise**
-- [ ] Ring 4 — the record contract conforms; every optional-field combination round-trips; the committed fixture reads cleanly; an unrecognised version is could-not-determine
-- [ ] Ring 5 — move the swap-decision sources to main, retarget, run, move back; read the score (80%)
-- [ ] Ring 6 — extend the record-validator kernel with the swap-authorisation contract; bridge property green
-- [ ] Ring 8 — fresh-context adversarial review
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Prerequisite — confirm the two predecessor implementations are present and readable as the revert target
+- [x] Step 1 — typed contract: the swap record gaining a required comparison field; no new domain type (compiles; **human gate**)
+- [x] Step 2 — test oracle: 12 scenarios + 4 properties (`record-validator-agrees-with-the-contract`, `record-round-trips-all-present-fields`, `checkpoint-reports-every-requested-ring`, `swap-decision-requires-a-complete-comparison`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: measure each seam under the repaired comparison; swap only a seam whose exercising files are at parity; leave each predecessor on disk
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan on the diff; shellcheck on the two forwarding scripts
+- [x] Ring 2 — dependency lint clean
+- [x] Ring 3 — property + scenario suites green; **the six exercising acceptance files at parity — their first real measurement; new regressions here are a result, not a surprise**
+- [x] Ring 4 — the record contract conforms; every optional-field combination round-trips; the committed fixture reads cleanly; an unrecognised version is could-not-determine
+- [x] Ring 5 — move the swap-decision sources to main, retarget, run, move back; read the score (80%)
+- [x] Ring 6 — extend the record-validator kernel with the swap-authorisation contract; bridge property green
+- [x] Ring 8 — fresh-context adversarial review
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 9. workflow-delivery-hygiene
 
