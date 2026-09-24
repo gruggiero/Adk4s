@@ -355,7 +355,7 @@
 
 ### 7. install-tool-surface-parity
 
-- **Status**: in progress — Step 3 implemented; rings underway
+- **Status**: VALIDATED — human checkpoint approval; all rings green at commit baseline `b64ee68`; R8 fresh-context attested (isolated read-only subagent `devin-subagent-f40627ad` on spec + predecessors + contract + diff only)
 - **BASELINE SHA**: `0b4a92363b66573b6976039f2d53b3fdea43dcc6`
 
 ### Step Progress
@@ -414,9 +414,10 @@
   - **F10–F12 [trivial] RECORDED** — message-text divergences, root-edge cases (`install-skills.sh ""` as root, exported-function prerequisites, `.devin/hooks.v1.json` as directory, python `\uXXXX` vs raw UTF-8), `NamedHarness("all")` seam/CLI asymmetry (unreachable — CLI maps `"all"`); stale "lands at Step 3" comments removed.
   - **Regression coverage added:** 12 new tests in `InstallToolSurfaceParitySpec` (multi-word/whitespace `--agent`, dot-dir skip, empty skills source, missing SKILL.md, `--project` schema resolution from unrelated cwd, 6 dispatch-level `--help` interception shapes) → suite now **39/39 green**; scalafix on new regions clean (3 violations in mine fixed: sys.env×2 annotated, try/finally → Using.resource); spec-lint 0 FAIL.
   - Manual adversarial pass (earlier, rebuilt binary): dry-run writes nothing + exit 0; `--apply` merges claude (6 events) + writes pi + skips foreign devin config byte-identical; foreign `settings.json` preserves keys on merge; re-apply dedups; `install-skills` = 6 skills × 3 dirs; `--check-installed` all-present → 0, missing → 1; `--dir`/`-h` skills → 1; missing flag value → 1; positional/unknown → 2; `--agent foo` → 0; no harnesses → 0
-- [ ] Concept-delta + inventory update + checkpoint
+- [x] Concept-delta + inventory update — `concept-inventory.md` spec-7 section appended (5 rows: `InstallTarget`, `InstallMode`, `PrerequisiteProbe`, `PrerequisiteReport`, `InstallSurface`); `SubcommandWiring` row annotated (+`schemaDirOf`); `InstallSkillsCmd`/`InstallHooksCmd` row annotated (predecessor surfaces restored). registry-check OK — 817 impl-map tokens, same 5 pre-existing weak bindings.
+- [x] Checkpoint — implementation committed `b64ee68`; 24 evidence rows recorded at the commit baseline (6 ring-summary + 18 PO-exact; R8 row carries `session: devin-subagent-f40627ad` per the R8 record contract); chain-state report: 46 total / 46 bound / 46 resolved / **25 discharged** with **0 install-tool-surface-parity requirements unresolved**; `checkpoint report` → R0/R1/R2/R3/R5/R8 green. `probatioOracleDiff` real run: `harness-install-verification.bats` pred=0/ported=0 (parity; on the not-compared list exercising unseamed `hooks/README.md`), `probatioOracleControl` CONTROL REPRODUCED exactly; `workflow-hygiene.bats` +3 is the pre-existing spec-4 residual deferred to owning specs (test 3 → ledger-checkpoint-cutover, tests 9/10 → chain-state contract) — unchanged by this spec.
 
-| Commit | _(pending)_ |
+| Commit | `b64ee68` |
 
 ---
 

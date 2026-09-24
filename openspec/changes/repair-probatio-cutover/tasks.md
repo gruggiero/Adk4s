@@ -108,7 +108,7 @@ no spec qualifies for a combined gate.
 - [x] Ring 3 — property + scenario suites green; **surface parity against the predecessor**
 - [x] Ring 5 — retarget the mutate list to the two installer entrypoints and the new install types; read the score (80%) — `InstallSurface.scala` **100%**; `SubcommandEntrypoints.scala` **46.58% covered-code** after 3 surgical-kill rounds (25.67→39.73→46.12→46.58), all remaining in-diff survivors justified equivalents
 - [x] Ring 8 — fresh-context adversarial review; confirm no invocation the predecessor honoured now errors — 3 majors found + fixed (`ring8-install-tool-surface-parity.md`)
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Concept-delta check + inventory update + **checkpoint** — committed `b64ee68`; 24 evidence rows (6 ring + 18 PO); chain-state 25/46 discharged, 0 spec-7 unresolved; all rings green
 
 ## 8. ledger-checkpoint-cutover
 
