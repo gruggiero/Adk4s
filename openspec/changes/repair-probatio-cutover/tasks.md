@@ -128,16 +128,16 @@ no spec qualifies for a combined gate.
 
 ## 9. workflow-delivery-hygiene
 
-- [ ] Step 1 — typed contract: `ShimTargetScope` as a required generation parameter, the relative variant unable to carry an absolute path (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 11 scenarios + 3 properties (`shim-resolves-from-any-location`, `no-committed-script-carries-an-absolute-path`, `generation-refuses-unquotable-targets`) + 2 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: regenerate the five forwarding scripts with location-relative resolution; add a continuous-integration job running the acceptance suite, the differential comparison and every module suite; update the three shipped templates to name tools that exist
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan on the diff; **shellcheck on all five regenerated scripts and the new job**
-- [ ] Ring 2 — dependency lint clean; the plugin still links no decision-core code
-- [ ] Ring 3 — property + scenario suites green; **the acceptance suite passes from a fresh clone at a different filesystem location**
-- [ ] Ring 5 — retarget the mutate list to the shim generator and install resolver; read the score (80%)
-- [ ] Ring 8 — fresh-context adversarial review; check the job fails on a deliberately regressing branch rather than reporting success
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Step 1 — typed contract: `ShimTargetScope` as a required generation parameter, the relative variant unable to carry an absolute path (compiles; **human gate**)
+- [x] Step 2 — test oracle: 11 scenarios + 3 properties (`shim-resolves-from-any-location`, `no-committed-script-carries-an-absolute-path`, `generation-refuses-unquotable-targets`) + 2 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: regenerate the five forwarding scripts with location-relative resolution; add a continuous-integration job running the acceptance suite, the differential comparison and every module suite; update the three shipped templates to name tools that exist
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan on the diff; **shellcheck on all five regenerated scripts and the new job**
+- [x] Ring 2 — dependency lint clean; the plugin still links no decision-core code
+- [x] Ring 3 — property + scenario suites green; **the acceptance suite passes from a fresh clone at a different filesystem location**
+- [x] Ring 5 — retarget the mutate list to the shim generator and install resolver; read the score (80%)
+- [x] Ring 8 — fresh-context adversarial review; check the job fails on a deliberately regressing branch rather than reporting success
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 10. schema-rename-completion
 

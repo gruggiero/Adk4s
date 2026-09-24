@@ -534,7 +534,7 @@
       R8: green (ring8-workflow-delivery-hygiene.md APPROVE WITH NOTES (pass 3))
       chain state: total 46  bound 46  resolved 46  discharged 27  unresolved 19
 
-| Commit | _(pending)_ |
+| Commit | `8d7e8485c79d107ca8e85e0fdc84d268f99cead8` |
 
 ---
 
