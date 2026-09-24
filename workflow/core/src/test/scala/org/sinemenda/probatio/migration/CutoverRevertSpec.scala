@@ -3,6 +3,7 @@ package org.sinemenda.probatio.migration
 import hedgehog.*
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
+import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.ProbatioSuite
 
 /**
@@ -50,6 +51,38 @@ final class CutoverRevertSpec extends ProbatioSuite:
     val revertResult: RevertResult = simulateRevertWithMissingPredecessor(swapped, ToolId.ChainState)
     assert(revertResult.isCouldNotDetermine, "a missing predecessor implementation must yield could-not-determine")
     assert(revertResult.failedSeam.contains(ToolId.ChainState), "the seam with the missing predecessor must be named")
+
+  // ── Scenario: Adversarial — a swap whose predecessor is absent is refused
+  // spec: ledger-checkpoint-cutover — Scenario: Adversarial — a swap whose predecessor is absent is refused
+  // The swap is refused naming the absent predecessor: a seam with no
+  // revert target is never swapped. `SeamSwapRunner.attempt` surfaces the
+  // refusal as a Finding naming the seam — not a swap record, not a
+  // could-not-determine.
+  test("a swap whose predecessor implementation is absent is refused naming it"):
+    val tmp: os.Path    = os.temp.dir(prefix = "absent-predecessor-", deleteOnExit = true)
+    val schema: os.Path = tmp / "openspec" / "schemas" / "verified-scala3"
+    os.makeDir.all(schema / "scanner")
+    os.makeDir.all(schema / "tests")
+    // scanner/ledger.sh.predecessor.bak is deliberately absent — the
+    // ledger seam's predecessor implementation (its revert target) is
+    // not present. One unrelated file is committed so the baseline
+    // revision exists.
+    os.write(schema / "tests" / "evidence-capture.bats", "#!/usr/bin/env bats\n")
+    git(tmp, List("init", "-q"))
+    git(tmp, List("add", "-A"))
+    git(tmp, List("-c", "user.email=oracle@local", "-c", "user.name=oracle", "commit", "-qm", "baseline"))
+    val outcome: Outcome[ShimSwap] =
+      SeamSwapRunner.attempt(ToolId.Ledger, schema, "HEAD", tmp / "arms", "2026-09-24T00:00:00Z")
+    outcome match
+      case Outcome.Finding(desc) =>
+        assert(
+          desc.contains("ledger"),
+          s"the refusal must name the absent predecessor implementation: $desc"
+        )
+      case Outcome.Ran(swap) =>
+        fail(s"a swap with no predecessor implementation must not be recorded: $swap")
+      case Outcome.Undetermined(reason) =>
+        fail(s"an absent predecessor is a refusal, not a could-not-determine: $reason")
 
   // ── Property: revert-restores-every-swapped-seam
   // spec: cutover-gate — Property: revert-restores-every-swapped-seam
@@ -133,3 +166,7 @@ final class CutoverRevertSpec extends ProbatioSuite:
 
   /** A swap history: the set of seams that have been swapped. */
   final case class SwapHistory(swappedSeams: Set[ToolId])
+
+  /** Run a git command; returns stdout trimmed. */
+  private def git(cwd: os.Path, args: List[String]): String =
+    os.proc("git" :: args).call(cwd = cwd).out.text().trim

@@ -64,29 +64,47 @@ final class HookCutoverSpec extends ProbatioSuite:
   // Non-oracle test: verifies that a ShimSwap with oracleGreen=false
   // represents an aborted swap (the swap was not performed).
   test("ShimSwap with oracleGreen=false represents an aborted swap"):
+    val regressionEvidence: DifferentialResult = DifferentialResult(
+      List(FileComparison("spec-lint.bats", 10, 3, 5, true, true)),
+      "/repo",
+      Set("spec-lint.bats")
+    )
     val abortedSwap: ShimSwap = ShimSwap(
       tool = ToolId.SpecLint,
       predecessorPath = "openspec/schemas/verified-scala3/scanner/spec-lint.sh",
       shimPath = "openspec/schemas/verified-scala3/scanner/spec-lint.sh",
       binaryPath = "/path/to/probatio",
-      oracleGreen = false,
+      comparison = CutoverGate.record(regressionEvidence),
       timestamp = "2026-08-28T10:00:00Z"
     )
-    assert(!abortedSwap.oracleGreen, "an aborted swap must have oracleGreen=false — the oracle regressed")
+    assert(!abortedSwap.oracleGreen, "an aborted swap must have oracleGreen=false — the comparison refused")
+    assert(
+      abortedSwap.comparison.verdict == CutoverVerdict.Revert(regressionEvidence),
+      "an aborted swap must record the refusing comparison"
+    )
     assert(abortedSwap.tool == ToolId.SpecLint, "the aborted swap must record which tool was attempted")
 
   // ── Requirement: Skill-doc updates are atomic with the shim swap
   // spec: hook-cutover — Scenario: A stale skill doc is detected
   test("ShimSwap records the oracle result that gated the swap"):
+    val parityEvidence: DifferentialResult = DifferentialResult(
+      List(FileComparison("chain-state.bats", 10, 3, 3, true, true)),
+      "/repo",
+      Set("chain-state.bats")
+    )
     val swap: ShimSwap = ShimSwap(
       tool = ToolId.ChainState,
       predecessorPath = "openspec/schemas/verified-scala3/scanner/chain-state.sh",
       shimPath = "openspec/schemas/verified-scala3/scanner/chain-state.sh",
       binaryPath = "/path/to/probatio",
-      oracleGreen = true,
+      comparison = CutoverGate.record(parityEvidence),
       timestamp = "2026-08-28T10:00:00Z"
     )
-    assert(swap.oracleGreen, "oracleGreen must be recorded in the swap audit trail")
+    assert(swap.oracleGreen, "oracleGreen must derive from the recorded comparison")
+    assert(
+      swap.comparison.verdict == CutoverVerdict.Proceed,
+      "the recorded comparison must be the one that gated the swap"
+    )
     assert(swap.tool == ToolId.ChainState, "tool must be recorded")
 
   // ── Property: oracle-green-at-every-step

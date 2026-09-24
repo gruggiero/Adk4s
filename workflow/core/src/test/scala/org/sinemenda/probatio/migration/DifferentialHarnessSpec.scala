@@ -651,8 +651,8 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
   // independent booleans they would otherwise be ~0.8% each.
   private def genSeamConfiguration: Gen[SeamConfiguration] =
     Gen.frequency1(
-      2 -> Gen.constant(SeamConfiguration.fromPorted(ToolId.swapOrder.toSet)),
-      2 -> Gen.constant(SeamConfiguration.fromPorted(Set.empty)),
+      3 -> Gen.constant(SeamConfiguration.fromPorted(ToolId.swapOrder.toSet)),
+      3 -> Gen.constant(SeamConfiguration.fromPorted(Set.empty)),
       9 -> genMixedSeamConfiguration
     )
 
@@ -739,7 +739,7 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
   /**
    * Build a minimal synthetic repository shaped like the real tree: an
    * `openspec/schemas/verified-scala3` directory with `scanner/`,
-   * `hooks/`, `tests/`, `bin/` and the five `*.predecessor.bak` files,
+   * `hooks/`, `tests/`, `bin/` and the seven `*.predecessor.bak` files,
    * plus a `workflow/` tree standing in for the ported implementation
    * sources; committed so `materialise` can worktree it at a real
    * baseline. Returns (repoRoot, schemaDir, baselineSha).
@@ -766,10 +766,11 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
     os.makeDir.all(tests)
     os.makeDir.all(binDir)
 
-    // Live invocations: the five swapped seams hold the ported exec shim —
-    // an exec into the origin's bin/probatio, as in the real tree.
-    os.write(scanner / "ledger.sh", "#!/usr/bin/env bash\necho synthetic-ledger\n")
-    os.write(scanner / "checkpoint.sh", "#!/usr/bin/env bash\necho synthetic-checkpoint\n")
+    // Live invocations: all seven swapped seams hold the ported exec
+    // shim — an exec into the origin's bin/probatio, as in the real
+    // tree after the ledger/checkpoint swap.
+    os.write(scanner / "ledger.sh", shim("ledger"))
+    os.write(scanner / "checkpoint.sh", shim("checkpoint"))
     os.write(scanner / "chain-state.sh", shim("chain-state"))
     os.write(scanner / "spec-lint.sh", shim("spec-lint"))
     os.write(scanner / "danger-scan.sh", shim("danger-scan"))
@@ -777,13 +778,15 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
     os.write(scanner / "install-skills.sh", "#!/usr/bin/env bash\necho synthetic-install-skills\n")
     os.write(hooks / "gate.sh", shim("gate"))
 
-    // Predecessor implementations for the five swapped seams. Ledger and
-    // checkpoint have none — their live file IS the predecessor.
+    // Predecessor implementations for the seven swapped seams — each
+    // preserved at its `*.predecessor.bak` revert-target path.
     val baks: List[(ToolId, os.Path)] = List(
+      ToolId.Ledger     -> (scanner / "ledger.sh.predecessor.bak"),
       ToolId.ChainState -> (scanner / "chain-state.sh.predecessor.bak"),
       ToolId.SpecLint   -> (scanner / "spec-lint.sh.predecessor.bak"),
       ToolId.DangerScan -> (scanner / "danger-scan.sh.predecessor.bak"),
       ToolId.Reconcile  -> (scanner / "reconcile.sh.predecessor.bak"),
+      ToolId.Checkpoint -> (scanner / "checkpoint.sh.predecessor.bak"),
       ToolId.Gate       -> (hooks / "gate.sh.predecessor.bak")
     )
     baks.foreach { case (tool: ToolId, path: os.Path) =>
@@ -828,6 +831,13 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
     os.write(
       repo / "workflow" / "cli" / "src" / "main" / "scala" / "org" / "sinemenda" / "probatio" / "cli" / "HarnessPayloadReader.scala",
       s"package org.sinemenda.probatio.cli\nobject HarnessPayloadReader { $payloadCwd }\n",
+      createFolders = true
+    )
+    // The ported dispatch surface the retargeted no-mutation test greps —
+    // an enum with no mutation cases and no mutation string literals.
+    os.write(
+      repo / "workflow" / "cli" / "src" / "main" / "scala" / "org" / "sinemenda" / "probatio" / "cli" / "Subcommand.scala",
+      "package org.sinemenda.probatio.cli\nenum Subcommand { case Ledger, Checkpoint }\n",
       createFolders = true
     )
 

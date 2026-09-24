@@ -858,3 +858,108 @@ object LedgerValidatorKernel:
     allEvidenced(requested, evidenced) && unresolvedCount == 0
   }.ensuring(granted => granted == (requested.forall(r => evidenced.contains(r)) && unresolvedCount == 0))
   // format: on
+
+  // ---------------------------------------------------------------------------
+  // Spec 8 — the swap authorisation decision
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Model of one exercising oracle file's comparison: whether each arm
+   * produced a result, and each arm's failure count. File names are
+   * abstracted away — a refusal names justifying files by position.
+   *
+   * spec: ledger-checkpoint-cutover — Formal Contracts (Ring 6)
+   */
+  case class SwapFileComparison(
+    predecessorPresent: Boolean,
+    portedPresent: Boolean,
+    predecessorFailures: BigInt,
+    portedFailures: BigInt
+  )
+
+  /**
+   * The swap-authorisation decision: `authorised` iff the comparison
+   * authorises the swap; `namedFiles` carries the positions of the
+   * files justifying a refusal (a file that is worse, or that at least
+   * one arm did not measure). A refusal always names at least one
+   * file — a decision without a named justification is not a refusal.
+   *
+   * spec: ledger-checkpoint-cutover — Formal Contracts (Ring 6)
+   */
+  case class SwapDecision(authorised: Boolean, namedFiles: List[BigInt])
+
+  /**
+   * Structural violation scan: the positions of the files justifying a
+   * refusal — a file unmeasured by either arm, or worse under the ported
+   * implementation. `offset` is the index of the head element in the
+   * whole list, so the returned positions index the original input.
+   * Written as a structural recursion so the equivalence to the
+   * `forall` formulation is a real proof obligation, not a restatement
+   * (ring6 experience §4).
+   *
+   * spec: ledger-checkpoint-cutover — Formal Contracts (Ring 6)
+   */
+  @pure
+  def swapViolationPositions(files: List[SwapFileComparison], offset: BigInt): List[BigInt] = {
+    decreases(files.size)
+    files match
+      case Nil() => Nil[BigInt]()
+      case Cons(h, t) =>
+        val rest: List[BigInt] = swapViolationPositions(t, offset + 1)
+        if !(h.predecessorPresent && h.portedPresent) || h.portedFailures > h.predecessorFailures
+        then Cons(offset, rest)
+        else rest
+  }
+
+  /**
+   * Induction principle: the violation scan is empty iff every file
+   * produced a result in both arms and no file is worse under the ported
+   * implementation. The recursive call supplies the induction
+   * hypothesis.
+   *
+   * spec: ledger-checkpoint-cutover — Formal Contracts (Ring 6)
+   */
+  @pure
+  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
+  def swapViolationPositionsEmptyIffClean(files: List[SwapFileComparison], offset: BigInt): Unit = {
+    decreases(files.size)
+    files match
+      case Nil()      => ()
+      case Cons(_, t) => swapViolationPositionsEmptyIffClean(t, offset + 1)
+  }.ensuring((_: Unit) =>
+    swapViolationPositions(files, offset).isEmpty ==
+      (files.forall(f => f.predecessorPresent && f.portedPresent) &&
+        files.forall(f => f.portedFailures <= f.predecessorFailures))
+  )
+  // format: on
+
+  /**
+   * The swap-authorisation decision over the seam's exercising files:
+   * authorised iff every file produced a result in both arms and no
+   * file fails more under the ported implementation than under the
+   * predecessor.
+   *
+   * An unmeasured file (either arm absent) makes the comparison
+   * incomplete — the swap is not authorised and the refusal names it.
+   * An empty file list is a degenerate input: the model authorises it
+   * vacuously, and the shipped driver refuses the swap upstream (a seam
+   * with no exercising file is never presented to this decision — the
+   * shipped `GateRecord.authorisesSwap` additionally requires
+   * `hasEvidence`).
+   *
+   * spec: ledger-checkpoint-cutover — Formal Contracts (Ring 6)
+   * spec: ledger-checkpoint-cutover — Contract: authoriseSwap
+   */
+  @pure
+  // format: off — scalafmt must not reflow .ensuring off the Stainless postcondition position
+  def authoriseSwap(files: List[SwapFileComparison]): SwapDecision = {
+    val named: List[BigInt] = swapViolationPositions(files, BigInt(0))
+    swapViolationPositionsEmptyIffClean(files, BigInt(0))
+    SwapDecision(named.isEmpty, named)
+  }.ensuring(result =>
+    result.authorised ==
+      (files.forall(f => f.predecessorPresent && f.portedPresent) &&
+        files.forall(f => f.portedFailures <= f.predecessorFailures)) &&
+      (!result.authorised ==> result.namedFiles.nonEmpty)
+  )
+  // format: on

@@ -74,7 +74,7 @@ final case class ClaimVerdict(
   command: String,
   baseline: String,
   verdict: String,
-  observed: List[Int]
+  observed: List[BigInt]
 )
 
 /**
@@ -159,12 +159,12 @@ final case class ReconcileReport private (
 
   /** Build a claim's verdict entry — the predecessor's verdict object. */
   private def verdictOf(c: ReconcileEngine.Classified): ClaimVerdict =
-    val observed: List[Int] = c.corroboration match
+    val observed: List[BigInt] = c.corroboration match
       case Corroboration.Witnessed(o, before, after) =>
         (before ++ (o :: after)).map(_.record.exit)
       case Corroboration.Contradicted(o, others) => (o :: others).map(_.record.exit)
       case Corroboration.Testimony | Corroboration.SelfObserved | Corroboration.Exempt =>
-        List.empty[Int]
+        List.empty[BigInt]
     ClaimVerdict(
       spec = c.record.record.spec,
       ring = c.record.record.ring,

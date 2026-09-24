@@ -282,7 +282,7 @@ object StdoutRenderer:
       "command"    -> ujson.Str(v.command),
       "baseline"   -> ujson.Str(v.baseline),
       "verdict"    -> ujson.Str(v.verdict),
-      "observed"   -> ujson.Arr(v.observed.map((e: Int) => ujson.Num(e.toDouble))*)
+      "observed"   -> ujson.Arr(v.observed.map((e: BigInt) => ujson.Num(e.toDouble))*)
     )
     ujson.write(
       ujson.Obj(

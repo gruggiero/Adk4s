@@ -123,12 +123,15 @@ final class ConformanceBridgeSpec extends ProbatioSuite:
   // ── Field validators for the model bridge ────────────────────────────────
 
   private def isValidV(v: ujson.Value): Boolean = v match
-    case n: ujson.Num if n.value == n.value.floor && n.value.isValidInt && n.value.toInt >= 1 => true
-    case _                                                                                    => false
+    // The contract's `(.v | floor) == .v && .v >= 1`: the domain is the
+    // whole doubles (isWhole), not Int32.
+    case n: ujson.Num if n.value.isWhole && BigDecimal(n.value) >= 1 => true
+    case _                                                           => false
 
   private def isValidTs(v: ujson.Value): Boolean = v match
-    case s: ujson.Str if s.value.matches("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$""") => true
-    case _                                                                                     => false
+    // The contract's shape is strict — no fractional-seconds form.
+    case s: ujson.Str if s.value.matches("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""") => true
+    case _                                                                             => false
 
   private def isValidChange(v: ujson.Value): Boolean = v match
     case s: ujson.Str if s.value.nonEmpty && !s.value.contains('/') && !s.value.contains('\\') => true
@@ -147,8 +150,8 @@ final class ConformanceBridgeSpec extends ProbatioSuite:
     case _                                => false
 
   private def isIntegerValue(v: ujson.Value): Boolean = v match
-    case n: ujson.Num if n.value == n.value.floor && n.value.isValidInt => true
-    case _                                                              => false
+    case n: ujson.Num if n.value.isWhole => true
+    case _                               => false
 
   private def isValidBaseline(v: ujson.Value): Boolean = v match
     case s: ujson.Str if s.value.matches("""^[0-9a-f]{7,40}$""") => true

@@ -32,6 +32,23 @@ final class SubcommandTypeContract extends ProbatioCliSuite:
     val err: String = compileErrors("Subcommand.edit")
     assert(err.nonEmpty, "Subcommand.edit should not exist — append-only invariant")
 
+  // ── Compile-Negative (spec 8): a mutation operation on the evidence
+  //    record ──────────────────────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Compile-Negative: A mutation operation on the evidence record
+  // The enum-case negatives above already pin that `update`/`delete`/
+  // `rewrite`/`edit` are not constructible. The spec's literal form
+  // `Subcommand.fromString("update")` COMPILES — `fromString` is the
+  // public parser and yields `Left` for unknown names — so the
+  // obligation is enforced where it can be: parsing cannot produce a
+  // mutation operation either.
+  test("no mutation operation exists: every mutation name is unparseable"):
+    List("update", "delete", "rewrite", "edit").foreach { token =>
+      assert(
+        Subcommand.fromString(token).isLeft,
+        s"'$token' must not parse to a subcommand — the record is append-only"
+      )
+    }
+
   // ── No exit code outside {0,1,2} — the enum has exactly three cases
   test("ExitCode has no fourth case"):
     val err: String = compileErrors("ExitCode.FourthCase")

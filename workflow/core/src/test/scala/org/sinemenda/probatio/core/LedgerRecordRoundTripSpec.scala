@@ -63,55 +63,35 @@ final class LedgerRecordRoundTripSpec extends ProbatioSuite:
   private val genHex64: Gen[String] =
     Gen.string(Gen.char('a', 'f'), Range.constant(64, 64))
 
-  private def genOptString(shape: Int): Gen[Option[String]] =
-    if shape == 0 then Gen.constant(Option.empty[String])
-    else if shape == 5 then genHex64.map((s: String) => Option(s))
-    else
-      Gen.frequency1(
-        50 -> genHex64.map((s: String) => Option(s)),
-        50 -> Gen.constant(Option.empty[String])
-      )
+  /**
+   * The optional-field subset as a 5-bit mask — bit i set ⇒ field i
+   * present (1=sha256, 2=digest, 4=wallTime, 8=source, 16=session).
+   * A mask names ONE point of the 32-subset power set, so interior
+   * combinations are reachable uniformly rather than by coincidence
+   * of five independent coin flips.
+   */
+  private def genOptionalMask: Gen[Int] =
+    Gen.frequency1(
+      30 -> Gen.constant(0),
+      25 -> Gen.constant(31),
+      45 -> Gen.int(Range.linear(1, 30))
+    )
 
-  private def genOptWallTime(shape: Int): Gen[Option[Int]] =
-    if shape == 0 then Gen.constant(Option.empty[Int])
-    else if shape == 5 then Gen.int(Range.linear(0, 60000)).map((n: Int) => Option(n))
-    else
-      Gen.frequency1(
-        50 -> Gen.int(Range.linear(0, 60000)).map((n: Int) => Option(n)),
-        50 -> Gen.constant(Option.empty[Int])
-      )
-
-  private def genOptSource(shape: Int): Gen[Option[String]] =
-    if shape == 0 then Gen.constant(Option.empty[String])
-    else if shape == 5 then Gen.constant(Option("ambient"))
-    else
-      Gen.frequency1(
-        40 -> Gen.constant(Option("ambient")),
-        60 -> Gen.constant(Option.empty[String])
-      )
-
-  private def genOptSession(shape: Int): Gen[Option[String]] =
-    if shape == 0 then Gen.constant(Option.empty[String])
-    else if shape == 5 then genNonEmptyString.map((s: String) => Option(s))
-    else
-      Gen.frequency1(
-        40 -> genNonEmptyString.map((s: String) => Option(s)),
-        60 -> Gen.constant(Option.empty[String])
-      )
+  private def optWhen[A](present: Boolean, g: Gen[A]): Gen[Option[A]] =
+    if present then g.map((a: A) => Option(a)) else Gen.constant(Option.empty[A])
 
   /**
    * `genLedgerRecord` — constructive: all ten required fields inside
-   * their contract domains, each of the five optional fields
-   * independently present or absent, with a shape selector so the
-   * all-absent / all-present / mixed cover classes each occur at spec
-   * rates. `source` is generated only as `"ambient"` (the sole
-   * contract-valid value); `session` is forced present for R8 rows
-   * (clause 14 requires it).
+   * their contract domains, the five optional fields present or
+   * absent per the drawn mask (every mask value is reachable —
+   * the full 32-subset power set is enumerated deterministically by
+   * the dedicated power-set test below). `source` is generated only
+   * as `"ambient"` (the sole contract-valid value); `session` is
+   * forced present for R8 rows (clause 14 requires it).
    */
   val genLedgerRecord: Gen[LedgerRecord] =
     for
-      // 0 = all five absent, 5 = all five present, -1 = mixed per-field
-      shape      <- Gen.frequency1(30 -> Gen.constant(0), 25 -> Gen.constant(5), 45 -> Gen.constant(-1))
+      mask       <- genOptionalMask
       change     <- genNonEmptyString
       spec       <- genNonEmptyString
       ring       <- genRing
@@ -121,11 +101,11 @@ final class LedgerRecordRoundTripSpec extends ProbatioSuite:
       exit       <- Gen.int(Range.linear(-9, 99))
       baseline   <- genBaseline
       ts         <- genTimestamp
-      sha256     <- genOptString(shape)
-      digest     <- genOptString(shape)
-      wallTime   <- genOptWallTime(shape)
-      source     <- genOptSource(shape)
-      session    <- genOptSession(shape)
+      sha256     <- optWhen((mask & 1) != 0, genHex64)
+      digest     <- optWhen((mask & 2) != 0, genHex64)
+      wallTime   <- optWhen((mask & 4) != 0, Gen.int(Range.linear(0, 60000)))
+      source     <- optWhen((mask & 8) != 0, Gen.constant("ambient"))
+      session    <- optWhen((mask & 16) != 0, genNonEmptyString)
     yield
       val sessionForRing: Option[String] =
         if ring == Ring.R8 then session.orElse(Some("reviewer-session")) else session
@@ -193,7 +173,44 @@ final class LedgerRecordRoundTripSpec extends ProbatioSuite:
       upickle.default.read[LedgerRecord](written)
     assertEquals(readBack.optional.sha256, Some("a" * 64))
     assertEquals(readBack.optional.digest, Some("b" * 64))
-    assertEquals(readBack.optional.wallTime, Some(42))
+    assertEquals(readBack.optional.wallTime, Some(BigInt(42)))
+    assertEquals(readBack.optional.session, Some("sess-1"))
+
+  // ── Scenario: Edge case — a record carrying every optional field
+  //    round-trips ─────────────────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Scenario: Edge case — a record carrying only the optional fields round-trips
+
+  test("a record carrying every optional field round-trips equal — all five present"):
+    val record: LedgerRecord =
+      LedgerRecord
+        .from(
+          ujson.Obj(
+            "v"          -> ujson.Num(1),
+            "ts"         -> ujson.Str("2026-09-24T00:00:00Z"),
+            "change"     -> ujson.Str("c"),
+            "spec"       -> ujson.Str("s"),
+            "ring"       -> ujson.Str("R1"),
+            "obligation" -> ujson.Str("o"),
+            "artifact"   -> ujson.Str("a"),
+            "command"    -> ujson.Str("true"),
+            "exit"       -> ujson.Num(0),
+            "baseline"   -> ujson.Str("abc1234"),
+            "sha256"     -> ujson.Str("a" * 64),
+            "digest"     -> ujson.Str("b" * 64),
+            "wallTime"   -> ujson.Num(42),
+            "source"     -> ujson.Str("ambient"),
+            "session"    -> ujson.Str("sess-1")
+          )
+        )
+        .getOrElse(fail("a valid record must construct"))
+    val written: String        = upickle.default.write(record)
+    val readBack: LedgerRecord = upickle.default.read[LedgerRecord](written)
+    // Full equality — every optional field that was present survives.
+    assertEquals(readBack, record)
+    assertEquals(readBack.optional.sha256, Some("a" * 64))
+    assertEquals(readBack.optional.digest, Some("b" * 64))
+    assertEquals(readBack.optional.wallTime, Some(BigInt(42)))
+    assertEquals(readBack.optional.source, Some("ambient"))
     assertEquals(readBack.optional.session, Some("sess-1"))
 
   // ── Scenario: Adversarial — the observation fields are not silently
@@ -310,6 +327,47 @@ final class LedgerRecordRoundTripSpec extends ProbatioSuite:
       Result
         .assert(readBack == r)
         .log(s"round-trip mismatch\n  wrote: $written\n  read:  $readBack\n  want:  $r")
+
+  // ── Property support — the optional-field power set is enumerated,
+  //    not sampled ────────────────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Property: record-round-trips-all-present-fields
+  // The spec's generator strategy draws the optional-field subset
+  // "constructively over the full power set rather than sampled, so
+  // every combination of present and absent optional fields is
+  // covered". A property draw cannot guarantee all 32 subsets land on
+  // one run — so the enumeration is deterministic: all 32 masks are
+  // exercised on every run, and each subset's record must round-trip
+  // exactly.
+
+  test("the optional-field power set round-trips — all 32 subsets enumerated"):
+    (0 until 32).foreach { (mask: Int) =>
+      val json: ujson.Obj = ujson.Obj(
+        "v"          -> ujson.Num(1),
+        "ts"         -> ujson.Str("2026-09-24T00:00:00Z"),
+        "change"     -> ujson.Str("c"),
+        "spec"       -> ujson.Str("s"),
+        "ring"       -> ujson.Str("R1"),
+        "obligation" -> ujson.Str("o"),
+        "artifact"   -> ujson.Str("a"),
+        "command"    -> ujson.Str("true"),
+        "exit"       -> ujson.Num(0),
+        "baseline"   -> ujson.Str("abc1234")
+      )
+      if (mask & 1) != 0 then json.value("sha256") = ujson.Str("a" * 64)
+      if (mask & 2) != 0 then json.value("digest") = ujson.Str("b" * 64)
+      if (mask & 4) != 0 then json.value("wallTime") = ujson.Num(42)
+      if (mask & 8) != 0 then json.value("source") = ujson.Str("ambient")
+      if (mask & 16) != 0 then json.value("session") = ujson.Str("sess-1")
+      val record: LedgerRecord =
+        LedgerRecord.from(json).getOrElse(fail(s"mask $mask is a lawful record — it must construct"))
+      val readBack: LedgerRecord =
+        upickle.default.read[LedgerRecord](upickle.default.write(record))
+      assertEquals(
+        readBack,
+        record,
+        s"optional-subset mask $mask must round-trip with full equality"
+      )
+    }
 
   // ── Adversarial — reading never maps an invalid row to a record ──────
 

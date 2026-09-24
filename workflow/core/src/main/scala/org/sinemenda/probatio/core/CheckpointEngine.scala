@@ -65,20 +65,20 @@ object CheckpointEngine:
     implementingSession: Option[SessionId]
   ): RingEvidence =
     lastRecord match
-      case None => RingEvidence(ring, RingStatus.Unevidenced, None, None)
+      case None => RingEvidence.unevidenced(ring)
       case Some(record) =>
         val byExit: RingStatus =
           if record.exit == 0 then RingStatus.Green else RingStatus.Failed
-        if ring != Ring.R8 then RingEvidence(ring, byExit, Some(record), None)
+        if ring != Ring.R8 then RingEvidence.evidenced(ring, byExit, record, None)
         else
           implementingSession match
             case None =>
               // No implementing session — cannot verify fresh-context;
               // report the limitation, never green.
-              RingEvidence(
+              RingEvidence.evidenced(
                 ring,
                 if record.exit == 0 then RingStatus.UnverifiedSession else RingStatus.Failed,
-                Some(record),
+                record,
                 Some(
                   "No implementing session provided to checkpoint — cannot verify fresh-context, requires explicit human attestation of freshness"
                 )
@@ -88,27 +88,27 @@ object CheckpointEngine:
                 case None =>
                   // A session-less R8 row should have been rejected by the
                   // contract; if a legacy row slipped through, flag it.
-                  RingEvidence(
+                  RingEvidence.evidenced(
                     ring,
                     RingStatus.SameSession,
-                    Some(record),
+                    record,
                     Some("R8 row has no session field — cannot verify fresh-context")
                   )
                 case Some(sess) if sess == impl.raw =>
-                  RingEvidence(
+                  RingEvidence.evidenced(
                     ring,
                     RingStatus.SameSession,
-                    Some(record),
+                    record,
                     Some(
                       s"R8 review recorded in same session as implementation — no fresh-context evidence (session: $sess)"
                     )
                   )
                 case Some(sess) =>
                   if sess.startsWith("ppid-") then
-                    RingEvidence(
+                    RingEvidence.evidenced(
                       ring,
                       if record.exit == 0 then RingStatus.UnverifiedSession else RingStatus.Failed,
-                      Some(record),
+                      record,
                       Some(
                         s"R8 session is the PPID fallback ($sess) — unverified session source, requires explicit human attestation of freshness"
                       )
@@ -116,7 +116,7 @@ object CheckpointEngine:
                   else
                     // A different, non-ppid verified session — green or
                     // failed by the row's exit like any other ring.
-                    RingEvidence(ring, byExit, Some(record), None)
+                    RingEvidence.evidenced(ring, byExit, record, None)
 
   /**
    * The marker decision, mirrored by `LedgerValidatorKernel.markerDecision`:

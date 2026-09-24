@@ -162,7 +162,7 @@ final class ReconcileEngineSpec extends ProbatioSuite:
         assert(observer eq witness)
         assert(preceding.exists(_ eq dissent) && following.isEmpty)
       case other => fail(s"expected Witnessed, got $other")
-    assertEquals(report.witnessed.map(_.observed), List(List(1, 0)))
+    assertEquals(report.witnessed.map(_.observed), List(List(BigInt(1), BigInt(0))))
 
   test("a witness at the same key but a different command does not corroborate"):
     val claim: ValidatedRecord   = record(key(command = "sbt test"), "chg", exit = 0, RecKind.Written)
@@ -208,11 +208,11 @@ final class ReconcileEngineSpec extends ProbatioSuite:
     classOf(report, claim) match
       case Corroboration.Contradicted(observer, others) =>
         assert(observer eq witness)
-        assertEquals((observer :: others).map(_.record.exit), List(1))
+        assertEquals((observer :: others).map(_.record.exit), List(BigInt(1)))
       case other => fail(s"expected Contradicted, got $other")
     assertEquals(report.contradicted.length, 1)
     assertEquals(report.testimony, Nil)
-    assertEquals(report.contradicted.map(_.observed), List(List(1)))
+    assertEquals(report.contradicted.map(_.observed), List(List(BigInt(1))))
 
   // ── Scenario: a judgment ring is exempt ─────────────────────────────
   // spec: danger-reconcile-engines — Scenario: Edge case — a judgment ring is exempt

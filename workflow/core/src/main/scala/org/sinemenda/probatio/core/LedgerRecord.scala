@@ -22,7 +22,7 @@ import upickle.default.*
  * spec: ledger-checkpoint-parity — Compile-Negative: The encoder writes the ten required fields without joining the optional group
  */
 final case class LedgerRecord private[core] (
-  v: Int,
+  v: BigInt,
   ts: String,
   change: String,
   spec: String,
@@ -30,7 +30,7 @@ final case class LedgerRecord private[core] (
   obligation: String,
   artifact: String,
   command: String,
-  exit: Int,
+  exit: BigInt,
   baseline: String,
   optional: LedgerRecordOptional
 )
@@ -43,7 +43,7 @@ final case class LedgerRecord private[core] (
 final case class LedgerRecordOptional(
   sha256: Option[String] = None,
   digest: Option[String] = None,
-  wallTime: Option[Int] = None,
+  wallTime: Option[BigInt] = None,
   source: Option[String] = None,
   session: Option[String] = None
 )
@@ -96,10 +96,12 @@ object LedgerRecordOptional:
   private def intField(
     fields: Map[String, ujson.Value],
     name: String
-  ): Either[ContractViolation, Option[Int]] =
+  ): Either[ContractViolation, Option[BigInt]] =
     fields.get(name) match
-      case Some(num: ujson.Num) if num.value == num.value.floor && num.value.isValidInt =>
-        Right(Some(num.value.toInt))
+      // The contract's `(.x | floor) == .x` accepts every integral JSON
+      // number — the whole-double domain, not Int32.
+      case Some(num: ujson.Num) if num.value.isWhole =>
+        Right(Some(BigDecimal(num.value).toBigInt))
       case Some(_) =>
         Left(
           ContractViolation.OptionalFieldTypeInvalid(description = s"$name must be an integer when present")
@@ -136,7 +138,7 @@ object LedgerRecord:
   given ReadWriter[LedgerRecord] = readwriter[ujson.Value].bimap(
     (r: LedgerRecord) =>
       val obj: ujson.Obj = ujson.Obj(
-        "v"          -> ujson.Num(r.v),
+        "v"          -> ujson.Num(r.v.toDouble),
         "ts"         -> ujson.Str(r.ts),
         "change"     -> ujson.Str(r.change),
         "spec"       -> ujson.Str(r.spec),
@@ -144,12 +146,12 @@ object LedgerRecord:
         "obligation" -> ujson.Str(r.obligation),
         "artifact"   -> ujson.Str(r.artifact),
         "command"    -> ujson.Str(r.command),
-        "exit"       -> ujson.Num(r.exit),
+        "exit"       -> ujson.Num(r.exit.toDouble),
         "baseline"   -> ujson.Str(r.baseline)
       )
       r.optional.sha256.foreach((s: String) => obj.value("sha256") = ujson.Str(s))
       r.optional.digest.foreach((s: String) => obj.value("digest") = ujson.Str(s))
-      r.optional.wallTime.foreach((n: Int) => obj.value("wallTime") = ujson.Num(n.toDouble))
+      r.optional.wallTime.foreach((n: BigInt) => obj.value("wallTime") = ujson.Num(n.toDouble))
       r.optional.source.foreach((s: String) => obj.value("source") = ujson.Str(s))
       r.optional.session.foreach((s: String) => obj.value("session") = ujson.Str(s))
       obj

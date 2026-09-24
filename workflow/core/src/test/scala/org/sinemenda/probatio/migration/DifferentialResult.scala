@@ -72,3 +72,24 @@ final case class DifferentialResult(
   /** The names of files that are worse, for evidence reporting. */
   def worseFileNames: List[String] =
     worseFiles.map(_.fileName)
+
+  /**
+   * The files where at least one arm produced no result. An unmeasured
+   * file is not a regression — but a swap MUST NOT proceed on it, and a
+   * refusal must be able to name it (spec 8).
+   *
+   * spec: ledger-checkpoint-cutover — Scenario: A swap on an unmeasured file is refused
+   */
+  def unmeasuredFiles: List[FileComparison] =
+    files.filter(f => !(f.predecessorPresent && f.portedPresent))
+
+  /**
+   * The names of every file justifying a refusal: the worse files plus
+   * the unmeasured files, in suite order, deduplicated. A refusal
+   * always names at least one file (the swap decision is justified).
+   *
+   * spec: ledger-checkpoint-cutover — Scenario: A swap on an unmeasured file is refused
+   * spec: ledger-checkpoint-cutover — Scenario: A seam with one worse file is not swapped
+   */
+  def justifyingFileNames: List[String] =
+    (worseFileNames ++ unmeasuredFiles.map(_.fileName)).distinct

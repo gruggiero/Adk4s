@@ -65,12 +65,18 @@ final class LedgerCheckpointParityTypeContract extends ProbatioSuite:
     RingStatus.token
 
   // ── RingEvidence — one ring's evidence, traced to a record ──────────
-  val ringEvidenceApplySig: (
+  // The raw constructor is private: the only routes are `unevidenced`
+  // (no outcome, no record) and `evidenced` (a REQUIRED record — an
+  // outcome-bearing entry without evidence is unconstructible).
+  val ringEvidenceUnevidencedSig: Ring => RingEvidence =
+    RingEvidence.unevidenced
+
+  val ringEvidenceEvidencedSig: (
     Ring,
     RingStatus,
-    Option[LedgerRecord],
+    LedgerRecord,
     Option[String]
-  ) => RingEvidence = RingEvidence.apply
+  ) => RingEvidence = RingEvidence.evidenced
 
   val ringEvidenceFieldsSig: RingEvidence => (
     Ring,
@@ -88,7 +94,7 @@ final class LedgerCheckpointParityTypeContract extends ProbatioSuite:
   val unreplayableRingsSig: Set[Ring] =
     ReplayVerdict.unreplayableRings
 
-  val classifySig: (Ring, Option[Int], Int) => ReplayVerdict =
+  val classifySig: (Ring, Option[Int], BigInt) => ReplayVerdict =
     ReplayVerdict.classify
 
   // ── CheckpointReport — private constructor, single smart route ──────
@@ -284,3 +290,22 @@ final class LedgerCheckpointParityTypeContract extends ProbatioSuite:
     assertEquals(a.raw, "session/a+b=c")
     assertNotEquals(a.encoded, b.encoded, "distinct identities must not collide")
     assert(a.encoded.forall((c: Char) => c.isLetterOrDigit || c == '-' || c == '_' || c == '.'))
+
+  // ── Compile-Negative (spec 8): a checkpoint entry asserting an
+  //    outcome with no evidence ─────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Compile-Negative: A checkpoint entry asserting an outcome with no evidence
+  // The raw constructor is private (RingEvidence is a final class — `copy`
+  // cannot be suppressed on a case class), so an outcome-bearing entry
+  // without its record is unconstructible: the only paths are
+  // `unevidenced` (no outcome) and `evidenced` (a required record).
+  test("compile-negative: an outcome-bearing RingEvidence without its record is unconstructible"):
+    val err: String = compileErrors("RingEvidence(Ring.R0, RingStatus.Green, None, None)")
+    assert(
+      err.nonEmpty,
+      "RingEvidence(R0, Green, None, None) should not compile — an outcome-bearing entry requires its evidence"
+    )
+    val err2: String = compileErrors("RingEvidence.unevidenced(Ring.R0).copy(status = RingStatus.Green)")
+    assert(
+      err2.nonEmpty,
+      "RingEvidence is a final class — there is no public `copy` to strip the record off an entry"
+    )

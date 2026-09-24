@@ -471,7 +471,7 @@ final class GateDecisionSpec extends ProbatioSuite:
   // spec: completion-witness-refusal — Scenario: Adversarial — a second attempt in the same turn is not refused
   test("a spent budget does not refuse again on the same warrant"):
     val claim: ClaimVerdict =
-      ClaimVerdict("sp", Ring.R3, "obl", "cmd", "base", "testimony", List.empty[Int])
+      ClaimVerdict("sp", Ring.R3, "obl", "cmd", "base", "testimony", List.empty[BigInt])
     assertEquals(
       GateDecisions.decideCompletion(
         WitnessVerdict.Unwitnessed(claim),
@@ -536,7 +536,7 @@ final class GateDecisionSpec extends ProbatioSuite:
               Result.failure.log("a readable report can never be undeterminable")
             case _ =>
               Result.success
-            // danger-scan:allow verdict-shape — Witnessed/Unwitnessed are both reachable verdicts
+          // danger-scan:allow verdict-shape — Witnessed/Unwitnessed are both reachable verdicts
         )
         .and(
           decision match
@@ -546,7 +546,7 @@ final class GateDecisionSpec extends ProbatioSuite:
               )
             case _ =>
               Result.success
-            // danger-scan:allow decision-shape — only a refusal carries a named row
+          // danger-scan:allow decision-shape — only a refusal carries a named row
         )
 
   // ── Property: unreadable-state-never-refuses ────────────────────────

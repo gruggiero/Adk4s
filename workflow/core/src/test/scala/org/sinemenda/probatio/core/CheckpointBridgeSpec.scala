@@ -1,5 +1,14 @@
 package org.sinemenda.probatio.core
 
+import hedgehog.Gen
+import hedgehog.Range
+import hedgehog.Result
+import org.sinemenda.probatio.migration.CutoverGate
+import org.sinemenda.probatio.migration.CutoverVerdict
+import org.sinemenda.probatio.migration.DifferentialResult
+import org.sinemenda.probatio.migration.FileComparison
+import org.sinemenda.probatio.migration.GateRecord
+import org.sinemenda.probatio.migration.SeamTypes
 import org.sinemenda.probatio.verified.LedgerValidatorKernel
 
 import scala.collection.immutable.List as ScalaList
@@ -106,3 +115,63 @@ final class CheckpointBridgeSpec extends ProbatioSuite:
       CheckpointEngine.markerDecision(ScalaList.empty, ScalaList.empty, 0),
       "no requested rings + no unresolved = granted"
     )
+
+  // ── Spec 8: the swap-authorisation decision ─────────────────────────
+  // spec: ledger-checkpoint-cutover — Contract: authoriseSwap
+  //
+  // The bridge binds the shipped `CutoverGate.authoriseSwap` — the
+  // seam-scoped decision the swap record rests on — to its PureScala
+  // mirror `LedgerValidatorKernel.authoriseSwap`. The mirror abstracts
+  // file names away: `namedFiles` carries the positions of justifying
+  // files (worse or unmeasured), compared index-for-index against the
+  // shipped `justifyingFileNames`.
+  //
+  // Every generated file exercises the seam, so the shipped record's
+  // scoped evidence IS the generated file list. The mirror's `authorised`
+  // corresponds to the shipped verdict Proceed (on a non-empty file set
+  // that equals `authorisesSwap`).
+
+  property("bridge-authorise-swap — shipped record agrees with the verified mirror"):
+    for files <- Gen.list(genBridgeSwapFile, Range.linear(1, 8)).forAll
+    yield
+      val seam: SeamTypes.ToolId = SeamTypes.ToolId.Ledger
+      val d: DifferentialResult  = DifferentialResult(files, "/repo", files.map(_.fileName).toSet)
+      val exercising: Map[String, Set[String]] =
+        files.map((f: FileComparison) => f.fileName -> Set(SeamTypes.ToolId.seamPath(seam))).toMap
+      val record: GateRecord = CutoverGate.authoriseSwap(seam, d, exercising)
+      val modelFiles: stainless.collection.List[LedgerValidatorKernel.SwapFileComparison] =
+        stainless.collection.List.fromScala(
+          files.map((f: FileComparison) =>
+            LedgerValidatorKernel.SwapFileComparison(
+              f.predecessorPresent,
+              f.portedPresent,
+              BigInt(f.predecessorFailures),
+              BigInt(f.portedFailures)
+            )
+          )
+        )
+      val model: LedgerValidatorKernel.SwapDecision = LedgerValidatorKernel.authoriseSwap(modelFiles)
+      val shippedProceeds: Boolean                  = record.verdict == CutoverVerdict.Proceed
+      val justifyingIdxs: Set[Int] =
+        record.evidence.files.zipWithIndex.collect {
+          case (f: FileComparison, i: Int) if f.isWorse || !(f.predecessorPresent && f.portedPresent) => i
+        }.toSet
+      Result
+        .assert(model.authorised == shippedProceeds)
+        .log(s"model.authorised=${model.authorised} shipped=${record.verdict} files=$files")
+        .and(
+          Result
+            .assert(model.namedFiles.toScala.map((b: BigInt) => b.toInt).toSet == justifyingIdxs)
+            .log(s"model named=${model.namedFiles} shipped justifying positions=$justifyingIdxs")
+        )
+
+  /** Per-file comparison triples with independent presence flags. */
+  def genBridgeSwapFile: Gen[FileComparison] =
+    for
+      name  <- Gen.string(Gen.alpha, Range.linear(3, 10)).map(s => s"$s.bats")
+      total <- Gen.int(Range.linear(1, 40))
+      pred  <- Gen.int(Range.linear(0, total))
+      port  <- Gen.int(Range.linear(0, total))
+      predP <- Gen.frequency1(4 -> Gen.constant(true), 1 -> Gen.constant(false))
+      portP <- Gen.frequency1(4 -> Gen.constant(true), 1 -> Gen.constant(false))
+    yield FileComparison(name, total, pred, port, predP, portP)

@@ -39,7 +39,7 @@ object ReplayVerdict:
    *
    * spec: ledger-checkpoint-parity — Scenario: a record on a judgment ring is unreplayable, not failing
    */
-  def classify(ring: Ring, replayedExit: Option[Int], recordedExit: Int): ReplayVerdict =
+  def classify(ring: Ring, replayedExit: Option[Int], recordedExit: BigInt): ReplayVerdict =
     if unreplayableRings.contains(ring) then ReplayVerdict.Unreplayable
     else byExit(replayedExit, recordedExit)
 
@@ -49,12 +49,12 @@ object ReplayVerdict:
    * judgment ring (never silently `Unreplayable`): it is replayed and
    * judged by exit like any runnable row.
    */
-  def classifyName(ring: String, replayedExit: Option[Int], recordedExit: Int): ReplayVerdict =
+  def classifyName(ring: String, replayedExit: Option[Int], recordedExit: BigInt): ReplayVerdict =
     if Ring.fromString(ring).exists(unreplayableRings.contains) then ReplayVerdict.Unreplayable
     else byExit(replayedExit, recordedExit)
 
   /** The exit comparison shared by both classifiers. */
-  private def byExit(replayedExit: Option[Int], recordedExit: Int): ReplayVerdict =
+  private def byExit(replayedExit: Option[Int], recordedExit: BigInt): ReplayVerdict =
     replayedExit match
       case None => ReplayVerdict.Unreplayable
       case Some(observed) =>

@@ -587,6 +587,240 @@ final class CutoverGateSpec extends ProbatioSuite:
             .log("the result count equals the number of files satisfying the condition")
         )
 
+  // ════════════════════════════════════════════════════════════════════════
+  // spec 8 — ledger-checkpoint-cutover: the per-seam swap authorisation
+  // ════════════════════════════════════════════════════════════════════════
+  // Written from the spec's scenarios and the approved Step-1 contract —
+  // NOT from the implementation. `authoriseSwap` scopes the comparison to
+  // the files exercising the seam, then decides and records.
+
+  private def exercisingMap(files: List[FileComparison], seam: ToolId): Map[String, Set[String]] =
+    files.map((f: FileComparison) => f.fileName -> Set(ToolId.seamPath(seam))).toMap
+
+  // ── Scenario: Happy path — a seam whose files are at parity is swapped
+  // spec: ledger-checkpoint-cutover — Scenario: Happy path — a seam whose files are at parity is swapped
+  test("a seam whose exercising files are at parity is swapped and records the comparison"):
+    val exercising: List[FileComparison] = List(
+      FileComparison("evidence-ledger.bats", 23, 0, 0, true, true),
+      FileComparison("checkpoint-from-ledger.bats", 19, 0, 0, true, true)
+    )
+    // A file that does NOT exercise the seam is out of scope — worse or
+    // not, it cannot gate this seam's swap.
+    val unrelatedWorse: FileComparison =
+      FileComparison("other-seam.bats", 10, 2, 9, true, true)
+    val d: DifferentialResult = DifferentialResult(
+      exercising :+ unrelatedWorse,
+      "/repo",
+      (exercising :+ unrelatedWorse).map(_.fileName).toSet
+    )
+    val exercisingPaths: Map[String, Set[String]] =
+      exercisingMap(exercising, ToolId.Ledger)
+    val record: GateRecord = CutoverGate.authoriseSwap(ToolId.Ledger, d, exercisingPaths)
+    assert(record.authorisesSwap, s"a parity comparison must authorise the swap: $record")
+    assertEquals(record.verdict, CutoverVerdict.Proceed)
+    // The decision records the comparison it rested on — the scoped
+    // evidence, not the whole-suite result.
+    assertEquals(
+      record.evidence.files.map(_.fileName).toSet,
+      exercising.map(_.fileName).toSet,
+      "the recorded comparison must be scoped to the seam's exercising files"
+    )
+
+  // ── Scenario: Adversarial — a seam with one worse file is not swapped
+  // spec: ledger-checkpoint-cutover — Scenario: Adversarial — a seam with one worse file is not swapped
+  test("a seam with one worse exercising file is not swapped — the refusal names it"):
+    val exercising: List[FileComparison] = List(
+      FileComparison("evidence-ledger.bats", 23, 0, 0, true, true),
+      FileComparison("checkpoint-from-ledger.bats", 19, 0, 2, true, true)
+    )
+    val d: DifferentialResult = DifferentialResult(
+      exercising,
+      "/repo",
+      exercising.map(_.fileName).toSet
+    )
+    val record: GateRecord =
+      CutoverGate.authoriseSwap(ToolId.Checkpoint, d, exercisingMap(exercising, ToolId.Checkpoint))
+    assert(!record.authorisesSwap, s"a worse exercising file must refuse the swap: $record")
+    record.verdict match
+      case CutoverVerdict.Revert(_) => () // the refusal carries its evidence
+      case CutoverVerdict.Proceed   => fail("a regression must not proceed")
+    assertEquals(
+      record.evidence.justifyingFileNames,
+      List("checkpoint-from-ledger.bats"),
+      "the refusal must name the worse file"
+    )
+
+  // ── Scenario: Adversarial — a seam with an unmeasured file is not swapped
+  // spec: ledger-checkpoint-cutover — Scenario: Adversarial — a seam with an unmeasured file is not swapped
+  test("a seam with an unmeasured exercising file is not swapped — the refusal names it"):
+    val exercising: List[FileComparison] = List(
+      FileComparison("evidence-ledger.bats", 23, 0, 0, true, true),
+      FileComparison("discharge-fidelity.bats", 11, 0, 0, false, true)
+    )
+    val d: DifferentialResult = DifferentialResult(
+      exercising,
+      "/repo",
+      exercising.map(_.fileName).toSet
+    )
+    val record: GateRecord = CutoverGate.authoriseSwap(ToolId.Ledger, d, exercisingMap(exercising, ToolId.Ledger))
+    assert(!record.authorisesSwap, s"an unmeasured file must refuse the swap: $record")
+    assertEquals(
+      record.evidence.justifyingFileNames,
+      List("discharge-fidelity.bats"),
+      "the refusal must name the unmeasured file — an absent result is not parity"
+    )
+
+  // ── Scenario: Adversarial — an exercising file with no comparison row
+  //    is not swapped ──────────────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Scenario: Adversarial — a seam with an unmeasured file is not swapped
+  // The expected scope is the exercising map's DOMAIN: a file that
+  // exercises the seam but produced no comparison row at all is
+  // unmeasured — the gate must refuse and name it, not silently scope
+  // it out of the evidence.
+  test("a seam whose exercising file has no comparison row is not swapped — the refusal names it"):
+    val d: DifferentialResult = DifferentialResult(
+      List(
+        FileComparison("evidence-ledger.bats", 23, 0, 0, true, true),
+        FileComparison("discharge-fidelity.bats", 11, 0, 0, true, true)
+      ),
+      "/repo",
+      Set("evidence-ledger.bats", "discharge-fidelity.bats")
+    )
+    // The exercising map names a third file — present in the domain but
+    // absent from comparison.files entirely.
+    val exercising: Map[String, Set[String]] = Map(
+      "evidence-ledger.bats"         -> Set(ToolId.seamPath(ToolId.Ledger)),
+      "discharge-fidelity.bats"      -> Set(ToolId.seamPath(ToolId.Ledger)),
+      "judgment-ring-integrity.bats" -> Set(ToolId.seamPath(ToolId.Ledger))
+    )
+    val record: GateRecord = CutoverGate.authoriseSwap(ToolId.Ledger, d, exercising)
+    assert(!record.authorisesSwap, s"an exercising file with no comparison row must refuse the swap: $record")
+    assertEquals(
+      record.evidence.justifyingFileNames,
+      List("judgment-ring-integrity.bats"),
+      "the refusal must name the file that was never measured"
+    )
+    // The synthesized row must encode the file honestly: NEITHER arm
+    // measured it. A row that claimed one arm measured the file would
+    // misrepresent the evidence — the refusal's warrant must reflect
+    // that the file produced no result at all.
+    record.evidence.files
+      .find((f: FileComparison) => f.fileName == "judgment-ring-integrity.bats")
+      .fold(fail("the synthesized row for the absent file must be present in the evidence")) {
+        (absentRow: FileComparison) =>
+          assert(
+            !absentRow.predecessorPresent && !absentRow.portedPresent,
+            s"an absent comparison row must mark the file unmeasured by BOTH arms: $absentRow"
+          )
+      }
+
+  // ── Scenario: Adversarial — a seam with no exercising file is not
+  //    swapped ─────────────────────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Requirement: Each seam is swapped only after its oracle files reach control parity
+  // The shipped strengthening of the spec's kernel contract (approved at
+  // the Step-1 gate): the kernel authorises an empty file list
+  // vacuously, but a seam with NO exercising acceptance file has nothing
+  // measured — the shipped gate refuses it.
+  test("a seam with no exercising files is not swapped — nothing was measured"):
+    val d: DifferentialResult = DifferentialResult(
+      List(FileComparison("evidence-ledger.bats", 23, 0, 0, true, true)),
+      "/repo",
+      Set("evidence-ledger.bats")
+    )
+    // Every file in the comparison exercises a DIFFERENT seam — the
+    // ledger seam's exercising set is empty.
+    val exercising: Map[String, Set[String]] =
+      Map("evidence-ledger.bats" -> Set(ToolId.seamPath(ToolId.Checkpoint)))
+    val record: GateRecord = CutoverGate.authoriseSwap(ToolId.Ledger, d, exercising)
+    assert(!record.authorisesSwap, s"a seam with nothing measured must not be swapped: $record")
+    record.verdict match
+      case CutoverVerdict.Revert(_) => ()
+      case CutoverVerdict.Proceed   => fail("an unmeasured seam must not proceed")
+
+  // ── Property: swap-decision-requires-a-complete-comparison
+  // spec: ledger-checkpoint-cutover — Property: swap-decision-requires-a-complete-comparison
+  // The generator draws each file's two presence flags independently so
+  // incomplete comparisons arise by construction. All generated files
+  // exercise the seam (the scoped set IS the comparison); a seam with no
+  // exercising file is refused upstream by `hasEvidence` and never
+  // reaches this decision (approved contract: the shipped guard, not a
+  // spec amendment).
+  property("swap-decision-requires-a-complete-comparison", coverConfig):
+    for files <- genSwapFileList.forAll
+        .cover(
+          25,
+          "complete-no-worse",
+          (fs: List[FileComparison]) =>
+            fs.forall(f => f.predecessorPresent && f.portedPresent) &&
+              fs.forall(f => f.portedFailures <= f.predecessorFailures)
+        )
+        .cover(25, "one-worse", (fs: List[FileComparison]) => fs.exists(_.isWorse))
+        .cover(
+          15,
+          "one-unmeasured",
+          (fs: List[FileComparison]) => fs.exists(f => !(f.predecessorPresent && f.portedPresent))
+        )
+    yield
+      val seam: ToolId          = ToolId.Ledger
+      val fileSet: Set[String]  = files.map(_.fileName).toSet
+      val d: DifferentialResult = DifferentialResult(files, "/repo", fileSet)
+      val record: GateRecord    = CutoverGate.authoriseSwap(seam, d, exercisingMap(files, seam))
+      Result
+        .assert(record.authorisesSwap == (d.isComplete && !d.hasRegression))
+        .log(s"authorised=${record.authorisesSwap} but complete=${d.isComplete} regression=${d.hasRegression}: $d")
+
+  /**
+   * `genComparisonResult` — list-level mix so every cover class meets
+   * its floor: ~1/3 of lists are all-clean (complete, no worse file —
+   * a pure per-file draw reaches that class in only ~10% of 1–8-file
+   * lists), the rest mix clean/worse/unmeasured files.
+   */
+  def genSwapFileList: Gen[List[FileComparison]] =
+    Gen.frequency1(
+      35 -> Gen.list(genCleanSwapFile, Range.linear(1, 8)),
+      65 -> Gen.list(genSwapFile, Range.linear(1, 8))
+    )
+
+  /** A file measured in both arms with no regression. */
+  def genCleanSwapFile: Gen[FileComparison] =
+    for
+      name  <- Gen.string(Gen.alpha, Range.linear(3, 10)).map(s => s"$s.bats")
+      total <- Gen.int(Range.linear(1, 40))
+      pred  <- Gen.int(Range.linear(0, total))
+      port  <- Gen.int(Range.linear(0, pred))
+    yield FileComparison(name, total, pred, port, true, true)
+
+  /** Per-file triples with a shape drawn per file: clean, worse, or unmeasured. */
+  def genSwapFile: Gen[FileComparison] =
+    for
+      name  <- Gen.string(Gen.alpha, Range.linear(3, 10)).map(s => s"$s.bats")
+      total <- Gen.int(Range.linear(1, 40))
+      shape <- Gen.frequency1(
+        45 -> Gen.constant("clean"),
+        30 -> Gen.constant("worse"),
+        25 -> Gen.constant("unmeasured")
+      )
+      comparison <- shape match
+        case "worse" =>
+          for
+            pred <- Gen.int(Range.linear(0, total - 1))
+            port <- Gen.int(Range.linear(pred + 1, total))
+          yield FileComparison(name, total, pred, port, true, true)
+        case "unmeasured" =>
+          for
+            pred <- Gen.int(Range.linear(0, total))
+            port <- Gen.int(Range.linear(0, total))
+            presence <- Gen.elementUnsafe(
+              List((true, false), (false, true), (false, false))
+            )
+          yield FileComparison(name, total, pred, port, presence._1, presence._2)
+        case _ =>
+          for
+            pred <- Gen.int(Range.linear(0, total))
+            port <- Gen.int(Range.linear(0, pred))
+          yield FileComparison(name, total, pred, port, true, true)
+    yield comparison
+
   // ── Generator: genSuiteRunPair
   // Constructive: a shared file set (both runs saw the same suite), then
   // per file an independent (total, predFailures, portFailures) triple and

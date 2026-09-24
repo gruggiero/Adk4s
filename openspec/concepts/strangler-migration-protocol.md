@@ -28,12 +28,19 @@ seam. The gate is always swapped last because it is the only blocking hook.
 
 - **Swap**: replace a predecessor bash hook with a 3-line exec shim
   pointing to the probatio binary. The predecessor is backed up to
-  `.predecessor.bak` for one swap cycle.
+  `.predecessor.bak` for one swap cycle. A swap is recorded only with
+  the comparison evidence that authorised it: `ShimSwap` carries the
+  `GateRecord` the swap rested on, so a swap record detached from its
+  gating comparison is unrepresentable.
 - **Gate**: run the bats oracle with the tool substituted at its seam.
   The gate proceeds only when no file fails more tests under the ported
   implementation than under the predecessor, measured in the same
   repository under the same suite. The decision is a per-file
-  comparison, not an absolute zero-failure threshold.
+  comparison, not an absolute zero-failure threshold. A swap is
+  authorised per seam: `CutoverGate.authoriseSwap` scopes the
+  comparison to the oracle files exercising that seam and refuses when
+  the scoped comparison is incomplete or regressed — a refusal names
+  the justifying files.
 - **Abort**: if the gate decides to revert, the seams it had swapped
   are restored to their predecessor implementations. The restoration
   is verified by re-running the comparison. The abort is an executable
@@ -57,7 +64,13 @@ binary but its subcommands are not yet verified.
 ## Synchronizations
 
 - The `CutoverGate.decide(differential)` function decides whether to
-  proceed or revert based on the per-file comparison
+  proceed or revert based on the per-file comparison; the per-seam
+  `CutoverGate.authoriseSwap(seam, comparison, exercising)` records the
+  scoped swap authorisation
+- The `SeamSwapRunner.attempt` driver measures one seam end-to-end —
+  predecessor-presence check, two arm materialisations, differential
+  comparison, seam-scoped authorisation — and performs the shim swap
+  and `.predecessor.bak` backup only on an authorising record
 - The `DifferentialHarness` object materialises two seam-configured
   scanner trees, refuses the comparison when both resolve identically,
   runs the suite against each, and emits the `DifferentialResult` the

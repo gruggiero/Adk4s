@@ -156,14 +156,14 @@ object Validator:
     // Clause 2: v must be an integer >= 1
     fields("v") match
       case num: ujson.Num if isIntegerValue(num) =>
-        val v: Int = num.value.toInt
+        val v: BigInt = BigDecimal(num.value).toBigInt
         if v < 1 then Left(ContractViolation.VersionInvalid())
         else validateTimestamp(fields, v)
       case _ => // danger-scan:allow type-rejection — wrong-typed field maps to Left(violation), never a valid value
         Left(ContractViolation.VersionInvalid())
 
   /** Clause 3: ts must be a non-empty ISO-8601 UTC string. */
-  private def validateTimestamp(fields: Map[String, ujson.Value], v: Int): Either[ContractViolation, LedgerRecord] =
+  private def validateTimestamp(fields: Map[String, ujson.Value], v: BigInt): Either[ContractViolation, LedgerRecord] =
     fields("ts") match
       case tsStr: ujson.Str =>
         val ts: String = tsStr.value
@@ -175,7 +175,7 @@ object Validator:
   /** Clause 4: change must be a non-empty string without path separators. */
   private def validateChange(
     fields: Map[String, ujson.Value],
-    v: Int,
+    v: BigInt,
     ts: String
   ): Either[ContractViolation, LedgerRecord] =
     fields("change") match
@@ -189,7 +189,7 @@ object Validator:
   /** Clause 5: spec must be a non-empty string without path separators. */
   private def validateSpec(
     fields: Map[String, ujson.Value],
-    v: Int,
+    v: BigInt,
     ts: String,
     change: String
   ): Either[ContractViolation, LedgerRecord] =
@@ -204,7 +204,7 @@ object Validator:
   /** Clause 6: ring must be in the closed domain. */
   private def validateRing(
     fields: Map[String, ujson.Value],
-    v: Int,
+    v: BigInt,
     ts: String,
     change: String,
     spec: String
@@ -222,7 +222,7 @@ object Validator:
   /** Clause 7: obligation must be a non-empty string. */
   private def validateObligation(
     fields: Map[String, ujson.Value],
-    v: Int,
+    v: BigInt,
     ts: String,
     change: String,
     spec: String,
@@ -239,7 +239,7 @@ object Validator:
   /** Clause 8: artifact must be a non-empty string. */
   private def validateArtifact(
     fields: Map[String, ujson.Value],
-    v: Int,
+    v: BigInt,
     ts: String,
     change: String,
     spec: String,
@@ -257,7 +257,7 @@ object Validator:
   /** Clause 9: command must be a non-empty string. */
   private def validateCommand(
     fields: Map[String, ujson.Value],
-    v: Int,
+    v: BigInt,
     ts: String,
     change: String,
     spec: String,
@@ -276,7 +276,7 @@ object Validator:
   /** Clause 10: exit must be an integer. */
   private def validateExit(
     fields: Map[String, ujson.Value],
-    v: Int,
+    v: BigInt,
     ts: String,
     change: String,
     spec: String,
@@ -287,7 +287,7 @@ object Validator:
   ): Either[ContractViolation, LedgerRecord] =
     fields("exit") match
       case exitNum: ujson.Num if isIntegerValue(exitNum) =>
-        val exit: Int = exitNum.value.toInt
+        val exit: BigInt = BigDecimal(exitNum.value).toBigInt
         validateBaseline(fields, v, ts, change, spec, ring, obligation, artifact, command, exit)
       case _ => // danger-scan:allow type-rejection — wrong-typed field maps to Left(violation), never a valid value
         Left(ContractViolation.ExitNotInteger())
@@ -295,7 +295,7 @@ object Validator:
   /** Clause 11: baseline must be lowercase hex 7-40 chars. */
   private def validateBaseline(
     fields: Map[String, ujson.Value],
-    v: Int,
+    v: BigInt,
     ts: String,
     change: String,
     spec: String,
@@ -303,7 +303,7 @@ object Validator:
     obligation: String,
     artifact: String,
     command: String,
-    exit: Int
+    exit: BigInt
   ): Either[ContractViolation, LedgerRecord] =
     fields("baseline") match
       case baselineStr: ujson.Str =>
@@ -335,20 +335,29 @@ object Validator:
       case _ => // danger-scan:allow type-rejection — wrong-typed field maps to Left(violation), never a valid value
         Left(ContractViolation.BaselineInvalid())
 
-  /** Check if a ujson Num is an integer value. */
+  /**
+   * Check if a ujson Num is an integer value. The jq contract's
+   * `(.x | floor) == .x` accepts every integral JSON number — jq numbers
+   * are doubles, so the domain is the whole doubles, NOT the Int32
+   * range. `isWhole` is exactly that domain: it excludes NaN and the
+   * infinities (which JSON cannot express) and imposes no magnitude
+   * bound.
+   */
   private def isIntegerValue(n: ujson.Num): Boolean =
-    n.value == n.value.floor && n.value.isValidInt
+    n.value.isWhole
 
   /** Check if a string contains path separators (/ or \). */
   private def hasPathSeparator(s: String): Boolean =
     s.contains('/') || s.contains('\\')
 
   /**
-   * Check if a string is a valid ISO-8601 UTC timestamp.
-   * Accepts the pattern YYYY-MM-DDTHH:MM:SSZ (with optional fractional seconds).
+   * Check if a string is a valid ISO-8601 UTC timestamp. Accepts exactly
+   * the contract's fixed shape YYYY-MM-DDTHH:MM:SSZ — the contract has
+   * no fractional-seconds form, so the ported validator must not accept
+   * one either.
    */
   private val timestampPattern: String =
-    """^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$"""
+    """^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"""
 
   private def isValidTimestamp(s: String): Boolean =
     s.matches(timestampPattern)

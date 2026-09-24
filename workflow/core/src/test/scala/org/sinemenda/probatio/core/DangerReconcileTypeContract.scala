@@ -92,7 +92,7 @@ final class DangerReconcileTypeContract extends ProbatioSuite:
     Corroboration.verdictToken
 
   // ── ClaimVerdict — the predecessor's per-claim entry ────────────────
-  val claimVerdictSig: (String, Ring, String, String, String, String, List[Int]) => ClaimVerdict =
+  val claimVerdictSig: (String, Ring, String, String, String, String, List[BigInt]) => ClaimVerdict =
     ClaimVerdict.apply
 
   // ── ReconcileEngine — the pure classification fold ──────────────────

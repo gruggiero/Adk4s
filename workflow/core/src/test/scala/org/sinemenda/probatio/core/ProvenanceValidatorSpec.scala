@@ -198,18 +198,15 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
         assertEquals(v.clauseIndex, 12)
       case other => fail(s"Expected OptionalFieldTypeInvalid, got $other")
 
-  test("wallTime=1e20 (integer-valued but not Int-representable) is rejected with OptionalFieldTypeInvalid"):
+  test("wallTime=1e20 (integer-valued, beyond Int64) is accepted — the contract domain is the whole doubles"):
     val json: ujson.Value = validRecordJson(ring = "R3", wallTime = Some(ujson.Num(1e20)))
     val result: Either[ContractViolation, ValidatedRecord] = Validator.validateFull(json)
-    assert(result.isLeft, s"Expected Left, got $result")
+    // The contract's `(.wallTime | floor) == .wallTime` accepts every
+    // integral JSON number — Int32 (or Int64) is not the domain.
     result match
-      case Left(v: ContractViolation.OptionalFieldTypeInvalid) =>
-        assert(
-          v.description.contains("wallTime must be an integer"),
-          s"Expected description to contain 'wallTime must be an integer', got: ${v.description}"
-        )
-        assertEquals(v.clauseIndex, 12)
-      case other => fail(s"Expected OptionalFieldTypeInvalid, got $other")
+      case Right(vr) =>
+        assertEquals(vr.provenance.wallTime, Some(BigInt("100000000000000000000")))
+      case Left(v) => fail(s"Expected Right for integral wallTime 1e20, got Left($v)")
 
   // ── Scenario: a row with all optional fields valid is accepted
   // spec: provenance-validation — Scenario: a row with all optional fields valid is accepted
@@ -228,7 +225,7 @@ final class ProvenanceValidatorSpec extends ProbatioSuite:
       case Right(vr) =>
         assertEquals(vr.provenance.sha256, Some("a1b2c3d4e5f6"))
         assertEquals(vr.provenance.digest, Some("e1f2a3b4c5d6"))
-        assertEquals(vr.provenance.wallTime, Some(15000))
+        assertEquals(vr.provenance.wallTime, Some(BigInt(15000)))
         assertEquals(vr.provenance.source, Some("ambient"))
         assertEquals(vr.provenance.session, Some("devin-cli-session-xyz"))
       case Left(v) => fail(s"Expected Right, got Left($v)")

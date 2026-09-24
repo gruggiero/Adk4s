@@ -77,15 +77,25 @@ setup() {
 
 # ── D8: dead duplicate case arm removed ───────────────────────────────────
 
-@test "D8: ledger.sh has no dead duplicate update|delete|rewrite|edit case arm in subcommand dispatch" {
-  # The pre-parse check at the top of ledger.sh already handles
-  # update|delete|rewrite|edit. The duplicate case arm at the bottom of
-  # the subcommand dispatch is dead code.
-  # Count occurrences of the case arm pattern.
-  local count
-  count="$(grep -c 'update | delete | rewrite | edit)' "$LEDGER")"
-  # Should be exactly 1 (the pre-parse check), not 2 (pre-parse + dead duplicate)
-  [ "$count" -eq 1 ]
+@test "D8: the ledger tool has no mutation operation in the ported subcommand dispatch" {
+  # The property this guards — the ledger surface admits no mutation
+  # operation (update|delete|rewrite|edit) — is asserted at the
+  # implementation the seam now resolves to. The predecessor's shell
+  # case dispatch is gone under the ported arm (the live ledger.sh is a
+  # 2-line exec shim); the ported dispatch surface is the Subcommand
+  # enum, whose mutation names are absent — unparseable, not merely
+  # denylisted. The Scala contract pins the enum cases; this test pins
+  # the source surface the bats suite can see.
+  local root subcommand
+  root="$(repo_root)"
+  subcommand="$root/workflow/cli/src/main/scala/org/sinemenda/probatio/cli/Subcommand.scala"
+  [ -f "$subcommand" ]
+  # No mutation case in the enum (Update|Delete|Rewrite|Edit as words).
+  run grep -cE '\bUpdate\b|\bDelete\b|\bRewrite\b|\bEdit\b' "$subcommand"
+  [ "$output" -eq 0 ]
+  # No mutation name is a parseable subcommand string.
+  run grep -cE '"update"|"delete"|"rewrite"|"edit"' "$subcommand"
+  [ "$output" -eq 0 ]
 }
 
 # ── D8: gate.sh parses cwd with jq, not sed ──────────────────────────────

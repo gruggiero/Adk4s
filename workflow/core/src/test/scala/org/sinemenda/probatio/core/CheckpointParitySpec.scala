@@ -274,7 +274,7 @@ final class CheckpointParitySpec extends ProbatioSuite:
     )
     val ev: RingEvidence = evidenceOf(report, Ring.R0)
     assertEquals(ev.status, RingStatus.Failed, "the last row records exit 1 — the ring is failed, not green")
-    assertEquals(ev.record.map(_.exit), Some(1))
+    assertEquals(ev.record.map(_.exit), Some(BigInt(1)))
 
   // ── Scenario: Adversarial — a review-ring record produced by the
   //    implementing session is reported as such ────────────────────────
@@ -504,14 +504,17 @@ final class CheckpointParitySpec extends ProbatioSuite:
       spec = "spc",
       baseline = baseline,
       rings = List(
-        RingEvidence(Ring.R0, RingStatus.Green, None, None),
-        RingEvidence(Ring.R1, RingStatus.Failed, None, None)
+        RingEvidence.unevidenced(Ring.R0),
+        RingEvidence.unevidenced(Ring.R1)
       ),
       chainState = partialVerdict
     )
     val text: String = CheckpointReport.toText(report)
-    assert(text.contains("  R0: green (null)"), s"a record-less row interpolates null:\n$text")
-    assert(text.contains("  R1: FAILED (null, exit null)"), s"a record-less failure interpolates null:\n$text")
+    // An outcome-bearing entry without a record is unconstructible
+    // (RingEvidence's raw constructor is private) — the only record-less
+    // row the report can carry is an unevidenced ring.
+    assert(text.contains("  R0: no recorded evidence"), s"an unevidenced ring renders its status:\n$text")
+    assert(text.contains("  R1: no recorded evidence"), s"an unevidenced ring renders its status:\n$text")
     assert(text.contains("total 4.5"), s"a non-floor number renders its decimal form:\n$text")
     assert(text.contains("bound null"), s"an absent count member renders null:\n$text")
     assert(text.contains("null (null)"), s"missing requirement/reasons members render null:\n$text")
@@ -565,14 +568,14 @@ final class CheckpointParitySpec extends ProbatioSuite:
       spec = "spc",
       baseline = baseline,
       rings = List(
-        RingEvidence(Ring.R8, RingStatus.SameSession, None, None),
-        RingEvidence(Ring.R7, RingStatus.UnverifiedSession, Some(recordFor(Ring.R7, exit = 0)), None)
+        RingEvidence.evidenced(Ring.R8, RingStatus.SameSession, recordFor(Ring.R8, exit = 0), None),
+        RingEvidence.evidenced(Ring.R7, RingStatus.UnverifiedSession, recordFor(Ring.R7, exit = 0), None)
       ),
       chainState = nullVerdict
     )
     val text: String = CheckpointReport.toText(report)
     assert(
-      text.contains("  R8: SAME-SESSION (null) — no fresh-context evidence"),
+      text.contains("  R8: SAME-SESSION (cmd-R8) — no fresh-context evidence"),
       s"a note-less same-session row emits the fallback note:\n$text"
     )
     assert(
@@ -587,8 +590,13 @@ final class CheckpointParitySpec extends ProbatioSuite:
       spec = "spc",
       baseline = baseline,
       rings = List(
-        RingEvidence(Ring.R1, RingStatus.Failed, Some(recordFor(Ring.R1, exit = 2)), None),
-        RingEvidence(Ring.R8, RingStatus.UnverifiedSession, Some(recordFor(Ring.R8, exit = 0)), Some("note-R8"))
+        RingEvidence.evidenced(Ring.R1, RingStatus.Failed, recordFor(Ring.R1, exit = 2), None),
+        RingEvidence.evidenced(
+          Ring.R8,
+          RingStatus.UnverifiedSession,
+          recordFor(Ring.R8, exit = 0),
+          Some("note-R8")
+        )
       ),
       chainState = verdict(0)
     )
@@ -770,6 +778,42 @@ final class CheckpointParitySpec extends ProbatioSuite:
     )
     assert(!report.markerWritten, "an unevidenced requested ring forbids the marker")
 
+  // ── Scenario: Adversarial — evidence recorded at another baseline does
+  //    not count ───────────────────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Scenario: Adversarial — evidence recorded at another baseline does not count
+  // The engine consumes the already-filtered row set — baseline
+  // filtering is the record tool's own read path (pinned above). The
+  // composition asserted here is the spec's: a ring whose only recorded
+  // row is at another baseline reaches the engine as UNEVIDENCED once
+  // the read-path rule (row.baseline == current) drops it.
+
+  test("a ring whose only evidence is at another baseline is marked unevidenced, not inferred"):
+    val staleRows: List[LedgerRecord] = List(recordFor(Ring.R3, exit = 0, base = "0000000"))
+    // The read-path rule the engine's contract presumes: rows at the
+    // current baseline only. After it, R3 has no evidence.
+    val filtered: List[LedgerRecord] = staleRows.filter((r: LedgerRecord) => r.baseline == baseline)
+    assertEquals(filtered, List.empty[LedgerRecord], "the stale row must be dropped by the read-path rule")
+    val report: CheckpointReport = CheckpointEngine.report(
+      change = "chg",
+      spec = "spc",
+      baseline = baseline,
+      requested = List(Ring.R3),
+      records = filtered,
+      chainState = verdict(0),
+      implementingSession = Some(SessionId.fromRaw("impl-session"))
+    )
+    assertEquals(report.rings.length, 1, "the requested ring must still be reported")
+    assertEquals(report.rings.headOption.map((e: RingEvidence) => e.ring), Some(Ring.R3))
+    assertEquals(
+      report.rings.headOption.map((e: RingEvidence) => e.status),
+      Some(RingStatus.Unevidenced),
+      "evidence at another baseline does not count — the ring is marked, not inferred"
+    )
+    assert(
+      report.rings.headOption.forall((e: RingEvidence) => e.record.isEmpty),
+      "an unevidenced ring asserts no outcome"
+    )
+
   // ── Scenario: Happy path — a fully evidenced and discharged
   //    checkpoint writes the marker ────────────────────────────────────
   // spec: ledger-checkpoint-parity — Scenario: Happy path — a fully evidenced and discharged checkpoint writes the marker
@@ -816,6 +860,20 @@ final class CheckpointParitySpec extends ProbatioSuite:
           Result
             .assert(reported.length == reported.distinct.length)
             .log(s"a ring is reported more than once: $reported")
+        )
+        // spec: ledger-checkpoint-cutover — Property: checkpoint-reports-every-requested-ring
+        // Second conjunct of the spec-8 invariant: an entry carries an
+        // outcome iff recorded evidence for that ring exists. At engine
+        // level "evidence at the current baseline" is the supplied
+        // (already read-path-filtered) record set.
+        .and(
+          Result
+            .assert(
+              report.rings.forall((e: RingEvidence) =>
+                e.record.isDefined == in.records.exists((r: LedgerRecord) => r.ring == e.ring)
+              )
+            )
+            .log(s"an entry must carry an outcome iff its ring has recorded evidence: ${report.rings}")
         )
 
   // ── Property: marker-written-iff-evidenced-and-discharged ───────────

@@ -1483,7 +1483,8 @@ object GateCmd:
                     GateDecisions.corroborationVerdict(report, base) match
                       case v @ WitnessVerdict.Unwitnessed(_) =>
                         (v, "\n  " + StdoutRenderer[ReconcileReport].render(report))
-                      case v => (v, "") // danger-scan:allow verdict-shape — Witnessed/Undeterminable carry no detail text
+                      case v =>
+                        (v, "") // danger-scan:allow verdict-shape — Witnessed/Undeterminable carry no detail text
     val chainState: Path = scannerTool(ctx.repo, env, "CHAIN_STATE_OVERRIDE", "chain-state.sh")
     val csResult: Option[(Int, String)] =
       if toolExists(chainState) then
@@ -2405,7 +2406,9 @@ object ChainStateCmd:
     env: Map[String, String]
   ): (Option[ujson.Value], List[String]) =
     val degraded: String = "using degraded mode (in-process fallback)"
-    val repoRoot: Path = env.get("OPENSPEC_ROOT").filter(_.nonEmpty)
+    val repoRoot: Path = env
+      .get("OPENSPEC_ROOT")
+      .filter(_.nonEmpty)
       .map(Paths.get(_))
       .getOrElse(Paths.get("").toAbsolutePath.normalize)
     GraphCmd.exportObligations(repoRoot, change) match
@@ -2493,7 +2496,9 @@ object GraphCmd:
 
   /** The env-injecting overload — `OPENSPEC_ROOT` is the predecessor's contract. */
   private[cli] def run(args: Array[String], env: Map[String, String]): Outcome[Int] =
-    val repoRoot: Path = env.get("OPENSPEC_ROOT").filter(_.nonEmpty)
+    val repoRoot: Path = env
+      .get("OPENSPEC_ROOT")
+      .filter(_.nonEmpty)
       .map(Paths.get(_))
       .getOrElse(Paths.get("").toAbsolutePath.normalize)
     if !Files.isDirectory(repoRoot.resolve("openspec")) then
@@ -2515,14 +2520,14 @@ object GraphCmd:
   /** Argument parse — the predecessor's positional ops plus export's flags. */
   private def parseQuery(args: List[String]): Either[String, GraphQuery] =
     args match
-      case Nil                  => Right(GraphQuery.Stats)
-      case "export" :: rest     => Right(parseExportFlags(rest))
-      case "stats" :: _         => Right(GraphQuery.Stats)
-      case "impact" :: target :: _ => Right(GraphQuery.Impact(target))
-      case "impact" :: Nil      => Left("usage: probatio graph impact <Concept[/action]>")
-      case "obligations" :: rest => Right(GraphQuery.Obligations(rest.headOption))
+      case Nil                         => Right(GraphQuery.Stats)
+      case "export" :: rest            => Right(parseExportFlags(rest))
+      case "stats" :: _                => Right(GraphQuery.Stats)
+      case "impact" :: target :: _     => Right(GraphQuery.Impact(target))
+      case "impact" :: Nil             => Left("usage: probatio graph impact <Concept[/action]>")
+      case "obligations" :: rest       => Right(GraphQuery.Obligations(rest.headOption))
       case "concept-code" :: name :: _ => Right(GraphQuery.ConceptCode(name))
-      case "concept-code" :: Nil     => Left("usage: probatio graph concept-code <Concept>")
+      case "concept-code" :: Nil       => Left("usage: probatio graph concept-code <Concept>")
       case other :: _ => // danger-scan:allow reject-unknown-op — an unrecognized op is an error, never a default dispatch
         Left(s"unknown operation '$other'")
 
@@ -2538,8 +2543,9 @@ object GraphCmd:
       case "--change" :: value :: rest =>
         parseExportFlags(rest) match
           case GraphQuery.Export(o, cd, _) => GraphQuery.Export(o, cd, Some(value))
-      case _ :: rest => parseExportFlags(rest) // danger-scan:allow skip-unknown-flag — the predecessor's argparse ignores extras
-      case Nil       => GraphQuery.Export(None, None, None)
+      case _ :: rest => // danger-scan:allow skip-unknown-flag — the predecessor's argparse ignores extras
+        parseExportFlags(rest)
+      case Nil => GraphQuery.Export(None, None, None)
 
   private def dispatch(repoRoot: Path, query: GraphQuery, build: GraphBuild): Outcome[Int] =
     val graph: TraceabilityGraph = build.graph
@@ -2602,9 +2608,11 @@ object GraphCmd:
     val nid: String  = s"$kind:$target"
     if graph.node(nid).isEmpty then
       val alts: List[String] =
-        graph.nodes.map(_.id).filter((n: String) =>
-          n.startsWith(s"$kind:$target") || n.endsWith(s"/$target")
-        ).take(5).toList
+        graph.nodes
+          .map(_.id)
+          .filter((n: String) => n.startsWith(s"$kind:$target") || n.endsWith(s"/$target"))
+          .take(5)
+          .toList
       SubcommandWiring.emitStdout(
         s"impact: unknown $kind '$target'" +
           (if alts.nonEmpty then s"; did you mean: ${alts.mkString(", ")}" else "") + "\n"
@@ -2620,8 +2628,7 @@ object GraphCmd:
             SubcommandWiring.emitStdout(
               s"  syncs defined: ${syncs.map(_.split(":", 2).lift(1).getOrElse("")).mkString(", ")}\n"
             )
-          if code.nonEmpty then
-            SubcommandWiring.emitStdout(s"  implementation map binds ${code.length} file(s)\n")
+          if code.nonEmpty then SubcommandWiring.emitStdout(s"  implementation map binds ${code.length} file(s)\n")
           Set(nid) ++ graph.outgoing(nid, Some(GraphEdge.Declares)).map(_.to).toSet
         else Set(nid)
       val citing: List[String] =
@@ -2641,10 +2648,13 @@ object GraphCmd:
                   case Some(req: GraphNode.Requirement) =>
                     val obls: List[Edge] = graph.outgoing(e.to, Some(GraphEdge.EnforcedBy))
                     val arts: Set[String] =
-                      obls.flatMap((o: Edge) => graph.outgoing(o.to, Some(GraphEdge.VerifiedBy)))
-                        .map((a: Edge) => a.to.split(":", 2).lift(1).getOrElse("")).toSet
+                      obls
+                        .flatMap((o: Edge) => graph.outgoing(o.to, Some(GraphEdge.VerifiedBy)))
+                        .map((a: Edge) => a.to.split(":", 2).lift(1).getOrElse(""))
+                        .toSet
                     List((s"R${req.ordinal}: ${req.title.take(72)}", obls, arts))
-                  case _ => Nil // danger-scan:allow non-req-target — has-req targets are requirement nodes by construction
+                  case _ => // danger-scan:allow non-req-target — has-req targets are requirement nodes by construction
+                    Nil
               }
             (sid, planned, rows)
           }
@@ -2667,7 +2677,8 @@ object GraphCmd:
             }
           }
         val unenforced: List[String] =
-          allRows.filter((_: String, _: String, obls: List[Edge], _: Set[String]) => obls.isEmpty)
+          allRows
+            .filter((_: String, _: String, obls: List[Edge], _: Set[String]) => obls.isEmpty)
             .map((spec: String, title: String, _: List[Edge], _: Set[String]) =>
               s"$spec ${title.takeWhile((_: Char) != ':')}"
             )
@@ -2677,7 +2688,9 @@ object GraphCmd:
             s"${allRows.flatMap((_: String, _: String, _: List[Edge], a: Set[String]) => a).toSet.size} enforcing artifact(s)\n"
         )
         if unenforced.nonEmpty then
-          SubcommandWiring.emitStdout(s"  UNENFORCED requirements (${unenforced.length}): ${unenforced.mkString(", ")}\n")
+          SubcommandWiring.emitStdout(
+            s"  UNENFORCED requirements (${unenforced.length}): ${unenforced.mkString(", ")}\n"
+          )
         Outcome.Ran(0)
 
   private def renderObligations(
@@ -2694,26 +2707,33 @@ object GraphCmd:
         Outcome.Finding(msg)
       case Some(result) =>
         val specs: List[GraphNode.Spec] =
-          graph.nodes.collect { case s: GraphNode.Spec => s }
+          graph.nodes
+            .collect { case s: GraphNode.Spec => s }
             .filter((s: GraphNode.Spec) => change.forall((c: String) => s.change == c))
             .toList
             .sortBy(_.id)
         specs.foreach { (s: GraphNode.Spec) =>
-          val sid: String = s.id
+          val sid: String      = s.id
           val reqs: List[Edge] = graph.outgoing(sid, Some(GraphEdge.HasRequirement))
-          val specKey: String = s"${s.change}/${s.capability}"
+          val specKey: String  = s"${s.change}/${s.capability}"
           val allObls: List[GraphNode.Obligation] =
             graph.obligations.filter((o: GraphNode.Obligation) => o.spec == specKey)
           val artCount: Int =
-            allObls.flatMap((o: GraphNode.Obligation) =>
-              graph.outgoing(o.id, Some(GraphEdge.VerifiedBy))
-            ).map(_.to).distinct.length
+            allObls
+              .flatMap((o: GraphNode.Obligation) => graph.outgoing(o.id, Some(GraphEdge.VerifiedBy)))
+              .map(_.to)
+              .distinct
+              .length
           SubcommandWiring.emitStdout(s"\n$specKey\n")
           val links: List[(String, Int)] =
-            reqs.flatMap((e: Edge) => graph.outgoing(e.to, Some(GraphEdge.EnforcedBy)))
+            reqs
+              .flatMap((e: Edge) => graph.outgoing(e.to, Some(GraphEdge.EnforcedBy)))
               .flatMap(_.link)
               .map(ObligationLink.wireName)
-              .groupBy(identity).map((k, v) => k -> v.length).toList.sorted
+              .groupBy(identity)
+              .map((k, v) => k -> v.length)
+              .toList
+              .sorted
           SubcommandWiring.emitStdout(
             s"  requirements: ${reqs.length}   obligations: ${allObls.length}   artifacts: $artCount\n"
           )
@@ -2723,7 +2743,12 @@ object GraphCmd:
           val kindSourced: List[ObligationSourceKind] = allObls.flatMap(_.sourceKind)
           if kindSourced.nonEmpty then
             val kinds: List[(String, Int)] =
-              kindSourced.map(ObligationSourceKind.wireName).groupBy(identity).map((k, v) => k -> v.length).toList.sorted
+              kindSourced
+                .map(ObligationSourceKind.wireName)
+                .groupBy(identity)
+                .map((k, v) => k -> v.length)
+                .toList
+                .sorted
             SubcommandWiring.emitStdout(
               s"  non-requirement sources (legitimate): ${kinds.map((k, v) => s"$k=$v").mkString(", ")}\n"
             )
@@ -2780,9 +2805,9 @@ object GraphCmd:
   private[cli] def buildGraph(repoRoot: Path): Either[String, GraphBuild] =
     val openspec: Path = repoRoot.resolve("openspec")
     for
-      concepts <- readConcepts(openspec.resolve("concepts"))
+      concepts  <- readConcepts(openspec.resolve("concepts"))
       inventory <- readInventory(openspec.resolve("concept-inventory.md"))
-      specs <- readSpecs(openspec.resolve("changes"))
+      specs     <- readSpecs(openspec.resolve("changes"))
     yield
       val (docs: List[ConceptRegistryDoc], parseWarnings: List[String]) = concepts
       val build: GraphBuild = TraceabilityGraph.build(
@@ -2796,7 +2821,9 @@ object GraphCmd:
 
   private def readText(path: Path): Either[String, String] =
     try Right(Files.readString(path, StandardCharsets.UTF_8))
-    catch case NonFatal(e) => Left(s"could not read $path: ${e.getMessage}") // danger-scan:allow unreadable-source — named in the reason
+    catch
+      case NonFatal(e) => // danger-scan:allow unreadable-source — named in the reason
+        Left(s"could not read $path: ${e.getMessage}")
 
   /** `openspec/concepts/` — every `*.md` except README, sorted; parse warnings ride along. */
   private def readConcepts(dir: Path): Either[String, (List[ConceptRegistryDoc], List[String])] =
@@ -2805,25 +2832,31 @@ object GraphCmd:
       try
         val files: List[Path] =
           Using.resource(Files.list(dir)) { stream =>
-            stream.iterator().asScala.toList
+            stream
+              .iterator()
+              .asScala
+              .toList
               .filter((p: Path) =>
                 Files.isRegularFile(p) && p.getFileName.toString.endsWith(".md") &&
                   p.getFileName.toString != "README.md"
               )
               .sortBy(_.getFileName.toString)
           }
-        files.foldLeft[Either[String, (List[ConceptRegistryDoc], List[String])]](Right((Nil, Nil))) {
-          (acc, path) =>
-            acc.flatMap { case (docs, warns) =>
-              readText(path).flatMap { (text: String) =>
-                val rel: String = s"openspec/concepts/${path.getFileName}"
-                ConceptRegistryDoc.parse(rel, text) match
-                  case Left(w)     => Right((docs, warns :+ w))
-                  case Right(doc)  => Right((docs :+ doc, warns))
-              }
+        files.foldLeft[Either[String, (List[ConceptRegistryDoc], List[String])]](Right((Nil, Nil))) { (acc, path) =>
+          acc.flatMap { case (docs, warns) =>
+            readText(path).flatMap { (text: String) =>
+              val rel: String = s"openspec/concepts/${path.getFileName}"
+              ConceptRegistryDoc.parse(rel, text) match
+                case Left(w)    => Right((docs, warns :+ w))
+                case Right(doc) => Right((docs :+ doc, warns))
             }
+          }
         }
-      catch case NonFatal(e) => Left(s"could not list openspec/concepts: ${e.getMessage}") // danger-scan:allow unreadable-source — named in the reason
+      catch
+        case NonFatal(e) => // danger-scan:allow unreadable-source — named in the reason
+          Left(
+            s"could not list openspec/concepts: ${e.getMessage}"
+          )
 
   /** `openspec/concept-inventory.md` — must exist. */
   private def readInventory(path: Path): Either[String, InventoryDoc] =
@@ -2840,7 +2873,10 @@ object GraphCmd:
       try
         val changes: List[Path] =
           Using.resource(Files.list(changesDir)) { stream =>
-            stream.iterator().asScala.toList
+            stream
+              .iterator()
+              .asScala
+              .toList
               .filter((p: Path) => Files.isDirectory(p) && p.getFileName.toString != "archive")
               .sortBy(_.getFileName.toString)
           }
@@ -2851,7 +2887,10 @@ object GraphCmd:
             else
               val caps: List[Path] =
                 Using.resource(Files.list(specsDir)) { stream =>
-                  stream.iterator().asScala.toList
+                  stream
+                    .iterator()
+                    .asScala
+                    .toList
                     .filter(Files.isDirectory(_))
                     .sortBy(_.getFileName.toString)
                 }
@@ -2864,7 +2903,8 @@ object GraphCmd:
                       val change: String = changeDir.getFileName.toString
                       val cap: String    = capDir.getFileName.toString
                       ds :+ SpecGraphDoc.parse(
-                        change, cap,
+                        change,
+                        cap,
                         s"openspec/changes/$change/specs/$cap/spec.md",
                         text
                       )
@@ -2873,7 +2913,11 @@ object GraphCmd:
               }
           }
         }
-      catch case NonFatal(e) => Left(s"could not list openspec/changes: ${e.getMessage}") // danger-scan:allow unreadable-source — named in the reason
+      catch
+        case NonFatal(e) => // danger-scan:allow unreadable-source — named in the reason
+          Left(
+            s"could not list openspec/changes: ${e.getMessage}"
+          )
 
   /**
    * The per-change obligations payload for the chain-state seam —
@@ -2884,9 +2928,7 @@ object GraphCmd:
     repoRoot: Path,
     change: String
   ): Either[String, ujson.Value] =
-    buildGraph(repoRoot).map((b: GraphBuild) =>
-      GraphWire.writeChangePayload(b.graph, b.warnings, change)
-    )
+    buildGraph(repoRoot).map((b: GraphBuild) => GraphWire.writeChangePayload(b.graph, b.warnings, change))
 
 /** The `ledger` subcommand — append-only ledger operations. */
 object LedgerCmd:
@@ -3309,7 +3351,11 @@ object LedgerCmd:
               val ring: String     = row("ring").strOpt.getOrElse("")
               val artifact: String = row("artifact").strOpt.getOrElse("")
               val command: String  = row("command").strOpt.getOrElse("")
-              val recorded: Int    = row("exit").numOpt.map(_.toInt).getOrElse(0)
+              // The recorded exit is the contract's integral-JSON-number
+              // domain (BigInt), not Int32 — the row passed validation,
+              // so the value is whole; a raw `toInt` would silently
+              // saturate beyond Int.MaxValue.
+              val recorded: BigInt = row("exit").numOpt.map((d: Double) => BigDecimal(d).toBigInt).getOrElse(BigInt(0))
               // The judgment-ring set is the typed model's own
               // (`ReplayVerdict.unreplayableRings`), not a string literal
               // — the code that ships is the code the properties test.

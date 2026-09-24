@@ -33,7 +33,7 @@ final class LedgerValidatorSpec extends ProbatioSuite:
     assert(result.isRight, s"Expected Right, got $result")
     result match
       case Right(record) =>
-        assertEquals(record.v, 1)
+        assertEquals(record.v, BigInt(1))
         assertEquals(record.ring, Ring.R3)
         assertEquals(record.baseline, "abc1234")
       case Left(v) => fail(s"Expected Right, got Left($v)")
@@ -355,8 +355,11 @@ final class LedgerValidatorSpec extends ProbatioSuite:
       case Left(_: ContractViolation.ExitNotInteger) => assert(true)
       case other                                     => fail(s"Expected ExitNotInteger, got $other")
 
-  // ── Mutation-killing: a whole-number exit too large for Int is rejected (kills && → ||)
-  test("a whole-number exit too large for Int is rejected as ExitNotInteger"):
+  // ── Contract boundary: a whole-number exit beyond Int32 is ACCEPTED —
+  //    the contract's `(.exit | floor) == .exit` domain is the whole
+  //    doubles, not Int32 (spec-8 divergence remediation: jq accepts
+  //    1e15, so the ported validator must too).
+  test("a whole-number exit beyond Int32 is accepted — the contract domain is the whole doubles"):
     val json: ujson.Value = ujson.Obj(
       "v"          -> 1,
       "ts"         -> "2026-08-08T12:34:56Z",
@@ -371,8 +374,8 @@ final class LedgerValidatorSpec extends ProbatioSuite:
     )
     val result: Either[ContractViolation, LedgerRecord] = Validator.validate(json)
     result match
-      case Left(_: ContractViolation.ExitNotInteger) => assert(true)
-      case other                                     => fail(s"Expected ExitNotInteger for 1e15, got $other")
+      case Right(record) => assertEquals(record.exit, BigInt("1000000000000000"))
+      case Left(v)       => fail(s"Expected Right for integral exit 1e15, got Left($v)")
 
   // ── Mutation-killing: a very large exit value that doesn't fit Int is rejected
   test("a non-integer numeric v is rejected as VersionInvalid"):

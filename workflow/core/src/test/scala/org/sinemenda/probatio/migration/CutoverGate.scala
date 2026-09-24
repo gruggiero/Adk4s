@@ -55,6 +55,65 @@ object CutoverGate:
   def record(d: DifferentialResult): GateRecord =
     GateRecord(decide(d), d)
 
+  /**
+   * Authorise a single seam's swap (spec 8): scope the comparison to
+   * the oracle files that exercise the seam, then decide and record.
+   *
+   * `exercising` maps an oracle file name to the set of tool paths it
+   * exercises (as produced by
+   * `DifferentialHarness.exercisedToolPaths`); a file exercises the
+   * seam iff its tool-path set contains `ToolId.seamPath(seam)`. The
+   * returned record's evidence is the seam-scoped comparison —
+   * `record.authorisesSwap` is true iff every exercising file produced
+   * a result in both arms and none is worse. A seam with no exercising
+   * file produces a record that cannot authorise (`hasEvidence` is
+   * false): a swap MUST NOT proceed on an unmeasured seam.
+   *
+   * spec: ledger-checkpoint-cutover — Requirement: Each seam is swapped only after its oracle files reach control parity
+   * spec: ledger-checkpoint-cutover — Scenario: A swap on an unmeasured file is refused
+   */
+  def authoriseSwap(
+    seam: SeamTypes.ToolId,
+    comparison: DifferentialResult,
+    exercising: Map[String, Set[String]]
+  ): GateRecord =
+    val seamPath: String = SeamTypes.ToolId.seamPath(seam)
+    // The expected scope is derived from the exercising map's domain,
+    // not from the comparison's rows: an exercising file that produced
+    // no comparison row at all is an UNMEASURED file, and the refusal
+    // must be able to name it — it cannot be silently scoped out.
+    val expected: Set[String] =
+      exercising.collect { case (file: String, paths: Set[String]) if paths.contains(seamPath) => file }.toSet
+    val measured: List[FileComparison] =
+      comparison.files.filter { (f: FileComparison) =>
+        exercising.getOrElse(f.fileName, Set.empty[String]).contains(seamPath)
+      }
+    val absent: List[FileComparison] =
+      expected.toList.sorted.collect {
+        case name if !measured.exists((f: FileComparison) => f.fileName == name) =>
+          FileComparison(
+            fileName = name,
+            total = 0,
+            predecessorFailures = 0,
+            portedFailures = 0,
+            predecessorPresent = false,
+            portedPresent = false
+          )
+      }
+    val scopedFiles: List[FileComparison] = measured ++ absent
+    // The scoped comparison IS the evidence: its file set is exactly the
+    // seam's exercising files, so `isComplete`/`hasRegression` decide
+    // the seam alone — a worse file outside the scope cannot gate it,
+    // and an exercising file absent from either arm refuses it.
+    val scoped: DifferentialResult =
+      comparison.copy(files = scopedFiles, suiteFileSet = expected ++ scopedFiles.map(_.fileName).toSet)
+    // A seam with no exercising file has nothing measured: the shipped
+    // driver refuses even though an empty comparison is vacuously
+    // complete — the record's verdict is a refusal and `hasEvidence` is
+    // false, so it can never authorise.
+    if scopedFiles.isEmpty then GateRecord(CutoverVerdict.Revert(scoped), scoped)
+    else record(scoped)
+
 /**
  * A recorded gate decision with its evidence.
  *

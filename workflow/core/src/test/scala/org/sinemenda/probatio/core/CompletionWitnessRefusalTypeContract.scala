@@ -109,7 +109,7 @@ final class CompletionWitnessRefusalTypeContract extends ProbatioSuite:
     command = "c",
     baseline = "b",
     verdict = "testimony",
-    observed = List.empty[Int]
+    observed = List.empty[BigInt]
   )
 
   test("WitnessVerdict is closed over three variants; Unwitnessed carries its row"):

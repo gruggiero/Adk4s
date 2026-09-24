@@ -90,7 +90,7 @@ object CheckpointReport:
             "obligation" -> ujson.Str(record.obligation),
             "artifact"   -> ujson.Str(record.artifact),
             "command"    -> ujson.Str(record.command),
-            "exit"       -> ujson.Num(record.exit)
+            "exit"       -> ujson.Num(record.exit.toDouble)
           )
           e.note.foreach((n: String) => row.value("note") = ujson.Str(n))
           row

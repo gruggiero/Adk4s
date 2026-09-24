@@ -144,7 +144,7 @@ object CompletionWitnessRefusalFixtures:
       command = cmd,
       baseline = currentBaseline,
       verdict = "testimony",
-      observed = List.empty[Int]
+      observed = List.empty[BigInt]
     )
 
   /**

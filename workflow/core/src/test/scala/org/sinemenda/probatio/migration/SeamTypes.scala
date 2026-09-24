@@ -89,18 +89,17 @@ object SeamTypes:
 
     /**
      * The predecessor implementation source for a seam, relative to the
-     * schema directory. For the five swapped tools this is the recorded
-     * `*.predecessor.bak` file; for `Ledger` and `Checkpoint` — whose live
-     * paths were never swapped before this change — the live file itself
-     * is the predecessor implementation.
+     * schema directory. For every swapped tool this is the recorded
+     * `*.predecessor.bak` file — the revert target preserved by the
+     * measured swap.
      */
     def predecessorSource(tool: ToolId): String = tool match
-      case ToolId.Ledger     => "scanner/ledger.sh"
+      case ToolId.Ledger     => "scanner/ledger.sh.predecessor.bak"
       case ToolId.ChainState => "scanner/chain-state.sh.predecessor.bak"
       case ToolId.SpecLint   => "scanner/spec-lint.sh.predecessor.bak"
       case ToolId.DangerScan => "scanner/danger-scan.sh.predecessor.bak"
       case ToolId.Reconcile  => "scanner/reconcile.sh.predecessor.bak"
-      case ToolId.Checkpoint => "scanner/checkpoint.sh"
+      case ToolId.Checkpoint => "scanner/checkpoint.sh.predecessor.bak"
       case ToolId.Gate       => "hooks/gate.sh.predecessor.bak"
 
     /**

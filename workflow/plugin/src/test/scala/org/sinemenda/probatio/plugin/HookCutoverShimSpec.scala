@@ -192,6 +192,66 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
     )
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // spec 8 — ledger-checkpoint-cutover
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── Scenario: Happy path — every swapped seam has its predecessor on
+  //    disk ─────────────────────────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Scenario: Happy path — every swapped seam has its predecessor on disk
+  // Repo inspection, derived from the tree not a hardcoded list: a file
+  // whose content is a forwarding shim (shebang + a single `exec` line)
+  // IS a swapped seam; each must keep its `.predecessor.bak` revert
+  // target — non-empty, so the revert target is the real implementation,
+  // not a placeholder.
+  test("every swapped seam in the schema tree has its predecessor on disk") {
+    val schemaDir: java.io.File = {
+      val fromRepoRoot: java.io.File =
+        new java.io.File("openspec/schemas/verified-scala3")
+      if (fromRepoRoot.isDirectory) fromRepoRoot
+      else new java.io.File("../../openspec/schemas/verified-scala3")
+    }
+    assert(
+      schemaDir.isDirectory,
+      s"schema directory must resolve from the test working directory: ${schemaDir.getPath}"
+    )
+    val shellFiles: List[java.io.File] = listFiles(schemaDir)
+      .filter(f => f.getName.endsWith(".sh"))
+    assert(shellFiles.nonEmpty, "the schema tree must contain shell seams")
+    val swapped: List[java.io.File] = shellFiles.filter(isForwardingShim)
+    assert(
+      swapped.nonEmpty,
+      "at least one seam is already swapped — the revert-target invariant must have subjects"
+    )
+    swapped.foreach { shim =>
+      val predecessor: java.io.File =
+        new java.io.File(shim.getPath + ".predecessor.bak")
+      assert(
+        predecessor.isFile,
+        s"swapped seam ${shim.getPath} has no predecessor implementation on disk"
+      )
+      assert(
+        predecessor.length() > 0,
+        s"predecessor ${predecessor.getPath} is empty — it is not a usable revert target"
+      )
+    }
+  }
+
+  /** A swapped seam is a forwarding shim: shebang plus one `exec` line. */
+  private def isForwardingShim(f: java.io.File): Boolean = {
+    val src: scala.io.Source = scala.io.Source.fromFile(f, "UTF-8")
+    try
+      src.getLines().toList.filter(_.nonEmpty) match {
+        case shebang :: exec :: Nil =>
+          shebang.startsWith("#!") && exec.startsWith("exec ")
+        case _ => false
+      }
+    finally src.close()
+  }
+
+  private def listFiles(dir: java.io.File): List[java.io.File] =
+    dir.listFiles.toList.flatMap(f => if (f.isDirectory) listFiles(f) else List(f))
+
   // ── Generator: genBinaryPath
   // Constructive over absolute file paths with varying depths, special
   // characters (spaces, dots), and trailing slashes.

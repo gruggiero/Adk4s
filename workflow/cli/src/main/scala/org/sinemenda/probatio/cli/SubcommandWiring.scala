@@ -153,7 +153,7 @@ object SubcommandWiring:
                 Left(
                   s"line ${index + 1} violates the record contract: clause ${violation.clauseIndex} — ${violation.description}"
                 )
-              case Right(validated) if validated.record.v != supportedVersion =>
+              case Right(validated) if validated.record.v != BigInt(supportedVersion) =>
                 // The contract admits any integer v >= 1; the reader
                 // accepts only the version it knows — matching the
                 // predecessor's separate `v != SUPPORTED_V` refusal.
@@ -279,15 +279,21 @@ object SubcommandWiring:
   private def gitDiffNameOnly(repo: java.nio.file.Path, baseline: String): Option[Set[String]] =
     try
       val pb: ProcessBuilder = new ProcessBuilder(
-        "git", "diff", "--no-renames", "--name-only", "-z", baseline, "HEAD", "--"
+        "git",
+        "diff",
+        "--no-renames",
+        "--name-only",
+        "-z",
+        baseline,
+        "HEAD",
+        "--"
       )
       pb.directory(repo.toFile)
       pb.redirectError(ProcessBuilder.Redirect.DISCARD)
       val p: Process = pb.start()
       val out: String =
         new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-      if p.waitFor() == 0 then
-        Some(out.split('\u0000').filter(_.nonEmpty).toSet)
+      if p.waitFor() == 0 then Some(out.split('\u0000').filter(_.nonEmpty).toSet)
       else None
     catch
       case NonFatal(_) => // danger-scan:allow fail-open — a git failure is "changed", never "unchanged"
@@ -340,13 +346,12 @@ object SubcommandWiring:
           gitExit(r, List("diff", "--quiet", rowBaseline, "HEAD", "--", artifact)) == 0
         case Some(r) =>
           val changed: Option[Set[String]] =
-            baselineCache.get.get(rowBaseline) match // danger-scan:allow memo-read — AtomicReference.get + Map.get returns Option, not an unsafe get
+            baselineCache.get // danger-scan:allow memo-read — AtomicReference.get + Map.get returns Option, not an unsafe get
+              .get(rowBaseline) match
               case Some(result) => result
               case None =>
                 val result: Option[Set[String]] = gitDiffNameOnly(r, rowBaseline)
-                baselineCache.updateAndGet((m: Map[String, Option[Set[String]]]) =>
-                  m + (rowBaseline -> result)
-                )
+                baselineCache.updateAndGet((m: Map[String, Option[Set[String]]]) => m + (rowBaseline -> result))
                 result
           changed match
             case Some(files) =>
