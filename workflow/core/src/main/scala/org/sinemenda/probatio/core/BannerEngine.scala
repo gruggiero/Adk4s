@@ -69,7 +69,7 @@ object BannerEngine:
     val allLines: List[String] =
       invariant.split("\n").toList ++
         List("") ++
-        List(s"verified-scala3 — session context (schema $versionText, injected by hooks/gate.sh)") ++
+        List(s"probatio — session context (schema $versionText, injected by hooks/gate.sh)") ++
         contextHeader ++
         contextLines ++
         positionLines ++
@@ -86,7 +86,7 @@ object BannerEngine:
   def invariantText(schemaVersion: Int): String = invariantText(s"v$schemaVersion")
 
   private def invariantText(versionText: String): String =
-    s"""verified-scala3 — invariant (schema $versionText)
+    s"""probatio — invariant (schema $versionText)
        |  NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
        |  "N/A" / "passes" / "already handled" are CLAIMS, not verdicts.""".stripMargin
 

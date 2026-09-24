@@ -399,3 +399,173 @@ final class DriftScanSpec extends ProbatioSuite:
             .assert(res.noSkillInstalled == cfg.scans.forall(_.state == InstallRootState.Absent))
             .log("noSkillInstalled must hold iff every root is absent")
         )
+
+  // ════════════════════════════════════════════════════════════════════
+  // spec 10 of repair-probatio-cutover: schema-rename-completion
+  // ════════════════════════════════════════════════════════════════════
+
+  // spec: schema-rename-completion — Scenario: Happy path — every installed document carries the current stamp
+  test("schema-rename: every searched root stamped at the current name and version yields no warning"):
+    val roots: List[InstallRootScan] = DriftScan.installRoots.all.map { ref =>
+      InstallRootScan(ref.relativePath, InstallRootState.Stamped(14, StampFormat.New))
+    }
+    val result: DriftScanResult = DriftScan.scan(schemaVersion = Some(14), roots)
+    assert(
+      result.warnings.isEmpty,
+      s"all-current stamps must yield no warnings, got ${result.warnings}"
+    )
+    assert(!result.noSkillInstalled, "installed documents must not report no-skill-installed")
+
+  // spec: schema-rename-completion — Scenario: Adversarial — a pre-rename stamp is still reported as migration, not drift
+  test("schema-rename: a pre-rename stamp is a migration warning naming the root, not a version mismatch"):
+    val roots: List[InstallRootScan] = List(
+      InstallRootScan(".claude/skills", InstallRootState.Stamped(13, StampFormat.Legacy))
+    )
+    val result: DriftScanResult = DriftScan.scan(schemaVersion = Some(14), roots)
+    assertEquals(result.warnings.length, 1, "exactly one warning expected")
+    result.warnings.headOption match
+      case Some(w: DriftWarning.PreRenameStamp) =>
+        assertEquals(w.rootPath, ".claude/skills", "the migration warning must name the root")
+        assert(w.message.contains(".claude/skills"), s"message must name the root: ${w.message}")
+      case Some(w: DriftWarning.VersionMismatch) =>
+        fail(s"a pre-rename stamp reported as version drift is the false-alarm defect: $w")
+      case other => fail(s"Expected PreRenameStamp, got $other")
+
+  // spec: schema-rename-completion — Scenario: Error path — an unreadable root is could-not-determine, not absent
+  test("schema-rename: an unreadable root is reported unreadable, never as carrying no document"):
+    val roots: List[InstallRootScan] = List(
+      InstallRootScan(".claude/skills", InstallRootState.Unreadable("permission denied"))
+    )
+    val result: DriftScanResult = DriftScan.scan(schemaVersion = Some(14), roots)
+    result.warnings.headOption match
+      case Some(w: DriftWarning.Unreadable) =>
+        assertEquals(w.rootPath, ".claude/skills")
+      case other => fail(s"Expected Unreadable warning, got $other")
+    assert(
+      !result.noSkillInstalled,
+      "an unreadable root must not collapse into no-document-found"
+    )
+
+  // ── Property: every-searched-root-is-classified ─────────────────────
+  // spec: schema-rename-completion — Property: every-searched-root-is-classified
+  //
+  // For every assignment of an InstallRootState to the six searched roots,
+  // the drift scan classifies each root into exactly one outcome — absent
+  // (no warning, counted toward noSkillInstalled), or a warning whose
+  // variant matches the state — and an unreadable root is never reported
+  // as absent.
+
+  /** The warning variant each state must produce (None = no warning). */
+  private def expectedWarningKind(
+    state: InstallRootState,
+    schemaVersion: Option[Int]
+  ): Option[String] =
+    state match
+      case InstallRootState.Absent         => None
+      case InstallRootState.PresentNoStamp => Some("NoStampDeclared")
+      case InstallRootState.Unreadable(_)  => Some("Unreadable")
+      case InstallRootState.Stamped(_, StampFormat.Legacy) =>
+        Some("PreRenameStamp")
+      case InstallRootState.Stamped(v, StampFormat.New) =>
+        schemaVersion match
+          case Some(e) if v != e => Some("VersionMismatch")
+          case _                 => None
+
+  private def warningKind(w: DriftWarning): String =
+    w match
+      case _: DriftWarning.NoStampDeclared => "NoStampDeclared"
+      case _: DriftWarning.Unreadable      => "Unreadable"
+      case _: DriftWarning.PreRenameStamp  => "PreRenameStamp"
+      case _: DriftWarning.VersionMismatch => "VersionMismatch"
+
+  /**
+   * genInstallRootStates — constructive over the four install-root states
+   * crossed with the six searched roots. Edge arms: all-absent,
+   * all-stamped-at-current, exactly-one-unreadable, and stamps drawn at
+   * the recorded historical versions (12, 13) plus the current one.
+   */
+  private def genInstallRootStates: Gen[(Option[Int], List[InstallRootState])] =
+    val genState: Gen[InstallRootState] = Gen.frequency1(
+      25 -> Gen.constant(InstallRootState.Absent),
+      20 -> Gen.constant(InstallRootState.PresentNoStamp),
+      35 -> Gen.element1(12, 13, 14).flatMap { v =>
+        Gen.element1(StampFormat.Legacy, StampFormat.New).map(f => InstallRootState.Stamped(v, f))
+      },
+      20 -> Gen.string(Gen.alpha, Range.linear(3, 12)).map(InstallRootState.Unreadable(_))
+    )
+    for
+      schemaV <- genSchemaBaseline
+      states <- Gen.frequency1(
+        15 -> Gen.constant(List.fill(DriftScan.installRoots.length)(InstallRootState.Absent)),
+        10 -> Gen.constant(
+          List.fill(DriftScan.installRoots.length)(InstallRootState.Stamped(14, StampFormat.New))
+        ),
+        10 -> genState
+          .list(Range.singleton(DriftScan.installRoots.length))
+          .map((states: List[InstallRootState]) => states.updated(0, InstallRootState.Unreadable("forced"))),
+        65 -> genState.list(Range.singleton(DriftScan.installRoots.length))
+      )
+    yield (schemaV, states)
+
+  property("every-searched-root-is-classified", coverConfig):
+    for drawn <- genInstallRootStates.forAll
+        .cover(
+          10,
+          "all-absent",
+          (d: (Option[Int], List[InstallRootState])) => d._2.forall(_ == InstallRootState.Absent)
+        )
+        .cover(
+          10,
+          "has-unreadable",
+          (d: (Option[Int], List[InstallRootState])) =>
+            d._2.exists { case InstallRootState.Unreadable(_) => true; case _ => false }
+        )
+        .cover(
+          10,
+          "has-legacy",
+          (d: (Option[Int], List[InstallRootState])) =>
+            d._2.exists { case InstallRootState.Stamped(_, StampFormat.Legacy) => true; case _ => false }
+        )
+    yield
+      val (schemaV: Option[Int], states: List[InstallRootState]) = drawn
+      // The repo-local and user-scoped roots share relative paths
+      // (`.agents/skills` appears under both bases) — key each scan by
+      // base-qualified path so per-root classification is observable.
+      val scans: List[InstallRootScan] = DriftScan.installRoots.all
+        .zip(states)
+        .map { case (ref, st) => InstallRootScan(s"${ref.base}/${ref.relativePath}", st) }
+      val res: DriftScanResult = DriftScan.scan(schemaV, scans)
+      val warningsByRoot: Map[String, List[DriftWarning]] =
+        res.warnings.groupBy(_.rootPath)
+      // Totality + single classification: each searched root yields at
+      // most one warning, of the variant its state requires; an
+      // Unreadable root always yields its Unreadable warning and never
+      // collapses into absent.
+      val perRootOk: Boolean = scans.forall { (scan: InstallRootScan) =>
+        val got: List[DriftWarning]  = warningsByRoot.getOrElse(scan.rootPath, Nil)
+        val expected: Option[String] = expectedWarningKind(scan.state, schemaV)
+        expected match
+          case None => got.isEmpty
+          case Some(kind) =>
+            got match
+              case w :: Nil => warningKind(w) == kind
+              case _        => false
+      }
+      val unreadableNotAbsent: Boolean = scans.forall { (scan: InstallRootScan) =>
+        scan.state match
+          case InstallRootState.Unreadable(_) =>
+            warningsByRoot.getOrElse(scan.rootPath, Nil).exists {
+              case _: DriftWarning.Unreadable => true
+              case _                          => false
+            }
+          case _ => true
+      }
+      Result
+        .assert(scans.length == DriftScan.installRoots.length)
+        .and(Result.assert(perRootOk).log("a root produced zero or duplicate/mismatched warnings"))
+        .and(Result.assert(unreadableNotAbsent).log("an unreadable root was reported as absent"))
+        .and(
+          Result
+            .assert(res.noSkillInstalled == states.forall(_ == InstallRootState.Absent))
+            .log("noSkillInstalled must hold iff every root is absent")
+        )

@@ -24,6 +24,18 @@ setup() {
   GATE_SH="$SCHEMA/hooks/gate.sh"
 }
 
+# The schema-version assertion as a function so the negative fixture can
+# drive the SAME check against a doctored schema.yaml — a copy of the
+# assertion inline in one test would prove nothing about the other.
+assert_schema_version() {
+  local yaml="$1" expected="$2" got
+  got="$(awk -F': *' '/^version:/ {print $2; exit}' "$yaml")"
+  [ "$got" = "$expected" ] || {
+    printf 'expected schema version %s, got: %s\n' "$expected" "$got" >&2
+    return 1
+  }
+}
+
 # ─────────────────────────────────────────────────────────────────────────
 # Requirement: Correctness is defined by an unbroken evidence chain
 # ─────────────────────────────────────────────────────────────────────────
@@ -349,13 +361,22 @@ EOF
   assert_contains "$output" "verified-scala3" "openspec status output"
 }
 
-@test "the schema version is 13" {
-  run awk -F': *' '/^version:/ {print $2; exit}' "$SCHEMA_YAML"
-  assert_status 0 "$status" "reading schema version"
-  [ "$output" = "13" ] || {
-    printf 'expected schema version 13, got: %s\n' "$output" >&2
+# spec: schema-rename-completion — Scenario: Happy path — the assertion matches the declared version
+@test "the schema version is 14" {
+  assert_schema_version "$SCHEMA_YAML" 14
+}
+
+# spec: schema-rename-completion — Scenario: Adversarial — the assertion fails against a different version
+@test "the version assertion fails against a different version, naming both" {
+  local fixture="$BATS_TEST_TMPDIR/schema-wrong-version.yaml"
+  sed 's/^version:.*/version: 99/' "$SCHEMA_YAML" > "$fixture"
+  run assert_schema_version "$fixture" 14
+  [ "$status" -eq 1 ] || {
+    printf 'the assertion must fail on version 99, got status %s\n' "$status" >&2
     return 1
   }
+  assert_contains "$output" "expected schema version 14" "failure names the expected version"
+  assert_contains "$output" "got: 99" "failure names the declared version"
 }
 
 @test "the changelog records the v12 entry" {

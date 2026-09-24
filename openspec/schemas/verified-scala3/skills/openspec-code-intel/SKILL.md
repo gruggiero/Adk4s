@@ -1,7 +1,7 @@
 ---
 name: openspec-code-intel
 description: >
-  Semantic code-intelligence for the verified-scala3 workflow via a headless
+  Semantic code-intelligence for the probatio workflow via a headless
   Metals MCP endpoint, driven from scripts (no agent-side MCP registration
   needed): compiler-resolved find-usages, symbol inspection, and the
   impact-scan / removal-audit recipes used by apply Steps 0 and 12. Falls
@@ -9,7 +9,7 @@ description: >
   you need "who uses X", "what is X", or the public-type-change impact scan
   — before reaching for grep.
 metadata:
-  generatedBy: verified-scala3-schema/13.0.0
+  generatedBy: probatio-schema/14.0.0
 ---
 
 # Code Intelligence Skill (Metals MCP, option B)

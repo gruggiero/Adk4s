@@ -205,7 +205,7 @@ jq -cn '{
   bound: 60,
   resolved: 60,
   discharged: 0,
-  unresolved: [range(60) | {requirement: ("req-\(.|tostring)"), reasons: ["undischarged"]}]
+  unresolved: [range(60) | {spec: "s", requirement: ("req-\(.|tostring)"), reasons: ["undischarged"]}]
 }'
 EOF
   chmod +x "$1"
@@ -221,9 +221,9 @@ jq -cn '{
   resolved: 3,
   discharged: 0,
   unresolved: [
-    {requirement: "req-a", reasons: ["undischarged"]},
-    {requirement: "req-b", reasons: ["undischarged"]},
-    {requirement: "req-c", reasons: ["undischarged"]}
+    {spec: "s", requirement: "req-a", reasons: ["undischarged"]},
+    {spec: "s", requirement: "req-b", reasons: ["undischarged"]},
+    {spec: "s", requirement: "req-c", reasons: ["undischarged"]}
   ]
 }'
 EOF
@@ -268,4 +268,47 @@ EOF
   echo "$output" | grep 'req-b'
   echo "$output" | grep 'req-c'
   ! echo "$output" | grep -E '\+[0-9]+ more'
+}
+
+# ── spec 10 of repair-probatio-cutover: schema-rename-completion ──────────
+# The shipped documents use the current name; the changelog keeps the old
+# one as history.
+
+# spec: schema-rename-completion — Scenario: Happy path — the tutorial names the current schema
+@test "the tutorial's entry document names the current schema" {
+  local index_html="$SCHEMA/docs/index.html"
+  [ -f "$index_html" ] || { printf 'tutorial index missing\n' >&2; return 1; }
+  # Title and brand name the current schema.
+  grep -q '<title>probatio — the workflow tutorial</title>' "$index_html" || {
+    printf 'index.html <title> does not name the current schema\n' >&2
+    return 1
+  }
+  grep -q '>probatio</a>' "$index_html" || {
+    printf 'index.html brand does not name the current schema\n' >&2
+    return 1
+  }
+  # The body names the schema by its current name.
+  grep -q '<code>probatio</code>' "$index_html" || {
+    printf 'index.html body does not name the current schema\n' >&2
+    return 1
+  }
+}
+
+# spec: schema-rename-completion — Scenario: Edge case — the changelog retains the previous name as history
+@test "the changelog's rename entry keeps the previous name, marked as the pre-rename identity" {
+  local changelog="$SCHEMA/CHANGELOG.md"
+  [ -f "$changelog" ] || return 1
+  local v14_block
+  v14_block="$(awk '/^ 14 /{found=1} found{print} /^ 13 /{if(found)exit}' "$changelog")"
+  [ -n "$v14_block" ] || { printf 'could not extract v14 changelog block\n' >&2; return 1; }
+  # The previous name appears in the rename entry...
+  echo "$v14_block" | grep -q 'verified-scala3' || {
+    printf 'v14 entry does not record the previous name\n' >&2
+    return 1
+  }
+  # ...marked as the pre-rename identity, not presented as current.
+  echo "$v14_block" | grep -qi 'former\|pre-rename\|renamed' || {
+    printf 'v14 entry names the previous identity without a historical marker\n' >&2
+    return 1
+  }
 }

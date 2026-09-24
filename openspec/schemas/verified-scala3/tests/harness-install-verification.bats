@@ -189,3 +189,56 @@ README_MD="$SCHEMA_DIR/hooks/README.md"
     return 1
   }
 }
+
+# ═════════════════════════════════════════════════════════════════════════
+# Requirement: Every installed document in a searched root carries the
+# current stamp (schema-rename-completion — Ring 8 found this obligation
+# had no bats oracle)
+# ═════════════════════════════════════════════════════════════════════════
+
+searched_roots() {
+  local repo_root="$SCHEMA_DIR/../../.."
+  printf '%s\n' \
+    "$repo_root/.agents/skills" \
+    "$repo_root/.claude/skills" \
+    "$repo_root/.pi/skills" \
+    "$HOME/.agents/skills" \
+    "$HOME/.claude/skills" \
+    "$HOME/.zcode/skills"
+}
+
+# spec: schema-rename-completion — Scenario: no searched root carries a pre-rename stamp
+@test "no instruction document in any searched root carries a pre-rename stamp" {
+  local root stale=""
+  while IFS= read -r root; do
+    [ -d "$root" ] || continue
+    local hit
+    hit="$(grep -rln 'generatedBy:[[:space:]]*verified-scala3-schema/' "$root" 2>/dev/null || true)"
+    [ -z "$hit" ] || stale="$stale$hit"$'\n'
+  done < <(searched_roots)
+  [ -z "$stale" ] || {
+    printf 'pre-rename stamps remain in searched roots:\n%s' "$stale" >&2
+    return 1
+  }
+}
+
+# spec: schema-rename-completion — Scenario: Happy path — every installed document carries the schema's current name and version
+@test "every schema-stamped document in a searched root carries the current stamp" {
+  local root doc bad="" count=0
+  while IFS= read -r root; do
+    [ -d "$root" ] || continue
+    while IFS= read -r doc; do
+      [ -f "$doc" ] || continue
+      count=$((count + 1))
+      grep -qE 'generatedBy:[[:space:]]*probatio-schema/14\.0\.0' "$doc" || bad="$bad$doc"$'\n'
+    done < <(grep -rlE 'generatedBy:[[:space:]]*[A-Za-z0-9_-]+-schema/' "$root" 2>/dev/null || true)
+  done < <(searched_roots)
+  [ "$count" -gt 0 ] || {
+    printf 'no schema-stamped documents found in any searched root\n' >&2
+    return 1
+  }
+  [ -z "$bad" ] || {
+    printf 'installed documents missing the current stamp (probatio-schema/14.0.0):\n%s' "$bad" >&2
+    return 1
+  }
+}

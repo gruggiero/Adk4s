@@ -723,4 +723,138 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
       )
     } finally { val _ = tmp.delete() }
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // spec 10 of repair-probatio-cutover: schema-rename-completion
+  //
+  // spec: schema-rename-completion — Property: no-shipped-document-presents-the-previous-name-as-current
+  // spec: schema-rename-completion — Scenario: Adversarial — no template presents the previous name as current
+  //
+  // Enumerated, not sampled: the domain is the finite set of shipped
+  // tutorial documents and CI templates, discovered at test time rather
+  // than listed, so a newly added document is covered automatically.
+  //
+  // An occurrence of the previous name is a violation UNLESS:
+  //   1. the containing line carries a historical marker (the spec's
+  //      "marked as the former identity" — excluded by the marking, not
+  //      by a name-based exception), or
+  //   2. the occurrence is a path segment into the still-named schema
+  //      directory (preceded or followed by `/`), or names the
+  //      `verified-scala3-gate` state-dir/adapter filenames — those
+  //      artifacts are NOT renamed by this change (the directory rename
+  //      is the recorded deferral), so a path naming them is a fact,
+  //      not a stale identity. The stamp namespace `verified-scala3-schema`
+  //      is NOT exempt: nothing current carries it, so an unmarked
+  //      occurrence presents the pre-rename stamp as current.
+  // ══════════════════════════════════════════════════════════════════════
+
+  private val previousName: String = "verified-scala3"
+
+  private val historicalMarkers: List[String] = List(
+    "formerly",
+    "pre-rename",
+    "previous",
+    "previously",
+    "rename",
+    "old name",
+    "legacy",
+    "historical",
+    "was named",
+    "was called"
+  )
+
+  /** All start offsets of `needle` inside `hay`. */
+  private def occurrencesOf(hay: String, needle: String): List[Int] =
+    scala.util.matching.Regex.quote(needle).r.findAllMatchIn(hay).map(_.start).toList
+
+  /** True when the occurrence at `idx` names a still-existing artifact. */
+  private def isCurrentArtifactRef(line: String, idx: Int): Boolean = {
+    val end: Int                = idx + previousName.length
+    val before: Char            = if (idx > 0) line.charAt(idx - 1) else ' '
+    val after: Char             = if (end < line.length) line.charAt(end) else ' '
+    val isPathSegment: Boolean  = before == '/' || after == '/'
+    val isGateArtifact: Boolean = line.substring(end).startsWith("-gate")
+    isPathSegment || isGateArtifact
+  }
+
+  private def isMarkedHistorical(line: String): Boolean = {
+    val lower: String = line.toLowerCase
+    historicalMarkers.exists((m: String) => lower.contains(m))
+  }
+
+  /**
+   * The previous-name violations in one document's text:
+   * `(lineNumber, trimmed line)` for every unmarked, non-artifact
+   * occurrence.
+   */
+  private def previousNameViolations(text: String): List[(Int, String)] =
+    text.linesIterator.toList.zipWithIndex.flatMap { case (line, i) =>
+      if (isMarkedHistorical(line)) Nil
+      else
+        occurrencesOf(line, previousName).collect {
+          case idx if !isCurrentArtifactRef(line, idx) => (i + 1, line.trim)
+        }
+    }
+
+  /** The shipped tutorial documents and CI templates, discovered at test time. */
+  private def shippedDocuments(): List[File] = {
+    val schemaDir: File = new File(repoRoot, schemaDirRel)
+    val docsDir: File   = new File(schemaDir, "docs")
+    val ciDir: File     = new File(schemaDir, "ci")
+    val docs: List[File] =
+      Option(docsDir.listFiles()).toList.flatten
+        .filter((f: File) => f.isFile && f.getName.endsWith(".html"))
+    val templates: List[File] =
+      Option(ciDir.listFiles()).toList.flatten
+        .filter((f: File) => f.isFile && (f.getName.endsWith(".yml") || f.getName.endsWith(".yaml")))
+    docs ++ templates
+  }
+
+  property("no shipped document presents the previous name as current") {
+    for {
+      _ <- Gen.constant(()).forAll
+    } yield {
+      val docs: List[File] = shippedDocuments()
+      if (docs.isEmpty)
+        Result.failure.log("no shipped documents discovered — the property must have subjects")
+      else
+        docs
+          .map { doc =>
+            val violations: List[(Int, String)] = previousNameViolations(fileContents(doc))
+            Result
+              .assert(violations.isEmpty)
+              .log(
+                s"${doc.getName}: ${violations.length} unmarked occurrence(s) of '$previousName'\n" +
+                  violations.map { case (n, l) => s"  line $n: $l" }.mkString("\n")
+              )
+          }
+          .foldLeft(Result.success)((acc: Result, r: Result) => acc.and(r))
+    }
+  }
+
+  test("the previous-name check distinguishes marked, artifact, and violating occurrences") {
+    // A marked occurrence is not a violation — excluded by the marking.
+    val marked: String = "This workflow was formerly verified-scala3 before the rename."
+    assertEquals(previousNameViolations(marked), Nil, "marked occurrence must be exempt")
+    // A path segment into the still-named directory is a fact, not a stale identity.
+    val pathRef: String = "run: bats openspec/schemas/verified-scala3/tests/"
+    assertEquals(previousNameViolations(pathRef), Nil, "directory path reference must be exempt")
+    // The gate state-dir filename still exists under that name.
+    val gateRef: String = "state lives under .git/verified-scala3-gate"
+    assertEquals(previousNameViolations(gateRef), Nil, "gate state-dir reference must be exempt")
+    // A bare occurrence with no marker presents the previous name as current.
+    val bare: String = "name: verified-scala3"
+    assertEquals(
+      previousNameViolations(bare).length,
+      1,
+      "an unmarked bare occurrence must be reported"
+    )
+    // The stamp namespace is not exempt: an unmarked stamp string is a violation.
+    val stamp: String = "generatedBy: verified-scala3-schema/7.0.0"
+    assertEquals(
+      previousNameViolations(stamp).length,
+      1,
+      "an unmarked pre-rename stamp must be reported"
+    )
+  }
 }

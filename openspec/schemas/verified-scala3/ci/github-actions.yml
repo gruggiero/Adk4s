@@ -1,10 +1,10 @@
-# Gate checks for the verified-scala3 workflow.
-# Copy to .github/workflows/verified-scala3.yml.
+# Gate checks for the probatio workflow.
+# Copy to .github/workflows/probatio.yml.
 #
-# Installs the DECLARED PREREQUISITE SET (schema v12 — see ../hooks/README.md).
+# Installs the DECLARED PREREQUISITE SET (schema v14 — see ../hooks/README.md).
 # Without an install step the shell rings are developer-local only, which is
 # the same opt-in weakness the hooks exist to remove.
-name: verified-scala3
+name: probatio
 
 on:
   push:

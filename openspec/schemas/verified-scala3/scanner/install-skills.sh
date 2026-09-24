@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-skills.sh — copy the verified-scala3 schema's skill sources into a
+# install-skills.sh — copy the probatio schema's skill sources into a
 # project's agent skill directories, so each coding agent picks them up:
 #   .claude/skills/  (Claude Code)
 #   .pi/skills/      (pi)

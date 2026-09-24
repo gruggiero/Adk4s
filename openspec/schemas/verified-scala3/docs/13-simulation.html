@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>13 · Simulation — verified-scala3</title>
+<title>13 · Simulation — probatio</title>
 <link rel="stylesheet" href="assets/tutorial.css">
 <style>
 /* page-specific: the simulation widget */
@@ -75,7 +75,7 @@
 <div class="layout">
 
 <nav class="sidebar">
-  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand"><a href="index.html">probatio</a></div>
   <div class="brand-sub">Workflow tutorial</div>
   <ul class="chapters">
     <li><a href="index.html"><span class="num">·</span> Start here</a></li>
@@ -105,7 +105,7 @@
 <h1>The whole workflow, simulated end to end</h1>
 <p class="lede">
   This chapter runs one fake, three-spec change — <code>add-shipment-quoting</code> —
-  through the entire verified-scala3 machine: planning artifacts, the per-spec apply
+  through the entire probatio machine: planning artifacts, the per-spec apply
   loop (Steps 0–13), hooks firing on every turn, the evidence ledger filling row by
   row, the completion gate refusing a premature claim, and the final archive.
   Part A is the static reference (phases, rings, hooks, persisted state). Part B is
@@ -196,7 +196,7 @@ All logic lives in <code>hooks/gate.sh</code>; harness adapters only decide when
 and where to put the answer.</p>
 <div class="table-wrap wide"><table>
 <tr><th>Event</th><th>Tier</th><th>When it fires</th><th>What it does</th><th>Exit contract</th></tr>
-<tr><td><code>session-start</code></td><td>B — inject</td><td>New agent session</td><td>Emits a two-part banner: <strong>(1)</strong> the short invariant (<em>“N/A” / “passes” / “already handled” are CLAIMS, not verdicts</em>); <strong>(2)</strong> the session context — schema version read from <code>schema.yaml</code>; <strong>INSTRUCTION DRIFT</strong> warnings when an installed skill’s <code>generatedBy: verified-scala3-schema/&lt;N&gt;</code> stamp (searched across repo + HOME <code>.agents/.claude/.pi/.zcode</code> roots) is older than the schema; applicability rows citing the <em>numbered</em> judgment checks (3, 6, 17 ALTITUDE, 18 CONCURRENCY — including the detected deterministic test kit); workflow position; and a live <strong>chain-state section naming unresolved requirements</strong> when a change is active — closed by the <code>gate checks</code> tool list and the “READ FROM DISK … facts, not recollection” trailer</td><td>Always 0 — never blocks</td></tr>
+<tr><td><code>session-start</code></td><td>B — inject</td><td>New agent session</td><td>Emits a two-part banner: <strong>(1)</strong> the short invariant (<em>“N/A” / “passes” / “already handled” are CLAIMS, not verdicts</em>); <strong>(2)</strong> the session context — schema version read from <code>schema.yaml</code>; <strong>INSTRUCTION DRIFT</strong> warnings when an installed skill’s <code>generatedBy: probatio-schema/&lt;N&gt;</code> stamp (searched across repo + HOME <code>.agents/.claude/.pi/.zcode</code> roots) is older than the schema; applicability rows citing the <em>numbered</em> judgment checks (3, 6, 17 ALTITUDE, 18 CONCURRENCY — including the detected deterministic test kit); workflow position; and a live <strong>chain-state section naming unresolved requirements</strong> when a change is active — closed by the <code>gate checks</code> tool list and the “READ FROM DISK … facts, not recollection” trailer</td><td>Always 0 — never blocks</td></tr>
 <tr><td><code>prompt-submit</code></td><td>B — inject</td><td>Every user prompt</td><td>Re-injects the same banner <em>only if the facts changed</em> this session (fingerprint suppression) — survives context compaction without spamming unchanged payloads</td><td>Always 0</td></tr>
 <tr><td><code>tool-call</code></td><td>A — pre-execution</td><td>Before <code>write</code>/<code>edit</code>/<code>bash</code> on protected files</td><td>Three locks. <strong>Oracle-ordering lock:</strong> refuses a <em>production-source</em> edit while the current step is the test-oracle phase (the oracle must be derived from the spec, not from implementation). <strong>Predecessor check:</strong> refuses a production edit if any prior spec is not both <code>verified</code> AND checkpointed (a presentation marker from <code>checkpoint.sh</code> exists) — <code>verified</code> alone means tests ran, not that chain-state discharge was checked. <strong>Human-grant lock (v13):</strong> refuses non-production writes targeting spec N+1 while spec N’s checkpoint has been presented but no granting user prompt has been observed — approval must be a harness-observed grant, not agent prose. The grant waiver for <code>verified</code>-phase specs also requires a presentation marker</td><td>0 allow · 2 refuse (<code>{"decision":"block",…}</code>)</td></tr>
 <tr><td><code>post-edit</code></td><td>A — advise</td><td>After an edit lands</td><td>Classifies the path: a spec under an active change → runs <code>spec-lint --artifacts</code>; a production <code>.scala</code> → runs <code>danger-scan</code>; findings returned as context. The edit already happened, so blocking is meaningless</td><td>Always 0</td></tr>
@@ -218,7 +218,7 @@ If <code>openspec/</code> is absent the hook emits nothing at all.</p>
 <tr><td><code>openspec/concept-inventory.md</code> · <code>openspec/concepts/*.md</code></td><td>Step 12</td><td>Project-level concept provenance accumulates across changes</td></tr>
 <tr><td>Per-spec commits <code>&lt;change&gt;: spec n/m …</code></td><td>Step 13</td><td>The checkpoint's durable identity; makes every <code>git diff &lt;baseline&gt;</code> exact and per-spec</td></tr>
 <tr><td>Git-dir hook state (heartbeat, fingerprints, refusal marker, phase files, presentation markers, grant tokens)</td><td>Every hook invocation / <code>checkpoint.sh</code> / <code>prompt-submit</code></td><td>"The gate actually fired" is checkable after the fact; suppression is per-session. <strong>Phase files</strong> (<code>oracle</code>→<code>implementation</code>→<code>verified</code>) drive the oracle-ordering and predecessor locks. <strong>Presentation markers</strong> (written by <code>checkpoint.sh</code>) are required by the predecessor check and grant waiver — <code>verified</code> phase alone is not sufficient. <strong>Grant tokens</strong> (written on <code>prompt-submit</code> after a presentation) release the human-grant lock</td></tr>
-<tr><td><code>…/skills/openspec-*/SKILL.md</code> — the <code>generatedBy: verified-scala3-schema/&lt;N&gt;</code> stamp</td><td><code>install-skills.sh</code> runs</td><td>What the instruction-drift detector in the session banner compares against <code>schema.yaml</code>'s version — an installed-but-stale skill can no longer be followed silently</td></tr>
+<tr><td><code>…/skills/openspec-*/SKILL.md</code> — the <code>generatedBy: probatio-schema/&lt;N&gt;</code> stamp</td><td><code>install-skills.sh</code> runs</td><td>What the instruction-drift detector in the session banner compares against <code>schema.yaml</code>'s version — an installed-but-stale skill can no longer be followed silently</td></tr>
 <tr><td><code>openspec/specs/</code> + <code>changes/archive/&lt;date&gt;-&lt;change&gt;/</code></td><td>Archive</td><td>Deltas fold into the living spec set; the change becomes history</td></tr>
 </table></div>
 
@@ -329,12 +329,12 @@ are highlighted in blue.</p>
       (Had any installed skill copy carried a <code>generatedBy</code> stamp older
       than v13, an <b>INSTRUCTION DRIFT</b> warning would appear in this banner,
       naming the root and the version, with the re-install instruction.)</p>
-      <pre data-lang="bash">verified-scala3 — invariant (schema v13)
+      <pre data-lang="bash">probatio — invariant (schema v14)
   NEVER LET A CLAIM OUTRUN ITS EVIDENCE.
   "N/A" / "passes" / "already handled" are CLAIMS, not verdicts.
 
-verified-scala3 — session context (schema v13, injected by hooks/gate.sh)
-  schema                openspec/schemas/verified-scala3  v13
+probatio — session context (schema v14, injected by hooks/gate.sh)
+  schema                openspec/schemas/verified-scala3  v14
   behavioural registry  openspec/concepts/             ABSENT
     -> check 17 ALTITUDE is N/A (attested by this script, not assumed).
   type inventory        openspec/concept-inventory.md  PRESENT (2 typed rows)

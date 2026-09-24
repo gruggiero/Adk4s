@@ -45,14 +45,16 @@ final class SchemaPolicySpec extends ProbatioSuite:
 
   /**
    * genCacheState — constructive over (legacy-exists, new-exists) ×
-   * genCacheContents.
+   * genCacheContents. A directory's contents are drawn only when the
+   * directory exists: a contents-without-directory state is not a
+   * filesystem state.
    */
   private val genCacheState: Gen[CacheState] =
     for
       legacyExists <- Gen.boolean
       newExists    <- Gen.boolean
-      legacy       <- genCacheContents
-      newDir       <- genCacheContents
+      legacy       <- if legacyExists then genCacheContents else Gen.constant(List.empty[String])
+      newDir       <- if newExists then genCacheContents else Gen.constant(List.empty[String])
     yield CacheState(legacyExists, newExists, legacy, newDir)
 
   /** Generator for stamp format. */
@@ -398,3 +400,87 @@ final class SchemaPolicySpec extends ProbatioSuite:
       "val v: EnvVarSetting = new EnvVarSetting { }"
     )
     assert(err.nonEmpty, "EnvVarSetting should be sealed — no new variants")
+
+  // ════════════════════════════════════════════════════════════════════
+  // spec 10 of repair-probatio-cutover: schema-rename-completion
+  //
+  // The migration kernel is already implemented and verified — these
+  // scenarios are GREEN-BY-DESIGN at the pure level; the caller the spec
+  // supplies is covered by SubprocessConformanceSpec.
+  // ════════════════════════════════════════════════════════════════════
+
+  // spec: schema-rename-completion — Scenario: Happy path — a previous directory is migrated once
+  test("schema-rename: a previous directory's contents appear under the current one"):
+    val state: CacheState = CacheState(
+      legacyExists = true,
+      newExists = false,
+      legacyContents = List("heartbeat", "suppression"),
+      newDirContents = List.empty
+    )
+    val result: CacheState = SchemaPolicy.migrateCache(state)
+    assertEquals(result.newDirContents, List("heartbeat", "suppression"))
+    assert(result.newExists, "the current directory must exist after migration")
+
+  // spec: schema-rename-completion — Scenario: Happy path — a second run performs no migration
+  test("schema-rename: a second run moves nothing"):
+    val state: CacheState = CacheState(
+      legacyExists = true,
+      newExists = false,
+      legacyContents = List("heartbeat"),
+      newDirContents = List.empty
+    )
+    val once: CacheState  = SchemaPolicy.migrateCache(state)
+    val twice: CacheState = SchemaPolicy.migrateCache(once)
+    assertEquals(twice, once, "a second migration must be a no-op")
+
+  // spec: schema-rename-completion — Scenario: Edge case — a fresh environment with neither directory migrates nothing
+  test("schema-rename: neither directory present migrates nothing and reports no error"):
+    val state: CacheState = CacheState(
+      legacyExists = false,
+      newExists = false,
+      legacyContents = List.empty,
+      newDirContents = List.empty
+    )
+    val result: CacheState = SchemaPolicy.migrateCache(state)
+    assertEquals(result.newDirContents, List.empty, "nothing to move — nothing appears")
+    assertEquals(result.legacyContents, List.empty)
+
+  // spec: schema-rename-completion — Scenario: Adversarial — a previous directory is not migrated over an existing current one
+  test("schema-rename: an existing current directory is never overwritten by the previous one"):
+    val state: CacheState = CacheState(
+      legacyExists = true,
+      newExists = true,
+      legacyContents = List("stale-a", "stale-b"),
+      newDirContents = List("current")
+    )
+    val result: CacheState = SchemaPolicy.migrateCache(state)
+    assertEquals(result, state, "with both present the state must be unchanged")
+    assert(
+      result.newDirContents.forall(c => !state.legacyContents.contains(c)) ||
+        result.newDirContents == state.newDirContents,
+      "no previous-directory content may appear under the current one"
+    )
+
+  // ── Property: migration-is-idempotent ───────────────────────────────
+  // spec: schema-rename-completion — Property: migration-is-idempotent
+  //
+  // For every directory state, applying the migration twice yields the
+  // same result as applying it once, and no state loses content.
+  property("migration-is-idempotent"):
+    for state <- genCacheState.forAll
+    yield
+      val once: CacheState  = SchemaPolicy.migrateCache(state)
+      val twice: CacheState = SchemaPolicy.migrateCache(once)
+      Result
+        .assert(once == twice)
+        .log("migrate(migrate(s)) != migrate(s)")
+        .and(
+          Result
+            .assert(state.newDirContents.forall(once.newDirContents.contains))
+            .log("current-directory content was lost")
+        )
+        .and(
+          Result
+            .assert(state.legacyContents.forall(once.legacyContents.contains))
+            .log("previous-directory content was lost")
+        )

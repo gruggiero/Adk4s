@@ -2,6 +2,11 @@ package org.sinemenda.probatio.migration
 
 import hedgehog.*
 import org.sinemenda.probatio.cli.ProbatioCliSuite
+import org.sinemenda.probatio.core.RenameDeferral
+
+import java.nio.file.Files
+import java.nio.file.Path
+import scala.jdk.CollectionConverters.ListHasAsScala
 
 /**
  * Test oracle for the migration-protocol spec — R-M4 (exactly one
@@ -100,3 +105,91 @@ final class MigrationProtocolSpec extends ProbatioCliSuite:
       if portedCheckpoint then Some(ToolId.Checkpoint) else None,
       if portedGate then Some(ToolId.Gate) else None
     ).flatten
+
+  // ════════════════════════════════════════════════════════════════════
+  // spec 10 of repair-probatio-cutover: schema-rename-completion
+  //
+  // The directory-rename deferral is a recorded VALUE — these scenarios
+  // read it and check what it names.
+  // ════════════════════════════════════════════════════════════════════
+
+  /** The repository root, walked up from the test working directory. */
+  private def repoRoot: Path =
+    val start: Path = Path.of("").toAbsolutePath.normalize
+    Iterator
+      .unfold(start)((p: Path) => Option(p.getParent).map((par: Path) => p -> par))
+      .find((p: Path) => Files.isDirectory(p.resolve("openspec/changes")))
+      .getOrElse(sys.error(s"could not locate the repository root from $start"))
+
+  /**
+   * The on-disk count of recorded changes that pin the schema's current
+   * directory name — every `.openspec.yaml` under `openspec/changes`
+   * declaring `schema: verified-scala3`. The deferral's recorded count
+   * must agree with this, not with prose.
+   */
+  private def changesPinningCurrentName: Int =
+    val changesDir: Path = repoRoot.resolve("openspec/changes")
+    val found: List[Path] =
+      Files
+        .walk(changesDir)
+        .filter((p: Path) => p.getFileName.toString == ".openspec.yaml")
+        .filter((p: Path) => Files.readString(p).contains("schema: verified-scala3"))
+        .toList
+        .asScala
+        .toList
+    found.length
+
+  // spec: schema-rename-completion — Scenario: Happy path — the deferral names the coupling and the blocked items
+  test("schema-rename: the recorded deferral names the directory rename, the coupling, and the pinning count"):
+    val recorded: List[RenameDeferral] = RenameDeferral.recorded
+    assert(recorded.nonEmpty, "the deferral record must not be empty")
+    recorded.foreach { (d: RenameDeferral) =>
+      assertEquals(
+        RenameDeferral.missing(d),
+        List.empty,
+        s"a recorded deferral must be complete — missing: ${RenameDeferral.missing(d)}"
+      )
+    }
+    val directoryRename: List[RenameDeferral] = recorded.filter { (d: RenameDeferral) =>
+      d.item.toLowerCase.contains("director") &&
+      d.item.contains("verified-scala3")
+    }
+    assertEquals(
+      directoryRename.length,
+      1,
+      s"exactly one deferral must name the schema directory rename, got: ${recorded.map(_.item)}"
+    )
+    directoryRename.headOption match
+      case Some(d) =>
+        assert(
+          d.blockedBy.resolutionMechanism.toLowerCase.contains("directory"),
+          s"the coupling must name directory-name resolution: ${d.blockedBy.resolutionMechanism}"
+        )
+        assert(
+          d.blockedBy.configurationPin.contains("openspec/config.yaml") ||
+            d.blockedBy.configurationPin.contains("config.yaml"),
+          s"the coupling must name the pinning configuration: ${d.blockedBy.configurationPin}"
+        )
+        assertEquals(
+          d.blockedBy.recordedChangesPinning,
+          changesPinningCurrentName,
+          "the recorded count must equal the on-disk count of changes pinning the current name"
+        )
+      case None => fail("unreachable — length asserted above")
+
+  // spec: schema-rename-completion — Scenario: Adversarial — a deferral without a recorded reason is not accepted
+  test("schema-rename: a deferral entry carrying no reason is reported incomplete"):
+    val entry: RenameDeferral = RenameDeferral(
+      item = "schema directory rename",
+      reason = "",
+      blockedBy = RenameDeferral.Coupling(
+        resolutionMechanism = "the workflow tool resolves a schema by its directory name",
+        configurationPin = "openspec/config.yaml pins schema: verified-scala3",
+        recordedChangesPinning = 19
+      )
+    )
+    val missing: List[RenameDeferral.Missing] = RenameDeferral.missing(entry)
+    assert(
+      missing.contains(RenameDeferral.Missing.Reason),
+      s"the check must report the missing reason, got: $missing"
+    )

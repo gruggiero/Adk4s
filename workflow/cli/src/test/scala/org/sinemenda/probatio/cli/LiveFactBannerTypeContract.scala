@@ -142,6 +142,34 @@ final class LiveFactBannerTypeContract extends ProbatioCliSuite:
     )
     assert(err.nonEmpty, "InstallRoots with two roots should not compile — fixed arity of six")
 
+  // ── Compile-negatives for spec: schema-rename-completion ─────────────
+  // spec: schema-rename-completion — Compile-Negative: A rename deferral without a reason
+  // A deferral with no recorded reason is indistinguishable from an
+  // omission, so the type requires the reason and the blocking coupling.
+  test("RenameDeferral without reason and coupling is unconstructible"):
+    val err: String = compileErrors(
+      "org.sinemenda.probatio.core.RenameDeferral(\"schema directory rename\")"
+    )
+    assert(
+      err.nonEmpty,
+      "RenameDeferral(item) should not compile — the type requires the reason and the blocking coupling"
+    )
+
+  // spec: schema-rename-completion — Compile-Negative: A drift scan result treating an unreadable root as absent
+  // Reporting an unreadable root as carrying no document turns a read
+  // failure into a verdict. `Absent` cannot stand where an `Unreadable`
+  // is required — the states are distinct variants. (The spec's literal
+  // `Unreadable == Absent` compiles under the enum's derived CanEqual, so
+  // the obligation is pinned as a type ascription instead.)
+  test("an unreadable install root cannot be equated with an absent one"):
+    val err: String = compileErrors(
+      "val s: org.sinemenda.probatio.core.InstallRootState.Unreadable = org.sinemenda.probatio.core.InstallRootState.Absent"
+    )
+    assert(
+      err.nonEmpty,
+      "Absent ascribed to Unreadable should not compile — the states are distinct variants"
+    )
+
   // ── Property & generator obligations (become the Ring 3 test oracle) ───
   //
   // Property: facts-reflect-repository

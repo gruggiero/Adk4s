@@ -71,6 +71,11 @@ object ProbatioMain:
    * spec: cli-protocol — Ring 6 Cross-Reference (formal contracts live in probatio-core)
    */
   private def runSubcommand(sub: Subcommand, args: ProgramArgs): Outcome[Int] =
+    // The cache-directory migration runs on every subcommand invocation —
+    // "first use" is the first run after the rename, whichever subcommand
+    // it is (spec: schema-rename-completion). Fail-open: a migration that
+    // cannot run never fails the tool.
+    CacheMigration.migrateOnce(sys.env) // scalafix:ok DisableSyntax.NoSysEnv
     val rest: Array[String] = args.toArray
     sub match
       case Subcommand.Gate          => GateCmd.run(rest)

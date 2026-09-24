@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """openspec-graph.py — the workflow's ARTIFACT TRACEABILITY GRAPH (prototype).
 
-The verified-scala3 workflow already *is* a graph, maintained as markdown
+The probatio workflow already *is* a graph, maintained as markdown
 tables: concepts declare actions and syncs; concept files bind actions to
 code; the inventory catalogs types with provenance; specs cite concepts,
 use/introduce types, carry requirements; proof obligations bind requirements

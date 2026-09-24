@@ -1,4 +1,4 @@
-# CI templates for the verified-scala3 gate checks
+# CI templates for the probatio gate checks
 
 Each template installs the DECLARED PREREQUISITE SET (schema v12 — see
 `../hooks/README.md`) and then runs the gate checks. None of them needs a JDK,
@@ -15,7 +15,7 @@ pipeline configuration before committing one).
 |---|---|---|
 | Azure DevOps | `azure-pipelines.yml` | repo root (then create a pipeline pointing at it) |
 | GitLab | `gitlab-ci.yml` | repo root as `.gitlab-ci.yml`, or include as a job in the existing one |
-| GitHub | `github-actions.yml` | `.github/workflows/verified-scala3.yml` |
+| GitHub | `github-actions.yml` | `.github/workflows/probatio.yml` |
 
 ## What each template runs
 

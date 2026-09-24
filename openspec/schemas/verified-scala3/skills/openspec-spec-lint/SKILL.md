@@ -11,7 +11,7 @@ globs:
   - "openspec/capability-profile.md"
   - "openspec/changes/*/spec-lint.md"
 metadata:
-  generatedBy: verified-scala3-schema/13.0.0
+  generatedBy: probatio-schema/14.0.0
 ---
 
 # Spec Lint Skill

@@ -10,7 +10,7 @@ description: >
   green-by-design). Reads implementation-order.md and
   implementation-progress.md (tasks.md is derived output, not an input).
 metadata:
-  generatedBy: verified-scala3-schema/13.0.0
+  generatedBy: probatio-schema/14.0.0
 ---
 
 Build a spec-derived test oracle: analyse an OpenSpec change's artifacts to
@@ -20,7 +20,7 @@ framework.
 **Input**: Optionally specify a change name and a spec name. If omitted, infer
 from context or prompt the user.
 
-**Timing**: In the verified-scala3 workflow this skill runs at Step 2 of the
+**Timing**: In the probatio workflow this skill runs at Step 2 of the
 apply phase — AFTER the typed contract is approved (or, for combined-tier
 specs, after it compiles) and BEFORE any implementation exists. The tests
 must compile against the typed contract; the ORACLE POLARITY run (Step 8

@@ -834,6 +834,24 @@ arities gained the required `scope: ShimTargetScope` parameter),
 scripts were regenerated to the `RepositoryRelative` three-line shape
 (`SCRIPT_DIR` from `BASH_SOURCE`, then `exec "$SCRIPT_DIR/../bin/probatio"`).
 
+### repair-probatio-cutover change — schema-rename-completion spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/schema-rename-completion`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `RenameDeferral` | final case class (item, reason, blockedBy: Coupling) — all three required, so a reason-less or coupling-less deferral is unconstructible; companion `missing(d): List[Missing]` is the completeness check (blank fields are reportable data) and `recorded: List[RenameDeferral]` is the recorded deferral (the `openspec/schemas/verified-scala3 → probatio` directory rename, deferred because the workflow resolves schemas by directory name) | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/schema-rename-completion` |
+| `RenameDeferral.Coupling` | final case class (resolutionMechanism, configurationPin, recordedChangesPinning: Int) — the blocking coupling as checkable data: the pin count is an `Int` the test oracle recomputes from disk (19: 18 archived `.openspec.yaml` + the active change pin) | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/schema-rename-completion` |
+| `RenameDeferral.Missing` | enum (Item, Reason, ResolutionMechanism, ConfigurationPin, RecordedChanges) — the named gaps `missing` reports | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/schema-rename-completion` |
+| `CacheMigration` | object (`migrateOnce(env)`, `legacyDirName`, `currentDirName`) — the impure adapter wiring the verified `SchemaPolicy.migrateCache` kernel to `~/.cache`; snapshot is TOTAL (`Option` — an unreadable directory aborts the decision, never reads as empty), materialisation is all-or-nothing (`*.migrating` staging sibling + move, cleaned on failure so the next run retries), fail-open throughout (a migration that cannot run never fails the tool) | `org.sinemenda.probatio.cli` | shipped; introduced by `spec:repair-probatio-cutover/schema-rename-completion` |
+
+Existing rows modified by this spec: `BannerEngine` (emitted identity
+headers renamed `verified-scala3 —` → `probatio —`; pre-rename stamp
+warnings remain explicit), `ProbatioMain` (`runSubcommand` invokes
+`CacheMigration.migrateOnce` before dispatch — first-use migration on
+every real subcommand), `SchemaPolicy` (`migrateCache` now has a shipped
+caller — previously verified-but-unwired).
+
 ### complete-probatio-porting change — hook-cutover spec concepts
 
 | Concept | Kind | Package | Status |

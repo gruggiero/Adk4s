@@ -185,6 +185,25 @@ final class BannerEngineSpec extends ProbatioSuite:
     assert(inv13 != inv14, "different schema versions must produce different invariant text")
     assert(inv14.contains("14"), "invariant for v14 must contain 14")
 
+  // ── spec 10 of repair-probatio-cutover: the emitted banner names the
+  // current schema (the old name survives only inside the intentional
+  // PRE-RENAME STAMP drift message, never as the banner's identity)
+  // spec: schema-rename-completion — Requirement: Installed instruction documents carry the current stamp
+  test("the emitted banner headers name probatio, never the pre-rename name"):
+    val output: BannerOutput = BannerEngine.render(emptyInputs(14))
+    assert(
+      output.payload.contains("probatio — invariant (schema v14)"),
+      s"invariant header must name probatio, got: ${output.payload}"
+    )
+    assert(
+      output.payload.contains("probatio — session context (schema v14"),
+      s"session-context header must name probatio, got: ${output.payload}"
+    )
+    assert(
+      !output.payload.contains("verified-scala3 —"),
+      "no banner line may present the pre-rename name as the banner's identity"
+    )
+
   // ── Mutation-killing: banner contains registry presence info
   test("banner with registry present contains PRESENT and concept count"):
     val inputs: BannerInputs = BannerInputs.from(

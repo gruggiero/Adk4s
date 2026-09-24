@@ -249,6 +249,75 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
       new String(process.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
     (process.waitFor(), stdout.nonEmpty)
 
+  // ── spec 10 of repair-probatio-cutover: schema-rename-completion ────
+  // spec: schema-rename-completion — Proof Obligation: The migration has a caller in the shipped tool
+  //
+  // `SchemaPolicy.migrateCache` is implemented, unit-tested and formally
+  // reachable — and nothing calls it. The caller is an adapter concern:
+  // the shipped artifact, run as a subprocess, must perform the cache and
+  // state directory migration on first use. HOME is sandboxed to a
+  // temporary directory so the check never touches the real user cache.
+
+  /**
+   * Run the built artifact with a sandboxed HOME and a neutral working
+   * directory. `gate --check-installed` is a read-only invocation: it is
+   * the lightest real entrypoint through which "the tool runs".
+   */
+  private def runArtifactWithHome(home: Path, cwd: Path): Int =
+    if !artifactExists then fail(s"built artifact not found at $artifactPath — conformance check FAILS, does not skip")
+    val pb: java.lang.ProcessBuilder =
+      new java.lang.ProcessBuilder(artifactPath, "gate", "--check-installed")
+    pb.directory(cwd.toFile)
+    pb.environment().put("HOME", home.toString)
+    pb.redirectInput(java.lang.ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
+    pb.redirectError(java.lang.ProcessBuilder.Redirect.DISCARD)
+    val process: java.lang.Process = pb.start()
+    process.getInputStream.readAllBytes()
+    process.waitFor()
+
+  // spec: schema-rename-completion — Scenario: Happy path — a previous directory is migrated once
+  test("schema-rename: the shipped tool migrates the previous cache directory on first use"):
+    withTempDir("probatio-home") { (home: Path) =>
+      withTempDir("probatio-cwd") { (cwd: Path) =>
+        val legacy: Path = home.resolve(".cache/verified-scala3")
+        Files.createDirectories(legacy)
+        Files.writeString(legacy.resolve("heartbeat"), "legacy-content")
+        val code: Int = runArtifactWithHome(home, cwd)
+        assert(
+          code >= 0 && code <= 2,
+          s"the tool must exit in {{0,1,2}} on first use, got $code"
+        )
+        val migrated: Path = home.resolve(".cache/probatio/heartbeat")
+        assert(
+          Files.isRegularFile(migrated),
+          s"the previous directory's contents must appear under the current one — $migrated missing"
+        )
+      }
+    }
+
+  // spec: schema-rename-completion — Scenario: Adversarial — a previous directory is not migrated over an existing current one
+  test("schema-rename: the shipped tool does not migrate over an existing current directory"):
+    withTempDir("probatio-home") { (home: Path) =>
+      withTempDir("probatio-cwd") { (cwd: Path) =>
+        val legacy: Path  = home.resolve(".cache/verified-scala3")
+        val current: Path = home.resolve(".cache/probatio")
+        Files.createDirectories(legacy)
+        Files.createDirectories(current)
+        Files.writeString(legacy.resolve("stale"), "stale-content")
+        Files.writeString(current.resolve("kept"), "current-content")
+        val code: Int = runArtifactWithHome(home, cwd)
+        assert(code >= 0 && code <= 2, s"exit must be in {{0,1,2}}, got $code")
+        assert(
+          !Files.exists(current.resolve("stale")),
+          "the current directory's contents are unchanged — nothing overwritten"
+        )
+        assertEquals(
+          new String(Files.readAllBytes(current.resolve("kept")), java.nio.charset.StandardCharsets.UTF_8),
+          "current-content"
+        )
+      }
+    }
+
   /**
    * Wipe the shared state dir between the two runs — both gates
    * fingerprint the emitted facts under the same session, so without a
