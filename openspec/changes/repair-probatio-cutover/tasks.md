@@ -154,20 +154,20 @@ no spec qualifies for a combined gate.
 
 ## 11. unported-tool-register
 
-- [ ] Step 1 — typed contract: `ToolSurfaceClassification` with exactly two variants, `UnportedTool` requiring a blocker, `PortBlocker` as a closed enum (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 11 scenarios + 3 properties (`classification-is-total-and-exclusive`, `every-entry-carries-a-blocker`, `citations-resolve-for-the-real-register`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: the register document with one entry per unported tool, each naming its blocker and the instructions citing it; the total classification over the tool directories; the newly ported traceability tool removed from the register
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan on the diff
-- [ ] Ring 2 — dependency lint clean
-- [ ] Ring 3 — property + scenario suites green; **every executable in the tool directories classifies**
-- [ ] Ring 5 — retarget the mutate list to the classification and register types; read the score (90%)
-- [ ] Ring 8 — fresh-context adversarial review; check that no tool falls outside both halves
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Step 1 — typed contract: `ToolSurfaceClassification` with exactly two variants, `UnportedTool` requiring a blocker, `PortBlocker` as a closed enum (compiles; **human gate**)
+- [x] Step 2 — test oracle: 11 scenarios + 3 properties (`classification-is-total-and-exclusive`, `every-entry-carries-a-blocker`, `citations-resolve-for-the-real-register`) + 3 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: the register document with one entry per unported tool, each naming its blocker and the instructions citing it; the total classification over the tool directories; the newly ported traceability tool removed from the register
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan on the diff
+- [x] Ring 2 — dependency lint clean
+- [x] Ring 3 — property + scenario suites green; **every executable in the tool directories classifies**
+- [x] Ring 5 — retarget the mutate list to the classification and register types; read the score (90%)
+- [x] Ring 8 — fresh-context adversarial review; check that no tool falls outside both halves
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## Change exit criterion
 
-- [ ] The repaired comparison reports **no acceptance file worse** than the genuine predecessor control — measured by a harness proven to materialise two different implementations, not by one that compares a run with itself
-- [ ] The predecessor implementations remain on disk as the revert target; the green criterion has not yet held across a full change cycle
-- [ ] The feature-freeze guard is green and fails on an empty corpus
-- [ ] A continuous-integration job runs the acceptance suite, the differential comparison and every module suite on each change
+- [x] The repaired comparison reports **no acceptance file worse** than the genuine predecessor control — measured by a harness proven to materialise two different implementations, not by one that compares a run with itself
+- [x] The predecessor implementations remain on disk as the revert target; the green criterion has not yet held across a full change cycle
+- [x] The feature-freeze guard is green and fails on an empty corpus
+- [x] A continuous-integration job runs the acceptance suite, the differential comparison and every module suite on each change
