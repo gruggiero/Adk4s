@@ -136,8 +136,7 @@ object HelpRegistry:
     Subcommand.Metals,
     List(
       FlagHelp("start", "start the metals server", "none"),
-      FlagHelp("--method", "LSP method name", "none"),
-      FlagHelp("--params", "JSON params string", "none")
+      FlagHelp("stop", "stop the recorded per-project instance", "none")
     ),
     HelpOutput.threeWayExit
   )

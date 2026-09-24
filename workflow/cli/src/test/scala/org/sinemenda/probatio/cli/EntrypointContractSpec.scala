@@ -41,8 +41,10 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
   private val exposedToolNames: Set[String] =
     Subcommand.values.map(Subcommand.cliName).toSet
 
-  /** The removed tool names (unported — must be unnameable). `graph` is
-    * ported (graph-tool-port), so it left this list. */
+  /**
+   * The removed tool names (unported — must be unnameable). `graph` is
+   * ported (graph-tool-port), so it left this list.
+   */
   private val removedToolNames: List[String] =
     List("registry-check", "scan", "removal-audit", "impact-scan", "concept-scanner")
 
@@ -163,9 +165,10 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
     val result: Either[CliError, Subcommand] = Subcommand.fromString("metals")
     assertEquals(result, Right(Subcommand.Metals))
 
-  test("Metals SubAction has only Start (stop and call removed)"):
+  // spec: unported-tool-register — `metals stop` ported from metals-start.sh; `call` remains unported (register)
+  test("Metals SubAction has Start and Stop (call remains unported)"):
     val subActions: Set[String] = MetalsCmd.SubAction.values.map(_.toString).toSet
-    assertEquals(subActions, Set("Start"))
+    assertEquals(subActions, Set("Start", "Stop"))
 
   // ── Requirement: Every tool is exercised through the built artifact, not
   //    only through in-process calls
@@ -220,17 +223,19 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
   // spec: cli-entrypoint-contract — Property: no-silent-selection
   property("no-silent-selection"):
     for
-      nameKind  <- Gen.element1("generic", "non-tool").forAll
-      tokenKind <- Gen.element1("removed-tool", "mutation", "random").forAll
-      randomTok <- Gen.string(Gen.alphaNum, Range.linear(1, 20)).forAll
+      nameKind   <- Gen.element1("generic", "non-tool").forAll
+      removedTok  <- Gen.elementUnsafe(removedToolNames).forAll
+      mutationTok <- Gen.elementUnsafe(mutationToolNames).forAll
+      randomTok  <- Gen.string(Gen.alphaNum, Range.linear(1, 20)).forAll
+      token      <- Gen.frequency1(
+                      2 -> Gen.constant(removedTok),
+                      2 -> Gen.constant(mutationTok),
+                      1 -> Gen.constant(randomTok)
+                    ).forAll
     yield
       val name: InvocationName = nameKind match
         case "generic"  => inv("probatio")
         case "non-tool" => inv("/usr/local/bin/frobnicate")
-      val token: String = tokenKind match
-        case "removed-tool" => removedToolNames(tokenKind.hashCode().abs % removedToolNames.length)
-        case "mutation"     => mutationToolNames(tokenKind.hashCode().abs % mutationToolNames.length)
-        case "random"       => randomTok
       // Only test if the token is NOT an exposed tool name (rejection filter)
       if exposedToolNames.contains(token) then Result.success
       else

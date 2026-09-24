@@ -592,15 +592,44 @@
 
 ### 11. unported-tool-register
 
-- **Status**: pending
-- **BASELINE SHA**: _(recorded at spec start)_
+- **Status**: in progress
+- **BASELINE SHA**: `d22c33d59b625409770516a74b2a01846dd0fd79` (= spec-10 VALIDATED marker commit)
 
 ### Step Progress
-- [ ] Step 1 — Typed contract: `ToolSurfaceClassification`, `UnportedTool`, `PortBlocker` (human gate)
-- [ ] Step 2 — Test oracle: 11 scenarios + 3 properties + 3 compile-negatives (human gate)
-- [ ] Step 3 — Implementation
-- [ ] Rings 0,1,2,3,5,8
-- [ ] Concept-delta + inventory update + checkpoint
+- [x] Step 0 — Baseline + concept check
+  - gate hook installed and firing (`gate.sh --check-installed` → `installed:true`, last_run 2026-09-24 post-edit)
+  - working tree clean of tracked modifications (only pre-existing untracked docs + this spec's inventory snapshot — no tracked modifications, baseline diffs unaffected)
+  - inventory snapshot: `inventory-snapshots/unported-tool-register-before.md` written (11 opaque / 145 sealed / 513 case classes / 18 service traits / 62 smithy / 480 generators)
+  - Concepts Used verified: `Subcommand` enum (cli, 11 cases — `Graph` restored by spec 5), `MigrationTypes.ToolId` + `MigrationState` (cli test sources), `Outcome[+A]` (core, Ran/Finding/Undetermined); concept file `strangler-migration-protocol.md` State (`MigrationState(portedTools)`) realized in `MigrationTypes.scala:66`
+  - Proof Obligations table complete: 14 rows covering 4 requirements, all scenarios, 3 properties, 3 compile-negatives, exit criterion
+  - PUBLIC-TYPE-CHANGE IMPACT SCAN: not applicable — spec's Type-Widening Impact declares no existing public type gains a variant (verified: all three introduced types are new closed types; nothing is aliased or widened)
+  - registry-check: OK (817 impl-map tokens, 13 spec concept refs, 5 pre-existing weak bindings — unchanged)
+  - MUST-CONFIRM items: none declared in the spec
+  - danger-scan: clean at baseline (no production .scala changed since HEAD)
+- [x] Step 1 — Typed contract: `ToolSurfaceClassification`, `UnportedTool`, `PortBlocker` — **APPROVED 2026-09-24** (user resolved the open design questions)
+  - New `core/UnportedTool.scala`: `PortBlocker` (`GatedOnSpike(spike)` / `NotOnEnforcementPath` / `SupersededByPortedTool(subcommand)`), `UnportedTool(name, path, blocker, citedBy)`, `ToolSurfaceClassification` (exactly `Ported` | `Registered`)
+  - New `core/UnportedToolRegister.scala`: `toolDirectories`, `isRevertTarget`, `classifyAll`, `unresolvedCitations`, `checkSurface → Outcome[Report]`, `parseRegister`/`renderRegister`; nested `DirListing` (Read/Unreadable) + `Report` (classified / unclassified / doublyClassified / unresolvedCitations)
+  - Contract: `UnportedToolRegisterTypeContract` (core) — exhaustive-match pins + eta-expanded signature pins; spec-named compile-negatives in `SubcommandTypeContract` (cli)
+  - **Gate decisions (user)**: `concept-scanner.scala` rides under the `scan.sh` register entry (not executable — out of the tool domain); `registry-check.sh` blocker = `GatedOnSpike`; `metals-start.sh`'s `stop` op is PORTED into the `metals` subcommand → the script classifies `Ported("metals")` and leaves the unported set entirely (the `SupersededByPortedTool` variant remains in the closed set, unexercised by the current register)
+  - Compile: `probatio-core/Test/compile`, `probatio-cli/Test/compile` clean under -Werror + -Wsafe-init
+- [x] Step 2 — Test oracle written + ORACLE POLARITY run — **APPROVED 2026-09-24** (user: "approved")
+  - `MigrationProtocolSpec` +9 scenario tests + 3 properties + 1 gate-decision pin (`metals stop` recognized); compile-negatives already in `SubcommandTypeContract` (3, spec-named)
+  - Generators (constructive): `genToolSet` (0–12 tools × {ported,registered,both,neither} + all-ported/all-registered/empty/both+neither edge mixes; cover asserts has-neither ≥25%, has-both ≥20%, empty ≥5%), `genRegister`/`genBlocker` (0–8 entries, uniform blocker variants, markdown-safe tokens), enumerated `Gen.constant` for the committed register
+  - POLARITY: 12 RED — 7 at `???` stubs (classifyAll/checkSurface/renderRegister/unresolvedCitations/toolDirectories), 4 on missing register doc (`unported-tools.md`), 1 on `metals stop` (`Finding(unknown subaction)`); 4 GREEN-BY-DESIGN — ported-surface map covers `Subcommand` 1:1 + the 3 spec-named compile-negatives
+- [x] Step 3 — Implementation:
+  - `UnportedToolRegister` bodies (pure core, no filesystem): `toolDirectories` (scanner + hooks), `isRevertTarget` (`.predecessor.bak`), `classifyAll` (Ported wins on both-membership → `doublyClassified` reported; neither → `unclassified`; register citations checked against `presentDocuments`), `unresolvedCitations`, `checkSurface` (any `Unreadable` → `Undetermined` naming it — never a false clean; clean → `Ran(Report)`, else `Finding` naming every problem class), `parseRegister`/`renderRegister` (markdown table, closed blocker parser — free text → `Left`).
+  - `metals stop` ported into `MetalsCmd` (`SubAction.Stop`): optional root arg (default `SpecLintCmd.repoRoot` — the predecessor's `git rev-parse || pwd` fallback), reads `.metals/mcp.pid`, `kill -0`-equivalent via `ProcessHandle.isAlive`, SIGTERM via `destroy()`, removes `mcp.pid` + `mcp.url`, exit 0 both ways — matches the predecessor script's no-instance no-op; a live pid that resists signalling is `Finding` (predecessor's `kill` failure exits non-zero). All adapter catches carry same-line `danger-scan:allow`.
+  - `openspec/schemas/verified-scala3/unported-tools.md` — the committed register, 5 entries: `registry-check.sh` + `scan.sh` (covering non-executable `concept-scanner.scala`) → `GatedOnSpike(native-packaging V1 scalameta spike)`; `impact-scan.sh`, `removal-audit.sh`, `metals-call.sh` → `NotOnEnforcementPath`. Every citation resolves to a present repo document.
+  - `Subcommand` scaladoc → references the register document; `HelpRegistry` metals help lists `start`/`stop` (the `--method`/`--params` rows were the unported `call` op's flags — removed); `CliSurfaceSpec`/`EntrypointContractSpec` updated (`SubAction` surface now `{Start, Stop}`).
+  - Ring-5 coverage suite `UnportedToolRegisterSpec` (core): 20 tests driving every pure-function branch + the surgical kills below — the cli oracle can't observe core mutants under `probatio-core/stryker`.
+- [x] Ring 0 — `sbt probatio-core/compile probatio-core/Test/compile probatio-cli/compile probatio-cli/Test/compile` clean under `-Werror` + `-Wsafe-init`
+- [x] Ring 1 — scalafix: pre-existing `ReleaseCheck.scala` NoSysEnv violation (recorded by specs 2–10, not in this diff); scalafmt: spec-11 files formatted (pre-existing drift + `GraphFixtures.scala` parse failure at baseline, untouched); danger-scan clean — the two `metals stop` NonFatal catches carry same-line `danger-scan:allow` (fail-open, matching predecessor no-op semantics)
+- [x] Ring 2 — `dependencyLint` clean: probatio-core, probatio-cli, sbt-probatio, probatio-verified
+- [x] Ring 3 — oracle green: `MigrationProtocolSpec` 20/20 (incl. the live-pid `metals stop` kill-path test: spawns `sleep`, records pid, stop terminates it and removes both discovery files), `SubcommandTypeContract` 11/11, `EntrypointContractSpec` 33/33, `CliSurfaceSpec`, `UnportedToolRegisterSpec` 20/20, `UnportedToolRegisterTypeContract` 2/2. Full suites: probatio-core **789/790** (sole failure = documented pre-existing `oracle immutability at every migration step` falsification — spec-6 recorded defect class; spec-10's legitimate bats updates widened the divergent-commit set; same `--tests` exclusion convention applies), probatio-cli **783/783**, sbt-probatio **90/90**. `OracleDiffRunner`: VERDICT PROCEED + CONTROL REPRODUCED. Real-tree classification: all 16 executables classify (11 ported + 5 registered), 7 `.predecessor.bak` excluded.
+- [x] Ring 5 — `probatio-core/stryker` retargeted to `UnportedTool.scala` + `UnportedToolRegister.scala` (test-filter: the two core suites — the cli oracle can't observe core mutants). First run 75.0% → **6 surgical-kill tests added** (isClean `&&`→`||` via doubly+unresolved-only report; `>=`→`==` extra-cell row; separator-row `forall`→`exists` both levels; line-filter `&&`→`||` + `|`→`""` via ≥4-cell malformed lines; malformed blocker spellings `GatedOnSpike(x`/`SupersededByPortedTool(graph`/`anything)` → `Left`; renderRegister header/trailing-newline pins). Final: **87.5% total / 89.36% covered** (96 mutants, 84 detected). Survivors: 7 diagnostic-string separators/`Left`-message texts (equivalent class, same as prior specs), `headOption.exists→forall` at :224 equivalent-by-construction (post-`>=4` filter), 2 NoCoverage on the unreachable `case _` arm of `parseRow` (exhaustiveness-kept), and 1 `&&`→`||` at isClean:68 reported Survived but **verified killable by manual application** (2 suite failures) — Stryker coverage-attribution anomaly, not a real gap.
+- [ ] Ring 8 — fresh-context adversarial review (in progress)
+- [x] Concept-delta + inventory update — `concept-inventory.md`: spec-11 section appended (`PortBlocker`, `UnportedTool`, `ToolSurfaceClassification`, `UnportedToolRegister` rows, provenance `spec:repair-probatio-cutover/unported-tool-register`); `MetalsCmd`/`Subcommand` modified-notes recorded. **FLAGGED for the human gate** (per spec text): whether `strangler-migration-protocol` State should name the register — proposal: add `UnportedToolRegister` to the State list as the checked complement of `MigrationState(portedTools)`. Snapshot: `inventory-snapshots/unported-tool-register-after.md`. registry-check re-run: OK (817 tokens, 13 spec refs, 5 pre-existing weak bindings). spec-lint post-amendment: 0 FAIL, 42 WARN.
+- [ ] Checkpoint
 
 | Commit | _(pending)_ |
 

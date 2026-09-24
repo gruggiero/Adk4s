@@ -5,12 +5,13 @@ package org.sinemenda.probatio.cli
  * described work.
  *
  * A subcommand whose behaviour has not been ported is NOT in this enum — it
- * is unparseable rather than recognised-and-silent. The removed names
- * (`registry-check`, `scan`, `removal-audit`, `impact-scan`,
- * `concept-scanner`, plus the mutation commands `update`/`delete`/
- * `rewrite`/`edit`) all produce `UnknownSubcommand` when supplied as a
- * token. Their predecessor implementations remain live and are invoked
- * directly.
+ * is unparseable rather than recognised-and-silent. The tools that remain
+ * on their predecessor implementations are recorded — each with a stated
+ * blocker — in the checked register at
+ * `openspec/schemas/verified-scala3/unported-tools.md`; together the
+ * ported surface (this enum) and the register classify every executable
+ * tool in the workflow's tool directories
+ * (`UnportedToolRegister.checkSurface`).
  *
  * `graph` IS in the enum: `graph-tool-port` supplies its implementation, so
  * the entrypoint contract's rule — a tool with no implementation is not

@@ -64,3 +64,31 @@ final class SubcommandTypeContract extends ProbatioCliSuite:
   test("CliError cannot be anonymously instantiated (enum, not sealed trait)"):
     val err: String = compileErrors("new CliError {}")
     assert(err.nonEmpty, "CliError is an enum — anonymous instantiation should not compile")
+
+  // ── Compile-Negatives (spec 11): the unported-tool register ─────────
+  // spec: unported-tool-register — Compile-Negative: A third tool classification
+  test("a third tool classification does not compile"):
+    val err: String = compileErrors("org.sinemenda.probatio.core.ToolSurfaceClassification.Unknown")
+    assert(
+      err.nonEmpty,
+      "ToolSurfaceClassification has exactly two variants — a tool in neither is a check finding, not a state"
+    )
+
+  // spec: unported-tool-register — Compile-Negative: A register entry without a blocker
+  test("a register entry without a blocker does not compile"):
+    val err: String =
+      compileErrors("""org.sinemenda.probatio.core.UnportedTool("name", "path")""")
+    assert(
+      err.nonEmpty,
+      "UnportedTool requires the blocker and the citation list — an entry with no stated reason is an oversight"
+    )
+
+  // spec: unported-tool-register — Compile-Negative: A free-text blocker
+  test("a register entry with a free-text blocker does not compile"):
+    val err: String = compileErrors(
+      """org.sinemenda.probatio.core.UnportedTool("name", "path", "because", Nil)"""
+    )
+    assert(
+      err.nonEmpty,
+      "the blocker is a closed PortBlocker enumeration, not text — a free-text reason cannot be checked"
+    )

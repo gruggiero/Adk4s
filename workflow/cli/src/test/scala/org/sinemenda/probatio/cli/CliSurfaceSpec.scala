@@ -82,11 +82,12 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
     assert(!actions.contains("Rewrite"))
     assert(!actions.contains("Edit"))
 
-  // ── Scenario: metals exposes only the start sub-action (stop/call removed)
+  // ── Scenario: metals exposes the start and stop sub-actions (call unported)
   // spec: cli-entrypoint-contract — Scenario: Edge case — the retained sub-action of a partially-ported tool still resolves
-  test("metals exposes only the Start sub-action (stop and call removed)"):
+  // spec: unported-tool-register — Requirement: A tool that becomes ported leaves the register
+  test("metals exposes the Start and Stop sub-actions (call remains unported)"):
     val subActions: Set[String] = MetalsCmd.SubAction.values.map(_.toString).toSet
-    assertEquals(subActions, Set("Start"))
+    assertEquals(subActions, Set("Start", "Stop"))
 
   // ── Scenario: each subcommand name round-trips through cliName + fromString
   test("each subcommand name round-trips through cliName + fromString"):
@@ -112,8 +113,8 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
     )
     ops.foreach { (opArgs: Array[String]) =>
       GraphCmd.run(opArgs) match
-        case Outcome.Ran(_)          => () // dispatched and ran
-        case Outcome.Finding(_)      => () // a finding is a ran operation's verdict
+        case Outcome.Ran(_)     => () // dispatched and ran
+        case Outcome.Finding(_) => () // a finding is a ran operation's verdict
         case Outcome.Undetermined(r) =>
           fail(s"op '${opArgs.mkString(" ")}' reported could-not-determine: $r")
     }
