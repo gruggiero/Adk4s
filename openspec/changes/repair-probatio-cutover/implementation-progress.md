@@ -494,7 +494,8 @@
 
 ### 9. workflow-delivery-hygiene
 
-- **Status**: checkpoint presented — pending human approval
+- **Status**: VALIDATED — human checkpoint approved (user: "validated"; R8 freshness attested: operative pass-3 review ran as isolated subagent `devin-subagent-040ca8da` on spec + post-remediation diff only); all rings green at commit `8d7e848` except R3 FAILED honestly recorded (`workflow-hygiene.bats` +2 carried spec-4 deferred residual — improved from spec-8's +3)
+- **Post-validation fix**: the placement property's enforced cover thresholds were flaky (a 36-run draw missed `sibling`, ~0.14%/class) — coverage is now guaranteed by a deterministic test enumerating all 6 placements; the property keeps `genRepositoryPlacement` sampling with report-only labels (`cover` threshold 0). Committed separately.
 - **BASELINE SHA**: `8b1e6047021c7a1a425a4ab562b038540eb5937d`
 - Gate installation check: `{"installed":true,"last_run":"2026-09-24T09:54:55Z","event":"post-edit"}`
 - inventory snapshot: `inventory-snapshots/workflow-delivery-hygiene-before.md` (11 opaque, 143 sealed, 509 case classes, 18 service traits, 62 Smithy, 471 generators)

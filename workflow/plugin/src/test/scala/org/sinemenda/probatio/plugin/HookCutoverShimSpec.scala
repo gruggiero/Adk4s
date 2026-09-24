@@ -510,26 +510,68 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
     copies
   }
 
+  // Every declared placement is exercised deterministically — the domain
+  // is a closed set of six, so coverage is enumerated, not sampled: the
+  // property below samples for robustness, this test is the guarantee
+  // (a sampled property cannot promise all-class coverage — a 36-run draw
+  // missed `sibling` once in practice).
+  // spec: workflow-delivery-hygiene — Property: shim-resolves-from-any-location
+  test("every declared placement resolves within its own copy") {
+    val allPlacements: List[Placement] =
+      List(SiblingCopy, NestedCopy, SpacesCopy, NonAsciiCopy, LinkedWorktree, TwoCopies)
+    allPlacements.foreach { placement =>
+      val base: java.io.File =
+        java.nio.file.Files.createTempDirectory("probatio-placement").toFile
+      val copies: List[java.io.File] = materialisePlacement(placement, base)
+      try {
+        copies.foreach(c => { val _ = writeProbeTool(c) })
+        val invoked: java.io.File =
+          copies.headOption.getOrElse(fail("materialisePlacement produced no copies"))
+        val shims: List[java.io.File] = forwardingShimsIn(invoked)
+        assert(
+          shims.nonEmpty,
+          s"no forwarding scripts discovered in ${invoked.getAbsolutePath}"
+        )
+        val invokedRoot: String = invoked.getCanonicalPath
+        shims.foreach { shim =>
+          val (code, out): (Int, String) =
+            runProcess(List("bash", shim.getAbsolutePath), base)
+          assertEquals(
+            code,
+            probeExitCode,
+            s"$placement/${shim.getName}: expected the tool's own status $probeExitCode, got $code\n$out"
+          )
+          assert(
+            reachedWithin(out, invokedRoot),
+            s"$placement/${shim.getName}: must reach the tool within its own copy $invokedRoot, got:\n$out"
+          )
+        }
+      } finally if (placement == LinkedWorktree) copies.foreach(c => removeWorktree(c))
+    }
+  }
+
   // 36 runs over a closed 6-shape domain — each materialisation is a real
-  // filesystem copy, so the run count is bounded while every shape is
-  // still covered by the cover labels (~99.9% all-class hit).
+  // filesystem copy, so the run count is bounded. The cover labels are
+  // report-only (threshold 0): coverage is guaranteed by the deterministic
+  // test above; a random sample cannot promise all-class coverage and a
+  // nonzero threshold made the property flaky (0% sibling observed once).
   private def placementConfig: PropertyConfig => PropertyConfig =
     (c: PropertyConfig) => c.copy(testLimit = SuccessCount(36))
 
   property("a shim resolves from any location", placementConfig) {
     for {
       placement <- genRepositoryPlacement.forAll
-        .cover(5, "sibling", (p: Placement) => p == SiblingCopy)
-        .cover(5, "nested", (p: Placement) => p == NestedCopy)
-        .cover(5, "spaces", (p: Placement) => p == SpacesCopy)
-        .cover(5, "non-ascii", (p: Placement) => p == NonAsciiCopy)
-        .cover(5, "worktree", (p: Placement) => p == LinkedWorktree)
-        .cover(5, "two-copies", (p: Placement) => p == TwoCopies)
+        .cover(0, "sibling", (p: Placement) => p == SiblingCopy)
+        .cover(0, "nested", (p: Placement) => p == NestedCopy)
+        .cover(0, "spaces", (p: Placement) => p == SpacesCopy)
+        .cover(0, "non-ascii", (p: Placement) => p == NonAsciiCopy)
+        .cover(0, "worktree", (p: Placement) => p == LinkedWorktree)
+        .cover(0, "two-copies", (p: Placement) => p == TwoCopies)
     } yield {
       val base: java.io.File =
         java.nio.file.Files.createTempDirectory("probatio-placement").toFile
       val copies: List[java.io.File] = materialisePlacement(placement, base)
-      copies.foreach(c => writeProbeTool(c))
+      copies.foreach(c => { val _ = writeProbeTool(c) })
       val invoked: java.io.File =
         copies.headOption.getOrElse(fail("materialisePlacement produced no copies"))
       val result: Result =
