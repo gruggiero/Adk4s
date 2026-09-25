@@ -13,6 +13,9 @@
 
 ### 1. hermetic-test-processes
 
+### Baseline
+SHA `8a0c15f4a10046d041a09ef7fb3a839fb095ad29` (recorded at Step 0)
+
 - **Status**: COMPLETE — implementation committed `b57e3f7`; Rings 0/1/2/3/5/8 all green; chain-state 51 bound / 51 resolved / 5 discharged (all 5 = this spec's requirements); checkpoint report clean for this spec — HUMAN GATE approved; post-checkpoint defect fix `192961d` (chain-state effective-baseline extraction scanned only line 0 via collectFirst-on-total-lambda → silently fell back to --baseline; restored the predecessor's whole-file first-match scan; regression pinned in ChainStateCmdSpec + ChainStateParitySpec corpus; native image + assembly rebuilt, gate-view chain-state now reports 5 discharged)
 - **BASELINE SHA**: `8a0c15f4a10046d041a09ef7fb3a839fb095ad29`
 | Commit | `b57e3f7` |
@@ -37,7 +40,26 @@
 
 ### 2. jar-launcher-dispatch
 
-- **Status**: PENDING
+### Baseline
+SHA `f11a390d35415178a0a9d2f9ca24664185123a82` (recorded at Step 0)
+
+- **Status**: COMPLETE — implementation committed `6efcd43`; Rings 0/1/2/3/5/6/8 green; chain-state discharges all 4 of this spec's requirements — HUMAN GATE pending
+- **BASELINE SHA**: `f11a390d35415178a0a9d2f9ca24664185123a82`
+| Commit | `6efcd43` |
+
+### Step Progress
+- [x] Step 0 — Baseline + concept check: baseline `f11a390` committed; snapshot `inventory-snapshots/jar-launcher-dispatch-before.md` (11 opaque, 148 sealed, 515 case classes, 18 service traits, 62 Smithy, 493 generators); registry-check PASS (817 tokens, 15 spec refs, 5 weak bindings non-blocking); danger-scan `f11a390` clean; impact-scans — `InvocationName`: 10 refs / 3 files, 1 catch-all (`SecurityException` probe-fallback, unrelated, stays justified); `MulticallDispatch`: 5 refs / 3 files, no catch-alls; `InvocationSource` is new (no existing users); no MUST-CONFIRM
+- [x] Step 1 — typed contract: `InvocationSource` enum (`NamedExecutable(basename)` / `Archive(path)`) + `classify` (raw runtime name ending `.jar` → Archive, else NamedExecutable of the basename); `InvocationName` re-based over `InvocationSource` (`fromRuntime(source)`; `source`/`value`/`basename` extensions); `MulticallDispatch.resolveAndSplit` matches on the source — Archive takes the shared `byFirstArgument` rule, foreign executables still rejected by name; `ProbatioMain` classifies at the boundary and the top-level `--help` intercept fires for first-arg-dispatching sources (archive included). Contract pins updated + spec-2 compile-negatives added in `EntrypointContractTypeContract`; all call sites migrated (6 test helpers now classify); `probatio-cli/Test/compile` clean, entrypoint suites 67/67 green — **human gate: APPROVED**
+- [x] Step 2 — test oracle: dispatch scenarios + `archive-and-generic-dispatch-agree` / `named-executable-strictness-is-preserved` properties (`genProgramArgs`, `genForeignExecutableName`) in `MulticallDispatchSpec`; archive conformance run (`runArchive`/`runNative` capture) + gate/help-through-archive scenarios + `archive-conformance-matches-native-conformance` property + missing-archive-fails in `SubprocessConformanceSpec`; plugin-launcher-reaches-tool in `InstallResolverSpec`; neither-built could-not-determine in `HookCutoverShimSpec`; arm-no-built-tool could-not-determine in `DifferentialHarnessSpec`; archive-only forwarding oracle in `gate-payload.bats`; `DispatchKernel` extended (`SourceModel`/`DispatchModel`/`resolveSource` + postcondition + two laws) and `EntrypointBridgeSpec` source-level bridge (4 scenarios + property over 4 source kinds). **Polarity**: stale jar demonstrated `unknown subcommand: probatio-cli-assembly-…jar` live; oracle post-Step-1: dispatch+bridge+plugin-launcher+bats GREEN; RED by design — archive-vs-native stdout parity (JVM `file.encoding` under locale-less hermetic env emits `?` for `—` — real encoding defect, Step-3), arm materialise doesn't check built tool (RED), launcher execs `java -jar` blindly with nothing built (RED). Pre-existing reds unchanged: spec-4 stale control fixture — **human gate: APPROVED**
+- [x] Step 3 — implementation: (a) `ProbatioMain` pins `System.setOut`/`System.setErr` to UTF-8 PrintStreams at entry → archive output byte-stable under locale-less envs; (b) `bin/probatio` launcher: native-if-executable, else `java -jar` archive, else `could not determine probatio binary` + both searched paths + exit 2; (c) `ArmTree.materialise` provisions `workflow/cli/target/native-image/probatio` or the assembly jar from the origin repo into each arm, `Outcome.Undetermined` naming `workflow/cli/target` when neither exists; `mkSyntheticRepo` plants a stub native tool so seam fixtures still materialise; (d) `ChainStateParitySpec` symlink workaround removed — invokes through the real dispatch boundary. Verified: `SubprocessConformanceSpec` 14/14 (archive≡native parity holds), `DifferentialHarnessSpec` 30/31 (only spec-4 fixture), plugin 40/40, bats archive-only green, `java -jar` UTF-8 verified under stripped locale
+- [x] R0 compile — cli/core/plugin main+test + verified module clean
+- [x] R1 lint — `scalafix --check` clean on cli Compile+Test, core Test, plugin Test
+- [x] R2 deps — `probatio-cli/dependencyLint` + `probatio-core/dependencyLint` clean; spec-lint 0 FAIL (34 pre-existing WARN); registry-check OK (817 tokens, 5 weak non-blocking); danger-scan OK
+- [x] R3 oracle — all spec-2 suites green; two-env parity: 125/125 identical with and without `CLAUDE_CODE_SESSION_ID`; archive-only tree: gate-payload 25 + hook-tiers 28 + evidence-ledger 23 all green with only the JAR; manual control run: predecessor arm at `817d185` (with provisioned tool) reproduced the recorded control exactly — 17 files, 282 tests, 18 failures, per-file equal (fact-extraction 0/10, the cited defect class fixed)
+- [x] R5 mutation — `probatio-cli/stryker` on `InvocationSource`/`InvocationName`/`MulticallDispatch`: **100.0%** (16 mutants, 13 killed, 3 static) — two first-round survivors closed by a nested-archive-basename pin + adding `EntrypointContractSpec` to the filter
+- [x] R6 formal — `probatio-verified` Stainless: **681/681 VCs valid, 0 invalid** — one first-round invalid VC (recursive postcondition `res == resolveSource(GenericNamed(), …)` creating an undischarged measure) fixed by stating the archive clause against `firstArgDispatch` directly; `archiveEqualsGeneric`/`foreignNameRejected` laws carry the identity
+- [ ] R8 fresh-context adversarial review — running
+- [ ] Evidence ledger rows + concept delta (delta clean: 17 rows, all spec-2 declared: InvocationSource enum, DispatchKernel models, `InvocationName` underlying → InvocationSource, new generators) + checkpoint
 
 ---
 

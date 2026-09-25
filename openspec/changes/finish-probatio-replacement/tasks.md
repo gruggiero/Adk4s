@@ -22,17 +22,17 @@ Every spec takes **two separate human gates** — the change's correctness risk 
 
 ## 2. jar-launcher-dispatch
 
-- [ ] Step 1 — typed contract: `InvocationSource` (`NamedExecutable`, `Archive`), `InvocationName` constructed only from it (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 12 scenarios + 3 properties (`archive-and-generic-dispatch-agree`, `named-executable-strictness-is-preserved`, `archive-conformance-matches-native-conformance`) + 2 compile-negative stubs; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: classify the invocation source; dispatch an archive source as the generic name; run the subprocess conformance against the archive too; provision the built tool into each comparison arm; remove the symlink workaround from `ChainStateParitySpec`
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean; dangerous-pattern scan; shellcheck on `bin/probatio`
-- [ ] Ring 2 — dependency lint clean; the dispatch decision reads no runtime state
-- [ ] Ring 3 — suites green; **the acceptance suite passes in an archive-only tree**; the predecessor arm matches an independent control per file
-- [ ] Ring 5 — retarget to the dispatch files and `ArmTypes` (move-to-main for the latter); read the score (90% core / 80% adapter)
-- [ ] Ring 6 — extend `DispatchKernel` with the archive-source contract; bridge property green; invoke `probatio-verified` directly
-- [ ] Ring 8 — fresh-context review in an archive-only tree with harness session variables set
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Step 1 — typed contract: `InvocationSource` (`NamedExecutable`, `Archive`), `InvocationName` constructed only from it (compiles; **human gate**)
+- [x] Step 2 — test oracle: 12 scenarios + 3 properties (`archive-and-generic-dispatch-agree`, `named-executable-strictness-is-preserved`, `archive-conformance-matches-native-conformance`) + 2 compile-negative stubs; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: classify the invocation source; dispatch an archive source as the generic name; run the subprocess conformance against the archive too; provision the built tool into each comparison arm; remove the symlink workaround from `ChainStateParitySpec`
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean; dangerous-pattern scan; shellcheck on `bin/probatio`
+- [x] Ring 2 — dependency lint clean; the dispatch decision reads no runtime state
+- [x] Ring 3 — suites green; **the acceptance suite passes in an archive-only tree**; the predecessor arm matches an independent control per file
+- [x] Ring 5 — retarget to the dispatch files and `ArmTypes` (move-to-main for the latter); read the score (90% core / 80% adapter)
+- [x] Ring 6 — extend `DispatchKernel` with the archive-source contract; bridge property green; invoke `probatio-verified` directly
+- [x] Ring 8 — fresh-context review in an archive-only tree with harness session variables set
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 3. entrypoint-split
 
