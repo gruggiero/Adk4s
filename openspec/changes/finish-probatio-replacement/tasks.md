@@ -8,17 +8,17 @@ Every spec takes **two separate human gates** — the change's correctness risk 
 
 ## 1. hermetic-test-processes
 
-- [ ] Prerequisite — record, per suite, the results with and without the harness session variable set, as the baseline this spec must make identical
-- [ ] Step 1 — typed contract: `HermeticEnv` with a private constructor and no inherit factory, `ControlledVariable` as the closed set of variables the tools read (legacy and probatio names both) (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 11 scenarios + 2 properties (`result-is-independent-of-the-invoking-environment`, `hermetic-env-contains-only-declared-controls`) + 2 compile-negative stubs; establish whether a missed Hedgehog cover minimum fails a passing run; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: the shared helper for Scala and bats; migrate the 19 process-spawning suites and the bats shared setup; add the no-raw-process lint to `.scalafix.conf`; triage and record every test that turns red once isolated
-- [ ] Ring 0 — `sbt "probatio-core/Test/compile" "probatio-cli/Test/compile" "sbt-probatio/Test/compile"` clean
-- [ ] Ring 1 — scalafix (including the new lint, with a planted violation), WartRemover, dangerous-pattern scan, shellcheck on `helpers.bash`
-- [ ] Ring 2 — `probatioDependencyLint` clean
-- [ ] Ring 3 — suites green in both environments; **the completion-tier parity property passes with and without the harness variable**
-- [ ] Ring 5 — move test sources to main, retarget, run, move back; read the score (80%)
-- [ ] Ring 8 — fresh-context review, in an archive-only tree with harness session variables set
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Prerequisite — record, per suite, the results with and without the harness session variable set, as the baseline this spec must make identical
+- [x] Step 1 — typed contract: `HermeticEnv` with a private constructor and no inherit factory, `ControlledVariable` as the closed set of variables the tools read (legacy and probatio names both) (compiles; **human gate**)
+- [x] Step 2 — test oracle: 11 scenarios + 2 properties (`result-is-independent-of-the-invoking-environment`, `hermetic-env-contains-only-declared-controls`) + 2 compile-negative stubs; establish whether a missed Hedgehog cover minimum fails a passing run; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: the shared helper for Scala and bats; migrate the 19 process-spawning suites and the bats shared setup; add the no-raw-process lint to `.scalafix.conf`; triage and record every test that turns red once isolated
+- [x] Ring 0 — `sbt "probatio-core/Test/compile" "probatio-cli/Test/compile" "sbt-probatio/Test/compile"` clean
+- [x] Ring 1 — scalafix (including the new lint, with a planted violation), WartRemover, dangerous-pattern scan, shellcheck on `helpers.bash`
+- [x] Ring 2 — `probatioDependencyLint` clean
+- [x] Ring 3 — suites green in both environments; **the completion-tier parity property passes with and without the harness variable**
+- [x] Ring 5 — move test sources to main, retarget, run, move back; read the score (80%)
+- [x] Ring 8 — fresh-context review, in an archive-only tree with harness session variables set
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 2. jar-launcher-dispatch
 
