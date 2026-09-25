@@ -213,9 +213,12 @@ object ArmTree:
 
   /** `git` stdout on success, `None` on any failure. */
   private def gitOut(cwd: os.Path, args: List[String]): Option[String] =
-    Try(os.proc("git" :: args).call(cwd = cwd, check = false, stderr = os.Pipe)).toOption
-      .filter(_.exitCode == 0)
-      .map(_.out.text().trim)
+    // spec: hermetic-test-processes — via the shared helper.
+    Try(
+      HermeticEnv.capture("git" :: args, HermeticEnv.empty, cwd = Some(cwd.toIO))
+    ).toOption
+      .filter((r: HermeticResult) => r.exitCode == 0)
+      .map((r: HermeticResult) => r.out.trim)
 
 /**
  * The verdict of comparing two arms' per-seam resolutions before the suite

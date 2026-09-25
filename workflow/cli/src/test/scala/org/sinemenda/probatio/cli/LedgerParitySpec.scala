@@ -12,12 +12,12 @@ import org.sinemenda.probatio.core.ReplayVerdict
 import org.sinemenda.probatio.core.Ring
 import org.sinemenda.probatio.core.RingStatus
 import org.sinemenda.probatio.core.SessionId
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import scala.jdk.CollectionConverters.*
-import scala.sys.process.*
 
 /**
  * Oracle for the record tool's parity operations (spec 7).
@@ -914,31 +914,37 @@ final class LedgerParitySpec extends ProbatioCliSuite:
     val artifact: Path = dir.resolve("artifact.txt")
     Files.write(artifact, "payload".getBytes(StandardCharsets.UTF_8))
     assertEquals(
-      List("git", "-C", dir.toString, "init").!(ProcessLogger(_ => (), _ => ())),
+      HermeticEnv.run(List("git", "-C", dir.toString, "init"), HermeticEnv.empty),
       0,
       "git init must succeed"
     )
     assertEquals(
-      List("git", "-C", dir.toString, "add", "artifact.txt").!(ProcessLogger(_ => (), _ => ())),
+      HermeticEnv.run(List("git", "-C", dir.toString, "add", "artifact.txt"), HermeticEnv.empty),
       0
     )
     assertEquals(
-      List(
-        "git",
-        "-C",
-        dir.toString,
-        "-c",
-        "user.email=t@t",
-        "-c",
-        "user.name=t",
-        "commit",
-        "-m",
-        "init"
-      ).!(ProcessLogger(_ => (), _ => ())),
+      HermeticEnv.run(
+        List(
+          "git",
+          "-C",
+          dir.toString,
+          "-c",
+          "user.email=t@t",
+          "-c",
+          "user.name=t",
+          "commit",
+          "-m",
+          "init"
+        ),
+        HermeticEnv.empty
+      ),
       0
     )
     val sha: String =
-      List("git", "-C", dir.toString, "rev-parse", "HEAD").!!(ProcessLogger(_ => (), _ => ())).trim
+      HermeticEnv
+        .capture(List("git", "-C", dir.toString, "rev-parse", "HEAD"), HermeticEnv.empty)
+        .out
+        .trim
     val row: ujson.Obj = ledgerRow("R0", exit = 0, command = "true")
     row.value("baseline") = ujson.Str(sha)
     row.value("artifact") = ujson.Str("artifact.txt")

@@ -3,6 +3,7 @@ package org.sinemenda.probatio.cli
 import hedgehog.*
 import hedgehog.Range
 import org.sinemenda.probatio.core.*
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import scala.jdk.CollectionConverters.*
 
@@ -210,14 +211,15 @@ final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
 
   /** `echo '<row>' | jq -e -f ledger-record-contract.jq` — exit 0 = conforms. */
   private def contractAccepts(row: String): Boolean =
-    val pb: ProcessBuilder =
-      new ProcessBuilder("jq", "-e", "-f", ledgerContractPath.toString)
-    val p: Process = pb.start()
-    p.getOutputStream.write(row.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-    p.getOutputStream.close()
-    p.getInputStream.readAllBytes()
-    p.getErrorStream.readAllBytes()
-    p.waitFor() == 0
+    // spec: hermetic-test-processes — via the shared helper; the child
+    // sees the fixed base only.
+    HermeticEnv
+      .capture(
+        List("jq", "-e", "-f", ledgerContractPath.toString),
+        HermeticEnv.empty,
+        stdin = Some(row.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      )
+      .exitCode == 0
 
   test("a record persisted by the run path satisfies ledger-record-contract.jq"):
     val dir: java.nio.file.Path      = java.nio.file.Files.createTempDirectory("contract-conformance")

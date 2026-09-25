@@ -1,10 +1,11 @@
 package org.sinemenda.probatio.cli
 
+import org.sinemenda.probatio.core.Outcome
+import org.sinemenda.probatio.migration.HermeticEnv
+
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import org.sinemenda.probatio.core.Outcome
-import scala.sys.process.*
 
 /**
  * Direct tests for the forgive-unchanged oracle (spec 9): the batched
@@ -22,14 +23,17 @@ final class ForgiveUnchangedSpec extends ProbatioCliSuite:
 
   // ── Fixture ─────────────────────────────────────────────────────────
 
+  // spec: hermetic-test-processes — fixture processes go through the
+  // shared helper so the child sees the fixed base only.
   private def git(dir: Path, args: String*): Unit =
     val cmd: List[String] = "git" :: "-C" :: dir.toString :: args.toList
-    val exit: Int         = cmd.!(ProcessLogger(_ => (), _ => ()))
+    val exit: Int         = HermeticEnv.run(cmd, HermeticEnv.empty)
     assertEquals(exit, 0, s"git ${args.mkString(" ")} must succeed")
 
   private def headSha(dir: Path): String =
-    List("git", "-C", dir.toString, "rev-parse", "HEAD")
-      .!!(ProcessLogger(_ => (), _ => ()))
+    HermeticEnv
+      .capture(List("git", "-C", dir.toString, "rev-parse", "HEAD"), HermeticEnv.empty)
+      .out
       .trim
 
   /**

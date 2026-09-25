@@ -238,8 +238,8 @@ enumeration, fully pinned by the type and `hermetic-env-contains-only-declared-c
 | Every suite file passes identically in both environments | Requirement: The acceptance suites clear controlled variables in one place + Scenario: Happy path — every suite file passes in a harness session and outside one | two-environment suite run, recorded in the evidence ledger | `hook-tiers.bats` |
 | An environment-dependent test is named | Requirement: The acceptance suites clear controlled variables in one place + Scenario: Adversarial — a suite file that needs an inherited variable is reported | scenario test | `DifferentialHarnessSpec` |
 | Results are independent of the invoking environment | Property: result-is-independent-of-the-invoking-environment | Hedgehog property over the enumerated suite list | `DifferentialHarnessSpec` |
-| The lint is clean on the helper's callers | Requirement: Process construction in test code goes through the shared helper + Scenario: Happy path — the lint is clean on the helper's callers | static rule (scalafix) | `.scalafix.conf` |
-| A raw process construction is rejected | Requirement: Process construction in test code goes through the shared helper + Scenario: Adversarial — a raw process construction in a test is rejected | static rule (scalafix) with a negative fixture | `.scalafix.conf` |
+| The lint is clean on the helper's callers | Requirement: Process construction in test code goes through the shared helper + Scenario: Happy path — the lint is clean on the helper's callers | static rule (scalafix) | `.scalafix-tests.conf` (`.scalafix-tests-2.12.conf` for the plugin) wired via `Test / scalafixConfig` |
+| A raw process construction is rejected | Requirement: Process construction in test code goes through the shared helper + Scenario: Adversarial — a raw process construction in a test is rejected | static rule (scalafix) with a negative fixture | `workflow/verify-test-lint.sh` plants a violation per banned shape |
 | A met coverage minimum does not fail | Requirement: A missed coverage minimum fails the property + Scenario: Happy path — a met minimum does not fail the property | scenario test | `OutcomeSpec` |
 | A missed coverage minimum fails a passing property | Requirement: A missed coverage minimum fails the property + Scenario: Adversarial — a missed minimum fails an otherwise passing property | scenario test with a deliberately under-covering generator | `OutcomeSpec` |
 
@@ -251,7 +251,7 @@ enumeration, fully pinned by the type and `hermetic-env-contains-only-declared-c
 | Predecessor session precedence | predecessor script | `openspec/schemas/verified-scala3/hooks/gate.sh.predecessor.bak:196–197` | Ranks `CLAUDE_CODE_SESSION_ID` above `VERIFIED_SCALA3_SESSION_ID` |
 | Process-spawning test files | munit suites | 19 files under `workflow/*/src/test/scala/**` (measured 2026-09-25) | Only `LiveFactBannerSpec` handles the harness session variable |
 | Bats shared setup | bats helper | `openspec/schemas/verified-scala3/tests/helpers.bash` | 6 of 17 files unset the harness variable individually; this moves it to one place |
-| The lint | scalafix `DisableSyntax` block | `.scalafix.conf` | Same mechanism as `NoIOInProbatioCore`, scoped by a `fileFilter` glob to `workflow/*/src/test/scala/**` |
+| The lint | scalafix `DisableSyntax` block | `.scalafix-tests.conf`, `.scalafix-tests-2.12.conf` | Scalafix has no `fileFilter` field — the dedicated test confs are wired through `Test / scalafixConfig` on the three workflow projects, so the bans apply to test sources only |
 | `HermeticEnv`, `ControlledVariable` | new types | shared test-support source | New |
 | Hedgehog cover behaviour | test framework | Hedgehog 0.13.1 | Whether a missed cover minimum fails a passing run is established by the adversarial scenario above, not assumed |
 | Ring 5 note | — | `stryker4s.conf` | Test infrastructure only; the move-to-main-and-back procedure applies |

@@ -5,6 +5,8 @@ import hedgehog.Range
 import hedgehog.Result
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
+import org.sinemenda.probatio.migration.HermeticEnv
+import org.sinemenda.probatio.migration.HermeticResult
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -178,14 +180,12 @@ object DangerScanParitySpec:
   private val fileRe: Regex = "^danger-scan: (.+)$".r
 
   private def run(dir: Path, args: List[String]): Option[(Int, String)] =
+    // spec: hermetic-test-processes — via the shared helper; capture
+    // drains stderr so the process cannot block, as before.
     try
-      val pb: ProcessBuilder = new ProcessBuilder(args*)
-      pb.directory(dir.toFile)
-      val p: Process = pb.start()
-      val out: String =
-        new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-      p.getErrorStream.readAllBytes() // drain stderr so the process cannot block
-      Some(p.waitFor() -> out)
+      val r: HermeticResult =
+        HermeticEnv.capture(args, HermeticEnv.empty, cwd = Some(dir.toFile))
+      Some(r.exitCode -> r.out)
     catch case _: java.io.IOException => None
 
   private def git(dir: Path, args: List[String]): Option[String] =

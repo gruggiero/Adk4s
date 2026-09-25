@@ -125,7 +125,7 @@ final class CacheMigrationSpec extends ProbatioCliSuite:
         !Files.exists(current(home)),
         "no current directory may be created from an unreadable snapshot"
       )
-    finally { val _ = legacy(home).toFile.setReadable(true) }
+    finally { val _ = legacy(home).toFile.setReadable(true) } // scalafix:ok DisableSyntax.NoKeywordFinally
 
     // …and once readable again, the migration runs — nothing was latched.
     CacheMigration.migrateOnce(Map("HOME" -> home.toString))
@@ -142,7 +142,7 @@ final class CacheMigrationSpec extends ProbatioCliSuite:
     Files.writeString(legacy(home).resolve("heartbeat"), "hb")
     unreadable.toFile.setReadable(false, false)
     try CacheMigration.migrateOnce(Map("HOME" -> home.toString))
-    finally { val _ = unreadable.toFile.setReadable(true) }
+    finally { val _ = unreadable.toFile.setReadable(true) } // scalafix:ok DisableSyntax.NoKeywordFinally
 
     assert(!Files.exists(current(home)), "a partial migration must not latch")
     assert(

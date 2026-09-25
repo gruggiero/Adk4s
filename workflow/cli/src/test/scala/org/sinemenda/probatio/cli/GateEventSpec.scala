@@ -6,11 +6,11 @@ import hedgehog.Range
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.*
+import org.sinemenda.probatio.migration.ControlledVariable
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.nio.file.Files
 import java.nio.file.Path
-import scala.sys.process.ProcessLogger
-import scala.sys.process.stringSeqToProcess
 
 import LiveFactFixtures.withTempDir
 
@@ -38,15 +38,17 @@ final class GateEventSpec extends ProbatioCliSuite:
   private val specName: String = "test-spec"
 
   private def gitInit(dir: Path): Unit =
+    // spec: hermetic-test-processes — fixture processes go through the
+    // shared helper so the child sees the fixed base only.
     val code: Int =
-      List("git", "-C", dir.toString, "init", "-q").!(ProcessLogger(_ => (), _ => ()))
+      HermeticEnv.run(List("git", "-C", dir.toString, "init", "-q"), HermeticEnv.empty)
     assertEquals(code, 0, "git init must succeed")
-    List("git", "-C", dir.toString, "config", "user.email", "t@t").!(ProcessLogger(_ => (), _ => ()))
-    List("git", "-C", dir.toString, "config", "user.name", "t").!(ProcessLogger(_ => (), _ => ()))
+    HermeticEnv.run(List("git", "-C", dir.toString, "config", "user.email", "t@t"), HermeticEnv.empty)
+    HermeticEnv.run(List("git", "-C", dir.toString, "config", "user.name", "t"), HermeticEnv.empty)
 
   private def gitCommitAll(dir: Path): Unit =
-    List("git", "-C", dir.toString, "add", "-A").!(ProcessLogger(_ => (), _ => ()))
-    List("git", "-C", dir.toString, "commit", "-q", "-m", "init").!(ProcessLogger(_ => (), _ => ()))
+    HermeticEnv.run(List("git", "-C", dir.toString, "add", "-A"), HermeticEnv.empty)
+    HermeticEnv.run(List("git", "-C", dir.toString, "commit", "-q", "-m", "init"), HermeticEnv.empty)
 
   /** A minimal workflow repo: `openspec/` + one change with one spec. */
   private def mkRepo(repo: Path, withGit: Boolean): Unit =
@@ -1054,12 +1056,13 @@ final class GateEventSpec extends ProbatioCliSuite:
    * matches what the corroboration check resolves.
    */
   private def shortHead(repo: Path): String =
-    new String(
-      new ProcessBuilder("git", "-C", repo.toString, "rev-parse", "--short", "HEAD")
-        .start()
-        .getInputStream
-        .readAllBytes()
-    ).trim
+    HermeticEnv
+      .capture(
+        List("git", "-C", repo.toString, "rev-parse", "--short", "HEAD"),
+        HermeticEnv.empty
+      )
+      .out
+      .trim
 
   /**
    * A validator-shaped ledger row for the completion fixtures: the 15
@@ -1605,12 +1608,13 @@ final class GateEventSpec extends ProbatioCliSuite:
       Files.writeString(repo.resolve("seed.txt"), "seed")
       gitCommitAll(repo)
       val headSha: String =
-        new String(
-          new ProcessBuilder("git", "-C", repo.toString, "rev-parse", "HEAD")
-            .start()
-            .getInputStream
-            .readAllBytes()
-        ).trim
+        HermeticEnv
+          .capture(
+            List("git", "-C", repo.toString, "rev-parse", "HEAD"),
+            HermeticEnv.empty
+          )
+          .out
+          .trim
       assert(headSha.nonEmpty, "the fixture commit must resolve HEAD")
       val sd0: Path = stateDir(repo)
       Files.createDirectories(sd0)
@@ -1919,12 +1923,13 @@ final class GateEventSpec extends ProbatioCliSuite:
       Files.writeString(repo.resolve("seed.txt"), "seed")
       gitCommitAll(repo)
       val shortSha: String =
-        new String(
-          new ProcessBuilder("git", "-C", repo.toString, "rev-parse", "--short", "HEAD")
-            .start()
-            .getInputStream
-            .readAllBytes()
-        ).trim
+        HermeticEnv
+          .capture(
+            List("git", "-C", repo.toString, "rev-parse", "--short", "HEAD"),
+            HermeticEnv.empty
+          )
+          .out
+          .trim
       assert(shortSha.nonEmpty, "the fixture commit must resolve HEAD")
       runGate(
         repo,
@@ -4696,4 +4701,78 @@ final class GateEventSpec extends ProbatioCliSuite:
             .log(s"the diagnostic did not name '$name': $err")
         )
       )
+    }
+
+  // ── spec: hermetic-test-processes ─────────────────────────────────
+  // The two adversarial scenarios for the spawned-tool boundary: an
+  // inherited harness session and an undeclared control variable must
+  // never reach the tool.
+
+  // spec: hermetic-test-processes — Scenario: Adversarial — an inherited harness session does not reach the tool
+  test("an inherited harness session does not reach the tool"):
+    withTempDir("gate-hermetic-session") { (repo: Path) =>
+      // The invoking shell carries the harness session variable; the test
+      // declares a different session for the tool.
+      val stub: Path = mkRefusingRepo(repo, SessionId.fromRaw("declared-session"))
+      val env: HermeticEnv = HermeticEnv.buildWithExtras(
+        Map(
+          ControlledVariable.VerifiedScala3SessionId -> "declared-session",
+          ControlledVariable.ChainStateOverride      -> stub.toString
+        ),
+        Map("CLAUDE_CODE_SESSION_ID" -> "foreign-harness-session")
+      )
+      // The boundary: the harness variable cannot be in the tool's environment.
+      assert(
+        !env.toMap.contains("CLAUDE_CODE_SESSION_ID"),
+        "the inherited harness session variable must not survive the build"
+      )
+      // No --session flag: the tool resolves its session from the
+      // environment alone — the channel the harness variable would win.
+      val outcome: Outcome[Int] = runGate(
+        repo,
+        List("--event", "completion", "--format", "text", "--stop-hook-active", "false"),
+        env.toMap
+      )
+      outcome match
+        case Outcome.Finding(_) => ()
+        case other              => fail(s"completion should refuse, got $other")
+      // The resolved session is observable: the refusal marker is keyed by
+      // it. It must be keyed by the declared session, never the inherited one.
+      val sd: Path = stateDir(repo)
+      assert(
+        Files.exists(sd.resolve(s"completion-refused-${SessionId.fromRaw("declared-session").encoded}")),
+        "the refusal marker must be keyed by the declared session"
+      )
+      assert(
+        !Files.exists(sd.resolve(s"completion-refused-${SessionId.fromRaw("foreign-harness-session").encoded}")),
+        "the inherited harness session must never reach the tool"
+      )
+    }
+
+  // spec: hermetic-test-processes — Scenario: Adversarial — an undeclared workflow control variable does not reach the tool
+  test("an undeclared workflow control variable does not reach the tool"):
+    withTempDir("gate-hermetic-hooks") { (repo: Path) =>
+      // The invoking shell disables the workflow's hooks; the test does
+      // not declare the variable.
+      val stub: Path = mkRefusingRepo(repo, SessionId.fromRaw("t"))
+      val env: HermeticEnv = HermeticEnv.buildWithExtras(
+        Map(ControlledVariable.ChainStateOverride -> stub.toString),
+        Map("VERIFIED_SCALA3_HOOKS" -> "off", "PROBATIO_HOOKS" -> "off")
+      )
+      assert(
+        !env.toMap.contains("VERIFIED_SCALA3_HOOKS") && !env.toMap.contains("PROBATIO_HOOKS"),
+        "the hook-control variable must not survive the build undeclared"
+      )
+      // The escape hatch reads the same environment the session reads. If
+      // it leaked, the refusal would be bypassed — a Finding here is the
+      // evidence the gate ran its tiers instead.
+      val outcome: Outcome[Int] = runGate(
+        repo,
+        List("--event", "completion", "--format", "text", "--session", "t"),
+        env.toMap
+      )
+      outcome match
+        case Outcome.Finding(_) => ()
+        case Outcome.Ran(0)     => fail("the inherited hooks=off reached the tool and bypassed the tier")
+        case other              => fail(s"expected the refusal, got $other")
     }

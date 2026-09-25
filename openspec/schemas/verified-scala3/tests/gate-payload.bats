@@ -51,17 +51,18 @@ report_with_unresolved() { # $1=count
     '{change:"some-change", baseline:"abc1234", total:($n+1), bound:($n+1), resolved:($n+1), discharged:1, unresolved:$u, unmapped_obligations:[]}'
 }
 
-# CLAUDE_CODE_SESSION_ID is unset here DELIBERATELY. Found during
-# implementation: this suite runs INSIDE a live Claude Code session, which
-# sets a REAL CLAUDE_CODE_SESSION_ID in the ambient environment — and gate.sh
-# correctly prioritises it over VERIFIED_SCALA3_SESSION_ID (by design: it is
-# the verified, harness-native signal). Left ambient, every test's intended
-# session override was silently defeated by the REAL session id, making
-# every call in this suite collide into ONE session regardless of what the
-# test asked for. Unset by default; the one test that verifies the priority
-# order itself sets it back explicitly.
+# CLAUDE_CODE_SESSION_ID reaches no spawned gate: helpers.bash unsets every
+# controlled variable when this suite loads it (spec: hermetic-test-processes).
+# The hazard, found during implementation: this suite runs INSIDE a live
+# Claude Code session, which sets a REAL CLAUDE_CODE_SESSION_ID in the ambient
+# environment — and gate.sh correctly prioritises it over
+# VERIFIED_SCALA3_SESSION_ID (by design: it is the verified, harness-native
+# signal). Left ambient, every test's intended session override was silently
+# defeated by the REAL session id, making every call in this suite collide
+# into ONE session regardless of what the test asked for. The one test that
+# verifies the priority order itself declares it explicitly.
 run_gate() { # extra args after --repo $FX are passed through
-  run env -u CLAUDE_CODE_SESSION_ID "$GATE" --repo "$FX" "$@"
+  run env "$GATE" --repo "$FX" "$@"
 }
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -334,7 +335,7 @@ run_gate() { # extra args after --repo $FX are passed through
   run "$GATE" --check-installed --repo "$FX"
   assert_contains "$output" '"installed":true' "heartbeat must persist for the main worktree checkout"
 
-  run env -u CLAUDE_CODE_SESSION_ID "$GATE" --repo "$FX-wt" --event session-start --format text
+  run env "$GATE" --repo "$FX-wt" --event session-start --format text
   assert_status 0 "$status" "the gate never fails from a secondary worktree"
   run "$GATE" --check-installed --repo "$FX-wt"
   assert_contains "$output" '"installed":true' "heartbeat must persist for a secondary worktree checkout too"

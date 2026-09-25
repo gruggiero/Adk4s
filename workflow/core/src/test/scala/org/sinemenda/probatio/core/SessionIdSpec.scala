@@ -5,6 +5,9 @@ import hedgehog.Gen
 import hedgehog.Range
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
+import org.sinemenda.probatio.migration.ControlledVariable
+import org.sinemenda.probatio.migration.HermeticEnv
+import org.sinemenda.probatio.migration.HermeticEnvGens
 
 /**
  * Test oracle for the gate-event-completeness spec — session identity.
@@ -166,3 +169,61 @@ final class SessionIdSpec extends ProbatioSuite:
       // suppression state disjoint.
       if rawA == rawB then Result.diff(encA, encB)(_ == _)
       else Result.diff(encA, encB)(_ != _)
+
+  // ── spec: hermetic-test-processes ─────────────────────────────────
+  // The scenario and property for the declared-session requirement and
+  // the hermetic-env invariant; the generators live in `HermeticEnvGens`
+  // (shared with `DifferentialHarnessSpec`).
+
+  // spec: hermetic-test-processes — Scenario: Happy path — a declared session reaches the tool
+  test("a declared session reaches the tool"):
+    val env: HermeticEnv = HermeticEnv.build(
+      Map(ControlledVariable.VerifiedScala3SessionId -> "parity-session"),
+      Map("PATH" -> "/usr/bin", "HOME" -> "/tmp", "TMPDIR" -> "/tmp")
+    )
+    assert(env.has(ControlledVariable.VerifiedScala3SessionId))
+    assertEquals(env.value(ControlledVariable.VerifiedScala3SessionId), Some("parity-session"))
+    // The process boundary: the child's actual environment, read back
+    // through `env`.
+    val childEnv: Map[String, String] = HermeticEnv.probeChild(env)
+    assertEquals(childEnv.get("VERIFIED_SCALA3_SESSION_ID"), Some("parity-session"))
+
+  // spec: hermetic-test-processes — Property: hermetic-env-contains-only-declared-controls
+  property("hermetic-env-contains-only-declared-controls"):
+    for {
+      declared <- HermeticEnvGens.genDeclared.forAll
+      inherited <- HermeticEnvGens.genInvokingEnvironment.forAll
+        .cover(
+          15,
+          "declared-and-inherited",
+          (i: Map[String, String]) =>
+            declared.keySet.exists((v: ControlledVariable) => i.contains(v.envName))
+        )
+        .cover(
+          15,
+          "inherited-only-controlled",
+          (i: Map[String, String]) =>
+            i.keySet.exists((k: String) =>
+              HermeticEnvGens.allControlled.exists((v: ControlledVariable) => v.envName == k) &&
+                !declared.keySet.exists((v: ControlledVariable) => v.envName == k)
+            )
+        )
+    } yield
+      val env: HermeticEnv = HermeticEnv.build(declared, inherited)
+      // The spec invariant: a controlled variable reaches the child iff
+      // the test declared it — plus the same requirement's second half,
+      // that nothing outside base+declared survives.
+      Result
+        .assert(
+          HermeticEnvGens.allControlled.forall((v: ControlledVariable) =>
+            env.has(v) == declared.contains(v)
+          )
+        )
+        .and(Result.assert(!env.toMap.contains("UNCONTROLLED_NOISE")))
+        .and(
+          Result.assert(
+            env.toMap.keySet.subsetOf(
+              HermeticEnv.baseNames ++ declared.keySet.map((v: ControlledVariable) => v.envName)
+            )
+          )
+        )

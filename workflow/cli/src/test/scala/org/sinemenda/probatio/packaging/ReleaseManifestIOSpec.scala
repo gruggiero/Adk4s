@@ -1,10 +1,11 @@
 package org.sinemenda.probatio.packaging
 
+import org.sinemenda.probatio.cli.ProbatioCliSuite
+import upickle.default.write as writeJson
+
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import org.sinemenda.probatio.cli.ProbatioCliSuite
-import upickle.default.{write => writeJson}
 
 /**
  * Direct tests for `ReleaseManifestIO.fromDirectory` and `ReleaseCheck` —
@@ -22,7 +23,7 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   private def withTempDir(f: Path => Unit): Unit =
     val dir: Path = Files.createTempDirectory("probatio-release")
     try f(dir)
-    finally
+    finally // scalafix:ok DisableSyntax.NoKeywordFinally
       Files
         .walk(dir)
         .sorted(java.util.Comparator.reverseOrder())

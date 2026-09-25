@@ -5,11 +5,10 @@ import hedgehog.Gen
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.*
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.nio.file.Files
 import java.nio.file.Path
-import scala.sys.process.ProcessLogger
-import scala.sys.process.stringSeqToProcess
 
 import LiveFactFixtures.withTempDir
 
@@ -33,7 +32,7 @@ final class GateStateDirSpec extends ProbatioCliSuite:
 
   private def gitInit(dir: Path): Unit =
     val code: Int =
-      List("git", "-C", dir.toString, "init", "-q").!(ProcessLogger(_ => (), _ => ()))
+      HermeticEnv.run(List("git", "-C", dir.toString, "init", "-q"), HermeticEnv.empty)
     assertEquals(code, 0, "git init must succeed")
 
   private def stateDir(repo: Path): Path =

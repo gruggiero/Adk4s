@@ -1,6 +1,10 @@
 package org.sinemenda.probatio.core
 
 import hedgehog.*
+import hedgehog.core.PropertyConfig
+import hedgehog.core.Seed
+import hedgehog.core.Status
+import hedgehog.runner as hr
 
 /**
  * Tests for the Outcome sealed enum.
@@ -85,3 +89,50 @@ final class OutcomeSpec extends ProbatioSuite:
           Result.assert(desc == msg).and(Result.assert(exitCode == 1))
         case Outcome.Undetermined(reason) =>
           Result.assert(reason == msg).and(Result.assert(exitCode == 2))
+
+  // ── spec: hermetic-test-processes ─────────────────────────────────
+  // The two coverage-minimum scenarios — written as probes that run a
+  // Hedgehog property off to the side and inspect the report, so the
+  // suite's own result is never the probe's subject.
+
+  /**
+   * Run a probe property under the real Hedgehog runner and return its
+   * status plus the rendered report — the mechanism by which the two
+   * scenarios observe `cover` behaviour rather than assuming it.
+   */
+  private def runProbe(name: String, prop: hedgehog.Property): (Status, String) =
+    val t: hr.Test        = hedgehog.runner.property(name, prop)
+    val report            = hedgehog.Property.check(t.withConfig(PropertyConfig.default), t.result, Seed.fromLong(0xC0FFEE))
+    val rendered: String  = hr.Test.renderReport(getClass.getName, t, report, ansiCodesSupported = false)
+    (report.status, rendered)
+
+  // spec: hermetic-test-processes — Scenario: Happy path — a met minimum does not fail the property
+  test("a met coverage minimum does not fail the property"):
+    val prop: hedgehog.Property =
+      for
+        n <- Gen.int(Range.linear(0, 10)).forAll
+          .cover(50, "the labelled case", (x: Int) => x >= 0) // generated at 100%
+      yield Result.assert(n >= 0)
+    val probe: (Status, String) = runProbe("cover-probe-met", prop)
+    assertEquals(
+      probe._1,
+      Status.ok,
+      s"a property whose labelled case is generated above its minimum must pass.\n${probe._2}"
+    )
+
+  // spec: hermetic-test-processes — Scenario: Adversarial — a missed minimum fails an otherwise passing property
+  test("a missed coverage minimum fails an otherwise passing property"):
+    val prop: hedgehog.Property =
+      for
+        n <- Gen.constant(0).forAll
+          .cover(80, "the labelled case", (x: Int) => x == 1) // generated at 0%
+      yield Result.assert(n == 0) // never falsified — coverage alone must fail it
+    val probe: (Status, String) = runProbe("cover-probe-missed", prop)
+    assert(
+      probe._1 != Status.ok,
+      s"a property whose labelled case is generated below its minimum must fail even with no counterexample.\n${probe._2}"
+    )
+    assert(
+      probe._2.contains("the labelled case"),
+      s"the failure must name the missed label.\n${probe._2}"
+    )

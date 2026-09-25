@@ -25,10 +25,18 @@ final class SwapOrderSpec extends ProbatioSuite:
    * working directory to the module base), so resolve via git.
    */
   private def repoRoot: os.Path =
+    // spec: hermetic-test-processes — via the shared helper.
     scala.util
-      .Try(os.proc("git", "rev-parse", "--show-toplevel").call(cwd = os.pwd).out.trim())
+      .Try(
+        HermeticEnv.capture(
+          List("git", "rev-parse", "--show-toplevel"),
+          HermeticEnv.empty,
+          cwd = Some(os.pwd.toIO)
+        )
+      )
       .toOption
-      .map(os.Path(_))
+      .filter((r: HermeticResult) => r.exitCode == 0)
+      .map((r: HermeticResult) => os.Path(r.out.trim))
       .getOrElse(os.pwd)
 
   /**

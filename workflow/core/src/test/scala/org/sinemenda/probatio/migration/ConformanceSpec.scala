@@ -4,8 +4,6 @@ import hedgehog.*
 import org.sinemenda.probatio.core.*
 import org.sinemenda.probatio.core.ProbatioSuite
 
-import scala.sys.process.*
-
 /**
  * Conformance property test — validator iff contract over a generated corpus (R-M2).
  *
@@ -185,15 +183,11 @@ final class ConformanceSpec extends ProbatioSuite:
       // Contract file missing — treat as reject (the contract is the oracle)
       1
     else
-      val cmd: List[String]     = List("jq", "-e", "-f", fullPath.toString)
-      val stdin: String         = json
-      val stdout: StringBuilder = new StringBuilder
-      val stderr: StringBuilder = new StringBuilder
-      val exitCode: Int = (cmd #< new java.io.ByteArrayInputStream(stdin.getBytes("UTF-8"))) ! ProcessLogger(
-        stdout.append(_),
-        stderr.append(_)
-      )
-      exitCode
+      val cmd: List[String] = List("jq", "-e", "-f", fullPath.toString)
+      // spec: hermetic-test-processes — via the shared helper.
+      HermeticEnv
+        .capture(cmd, HermeticEnv.empty, stdin = Some(json.getBytes("UTF-8")))
+        .exitCode
 
   // ── Helper: validate a chain-state report JSON (measured shape)
   // Mirrors the jq contract's cross-checks:
@@ -476,7 +470,7 @@ final class ConformanceSpec extends ProbatioSuite:
             else Result.failure.log(diffs.mkString("export divergence:\n  ", "\n  ", ""))
           case (Left(e), _) => Result.failure.log(s"ported export failed: $e")
           case (_, Left(e)) => Result.failure.log(s"predecessor export failed: $e")
-      finally os.remove.all(dir)
+      finally os.remove.all(dir) // scalafix:ok DisableSyntax.NoKeywordFinally
 
   // ── Scenario: Adversarial — disagreement reported per node ──────────
   // spec: graph-tool-port — Scenario: Adversarial — a disagreement is reported per node, not summarised

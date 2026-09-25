@@ -169,4 +169,5 @@ final class CutoverRevertSpec extends ProbatioSuite:
 
   /** Run a git command; returns stdout trimmed. */
   private def git(cwd: os.Path, args: List[String]): String =
-    os.proc("git" :: args).call(cwd = cwd).out.text().trim
+    // spec: hermetic-test-processes — via the shared helper.
+    HermeticEnv.capture("git" :: args, HermeticEnv.empty, cwd = Some(cwd.toIO)).out.trim

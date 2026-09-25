@@ -3,6 +3,7 @@ package org.sinemenda.probatio.cli
 import hedgehog.*
 import hedgehog.Range
 import org.sinemenda.probatio.core.*
+import org.sinemenda.probatio.migration.HermeticEnv
 import upickle.default.*
 
 /**
@@ -243,14 +244,14 @@ final class ChainStateCmdConformanceSpec extends ProbatioCliSuite:
   private def contractCheck(rendered: String): (Int, String) =
     val contract: java.nio.file.Path =
       repoRootPath.resolve("openspec/schemas/verified-scala3/scanner/chain-state-report-contract.jq")
-    val pb: ProcessBuilder = new ProcessBuilder("jq", "-e", "-f", contract.toString)
-    pb.redirectErrorStream(true)
-    val p: Process = pb.start()
-    p.getOutputStream.write(rendered.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-    p.getOutputStream.close()
-    val out: String =
-      new String(p.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
-    (p.waitFor(), out.trim)
+    // spec: hermetic-test-processes — via the shared helper; streams merged
+    // as before, under the fixed-base environment.
+    val r: org.sinemenda.probatio.migration.HermeticResult = HermeticEnv.captureMerged(
+      List("jq", "-e", "-f", contract.toString),
+      HermeticEnv.empty,
+      stdin = Some(rendered.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    )
+    (r.exitCode, r.out.trim)
 
   private def repoRootPath: java.nio.file.Path =
     val start: java.nio.file.Path = java.nio.file.Path.of("").toAbsolutePath.normalize

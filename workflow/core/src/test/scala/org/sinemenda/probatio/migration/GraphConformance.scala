@@ -2,9 +2,8 @@ package org.sinemenda.probatio.migration
 
 import org.sinemenda.probatio.core.*
 
-import scala.sys.process.*
-import scala.util.matching.Regex
 import scala.util.control.NonFatal // danger-scan:allow subprocess-fixture — predecessor agreement runs the model as a subprocess; failures map to Left
+import scala.util.matching.Regex
 
 /**
  * Conformance fixtures for spec: graph-tool-port — materialising a
@@ -105,15 +104,15 @@ object GraphConformance:
     if !os.exists(script) then Left(s"predecessor not found at $script")
     else
       try
-        val stdout: StringBuilder = new StringBuilder
-        val stderr: StringBuilder = new StringBuilder
-        val code: Int = sys.process.Process(
-          List("python3", script.toString, "export"),
-          cwd = dir.toIO,
-          extraEnv = "OPENSPEC_ROOT" -> dir.toString
-        ).!(ProcessLogger(stdout.append(_), stderr.append(_)))
-        if code != 0 then Left(s"predecessor export exited $code: ${stderr.toString.take(200)}")
-        else Right(ujson.read(stdout.toString))
+        // spec: hermetic-test-processes — OPENSPEC_ROOT is the one declared
+        // controlled variable; the rest of the invoking environment is
+        // filtered out.
+        val env: HermeticEnv =
+          HermeticEnv.build(Map(ControlledVariable.OpenspecRoot -> dir.toString))
+        val r: HermeticResult =
+          HermeticEnv.capture(List("python3", script.toString, "export"), env, cwd = Some(dir.toIO))
+        if r.exitCode != 0 then Left(s"predecessor export exited ${r.exitCode}: ${r.err.take(200)}")
+        else Right(ujson.read(r.out))
       catch
         case NonFatal(e) => Left(s"predecessor export failed: ${e.getMessage}")
 

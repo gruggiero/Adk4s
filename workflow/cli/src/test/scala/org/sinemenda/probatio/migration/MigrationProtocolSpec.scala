@@ -260,7 +260,7 @@ final class MigrationProtocolSpec extends ProbatioCliSuite:
           .filter((p: Path) => Files.isRegularFile(p) && Files.isExecutable(p))
           .map((p: Path) => p.getFileName.toString)
         UnportedToolRegister.DirListing.Read(rel, entries)
-      finally stream.close()
+      finally stream.close() // scalafix:ok DisableSyntax.NoKeywordFinally
 
   /** Adapter: every tool directory listing the check consumes. */
   private def readToolListings: List[UnportedToolRegister.DirListing] =
@@ -274,22 +274,15 @@ final class MigrationProtocolSpec extends ProbatioCliSuite:
    * the set is what the check can see, not what git remembers alone.
    */
   private def presentDocuments: Set[String] =
-    val pb: java.lang.ProcessBuilder =
-      new java.lang.ProcessBuilder(
-        "git",
-        "-C",
-        repoRoot.toString,
-        "ls-files",
-        "-co",
-        "--exclude-standard"
+    // spec: hermetic-test-processes — via the shared helper; the child
+    // sees the fixed base only.
+    val r: org.sinemenda.probatio.migration.HermeticResult =
+      org.sinemenda.probatio.migration.HermeticEnv.capture(
+        List("git", "-C", repoRoot.toString, "ls-files", "-co", "--exclude-standard"),
+        org.sinemenda.probatio.migration.HermeticEnv.empty
       )
-    pb.redirectError(java.lang.ProcessBuilder.Redirect.DISCARD)
-    val process: java.lang.Process = pb.start()
-    val stdout: String =
-      new String(process.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
-    val code: Int = process.waitFor()
-    assertEquals(code, 0, "git ls-files must succeed — the citation domain is the real tree")
-    stdout.linesIterator.filter(_.nonEmpty).toSet
+    assertEquals(r.exitCode, 0, "git ls-files must succeed — the citation domain is the real tree")
+    r.out.linesIterator.filter(_.nonEmpty).toSet
 
   /** The committed register document, parsed. A missing or unparseable document is a failure, not a skip. */
   private def committedRegister: List[UnportedTool] =
@@ -361,7 +354,12 @@ final class MigrationProtocolSpec extends ProbatioCliSuite:
       val pidFile: Path = meta.resolve("mcp.pid")
       val urlFile: Path = meta.resolve("mcp.url")
       Files.createDirectories(meta)
-      val proc: java.lang.Process = new java.lang.ProcessBuilder("sleep", "60").start()
+      // spec: hermetic-test-processes — the live process is needed for its
+      // pid; construction still goes through the shared helper.
+      val proc: java.lang.Process =
+        org.sinemenda.probatio.migration.HermeticEnv
+          .processBuilder(List("sleep", "60"), org.sinemenda.probatio.migration.HermeticEnv.empty)
+          .start()
       try
         Files.writeString(pidFile, proc.pid().toString)
         Files.writeString(urlFile, "http://localhost:8399/mcp")
@@ -375,7 +373,7 @@ final class MigrationProtocolSpec extends ProbatioCliSuite:
         )
         assert(!Files.exists(pidFile), "mcp.pid must be removed")
         assert(!Files.exists(urlFile), "mcp.url must be removed")
-      finally if proc.isAlive then proc.destroyForcibly()
+      finally if proc.isAlive then proc.destroyForcibly() // scalafix:ok DisableSyntax.NoKeywordFinally
     }
 
   // spec: unported-tool-register — Requirement: A tool that becomes ported leaves the register

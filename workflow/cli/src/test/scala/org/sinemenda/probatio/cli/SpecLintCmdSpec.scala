@@ -7,6 +7,7 @@ import org.sinemenda.probatio.core.InstallRootState
 import org.sinemenda.probatio.core.LintContext
 import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.StampFormat
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -341,15 +342,15 @@ final class SpecLintCmdSpec extends ProbatioCliSuite:
     if !Files.exists(artifact) then
       fail(s"built artifact not found at $artifact — conformance check FAILS, does not skip")
     val subdir: Path = artifact.getParent.getParent // workflow/cli/target — inside the repo
-    val pb: ProcessBuilder = new ProcessBuilder(
-      artifact.toAbsolutePath.toString,
-      "spec-lint",
-      "--context-only"
+    // spec: hermetic-test-processes — the spawned tool runs under the
+    // shared helper's hermetic environment.
+    val r: org.sinemenda.probatio.migration.HermeticResult = HermeticEnv.capture(
+      List(artifact.toAbsolutePath.toString, "spec-lint", "--context-only"),
+      HermeticEnv.empty,
+      cwd = Some(subdir.toFile)
     )
-    pb.directory(subdir.toFile)
-    val p: Process  = pb.start()
-    val out: String = new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-    val exit: Int   = p.waitFor()
+    val out: String = r.out
+    val exit: Int   = r.exitCode
     assertEquals(exit, 0, s"--context-only exits 0: $out")
     assert(
       out.contains("PRESENT") && out.contains("openspec/concepts"),

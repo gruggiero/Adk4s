@@ -1,11 +1,12 @@
 package org.sinemenda.probatio.cli
 
 import org.sinemenda.probatio.core.Outcome
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import scala.sys.process.*
+
 
 /**
  * Oracle for the `checkpoint` subcommand's boundary behavior (spec 7).
@@ -348,7 +349,7 @@ final class CheckpointCmdSpec extends ProbatioCliSuite:
 
   private def gitInit(dir: Path): Unit =
     assertEquals(
-      List("git", "-C", dir.toString, "init").!(ProcessLogger(_ => (), _ => ())),
+      HermeticEnv.run(List("git", "-C", dir.toString, "init"), HermeticEnv.empty),
       0,
       "git init must succeed"
     )

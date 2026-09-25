@@ -5,6 +5,7 @@ import hedgehog.Result
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.Outcome
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -139,13 +140,9 @@ object InstallSurfaceParitySpec:
       case InstallTool.Skills => skillsPredecessor
       case InstallTool.Hooks  => hooksPredecessor
     val argv: List[String] = "bash" +: script.toString +: substitute(inv.args, root)
-    val pb: ProcessBuilder = new ProcessBuilder(argv*)
-    pb.directory(root.toFile)
-    // Merge the streams — parity measures the status, never the text.
-    pb.redirectErrorStream(true)
-    val p: Process = pb.start()
-    p.getInputStream.readAllBytes()
-    p.waitFor()
+    // spec: hermetic-test-processes — via the shared helper; streams merged
+    // as before — parity measures the status, never the text.
+    HermeticEnv.captureMerged(argv, HermeticEnv.empty, cwd = Some(root.toFile)).exitCode
 
   /** The ported subcommand in-process; returns the mapped exit code. */
   private def runPorted(inv: Invocation, root: Path): Int =

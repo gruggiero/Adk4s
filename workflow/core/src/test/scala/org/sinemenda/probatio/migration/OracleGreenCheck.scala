@@ -4,9 +4,6 @@ import hedgehog.*
 import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.ProbatioSuite
 
-import java.lang.Process
-import java.lang.ProcessBuilder
-import scala.sys.process.*
 
 /**
  * Oracle-green regression property (R-M1).
@@ -78,7 +75,8 @@ final class OracleGreenCheck extends ProbatioSuite:
     // `git diff --exit-code openspec/schemas/verified-scala3/tests/`.
     // Here we assert the oracle files are tracked by git (not new/untracked).
     val oracleDir: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3" / "tests"
-    val gitResult: Int     = Seq("git", "diff", "--exit-code", "--", oracleDir.toString).!
+    val gitResult: Int     =
+      HermeticEnv.run(List("git", "diff", "--exit-code", "--", oracleDir.toString), HermeticEnv.empty)
     assert(
       gitResult == 0,
       "oracle source has uncommitted modifications — a modified oracle is not an independent witness"
@@ -174,17 +172,20 @@ final class OracleGreenCheck extends ProbatioSuite:
 
   // ── Helper: run a single bats file and parse the outcome
   private def runSingleBatsFile(batsFile: os.Path, env: Map[String, String]): OracleOutcome =
-    val cmd: Seq[String] = Seq("bats", batsFile.toString)
-    // stdin is /dev/null: gate.sh reads the harness payload via `cat`, and
-    // an inherited open stdin makes that read block forever.
-    val builder: ProcessBuilder = new ProcessBuilder(cmd*)
-      .redirectErrorStream(true)
-      .redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
-    // Set override env vars on the process
-    env.foreach { case (k: String, v: String) => builder.environment().put(k, v) }
-    val process: Process = builder.start()
-    val output: String   = scala.io.Source.fromInputStream(process.getInputStream).mkString
-    process.waitFor()
+    // spec: hermetic-test-processes — the override vars are controlled
+    // variables, declared explicitly; every other inherited variable is
+    // filtered out. stdin is /dev/null (gate.sh reads the harness payload
+    // via `cat`; an inherited open stdin blocks forever) and the streams
+    // are merged, as before.
+    val declared: Map[ControlledVariable, String] = env.map { case (k: String, v: String) =>
+      ControlledVariable.fromEnvName(k) match
+        case Some(cv: ControlledVariable) => cv -> v
+        case None                         =>
+          sys.error(s"override env var '$k' is not a controlled variable — declare it in ControlledVariable")
+    }
+    val r: HermeticResult =
+      HermeticEnv.captureMerged(List("bats", batsFile.toString), HermeticEnv.build(declared))
+    val output: String = r.out
     // Parse TAP output: lines starting with "ok" = passed, "not ok" = failed,
     // "skip" = skipped
     val lines: List[String] = output.linesIterator.toList

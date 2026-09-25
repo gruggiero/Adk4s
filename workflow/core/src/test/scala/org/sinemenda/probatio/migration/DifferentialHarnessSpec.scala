@@ -6,6 +6,9 @@ import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.ProbatioSuite
 
+import java.lang.ProcessBuilder
+import java.nio.charset.StandardCharsets
+
 /**
  * Test oracle for the differential harness — verifies that both runs
  * of the comparison execute in the same repository under the same
@@ -15,16 +18,29 @@ import org.sinemenda.probatio.core.ProbatioSuite
  */
 final class DifferentialHarnessSpec extends ProbatioSuite:
 
+  // The environment-independence property spawns two `bats` runs per
+  // generated case — the suite-level timeout matches the parity suites.
+  override val munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(600, "s")
+
   /**
    * Absolute path of the repository root. `os.pwd` is unreliable under
    * forked test runners (sbt `Test / fork` and the Stryker4s runner set the
    * working directory to the module base), so resolve via git.
    */
   private def repoRoot: os.Path =
+    // spec: hermetic-test-processes — via the shared helper.
     scala.util
-      .Try(os.proc("git", "rev-parse", "--show-toplevel").call(cwd = os.pwd).out.trim())
+      .Try(
+        HermeticEnv.capture(
+          List("git", "rev-parse", "--show-toplevel"),
+          HermeticEnv.empty,
+          cwd = Some(os.pwd.toIO)
+        )
+      )
       .toOption
-      .map(os.Path(_))
+      .filter((r: HermeticResult) => r.exitCode == 0)
+      .map((r: HermeticResult) => os.Path(r.out.trim))
       .getOrElse(os.pwd)
 
   // ── Scenario: Adversarial — a comparison whose arms differ in repository is refused
@@ -852,7 +868,8 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
 
   /** Run a git command; returns stdout trimmed. */
   private def git(cwd: os.Path, args: List[String]): String =
-    os.proc("git" :: args).call(cwd = cwd).out.text().trim
+    // spec: hermetic-test-processes — via the shared helper.
+    HermeticEnv.capture("git" :: args, HermeticEnv.empty, cwd = Some(cwd.toIO)).out.trim
 
   /** Materialise or fail the test with the outcome's reason. */
   private def materialiseOrFail(
@@ -903,3 +920,133 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
     val bytes: Array[Byte]                  = os.read.bytes(path)
     val digest: java.security.MessageDigest = java.security.MessageDigest.getInstance("SHA-256")
     digest.digest(bytes).map("%02x".format(_)).mkString
+
+  // ── spec: hermetic-test-processes ─────────────────────────────────
+  // The environment-independence property and the scenario proving an
+  // environment-dependent test is reported by name.
+
+  /**
+   * Run one suite file under a hermetic environment and return its TAP
+   * result lines (`ok N <name>` / `not ok N <name>`), the verdict shape
+   * the two-environment comparison measures.
+   */
+  private def runSuiteFile(file: os.Path, env: HermeticEnv): List[String] =
+    val pb: ProcessBuilder = HermeticEnv.processBuilder(List("bats", file.toString), env)
+    pb.redirectErrorStream(true)
+    val p: Process = pb.start()
+    val out: String = new String(p.getInputStream.readAllBytes, StandardCharsets.UTF_8)
+    p.waitFor()
+    out.linesIterator
+      .filter((line: String) => line.startsWith("ok ") || line.startsWith("not ok "))
+      .toList
+
+  /** A TAP result line's test name — `ok 7 name` / `not ok 7 name` → `name`. */
+  private def tapName(line: String): String =
+    line.dropWhile((c: Char) => !c.isDigit).dropWhile((c: Char) => c.isDigit).trim
+
+  /** A TAP result line's verdict — `ok` passes, `not ok` fails. */
+  private def tapPassed(line: String): Boolean = line.startsWith("ok ")
+
+  /**
+   * The two-environment comparison: the names of tests whose verdict
+   * differs between a run with the controlled variables and a run with
+   * none — the suite's environment-dependent set.
+   */
+  private def environmentDependentTests(
+    withoutVars: List[String],
+    withVars: List[String]
+  ): List[String] =
+    val a: Map[String, Boolean] = withoutVars.map((l: String) => tapName(l) -> tapPassed(l)).toMap
+    val b: Map[String, Boolean] = withVars.map((l: String) => tapName(l) -> tapPassed(l)).toMap
+    a.keySet
+      .union(b.keySet)
+      .toList
+      .filter((name: String) => a.get(name) != b.get(name))
+      .sorted
+
+  // spec: hermetic-test-processes — Scenario: Adversarial — a suite file that needs an inherited variable is reported
+  test("a suite file that needs an inherited variable is reported"):
+    val dir: os.Path = os.temp.dir(prefix = "env-dependent-suite")
+    val suite: os.Path = dir / "env-dependent.bats"
+    os.write(
+      suite,
+      """#!/usr/bin/env bats
+        |@test "env sensitive marker" {
+        |  [ -z "${CLAUDE_CODE_SESSION_ID+x}" ]
+        |}
+        |@test "env insensitive marker" {
+        |  [ -n "$PATH" ]
+        |}
+        |""".stripMargin
+    )
+    // The invoking shell carries the harness session variable in one run,
+    // none in the other — both through the shared helper.
+    val declared: Map[ControlledVariable, String] =
+      Map(ControlledVariable.ClaudeCodeSessionId -> "foreign-harness")
+    val withVars: List[String]    = runSuiteFile(suite, HermeticEnv.build(declared))
+    val withoutVars: List[String] = runSuiteFile(suite, HermeticEnv.build(Map.empty))
+    val dependent: List[String]   = environmentDependentTests(withoutVars, withVars)
+    assertEquals(
+      dependent,
+      List("env sensitive marker"),
+      "the comparison must name exactly the environment-dependent test"
+    )
+
+  /**
+   * The enumerated domain of process-spawning suite files: the bats
+   * acceptance suite — the fixed, finite set the spec measured. The Scala
+   * suites' two-environment equivalence is the recorded Ring-3 run, not
+   * this property (a munit suite cannot run inside a property).
+   */
+  private def processSpawningSuites: List[os.Path] =
+    os
+      .list(repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests")
+      .filter((p: os.Path) => p.ext == "bats")
+      .toList
+
+  // The domain is static for the run — evaluate it once so an empty
+  // listing fails the property rather than generating a vacuous case.
+  private lazy val spawningSuites: List[os.Path] = processSpawningSuites
+
+  // spec: hermetic-test-processes — Property: result-is-independent-of-the-invoking-environment
+  property(
+    "result-is-independent-of-the-invoking-environment",
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(50))
+  ):
+    // The domain is the measured bats-file list; an empty listing means
+    // the suite ran somewhere it should not — fail, don't vacuously pass.
+    spawningSuites match
+      case Nil =>
+        Gen.constant(()).forAll.map((_: Unit) =>
+          Result.failure.log("process-spawning suite domain is empty — the property measured nothing")
+        )
+      case (first: os.Path) :: (rest: List[os.Path]) =>
+        for {
+          subset <- HermeticEnvGens.genControlledSubset.forAll
+            .cover(5, "empty-invoking-env", (s: Set[ControlledVariable]) => s.isEmpty)
+            .cover(
+              5,
+              "harness-session-only",
+              (s: Set[ControlledVariable]) => s == Set(ControlledVariable.ClaudeCodeSessionId)
+            )
+            .cover(
+              4,
+              "full-controlled-set",
+              (s: Set[ControlledVariable]) => s == HermeticEnvGens.allControlled.toSet
+            )
+            .cover(
+              20,
+              "partial-subset",
+              (s: Set[ControlledVariable]) =>
+                s.nonEmpty && s.size < HermeticEnvGens.allControlled.size
+            )
+          suite <- Gen.element1(first, rest*).forAll
+        } yield
+          val declared: Map[ControlledVariable, String] =
+            subset.map((v: ControlledVariable) => v -> s"inherited-${v.envName}").toMap
+          val withVars: List[String]    = runSuiteFile(suite, HermeticEnv.build(declared))
+          val withoutVars: List[String] = runSuiteFile(suite, HermeticEnv.build(Map.empty))
+          val dependent: List[String]   = environmentDependentTests(withoutVars, withVars)
+          Result
+            .assert(dependent.isEmpty)
+            .log(s"environment-dependent tests in ${suite.last} under $declared: $dependent")

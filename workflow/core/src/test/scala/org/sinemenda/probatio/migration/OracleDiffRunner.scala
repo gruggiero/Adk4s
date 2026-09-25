@@ -173,6 +173,9 @@ final class OracleDiffRunner extends ProbatioSuite:
 final private class WorktreeCleanup(schemaDir: os.Path, worktrees: List[os.Path]) extends AutoCloseable:
   def close(): Unit =
     worktrees.foreach { (wt: os.Path) =>
-      os.proc("git", "-C", schemaDir.toString, "worktree", "remove", "--force", wt.toString)
-        .call(check = false, stderr = os.Pipe, stdout = os.Pipe)
+      // spec: hermetic-test-processes — via the shared helper.
+      HermeticEnv.run(
+        List("git", "-C", schemaDir.toString, "worktree", "remove", "--force", wt.toString),
+        HermeticEnv.empty
+      )
     }

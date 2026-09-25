@@ -59,7 +59,7 @@ object ReleaseCheck:
   def main(args: Array[String]): Unit =
     args.toList match
       case dir :: version :: Nil =>
-        run(Path.of(dir), version, isCIEnvironment(sys.env.get)) match // danger-scan:allow env-lookup — sys.env.get returns Option, not an unsafe get
+        run(Path.of(dir), version, isCIEnvironment(sys.env.get)) match // scalafix:ok DisableSyntax.NoSysEnv,danger-scan:allow env-lookup — returns Option, not an unsafe get
           case Right(report) => println(report)
           case Left(err)     => sys.error(err)
       case _ => // danger-scan:allow arity-rejection — wrong argument count maps to usage error, never a valid manifest

@@ -4,6 +4,8 @@ import hedgehog.Gen
 import hedgehog.Result
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
+import org.sinemenda.probatio.migration.HermeticEnv
+import org.sinemenda.probatio.migration.HermeticResult
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -150,14 +152,11 @@ object SpecLintParitySpec:
     repoRoot.resolve("openspec/schemas/verified-scala3/scanner/spec-lint.sh.predecessor.bak")
 
   private def gitOut(dir: Path, args: List[String]): Option[String] =
+    // spec: hermetic-test-processes — via the shared helper.
     try
-      val pb: ProcessBuilder = new ProcessBuilder(("git" +: args)*)
-      pb.directory(dir.toFile)
-      pb.redirectError(ProcessBuilder.Redirect.DISCARD)
-      val p: Process = pb.start()
-      val out: String =
-        new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-      if p.waitFor() == 0 && out.trim.nonEmpty then Some(out.trim) else None
+      val r: HermeticResult =
+        HermeticEnv.capture("git" +: args, HermeticEnv.empty, cwd = Some(dir.toFile))
+      if r.exitCode == 0 && r.out.trim.nonEmpty then Some(r.out.trim) else None
     catch case _: java.io.IOException => None
 
   /** Every tracked file — the `git ls-files` base for the F9 predicate. */
@@ -262,17 +261,14 @@ object SpecLintParitySpec:
       val specsDir: Path = dir.resolve("specs")
       Files.createDirectories(specsDir)
       Files.writeString(specsDir.resolve("spec.md"), text, StandardCharsets.UTF_8)
-      val pb: ProcessBuilder = new ProcessBuilder(
-        "bash",
-        predecessor.toString,
-        "--artifacts",
-        dir.toString
+      // spec: hermetic-test-processes — via the shared helper.
+      val r: HermeticResult = HermeticEnv.capture(
+        List("bash", predecessor.toString, "--artifacts", dir.toString),
+        HermeticEnv.empty,
+        cwd = Some(root.toFile)
       )
-      pb.directory(root.toFile)
-      val p: Process = pb.start()
-      val out: String =
-        new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-      val exit: Int = p.waitFor()
+      val out: String = r.out
+      val exit: Int   = r.exitCode
       if exit == 2 then sys.error(s"predecessor found no specs under $dir for '$name'")
       out.linesIterator.toList.flatMap { line =>
         line match

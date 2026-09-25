@@ -68,7 +68,7 @@ EOF
 run_gate_tool_call() { # $@ = args after --repo $FX
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="test-session" \
@@ -312,7 +312,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   # No git init — git rev-parse --absolute-git-dir will fail, STATE_DIR stays empty
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="test-session" \
@@ -332,7 +332,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   with_ledger
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_HOOKS=off \

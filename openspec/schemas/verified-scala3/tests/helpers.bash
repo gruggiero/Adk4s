@@ -4,6 +4,29 @@
 # prerequisite set (bash, git, jq): a helper that needs more than the suites
 # themselves would make the tests less portable than the code they check.
 
+# ── hermetic test processes ──────────────────────────────────────────────
+# spec: hermetic-test-processes — the shared setup clears every controlled
+# variable in one place. A controlled variable changes a workflow tool's
+# behaviour; if the invoking shell carries one, an `unset` here stops it
+# reaching a spawned tool or flipping a suite's verdict. A test that needs
+# a variable declares it explicitly in its own `run env VAR=...` line —
+# nothing reaches a tool by inheritance.
+#
+# The closed set is the same 18 names the Scala `ControlledVariable` enum
+# carries (workflow/*/src/test/.../HermeticEnv.scala) — duplicated because
+# bats cannot read the enum. Membership is a deliberate act: a name enters
+# because a tool reads it.
+HERMETIC_CONTROLLED_VARS=(
+  CLAUDE_CODE_SESSION_ID CLAUDE_PROJECT_DIR
+  VERIFIED_SCALA3_SESSION_ID VERIFIED_SCALA3_HOOKS VERIFIED_SCALA3_HOOKS_TRACE
+  VERIFIED_SCALA3_ACTIVE_SPEC VERIFIED_SCALA3_ALLOW_PATHS
+  VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK
+  PROBATIO_HOOKS PROBATIO_HOOKS_TRACE PROBATIO_SCHEMA_DIR
+  OPENSPEC_ROOT CI PWD
+  CHAIN_STATE_OVERRIDE DANGER_SCAN_OVERRIDE RECONCILE_OVERRIDE SPEC_LINT_OVERRIDE
+)
+unset "${HERMETIC_CONTROLLED_VARS[@]}"
+
 # ── locations ────────────────────────────────────────────────────────────
 # Resolved from this file, not from the caller's cwd — bats runs suites from
 # an unpredictable directory.

@@ -16,6 +16,8 @@ import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.RepositoryFacts
 import org.sinemenda.probatio.core.SessionId
 import org.sinemenda.probatio.core.StampFormat
+import org.sinemenda.probatio.migration.HermeticEnv
+import org.sinemenda.probatio.migration.HermeticResult
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -168,22 +170,26 @@ final class LiveFactBannerSpec extends ProbatioCliSuite:
       Files.createDirectories(repo.resolve("openspec/concepts"))
       Files.write(repo.resolve("openspec/concepts/c.md"), "# Concept: C\n".getBytes(StandardCharsets.UTF_8))
       withTempDir("elsewhere") { (elsewhere: Path) =>
-        val pb: ProcessBuilder = new ProcessBuilder(
-          artifact.toString,
-          "gate",
-          "--event",
-          "session-start",
-          "--format",
-          "text",
-          "--repo",
-          repo.toString,
-          "--session",
-          "s-out"
+        // spec: hermetic-test-processes — the spawned tool runs under the
+        // shared helper's hermetic environment.
+        val r: HermeticResult = HermeticEnv.capture(
+          List(
+            artifact.toString,
+            "gate",
+            "--event",
+            "session-start",
+            "--format",
+            "text",
+            "--repo",
+            repo.toString,
+            "--session",
+            "s-out"
+          ),
+          HermeticEnv.empty,
+          cwd = Some(elsewhere.toFile)
         )
-        pb.directory(elsewhere.toFile)
-        val p: Process  = pb.start()
-        val out: String = new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-        val code: Int   = p.waitFor()
+        val out: String = r.out
+        val code: Int   = r.exitCode
         assertEquals(code, 0, "the gate never fails")
         val regLine: Option[String] = out.linesIterator.find(_.contains("behavioural registry"))
         assert(

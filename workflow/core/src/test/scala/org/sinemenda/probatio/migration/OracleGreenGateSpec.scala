@@ -3,8 +3,6 @@ package org.sinemenda.probatio.migration
 import hedgehog.*
 import org.sinemenda.probatio.core.ProbatioSuite
 
-import scala.sys.process.*
-
 /**
  * Test oracle for the migration-protocol spec (R-M1, R-M2, R-M3, R-M5).
  *
@@ -38,7 +36,8 @@ final class OracleGreenGateSpec extends ProbatioSuite:
   // spec: migration-protocol — Scenario: A regression is a porting defect, not a test bug
   test("R-M1: oracle source is unmodified (git diff empty)"):
     val oracleDir: String = "openspec/schemas/verified-scala3/tests"
-    val gitResult: Int    = Seq("git", "diff", "--exit-code", "--", oracleDir).!
+    val gitResult: Int    =
+      HermeticEnv.run(List("git", "diff", "--exit-code", "--", oracleDir), HermeticEnv.empty)
     assert(
       gitResult == 0,
       "oracle source has uncommitted modifications — a modified oracle is not an independent witness"

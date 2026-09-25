@@ -499,6 +499,12 @@ lazy val `probatio-core` = (project in file("workflow/core"))
       Dependencies.upickle.head
     ) ++ Dependencies.probatioTestDeps,
     scalacOptions ++= scala3Options ++ probatioScalacOptions,
+    // spec: hermetic-test-processes — workflow test sources lint under a
+    // dedicated conf adding the raw-process-construction bans; scalafix has
+    // no per-path scoping, so the Test configuration gets its own rule file.
+    Test / scalafixConfig := Some(
+      (ThisBuild / baseDirectory).value / ".scalafix-tests.conf"
+    ),
     // R-ARCH1: dependency-lint runs as part of compile to enforce the
     // leaf-by-construction invariant at build time.
     dependencyLint := {
@@ -537,6 +543,11 @@ lazy val `probatio-cli` = (project in file("workflow/cli"))
       Dependencies.upickle.head
     ) ++ Dependencies.probatioTestDeps,
     scalacOptions ++= scala3Options ++ probatioScalacOptions,
+    // spec: hermetic-test-processes — see probatio-core for the rationale
+    // for the dedicated Test scalafix conf.
+    Test / scalafixConfig := Some(
+      (ThisBuild / baseDirectory).value / ".scalafix-tests.conf"
+    ),
     // Native-image config (R-N1, R-N2): --no-fallback (V1 spike finding),
     // -O1 optimization for gate latency budget. The multicall binary is
     // named "probatio" (alias "prob"). Native-image is mandatory for the
@@ -585,6 +596,13 @@ lazy val `sbt-probatio` = (project in file("workflow/plugin"))
     // The plugin targets sbt 1.x today; sbt 2.x migration is out of scope
     // (proposal §2.2) but the code is sbt-2-ready (R-S2).
     libraryDependencies ++= Dependencies.sbtPluginTestDeps,
+    // spec: hermetic-test-processes — DisableSyntax-only variant of the
+    // Test scalafix conf: this 2.12 build lacks -Ywarn-unused, so
+    // RemoveUnused/OrganizeImports cannot run here (Compile scalafix fails
+    // the same way at baseline).
+    Test / scalafixConfig := Some(
+      (ThisBuild / baseDirectory).value / ".scalafix-tests-2.12.conf"
+    ),
     // R-ARCH1: dependency-lint rule — fails if any forbidden dependency
     // (cats, cats-effect, fs2, llm4s, workflows4s, scalacheck, adk4s-*)
     // appears on the plugin's classpath. Also catches probatio-core leaks.

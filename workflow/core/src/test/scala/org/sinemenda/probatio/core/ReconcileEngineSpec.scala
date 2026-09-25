@@ -79,7 +79,7 @@ final class ReconcileEngineSpec extends ProbatioSuite:
       "java.io.File",
       "System.getenv", // scalafix:ok DisableSyntax.NoSystemGetenv
       "scala.io.",
-      "sys.process",
+      "sys.process", // scalafix:ok DisableSyntax.NoScalaSysProcess
       "ProcessBuilder"
     )
     engineSources.foreach { path =>

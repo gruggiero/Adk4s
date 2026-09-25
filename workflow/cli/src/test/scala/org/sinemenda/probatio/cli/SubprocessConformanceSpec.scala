@@ -4,11 +4,12 @@ import hedgehog.Gen
 import hedgehog.Result
 import org.sinemenda.probatio.core.EventDispatch
 import org.sinemenda.probatio.core.Outcome
+import org.sinemenda.probatio.migration.ControlledVariable
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
-import scala.sys.process.*
 
 import LiveFactFixtures.withTempDir
 
@@ -79,10 +80,10 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
    */
   private def runSubprocess(argList: List[String]): Int =
     if !artifactExists then fail(s"built artifact not found at $artifactPath — conformance check FAILS, does not skip")
-    val cmd: List[String]     = List(artifactPath) ++ argList
-    val logger: ProcessLogger = ProcessLogger(_ => (), _ => ())
-    val exitCode: Int         = cmd.!(logger)
-    exitCode
+    val cmd: List[String] = List(artifactPath) ++ argList
+    // spec: hermetic-test-processes — via the shared helper; the child
+    // sees the fixed base only.
+    HermeticEnv.run(cmd, HermeticEnv.empty)
 
   // ── Scenario: Happy path — every exposed tool starts and reports a documented exit status
   // spec: cli-entrypoint-contract — Scenario: Happy path — every exposed tool starts and reports a documented exit status
@@ -231,23 +232,15 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
    */
   private def predecessorEventExit(repo: Path, name: String): (Int, Boolean) =
     val gate: String = schemaDir.resolve("hooks/gate.sh.predecessor.bak").toString
-    val pb: java.lang.ProcessBuilder = new java.lang.ProcessBuilder(
-      "bash",
-      gate,
-      "--repo",
-      repo.toString,
-      "--event",
-      name,
-      "--format",
-      "text"
+    // spec: hermetic-test-processes — the session is the one declared
+    // controlled variable; stdin stays /dev/null inside capture.
+    val env: HermeticEnv =
+      HermeticEnv.build(Map(ControlledVariable.VerifiedScala3SessionId -> "parity"))
+    val r: org.sinemenda.probatio.migration.HermeticResult = HermeticEnv.capture(
+      List("bash", gate, "--repo", repo.toString, "--event", name, "--format", "text"),
+      env
     )
-    pb.environment().put("VERIFIED_SCALA3_SESSION_ID", "parity")
-    pb.redirectInput(java.lang.ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
-    pb.redirectError(java.lang.ProcessBuilder.Redirect.DISCARD)
-    val process: java.lang.Process = pb.start()
-    val stdout: String =
-      new String(process.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
-    (process.waitFor(), stdout.nonEmpty)
+    (r.exitCode, r.out.nonEmpty)
 
   // ── spec 10 of repair-probatio-cutover: schema-rename-completion ────
   // spec: schema-rename-completion — Proof Obligation: The migration has a caller in the shipped tool
@@ -265,15 +258,15 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
    */
   private def runArtifactWithHome(home: Path, cwd: Path): Int =
     if !artifactExists then fail(s"built artifact not found at $artifactPath — conformance check FAILS, does not skip")
-    val pb: java.lang.ProcessBuilder =
-      new java.lang.ProcessBuilder(artifactPath, "gate", "--check-installed")
-    pb.directory(cwd.toFile)
-    pb.environment().put("HOME", home.toString)
-    pb.redirectInput(java.lang.ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
-    pb.redirectError(java.lang.ProcessBuilder.Redirect.DISCARD)
-    val process: java.lang.Process = pb.start()
-    process.getInputStream.readAllBytes()
-    process.waitFor()
+    // spec: hermetic-test-processes — the sandboxed HOME is a fixed-base
+    // override via withBase; stdin stays /dev/null inside run.
+    val env: HermeticEnv =
+      HermeticEnv.empty.withBase(Map("HOME" -> home.toString))
+    HermeticEnv.run(
+      List(artifactPath, "gate", "--check-installed"),
+      env,
+      cwd = Some(cwd.toFile)
+    )
 
   // spec: schema-rename-completion — Scenario: Happy path — a previous directory is migrated once
   test("schema-rename: the shipped tool migrates the previous cache directory on first use"):
@@ -338,7 +331,7 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
   private def writeDispatchParityRepo(repo: Path, withWorkflow: Boolean): Unit =
     if withWorkflow then Files.createDirectories(repo.resolve("openspec/changes/parity-change/specs/parity-spec"))
     val code: Int =
-      List("git", "-C", repo.toString, "init", "-q").!(ProcessLogger(_ => (), _ => ()))
+      HermeticEnv.run(List("git", "-C", repo.toString, "init", "-q"), HermeticEnv.empty)
     assertEquals(code, 0, "git init must succeed")
 
   property("parity-with-predecessor-on-event-dispatch"):

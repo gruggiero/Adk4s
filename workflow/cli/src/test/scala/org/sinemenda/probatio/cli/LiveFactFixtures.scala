@@ -26,6 +26,8 @@ import org.sinemenda.probatio.core.UndeterminedReason
 import org.sinemenda.probatio.core.UnresolvedEntry
 import org.sinemenda.probatio.core.UnresolvedReason
 import org.sinemenda.probatio.core.Verdict
+import org.sinemenda.probatio.migration.HermeticEnv
+import org.sinemenda.probatio.migration.HermeticResult
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -307,12 +309,11 @@ object LiveFactFixtures:
 
   /** Run `git` under `dir`; returns (exit code, captured stdout). */
   def git(dir: Path, args: String*): (Int, String) =
-    val pb: ProcessBuilder = new ProcessBuilder(("git" +: args)*)
-    pb.directory(dir.toFile)
-    pb.redirectErrorStream(true)
-    val p: Process  = pb.start()
-    val out: String = new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-    (p.waitFor(), out.trim)
+    // spec: hermetic-test-processes — via the shared helper; stderr merged
+    // into stdout as before, under the fixed-base environment.
+    val r: HermeticResult =
+      HermeticEnv.captureMerged("git" +: args.toList, HermeticEnv.empty, cwd = Some(dir.toFile))
+    (r.exitCode, r.out.trim)
 
   // ════════════════════════════════════════════════════════════════════
   // Generators — constructive, no filtering

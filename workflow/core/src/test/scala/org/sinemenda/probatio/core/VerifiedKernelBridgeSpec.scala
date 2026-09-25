@@ -1,7 +1,6 @@
 package org.sinemenda.probatio.core
 
 import hedgehog.*
-
 import org.sinemenda.probatio.verified.BannerEngineKernel
 import org.sinemenda.probatio.verified.ChainStateKernel
 import org.sinemenda.probatio.verified.LedgerValidatorKernel

@@ -6,9 +6,8 @@ import hedgehog.Range
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.*
-
-import scala.sys.process.ProcessLogger
-import scala.sys.process.stringSeqToProcess
+import org.sinemenda.probatio.migration.ControlledVariable
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import LiveFactFixtures.withTempDir
 
@@ -152,8 +151,7 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
       )
       // The state dir lives under .git — the gate resolves it via
       // `git rev-parse --absolute-git-dir`.
-      List("git", "-C", repo.toString, "init", "-q")
-        .!(ProcessLogger(_ => (), _ => ()))
+      HermeticEnv.run(List("git", "-C", repo.toString, "init", "-q"), HermeticEnv.empty)
       val session: SessionId = SessionId.fromRaw("t")
       val stateDir: java.nio.file.Path =
         repo.resolve(".git/verified-scala3-gate")
@@ -303,13 +301,14 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
 
   /** Pipe `input` through `jq -e -f <contract>`; true iff jq accepts. */
   private def contractAccepts(input: String): Boolean =
-    import scala.sys.process.Process
     val bytes: Array[Byte] = input.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-    val code: Int =
-      (Process(Seq("jq", "-e", "-f", hookJsonContract.toString))
-        #< new java.io.ByteArrayInputStream(bytes))
-        .!(ProcessLogger(_ => (), _ => ()))
-    code == 0
+    HermeticEnv
+      .capture(
+        List("jq", "-e", "-f", hookJsonContract.toString),
+        HermeticEnv.empty,
+        stdin = Some(bytes)
+      )
+      .exitCode == 0
 
   private def envelopeCoverConfig: PropertyConfig => PropertyConfig =
     (c: PropertyConfig) => c.copy(testLimit = SuccessCount(300))
@@ -443,8 +442,7 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
 
   private def parityGit(repo: java.nio.file.Path, args: String*): Unit =
     val code: Int =
-      ("git" +: "-C" +: repo.toString +: args.toList)
-        .!(ProcessLogger(_ => (), _ => ()))
+      HermeticEnv.run("git" +: "-C" +: repo.toString +: args.toList, HermeticEnv.empty)
     assertEquals(code, 0, s"git ${args.mkString(" ")} must succeed")
 
   /**
@@ -467,12 +465,13 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
     parityGit(repo, "add", "-A")
     parityGit(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed")
     val base: String =
-      new String(
-        new ProcessBuilder("git", "-C", repo.toString, "rev-parse", "--short", "HEAD")
-          .start()
-          .getInputStream
-          .readAllBytes()
-      ).trim
+      HermeticEnv
+        .capture(
+          List("git", "-C", repo.toString, "rev-parse", "--short", "HEAD"),
+          HermeticEnv.empty
+        )
+        .out
+        .trim
     assert(base.nonEmpty, "fixture HEAD must resolve")
     val lines: List[String] =
       plan.rows.zipWithIndex.flatMap { case (r: CompletionRowPlan, i: Int) =>
@@ -540,28 +539,32 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
       repoRoot
         .resolve("openspec/schemas/verified-scala3/scanner/reconcile.sh.predecessor.bak")
         .toString
-    // ProcessBuilder, not scala.sys.process: stdin must be /dev/null —
-    // the gate reads the hook payload from stdin and an inherited open
-    // pipe blocks it forever. stdout/stderr are discarded.
-    val pb: ProcessBuilder = new ProcessBuilder(
-      "bash",
-      gate,
-      "--repo",
-      repo.toString,
-      "--event",
-      "completion",
-      "--format",
-      "text",
-      "--stop-hook-active",
-      "false"
+    // spec: hermetic-test-processes — the three fixture seams are declared
+    // controlled variables; HermeticEnv.run keeps stdin at /dev/null (the
+    // gate reads the hook payload from stdin and an inherited open pipe
+    // blocks it forever) and discards both output streams.
+    val env: HermeticEnv = HermeticEnv.build(
+      Map(
+        ControlledVariable.VerifiedScala3SessionId -> paritySession,
+        ControlledVariable.ChainStateOverride      -> cs.toString,
+        ControlledVariable.ReconcileOverride       -> reconcile
+      )
     )
-    pb.environment().put("VERIFIED_SCALA3_SESSION_ID", paritySession)
-    pb.environment().put("CHAIN_STATE_OVERRIDE", cs.toString)
-    pb.environment().put("RECONCILE_OVERRIDE", reconcile)
-    pb.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
-    pb.redirectOutput(ProcessBuilder.Redirect.DISCARD)
-    pb.redirectError(ProcessBuilder.Redirect.DISCARD)
-    pb.start().waitFor()
+    HermeticEnv.run(
+      List(
+        "bash",
+        gate,
+        "--repo",
+        repo.toString,
+        "--event",
+        "completion",
+        "--format",
+        "text",
+        "--stop-hook-active",
+        "false"
+      ),
+      env
+    )
 
   // spec: completion-witness-refusal — Property: parity-with-predecessor-on-the-completion-tier
   // Both gates evaluate the SAME generated fixture. Ported runs in-
@@ -626,5 +629,111 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
             .assert(!(ported == 1 && model == 0))
             .log(s"port refused where the model allowed: plan=$plan")
         )
+      )
+    }
+
+  // ── spec: hermetic-test-processes ─────────────────────────────────
+
+  // spec: hermetic-test-processes — Scenario: Adversarial — both sides receive the session through the same channel
+  test("both sides receive the session through the same channel"):
+    withTempDir("gate-parity-channel") { (repo: java.nio.file.Path) =>
+      // A refusal fixture through the parity property's own builder, with
+      // a chain-state seam reporting an UNRESOLVED requirement — the arm
+      // where port and model agree to refuse (a stale-only row is the
+      // declared divergence: the model refuses it, the port allows).
+      val plan: CompletionFixturePlan =
+        CompletionFixturePlan(rows = Nil, priorRefusal = false)
+      val sd: java.nio.file.Path  = writeParityFixture(repo, plan)
+      val cs: java.nio.file.Path  = repo.resolve("cs-unresolved.sh")
+      java.nio.file.Files.writeString(
+        cs,
+        "#!/usr/bin/env bash\n" +
+          "echo '{\"change\":\"x\",\"baseline\":\"b\",\"total\":1,\"bound\":1," +
+          "\"resolved\":1,\"discharged\":0,\"unresolved\":[\"obl\"],\"unmapped_obligations\":[]}'\n"
+      )
+      cs.toFile.setExecutable(true)
+      val enc: String             = SessionId.fromRaw(paritySession).encoded
+      val reconcile: String =
+        repoRoot
+          .resolve("openspec/schemas/verified-scala3/scanner/reconcile.sh.predecessor.bak")
+          .toString
+
+      // One hermetic environment, declaring the session and both test
+      // seams; the invoking shell's harness variable must not survive.
+      val env: HermeticEnv = HermeticEnv.buildWithExtras(
+        Map(
+          ControlledVariable.VerifiedScala3SessionId -> paritySession,
+          ControlledVariable.ChainStateOverride      -> cs.toString,
+          ControlledVariable.ReconcileOverride       -> reconcile
+        ),
+        Map("CLAUDE_CODE_SESSION_ID" -> "foreign-harness-session")
+      )
+
+      // The ported arm: the env map threaded in-process — NO --session
+      // flag. The channel the other side lacks is removed by construction.
+      val ported: Int =
+        GateCmd.run(
+          Array(
+            "--repo",
+            repo.toString,
+            "--event",
+            "completion",
+            "--format",
+            "text",
+            "--stop-hook-active",
+            "false"
+          ),
+          env.toMap,
+          () => None
+        ) match
+          case Outcome.Ran(0)          => 0
+          case Outcome.Ran(n)          => n
+          case Outcome.Finding(_)      => 1
+          case Outcome.Undetermined(_) => 2
+
+      // Reset the refusal budget the ported run just spent, exactly as the
+      // parity property does — both arms must see a fresh budget.
+      java.nio.file.Files.deleteIfExists(sd.resolve(s"completion-refused-$enc"))
+
+      // The predecessor arm: spawned through the shared helper — the same
+      // env is the whole of its environment.
+      val gate: String =
+        repoRoot
+          .resolve("openspec/schemas/verified-scala3/hooks/gate.sh.predecessor.bak")
+          .toString
+      val model: Int = HermeticEnv.run(
+        List(
+          "bash",
+          gate,
+          "--repo",
+          repo.toString,
+          "--event",
+          "completion",
+          "--format",
+          "text",
+          "--stop-hook-active",
+          "false"
+        ),
+        env
+      )
+
+      // The channel assertion, observed at the process boundary: the
+      // declared session is there, the inherited harness variable is not.
+      val childEnv: Map[String, String] = HermeticEnv.probeChild(env)
+      assertEquals(childEnv.get("VERIFIED_SCALA3_SESSION_ID"), Some(paritySession))
+      assert(!childEnv.contains("CLAUDE_CODE_SESSION_ID"))
+
+      // Same session, same verdict — and the refusal marker is keyed by
+      // the declared session for whichever arm wrote it.
+      assertEquals(ported, model, "both gates on one fixture must agree when the session arrives by the same channel")
+      assert(
+        java.nio.file.Files.exists(sd.resolve(s"completion-refused-$enc")),
+        "the refusal marker must be keyed by the declared session"
+      )
+      assert(
+        !java.nio.file.Files.exists(
+          sd.resolve(s"completion-refused-${SessionId.fromRaw("foreign-harness-session").encoded}")
+        ),
+        "the inherited harness session must never reach either side"
       )
     }

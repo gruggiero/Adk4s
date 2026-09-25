@@ -5,6 +5,8 @@ import hedgehog.Result
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.Outcome
+import org.sinemenda.probatio.migration.ControlledVariable
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -635,24 +637,29 @@ object ChainStateParitySpec:
     runPredecessor(fx, baselineArg, specLintOverride)
 
   private def runPredecessor(fx: Path, baselineArg: String, specLint: Path): (String, Int) =
-    val pb: ProcessBuilder = new ProcessBuilder(
-      "bash",
-      predecessor.toString,
-      "--change-dir",
-      fx.toString,
-      "--change",
-      change,
-      "--baseline",
-      baselineArg
+    // spec: hermetic-test-processes — the two fixture seams are declared
+    // controlled variables; nothing else of the invoking shell reaches the
+    // predecessor.
+    val env: HermeticEnv = HermeticEnv.build(
+      Map(
+        ControlledVariable.OpenspecRoot     -> fx.resolve("no-openspec-root").toString,
+        ControlledVariable.SpecLintOverride -> specLint.toString
+      )
     )
-    val env: java.util.Map[String, String] = pb.environment()
-    env.put("OPENSPEC_ROOT", fx.resolve("no-openspec-root").toString)
-    env.put("SPEC_LINT_OVERRIDE", specLint.toString)
-    pb.redirectError(ProcessBuilder.Redirect.DISCARD)
-    val p: Process = pb.start()
-    val out: String =
-      new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-    (out, p.waitFor())
+    val r: org.sinemenda.probatio.migration.HermeticResult = HermeticEnv.capture(
+      List(
+        "bash",
+        predecessor.toString,
+        "--change-dir",
+        fx.toString,
+        "--change",
+        change,
+        "--baseline",
+        baselineArg
+      ),
+      env
+    )
+    (r.out, r.exitCode)
 
   def runPort(c: CorpusCase): (String, String, Outcome[Int]) =
     StdoutCapture.captureBoth(

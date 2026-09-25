@@ -5,6 +5,7 @@ import hedgehog.Result
 import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.Outcome
+import org.sinemenda.probatio.migration.HermeticEnv
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -325,14 +326,10 @@ object LedgerCheckpointParitySpec:
 
   private def run(dir: Path, args: List[String]): Option[(Int, String, String)] =
     try
-      val pb: ProcessBuilder = new ProcessBuilder(args*)
-      pb.directory(dir.toFile)
-      val p: Process = pb.start()
-      val out: String =
-        new String(p.getInputStream.readAllBytes(), StandardCharsets.UTF_8)
-      val err: String =
-        new String(p.getErrorStream.readAllBytes(), StandardCharsets.UTF_8)
-      Some((p.waitFor(), out, err))
+      // spec: hermetic-test-processes — via the shared helper.
+      val r: org.sinemenda.probatio.migration.HermeticResult =
+        HermeticEnv.capture(args, HermeticEnv.empty, cwd = Some(dir.toFile))
+      Some((r.exitCode, r.out, r.err))
     catch case _: java.io.IOException => None
 
   /**

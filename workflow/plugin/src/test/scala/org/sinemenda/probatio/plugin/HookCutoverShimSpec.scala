@@ -289,14 +289,13 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
   }
 
   private def runProcess(args: List[String], cwd: java.io.File): (Int, String) = {
-    val lines: java.util.concurrent.atomic.AtomicReference[List[String]] =
-      new java.util.concurrent.atomic.AtomicReference(List.empty)
-    val logger: scala.sys.process.ProcessLogger = scala.sys.process.ProcessLogger(
-      (o: String) => { val _ = lines.updateAndGet((xs: List[String]) => xs :+ o); () },
-      (e: String) => { val _ = lines.updateAndGet((xs: List[String]) => xs :+ e); () }
-    )
-    val code: Int = scala.sys.process.Process(args, cwd).!(logger)
-    (code, lines.get().mkString("\n"))
+    // spec: hermetic-test-processes — all test processes go through the
+    // shared helper, so the child sees only the fixed base plus declared
+    // variables. The previous spawned child process inherited the
+    // invoking shell's environment wholesale.
+    val r: HermeticResult =
+      HermeticEnv.capture(args, HermeticEnv.empty, cwd = Some(cwd))
+    (r.exitCode, List(r.out, r.err).filter(_.nonEmpty).mkString("\n"))
   }
 
   // Every .sh file in the copy whose body forwards to bin/probatio —

@@ -30,11 +30,16 @@ Ring 2 enforces two rules, both already wired:
   alias table (the table and resolution are core, the read of the environment map is the
   adapter).
 
-This change adds **two lints** to the same `.scalafix.conf` mechanism, each a `DisableSyntax`
-block scoped to `workflow/*/src/test/scala/**`: no raw process construction, and no literal
-path into a named change's active directory. A third, for `legacy-name-retirement`, is
-scoped to main sources: no direct `env.get` on a controlled-variable name outside the alias
-table.
+This change adds **two lints** as `DisableSyntax` regex blocks scoped to
+`workflow/*/src/test/scala/**`: no raw process construction, and no literal
+path into a named change's active directory. Scalafix has no per-rule file
+scoping (`fileFilter` is not a `DisableSyntax` field — the `NoIOInProbatioCore`
+precedent was dead config), so test-source bans live in dedicated
+`.scalafix-tests.conf` / `.scalafix-tests-2.12.conf` files wired via
+`Test / scalafixConfig` on the workflow projects; `workflow/verify-test-lint.sh`
+is the planted-violation negative check. A third lint, for
+`legacy-name-retirement`, is scoped to main sources: no direct `env.get` on a
+controlled-variable name outside the alias table.
 
 ### New files
 
