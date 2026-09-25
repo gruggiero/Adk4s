@@ -623,6 +623,57 @@ final class ChainStateCmdSpec extends ProbatioCliSuite:
     }
 
   /**
+   * The effective baseline is the first `**BASELINE SHA**`/`SHA `` match
+   * ANYWHERE in implementation-progress.md — the predecessor's
+   * `grep -oE ... | head -1` scans the whole file. The real progress
+   * format records the marker inside a spec section, after headings and
+   * bullet lines; an extraction that inspects only line 0 silently falls
+   * back to `--baseline` and rows qualified at the file's SHA stay stale.
+   */
+  test("the progress file's BASELINE SHA wins over the gate arg wherever it appears"):
+    LiveFactFixtures.withTempDir("chain-state-eff-baseline") { (fx: Path) =>
+      writeSpec(
+        fx,
+        "only",
+        specHeader + reqBlock("Solo Req") + poHeader +
+          s"| obl | Requirement: Solo Req | manual | `$resolvesArtifact` |\n"
+      )
+      val fileBaseline: String = "00d3de1aa49141277dc4855a353f009fc7cc941a"
+      writeLedger(
+        fx,
+        List(ledgerJson("only", "obl", resolvesArtifact, exit = 0, baseline = fileBaseline))
+      )
+      Files.writeString(
+        fx.resolve("implementation-progress.md"),
+        "# Progress\n\n## Spec 1: only\n\n- **BASELINE SHA**: `" + fileBaseline + "`\n",
+        StandardCharsets.UTF_8
+      )
+      val (stdout, _, outcome) = StdoutCapture.captureBoth(
+        ChainStateCmd.run(
+          Array(
+            "--change-dir",
+            fx.toString,
+            "--change",
+            change,
+            "--baseline",
+            "zzz"
+          ),
+          degradedEnv(fx)
+        )
+      )
+      val parsed: ujson.Value = ujson.read(stdout.trim)
+      assertEquals(
+        parsed("baseline").str,
+        fileBaseline,
+        s"the report's baseline is the file's SHA, not the gate arg, got: $stdout"
+      )
+      outcome match
+        case Outcome.Ran(_) => ()
+        case other =>
+          fail(s"a row qualified at the file's SHA discharges regardless of --baseline, got $other — $stdout")
+    }
+
+  /**
    * R8-N1: the contract admits any integer `v >= 1`, but the READER knows
    * only v=1 — the predecessor refuses a `v:2` row with die_undetermined
    * ("Refusing to report a partial result"). A contract-valid,

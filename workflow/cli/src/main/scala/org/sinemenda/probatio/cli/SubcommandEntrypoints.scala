@@ -2370,9 +2370,12 @@ object ChainStateCmd:
       // single-baseline approach), else the gate's --baseline.
       val effectiveShaRe: scala.util.matching.Regex =
         "(\\*\\*BASELINE SHA\\*\\*: `?|SHA `)([a-f0-9]{7,40})`?".r
-      val rawEffective: String = lines
-        .collectFirst((l: String) => effectiveShaRe.findFirstMatchIn(l).map(_.group(2)))
-        .flatten
+      // collectFirst on a total lambda stops at line 1 (the lifted
+      // PartialFunction is defined everywhere); flatMap scans for the
+      // first MATCHING line — the predecessor's `grep | head -1`.
+      val rawEffective: String = lines.view
+        .flatMap((l: String) => effectiveShaRe.findFirstMatchIn(l).map(_.group(2)))
+        .headOption
         .getOrElse(baselineArg)
       if emitDiagnostics then
         if lines.exists((l: String) => effectiveShaRe.findFirstMatchIn(l).isDefined) then

@@ -501,6 +501,22 @@ object ChainStateParitySpec:
       ),
       baselineArg = "dead000"
     ),
+    // The effective baseline is the FIRST `**BASELINE SHA**` match
+    // ANYWHERE in the file (the predecessor's `grep | head -1`), not the
+    // gate arg. The marker deliberately sits on a later line and the row
+    // is qualified at the file's SHA — only a full-file scan discharges it.
+    Fixture(
+      "effective-baseline-not-first-line",
+      oneSpec(
+        specHeader + reqBlock("Solo Req") + poHeader +
+          titleRow("obl one", "Solo Req", resolvesArtifact)
+      ),
+      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline)),
+      progress = Some(
+        "# Progress\n\n## Spec 1: only\n\n- **BASELINE SHA**: `" + fullBaseline + "`\n"
+      ),
+      baselineArg = "zzz"
+    ),
     // A non-`## Spec` `## ` heading clears in_baseline — the SHA line
     // after it is NOT captured, the map is empty, and the row stays stale.
     Fixture(
