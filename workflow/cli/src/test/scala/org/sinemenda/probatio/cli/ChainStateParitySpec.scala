@@ -595,11 +595,10 @@ object ChainStateParitySpec:
     scannerDir.resolve("chain-state.sh.predecessor.bak")
 
   /**
-   * The spec-lint the predecessor must see: the freshly-built port, never
-   * the stale `bin/probatio` jar launcher (whose `sun.java.command`
-   * dispatch reads the jar filename as the subcommand). Prefer the native
-   * image; fall back to a `probatio`-named symlink of the assembly jar —
-   * the basename is what multicall dispatch reads.
+   * The spec-lint the predecessor must see: the freshly-built port. Prefer
+   * the native image; fall back to `java -jar` on the assembly archive —
+   * archive invocation dispatches by the first argument (spec:
+   * jar-launcher-dispatch), so no `probatio`-named shim is needed.
    */
   private lazy val specLintOverride: Path =
     val dir: Path     = Files.createTempDirectory("chain-state-spec-lint-override")
@@ -610,9 +609,7 @@ object ChainStateParitySpec:
     val body: String =
       if Files.isExecutable(native) then s"#!/usr/bin/env bash\nexec \"$native\" spec-lint \"$$@\"\n"
       else if Files.isRegularFile(jar) then
-        val link: Path = dir.resolve("probatio")
-        Files.createSymbolicLink(link, jar)
-        s"#!/usr/bin/env bash\nexec java -jar \"$link\" spec-lint \"$$@\"\n"
+        s"#!/usr/bin/env bash\nexec java -jar \"$jar\" spec-lint \"$$@\"\n"
       else
         sys.error(
           "chain-state parity oracle needs a runnable spec-lint: build the " +

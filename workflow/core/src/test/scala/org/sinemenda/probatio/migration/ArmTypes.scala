@@ -142,24 +142,59 @@ object ArmTree:
               case None =>
                 Outcome.Undetermined(s"materialise: baseline '$baseline' does not resolve to a commit")
               case Some(sha) =>
-                gitOut(origin, List("worktree", "add", "--detach", destDir.toString, sha)) match
-                  case None =>
-                    Outcome.Undetermined(s"materialise: could not create a worktree at $destDir for $sha")
-                  case Some(_) =>
-                    val armSchema: os.Path = destDir / rel
-                    resolveSeams(config, schemaDir, armSchema) match
-                      case Left(reason) =>
-                        // The worktree was already added — remove it so a
-                        // failed materialisation does not leak stale
-                        // .git/worktrees entries.
-                        Try(
-                          os
-                            .proc("git", "-C", origin.toString, "worktree", "remove", "--force", destDir.toString)
-                            .call(check = false, stderr = os.Pipe)
-                        )
-                        Outcome.Undetermined(reason)
-                      case Right(resolved) =>
-                        Outcome.Ran(new ArmTree(armSchema, origin, sha, config, resolved))
+                // The built tool the arm must carry for direct invocations:
+                // the native executable and/or the assembly archive under
+                // the ORIGIN's workflow/cli/target. Both paths are
+                // gitignored, so the worktree itself carries neither and
+                // materialise provisions them — an arm with nothing built
+                // is could-not-determine, never silently tool-less.
+                // spec: jar-launcher-dispatch — Requirement: A comparison arm carries the built tool for direct invocations
+                // spec: jar-launcher-dispatch — Scenario: Adversarial — an arm with no built tool is could-not-determine
+                val toolTarget: os.Path   = origin / "workflow" / "cli" / "target"
+                val nativeTool: os.Path   = toolTarget / "native-image" / "probatio"
+                val jarDir: os.Path       = toolTarget / "scala-3.8.4"
+                val jars: List[os.Path] =
+                  if os.isDir(jarDir) then
+                    os
+                      .list(jarDir)
+                      .filter((p: os.Path) => p.last.matches("probatio-cli-assembly-.*\\.jar"))
+                      .toList
+                  else List.empty
+                val provided: List[os.Path] =
+                  (if os.exists(nativeTool) then List(nativeTool) else List.empty) ++ jars
+                if provided.isEmpty then
+                  Outcome.Undetermined(
+                    s"materialise: no built tool available to provide — " +
+                      s"searched $nativeTool and $jarDir/probatio-cli-assembly-*.jar"
+                  )
+                else
+                  gitOut(origin, List("worktree", "add", "--detach", destDir.toString, sha)) match
+                    case None =>
+                      Outcome.Undetermined(s"materialise: could not create a worktree at $destDir for $sha")
+                    case Some(_) =>
+                      // Copy each built artifact into the arm at the same
+                      // repo-relative path — the arm's own bin/probatio
+                      // resolves $ARM_ROOT/workflow/cli/target/...
+                      provided.foreach { (src: os.Path) =>
+                        val dst: os.Path = destDir / src.relativeTo(origin)
+                        os.makeDir.all(dst / os.up)
+                        os.copy(src, dst, replaceExisting = true)
+                        if src.toIO.canExecute then os.perms.set(dst, "rwxr-xr-x")
+                      }
+                      val armSchema: os.Path = destDir / rel
+                      resolveSeams(config, schemaDir, armSchema) match
+                        case Left(reason) =>
+                          // The worktree was already added — remove it so a
+                          // failed materialisation does not leak stale
+                          // .git/worktrees entries.
+                          Try(
+                            os
+                              .proc("git", "-C", origin.toString, "worktree", "remove", "--force", destDir.toString)
+                              .call(check = false, stderr = os.Pipe)
+                          )
+                          Outcome.Undetermined(reason)
+                        case Right(resolved) =>
+                          Outcome.Ran(new ArmTree(armSchema, origin, sha, config, resolved))
 
   /**
    * Resolve every seam in swap order against the materialised arm's live
@@ -198,10 +233,11 @@ object ArmTree:
         // Always write the canonical ported shim — never keep the baseline's
         // file. The committed shim is the self-relative form (it resolves
         // $SCRIPT_DIR/../bin/probatio); the arm shim intentionally execs the
-        // ORIGIN's launcher instead, because the materialised arm tree
-        // carries no built binary. At a pre-swap baseline the committed file
-        // is the predecessor implementation, and keeping it would silently
-        // put predecessor bytes in the ported arm.
+        // ORIGIN's launcher, so the ported arm and the predecessor control
+        // run the same built artifact — the arm's own copy is provisioned
+        // for tests that invoke it directly. At a pre-swap baseline the
+        // committed file is the predecessor implementation, and keeping it
+        // would silently put predecessor bytes in the ported arm.
         val subcommand: String = os.RelPath(ToolId.seamPath(seam)).last.stripSuffix(".sh")
         os.write.over(
           armSeam,

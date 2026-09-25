@@ -237,6 +237,30 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
       case Outcome.Finding(d) =>
         fail(s"a missing predecessor is Undetermined, not a Finding: $d")
 
+  // ── Scenario: Adversarial — an arm with no built tool is could-not-determine
+  // spec: jar-launcher-dispatch — Scenario: Adversarial — an arm with no built tool is could-not-determine
+  //
+  // The fixture repo carries no `workflow/cli/target` build outputs — nothing
+  // was ever built there (build outputs are gitignored, so a worktree cannot
+  // carry them). materialise must refuse, naming the artifact it searched.
+  test("an arm materialised where no built tool is available is could-not-determine naming the artifact"):
+    val tmp: os.Path                                = os.temp.dir()
+    val (repo: os.Path, schema: os.Path, sha: String) = mkSyntheticRepo(tmp)
+    // Whatever the fixture plants, this arm's origin must carry no build
+    // outputs — the materialisation has nothing to provide.
+    val builtOutputs: os.Path = repo / "workflow" / "cli" / "target"
+    if os.exists(builtOutputs) then os.remove.all(builtOutputs)
+    ArmTree.materialise(SeamConfiguration.fromPorted(Set.empty), sha, schema, tmp / "pred") match
+      case Outcome.Undetermined(reason) =>
+        assert(
+          reason.contains("workflow/cli/target"),
+          s"the failure must name the built tool's location, got: $reason"
+        )
+      case Outcome.Ran(_) =>
+        fail("an arm with no built tool to provide must not materialise")
+      case Outcome.Finding(d) =>
+        fail(s"a missing built tool is Undetermined, not a Finding: $d")
+
   // ── Scenario: Adversarial — identical arms yield a refusal, not Proceed
   // spec: differential-harness-integrity — Scenario: Adversarial — identical arms yield a refusal, not Proceed
   test("two arms resolved identically refuse to compare — no verdict is produced"):
@@ -836,6 +860,18 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
       // The REAL oracle file — the retargeted source-inspection tests run
       // inside the arm against the arm's own workflow/ sources.
       os.write(tests / "workflow-hygiene.bats", os.read(realTests / "workflow-hygiene.bats"))
+
+    // The built tool arm provisioning expects — a stub executable at the
+    // origin's native-image path (spec: jar-launcher-dispatch — a
+    // materialised arm carries the built tool for direct invocations; a
+    // repo with no build outputs is refused as could-not-determine).
+    val stubTool: os.Path = repo / "workflow" / "cli" / "target" / "native-image" / "probatio"
+    os.write(
+      stubTool,
+      "#!/usr/bin/env bash\necho synthetic-probatio\n",
+      createFolders = true
+    )
+    os.perms.set(stubTool, "rwxr-xr-x")
 
     // A minimal ported-implementation surface at the real source paths —
     // the retargeted drift/payload tests grep the arm's workflow/ tree.

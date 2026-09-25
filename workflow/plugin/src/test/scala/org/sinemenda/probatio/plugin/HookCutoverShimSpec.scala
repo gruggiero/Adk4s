@@ -436,6 +436,34 @@ final class HookCutoverShimSpec extends ProbatioPluginSuite {
     }
   }
 
+  // ── Scenario: Adversarial — neither archive nor executable is
+  //    could-not-determine, named
+  // spec: jar-launcher-dispatch — Scenario: Adversarial — neither archive nor executable is could-not-determine, named
+  test("the repository launcher names the searched locations when neither artifact exists") {
+    val tree: java.io.File =
+      java.nio.file.Files.createTempDirectory("probatio-empty-tree").toFile
+    val binDir: java.io.File =
+      new java.io.File(tree, "openspec/schemas/verified-scala3/bin")
+    assert(binDir.mkdirs(), s"could not create $binDir")
+    val launcher: java.io.File = new java.io.File(binDir, "probatio")
+    val _copied: java.nio.file.Path = java.nio.file.Files.copy(
+      new java.io.File(repoRootDir, "openspec/schemas/verified-scala3/bin/probatio").toPath,
+      launcher.toPath
+    )
+    assert(launcher.setExecutable(true), "launcher must be executable")
+    val (code: Int, out: String) =
+      runProcess(List("bash", launcher.getAbsolutePath, "gate", "--event", "x"), tree)
+    assert(code != 0, s"the launcher must not terminate clean with nothing built, got $code:\n$out")
+    assert(
+      out.contains("native-image/probatio"),
+      s"the report must name the executable location searched, got:\n$out"
+    )
+    assert(
+      out.contains("probatio-cli-assembly"),
+      s"the report must name the archive location searched, got:\n$out"
+    )
+  }
+
   // ── Scenario: Happy path — a script invoked from a fresh clone reaches
   //    the tool
   // spec: workflow-delivery-hygiene — Scenario: Happy path — a script invoked from a fresh clone reaches the tool

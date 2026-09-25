@@ -38,7 +38,7 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
 
   /** Helper: construct an InvocationName from a raw string. */
   private def inv(name: String): InvocationName =
-    InvocationName.fromRuntime(name) match
+    InvocationName.fromRuntime(InvocationSource.classify(name)) match
       case Right(value) => value
       case Left(err)    => fail(s"invalid invocation name '$name': $err")
 
@@ -84,6 +84,123 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
     // spec: hermetic-test-processes — via the shared helper; the child
     // sees the fixed base only.
     HermeticEnv.run(cmd, HermeticEnv.empty)
+
+  // ── spec: jar-launcher-dispatch — the archive conformance run ────────────
+
+  /**
+   * The path to the built assembly archive — the JVM-delivered artifact.
+   * Globs `probatio-cli-assembly-*.jar` so a version bump does not silently
+   * empty the check: multiple matches fail loudly.
+   */
+  private def archivePath: String =
+    val dir: Path = Path.of(artifactPath).getParent.resolve("../scala-3.8.4").normalize
+    val candidates: List[Path] =
+      if Files.isDirectory(dir) then
+        scala.util
+          .Using(Files.list(dir))(_.filter((p: Path) => p.getFileName.toString.matches("probatio-cli-assembly-.*\\.jar")).toArray(Array.ofDim[Path](_)).toList)
+          .fold(
+            (e: Throwable) => fail(s"could not list $dir for assembly archives: ${e.getMessage}"),
+            (l: List[Path]) => l
+          )
+      else List.empty
+    candidates match
+      case List(single) => single.toString
+      case Nil          => dir.resolve("probatio-cli-assembly-0.1.0-SNAPSHOT.jar").toString
+      case many         => fail(s"multiple assembly archives under $dir: $many")
+
+  /** Whether the built archive exists. */
+  private def archiveExists: Boolean =
+    new File(archivePath).exists()
+
+  /**
+   * Runs the tool through the assembly archive: `java -jar <archive> args`.
+   * Under `java -jar` the runtime command exposes the archive's own file
+   * name — the invocation source this spec adds. Returns
+   * `(exit status, stdout)` for the conformance comparison.
+   *
+   * spec: jar-launcher-dispatch — Requirement: The archive path has its own subprocess conformance run
+   */
+  private def runArchive(argList: List[String]): (Int, String) =
+    if !archiveExists then fail(s"built archive not found at $archivePath — archive conformance check FAILS, does not skip")
+    // spec: hermetic-test-processes — via the shared helper; the child
+    // sees the fixed base only.
+    val r: org.sinemenda.probatio.migration.HermeticResult =
+      HermeticEnv.capture(List("java", "-jar", archivePath) ++ argList, HermeticEnv.empty)
+    (r.exitCode, r.out)
+
+  /**
+   * Runs the native artifact with captured stdout, for comparison against
+   * the archive run.
+   */
+  private def runNative(argList: List[String]): (Int, String) =
+    if !artifactExists then fail(s"built artifact not found at $artifactPath — conformance check FAILS, does not skip")
+    val r: org.sinemenda.probatio.migration.HermeticResult =
+      HermeticEnv.capture(List(artifactPath) ++ argList, HermeticEnv.empty)
+    (r.exitCode, r.out)
+
+  // ── Scenario: Happy path — help runs through the archive
+  // spec: jar-launcher-dispatch — Scenario: Happy path — help runs through the archive
+  test("help runs through the archive and lists every subcommand"):
+    val (code: Int, out: String) = runArchive(List("--help"))
+    assertEquals(code, 0, s"archive --help must exit clean, got $code\n$out")
+    Subcommand.values.foreach { sub =>
+      assert(out.contains(Subcommand.cliName(sub)), s"archive --help must list ${Subcommand.cliName(sub)}\n$out")
+    }
+
+  // ── Scenario: Adversarial — a missing archive fails the run
+  // spec: jar-launcher-dispatch — Scenario: Adversarial — a missing archive fails the run
+  test("a missing archive fails the conformance run (does not skip)"):
+    if archiveExists then
+      // The archive is present — the real check is every test above, which
+      // fails via runArchive rather than skipping.
+      ()
+    else fail(s"built archive not found at $archivePath — a missing archive is a FAILURE, not a skip")
+
+  // ── Scenario: Happy path — the gate runs through the archive
+  // spec: jar-launcher-dispatch — Scenario: Happy path — the gate runs through the archive
+  test("the gate's injection tier runs through the archive"):
+    withTempDir("gate-archive") { (repo: Path) =>
+      writeDispatchParityRepo(repo, withWorkflow = true)
+      val (code: Int, out: String) = runArchive(
+        List(
+          "gate",
+          "--repo",
+          repo.toString,
+          "--event",
+          "session-start",
+          "--format",
+          "text",
+          "--session",
+          "archive-parity"
+        )
+      )
+      assert(code >= 0 && code <= 2, s"gate through archive must exit in {{0,1,2}}, got $code\n$out")
+      assert(out.nonEmpty, "the gate's injection tier must produce output")
+    }
+
+  // ── Scenario: Happy path — every tool conforms through the archive
+  // spec: jar-launcher-dispatch — Scenario: Happy path — every tool conforms through the archive
+  // spec: jar-launcher-dispatch — Property: archive-conformance-matches-native-conformance
+  //
+  // For every exposed tool and every invocation in the conformance corpus,
+  // the archive run and the native run produce the same termination status
+  // and the same standard output. The corpus is fixed and constructive —
+  // one valid and one invalid invocation per exposed tool, as the existing
+  // native run uses.
+  private def conformanceCorpus: List[List[String]] =
+    Subcommand.values.toList.flatMap { sub =>
+      val name: String = Subcommand.cliName(sub)
+      List(List(name, "--help"), List(name, "--nonexistent-flag-xyz"))
+    }
+
+  property("archive and native conform identically"):
+    for invocation <- Gen.elementUnsafe(conformanceCorpus).forAll
+    yield
+      val archive: (Int, String) = runArchive(invocation)
+      val native: (Int, String)  = runNative(invocation)
+      Result
+        .assert(archive == native)
+        .log(s"archive=$archive native=$native invocation=$invocation")
 
   // ── Scenario: Happy path — every exposed tool starts and reports a documented exit status
   // spec: cli-entrypoint-contract — Scenario: Happy path — every exposed tool starts and reports a documented exit status

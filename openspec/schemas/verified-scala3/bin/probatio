@@ -12,13 +12,35 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 NATIVE="$REPO_ROOT/workflow/cli/target/native-image/probatio"
-JAR="$REPO_ROOT/workflow/cli/target/scala-3.8.4/probatio-cli-assembly-0.1.0-SNAPSHOT.jar"
+JAR_DIR="$REPO_ROOT/workflow/cli/target/scala-3.8.4"
+# Glob for the assembly — the version segment is build-defined, so a
+# version bump must not strand the launcher while an archive is present.
+JAR=""
+for candidate in "$JAR_DIR"/probatio-cli-assembly-*.jar; do
+  if [ -f "$candidate" ]; then JAR="$candidate"; break; fi
+done
 
-# Prefer the native image: `java -jar` puts the jar filename in
-# `sun.java.command` argv0, which multicall dispatch cannot resolve to a
-# subcommand — the launcher only works through a `probatio`-named argv0.
+# Prefer the native image when it is built; otherwise run the assembly
+# archive. Archive invocation classifies as an InvocationSource.Archive
+# (spec: jar-launcher-dispatch) and dispatches by the first argument — the
+# archive's file name is never read as a tool name.
 if [ -x "$NATIVE" ]; then
   exec "$NATIVE" "$@"
 fi
 
-exec java -jar "$JAR" "$@"
+if [ -n "$JAR" ]; then
+  exec java -jar "$JAR" "$@"
+fi
+
+# Neither artifact is built — report what was searched rather than letting
+# the JVM's jarfile error stand in for a verdict (spec: jar-launcher-dispatch
+# — Scenario: Adversarial — neither archive nor executable is
+# could-not-determine, named).
+{
+  echo "probatio: no built tool found — searched:"
+  echo "  native executable: $NATIVE"
+  echo "  assembly archive:  $JAR_DIR/probatio-cli-assembly-*.jar"
+  echo "build either with: sbt probatio-cli/assembly      (archive)"
+  echo "                   sbt probatio-cli/nativeImage   (executable)"
+} >&2
+exit 2

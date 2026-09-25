@@ -869,7 +869,7 @@ final class InstallToolSurfaceParitySpec extends ProbatioCliSuite:
     }
 
   private def invocation(name: String): InvocationName =
-    InvocationName.fromRuntime(name) match
+    InvocationName.fromRuntime(InvocationSource.classify(name)) match
       case Right(v)  => v
       case Left(err) => fail(s"invalid invocation name '$name': $err")
 

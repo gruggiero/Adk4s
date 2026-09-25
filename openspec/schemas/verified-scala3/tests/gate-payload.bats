@@ -602,3 +602,41 @@ conforms_hookjson() { # $1=json text
     esac
   done
 }
+
+# ═════════════════════════════════════════════════════════════════════════
+# spec: jar-launcher-dispatch — a forwarding script reaches the tool with
+# only the archive present
+# ═════════════════════════════════════════════════════════════════════════
+
+# Build a minimal ARCHIVE-ONLY tree: the hook shim, the repository launcher,
+# and the assembly archive — no native executable. The launcher's path
+# arithmetic resolves the tree root four levels above bin/probatio, so the
+# copied layout must preserve it.
+mk_archive_only_tree() {
+  local tree="$BATS_TEST_TMPDIR/archive-only"
+  mkdir -p "$tree/openspec/schemas/verified-scala3/bin" \
+           "$tree/openspec/schemas/verified-scala3/hooks" \
+           "$tree/workflow/cli/target/scala-3.8.4"
+  cp "$SCHEMA/bin/probatio"    "$tree/openspec/schemas/verified-scala3/bin/probatio"
+  cp "$SCHEMA/hooks/gate.sh"   "$tree/openspec/schemas/verified-scala3/hooks/gate.sh"
+  local jars=( "$ROOT"/workflow/cli/target/scala-3.8.4/probatio-cli-assembly-*.jar )
+  # A missing archive is a FAILURE, not a skip — the spec's conformance rule.
+  [ -f "${jars[0]}" ] || { printf 'built archive not found under %s\n' "$ROOT/workflow/cli/target/scala-3.8.4" >&2; return 1; }
+  cp "${jars[0]}" "$tree/workflow/cli/target/scala-3.8.4/"
+  printf '%s\n' "$tree"
+}
+
+# spec: jar-launcher-dispatch — Scenario: Happy path — a forwarding script reaches the tool with only the archive
+@test "the gate forwarding script reaches the tool in an archive-only tree" {
+  local tree
+  tree="$(mk_archive_only_tree)"
+  mk_repo
+  run env "$tree/openspec/schemas/verified-scala3/hooks/gate.sh" --repo "$FX" --event session-start --format text
+  # The gate's OWN status — reaching the tool, not a dispatch failure.
+  [ "$status" -ge 0 ] && [ "$status" -le 2 ] || {
+    printf 'gate through archive exited %s — outside {0,1,2}\n%s\n' "$status" "$output" >&2
+    return 1
+  }
+  assert_not_contains "$output" "unknown subcommand" "the archive's file name must not be read as a tool name"
+  assert_not_contains "$output" "Unable to access jarfile" "the launcher must reach the tool, not the JVM's failure"
+}

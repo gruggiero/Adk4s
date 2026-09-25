@@ -14,7 +14,7 @@ final class ProbatioDispatchSpec extends ProbatioCliSuite:
 
   /** Helper: construct an InvocationName from a raw string. */
   private def inv(name: String): InvocationName =
-    InvocationName.fromRuntime(name) match
+    InvocationName.fromRuntime(InvocationSource.classify(name)) match
       case Right(value) => value
       case Left(err)    => fail(s"invalid invocation name '$name': $err")
 

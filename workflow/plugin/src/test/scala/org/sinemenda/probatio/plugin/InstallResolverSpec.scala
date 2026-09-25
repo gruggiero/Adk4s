@@ -242,6 +242,25 @@ final class InstallResolverSpec extends ProbatioPluginSuite {
     assert(!ProbatioPlugin.platformHasNative(""))
   }
 
+  // spec: jar-launcher-dispatch — Scenario: Happy path — the plugin-installed launcher reaches the tool
+  test("the plugin-installed launcher reaches the tool through the archive") {
+    val repoRoot: java.io.File =
+      if (new java.io.File("openspec/schemas/verified-scala3").isDirectory) new java.io.File(".").getCanonicalFile
+      else new java.io.File("../..").getCanonicalFile
+    val jarDir: java.io.File = new java.io.File(repoRoot, "workflow/cli/target/scala-3.8.4")
+    val jars: Array[java.io.File] =
+      Option(jarDir.listFiles())
+        .map(_.filter(f => f.getName.matches("probatio-cli-assembly-.*\\.jar")))
+        .getOrElse(Array.empty)
+    assertEquals(jars.length, 1, s"exactly one built assembly archive under $jarDir — a missing archive is a failure, not a skip")
+    val dir: java.io.File      = java.nio.file.Files.createTempDirectory("probatio-launcher-run").toFile
+    val launcher: java.io.File = ProbatioPlugin.writeLauncherScript(new java.io.File(dir, "probatio-jar-launcher.sh"), jars(0))
+    val r: HermeticResult      = HermeticEnv.capture(List("bash", launcher.getAbsolutePath, "--help"), HermeticEnv.empty)
+    assertEquals(r.exitCode, 0, s"the launcher must reach the tool and exit clean, got ${r.exitCode}\n${r.out}\n${r.err}")
+    assert(r.out.contains("gate"), s"the tool's help must list the gate subcommand:\n${r.out}")
+    assert(r.out.contains("chain-state"), s"the tool's help must list the chain-state subcommand:\n${r.out}")
+  }
+
   test("writeLauncherScript writes an executable launcher bound to the concrete jar") {
     val dir: java.io.File = java.nio.file.Files.createTempDirectory("probatio-launcher").toFile
     val jar: java.io.File = new java.io.File(dir, "probatio-assembly.jar")

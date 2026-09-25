@@ -12,7 +12,7 @@ final class MulticallDispatchSpec extends ProbatioCliSuite:
 
   /** Helper: construct an InvocationName from a raw string. */
   private def inv(name: String): InvocationName =
-    InvocationName.fromRuntime(name) match
+    InvocationName.fromRuntime(InvocationSource.classify(name)) match
       case Right(value) => value
       case Left(err)    => fail(s"invalid invocation name '$name': $err")
 
@@ -73,6 +73,103 @@ final class MulticallDispatchSpec extends ProbatioCliSuite:
     val result: Either[CliError, (Subcommand, ProgramArgs)] =
       MulticallDispatch.resolveAndSplit(inv("chain-state"), args("--change", "gate", "--baseline", "abc1234"))
     assertEquals(result, Right((Subcommand.ChainState, args("--change", "gate", "--baseline", "abc1234"))))
+
+  // ── spec: jar-launcher-dispatch ─────────────────────────────────────────
+
+  /** Helper: construct an InvocationName for the archive source. */
+  private def archiveInv(path: String): InvocationName =
+    InvocationName.fromRuntime(InvocationSource.Archive(path)) match
+      case Right(value) => value
+      case Left(err)    => fail(s"invalid archive invocation '$path': $err")
+
+  // ── Scenario: Adversarial — the archive's file name is never reported as an unknown subcommand
+  // spec: jar-launcher-dispatch — Scenario: Adversarial — the archive's file name is never reported as an unknown subcommand
+  test("archive dispatch selects the first argument, never the archive file name"):
+    val result: Either[CliError, (Subcommand, ProgramArgs)] =
+      MulticallDispatch.resolveAndSplit(
+        archiveInv("probatio-cli-assembly-0.1.0-SNAPSHOT.jar"),
+        args("gate", "--event", "session-start")
+      )
+    assertEquals(result, Right((Subcommand.Gate, args("--event", "session-start"))))
+
+  // ── Scenario: Adversarial — an unknown first argument through the archive is still rejected
+  // spec: jar-launcher-dispatch — Scenario: Adversarial — an unknown first argument through the archive is still rejected
+  test("an unknown first argument through the archive is rejected naming that argument"):
+    val result: Either[CliError, (Subcommand, ProgramArgs)] =
+      MulticallDispatch.resolveAndSplit(archiveInv("/opt/tools/probatio-cli-assembly.jar"), args("frobnicate"))
+    result match
+      case Left(CliError.UnknownSubcommand(token)) => assertEquals(token, "frobnicate")
+      case other                                   => fail(s"expected UnknownSubcommand, got $other")
+
+  /**
+   * spec: jar-launcher-dispatch — Property: archive-and-generic-dispatch-agree
+   *
+   * `genProgramArgs` — constructive over a union of three closed alphabets:
+   * every subcommand name, the separator token, and arbitrary strings of
+   * length 0–20 including ones ending in the archive suffix. Lists of length
+   * 0–5. Union rather than filter, so subcommand names are hit by
+   * construction.
+   */
+  private def genProgramArgs: Gen[List[String]] =
+    val subcommandToken: Gen[String] =
+      Gen.elementUnsafe(Subcommand.values.toList.map(Subcommand.cliName))
+    val sepToken: Gen[String] = Gen.constant("--")
+    val arbitraryToken: Gen[String] =
+      Gen
+        .string(Gen.alphaNum, Range.linear(0, 20))
+        .flatMap((s: String) => Gen.element1(s, s"$s.jar", s"/tmp/$s"))
+    val tokenPool: Gen[String] = Gen.frequency1(
+      3 -> subcommandToken,
+      1 -> sepToken,
+      3 -> arbitraryToken
+    )
+    for
+      size <- Gen.int(Range.linear(0, 5))
+      list <- tokenPool.list(Range.singleton(size))
+    yield list
+
+  // spec: jar-launcher-dispatch — Property: archive-and-generic-dispatch-agree
+  property("archive and generic dispatch agree"):
+    for argList <- genProgramArgs.forAll
+    yield
+      val pa: ProgramArgs = ProgramArgs.fromFixture(argList)
+      val viaArchive: Either[CliError, (Subcommand, ProgramArgs)] =
+        MulticallDispatch.resolveAndSplit(archiveInv("/opt/builds/probatio-cli-assembly.jar"), pa)
+      val viaGeneric: Either[CliError, (Subcommand, ProgramArgs)] =
+        MulticallDispatch.resolveAndSplit(inv("probatio"), pa)
+      Result
+        .assert(viaArchive == viaGeneric)
+        .log(s"archive=$viaArchive generic=$viaGeneric args=$argList")
+
+  /**
+   * spec: jar-launcher-dispatch — Property: named-executable-strictness-is-preserved
+   *
+   * `genForeignExecutableName` — strings of length 1–20 over a mixed
+   * alphabet, mapped away from the finite set of tool names and generic
+   * names by prefixing, so foreign names are produced by construction.
+   */
+  private def genForeignExecutableName: Gen[String] =
+    Gen
+      .string(Gen.alphaNum, Range.linear(1, 20))
+      .map((s: String) => s"x-$s")
+
+  // spec: jar-launcher-dispatch — Property: named-executable-strictness-is-preserved
+  // spec: jar-launcher-dispatch — Scenario: Edge case — an executable with an unrecognised name is still rejected
+  property("a foreign executable name is rejected"):
+    for
+      name    <- genForeignExecutableName.forAll
+      argList <- genProgramArgs.forAll
+    yield
+      val result: Either[CliError, (Subcommand, ProgramArgs)] =
+        MulticallDispatch.resolveAndSplit(
+          inv(s"/foreign/$name"),
+          ProgramArgs.fromFixture(argList)
+        )
+      result match
+        case Left(CliError.UnknownSubcommand(token)) =>
+          Result.assert(token == name).log(s"rejection must name the executable name, got token='$token'")
+        case other =>
+          Result.failure.log(s"expected UnknownSubcommand($name), got $other")
 
   // ── Property: dispatch-equivalence-across-signals
   // spec: cli-entrypoint-contract — Property: dispatch-equivalence-across-signals

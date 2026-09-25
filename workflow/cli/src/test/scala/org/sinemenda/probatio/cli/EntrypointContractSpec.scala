@@ -29,7 +29,7 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
 
   /** Constructs an InvocationName from a raw string (fails the test if empty). */
   private def inv(name: String): InvocationName =
-    InvocationName.fromRuntime(name) match
+    InvocationName.fromRuntime(InvocationSource.classify(name)) match
       case Right(value) => value
       case Left(err)    => fail(s"invalid invocation name '$name': $err")
 
@@ -129,15 +129,27 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
     assertEquals(wrapped.toList, List("gate", "--event", "session-start"))
 
   test("InvocationName.fromRuntime obtains the name separately from the runtime"):
-    val result: Either[String, InvocationName] = InvocationName.fromRuntime("/usr/local/bin/probatio")
+    val result: Either[String, InvocationName] =
+      InvocationName.fromRuntime(InvocationSource.classify("/usr/local/bin/probatio"))
     assert(result.isRight)
     result match
-      case Right(name) => assertEquals(name.value, "/usr/local/bin/probatio")
+      case Right(name) => assertEquals(name.basename, "probatio")
       case Left(err)   => fail(s"expected Right, got Left($err)")
 
   test("InvocationName.fromRuntime rejects an empty name"):
-    val result: Either[String, InvocationName] = InvocationName.fromRuntime("")
+    val result: Either[String, InvocationName] =
+      InvocationName.fromRuntime(InvocationSource.NamedExecutable(""))
     assert(result.isLeft)
+
+  // spec: jar-launcher-dispatch — basename of an archive path is the last
+  // segment only; the archive's directory prefix is never part of a name.
+  test("InvocationName.basename of a nested archive path is the last segment"):
+    val result: Either[String, InvocationName] =
+      InvocationName.fromRuntime(InvocationSource.Archive("a/b/probatio-cli.jar"))
+    assert(result.isRight)
+    result match
+      case Right(name) => assertEquals(name.basename, "probatio-cli.jar")
+      case Left(err)   => fail(s"expected Right, got Left($err)")
 
   // ── Requirement: A tool that has no implementation is not nameable on the
   //    tool surface
@@ -346,7 +358,7 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
     assert(!out.contains("Options:"), s"help output leaked onto stdout, got: $out")
 
   test("InvocationName.fromRuntime error message names the violation"):
-    InvocationName.fromRuntime("") match
+    InvocationName.fromRuntime(InvocationSource.NamedExecutable("")) match
       case Left(msg)   => assert(msg.contains("non-empty"), s"error message must describe the violation, got: '$msg'")
       case Right(name) => fail(s"empty invocation name must be rejected, got $name")
 

@@ -35,8 +35,9 @@ object ProbatioMain:
    * spec: cli-protocol — Requirement: Help lists every flag with its default
    */
   def dispatch(name: InvocationName, args: ProgramArgs): Int =
-    // Top-level `--help` under the generic name: show usage, exit 0.
-    if MulticallDispatch.genericNames.contains(name.basename)
+    // Top-level `--help` under a first-argument-dispatching source (the
+    // generic names, or the archive): show usage, exit 0.
+    if dispatchesByFirstArg(name)
       && args.headOption.contains("--help")
     then
       System.out.println(HelpRegistry.topLevelUsage)
@@ -60,6 +61,18 @@ object ProbatioMain:
           else
             val outcome: Outcome[Int] = runSubcommand(sub, rest)
             ExitCode.toInt(ExitCode.from(outcome))
+
+  /**
+   * Whether the invocation source dispatches by the first argument — the
+   * generic names and the archive, never a tool- or foreign-named
+   * executable. The `dispatch` help intercept shares the dispatcher's
+   * classification so `java -jar <archive> --help` shows usage.
+   */
+  private def dispatchesByFirstArg(name: InvocationName): Boolean =
+    name.source match
+      case InvocationSource.Archive(_)               => true
+      case InvocationSource.NamedExecutable(basename) =>
+        MulticallDispatch.genericNames.contains(basename)
 
   /**
    * Dispatches to the subcommand's entrypoint, returning an `Outcome[Int]`.
@@ -104,15 +117,40 @@ object ProbatioMain:
    * spec: cli-entrypoint-contract — Scenario: Happy path — a runtime entry point produces the argument value
    */
   def main(args: Array[String]): Unit =
+    pinUtf8Streams()
     val programArgs: ProgramArgs = ProgramArgs.fromRuntime(args)
     val rawName: String          = extractInvocationName
-    InvocationName.fromRuntime(rawName) match
+    InvocationName.fromRuntime(InvocationSource.classify(rawName)) match
       case Left(err) =>
         System.err.println(err)
         sys.exit(1)
       case Right(inv) =>
         val code: Int = dispatch(inv, programArgs)
         sys.exit(code)
+
+  /**
+   * Pins stdout and stderr to UTF-8.
+   *
+   * Under `java -jar`, `System.out` is created with the JVM's
+   * `file.encoding`, which follows the ambient locale: a locale-less
+   * environment (a minimal CI runner, the hermetic test environment)
+   * produces `?` where the native binary writes UTF-8 bytes — the archive
+   * run's stdout then diverges byte-for-byte from the native run's.
+   * Rebinding the streams at the process boundary makes the tool's output
+   * encoding a property of the tool, not of the environment. `Console`'s
+   * default `PrintStream` binds lazily on first access — this is `main`'s
+   * first statement, so nothing has initialised it yet.
+   *
+   * spec: jar-launcher-dispatch — Property: archive-conformance-matches-native-conformance
+   */
+  private def pinUtf8Streams(): Unit =
+    val utf8: java.nio.charset.Charset = java.nio.charset.StandardCharsets.UTF_8
+    val out: java.io.PrintStream =
+      new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.out), true, utf8)
+    val err: java.io.PrintStream =
+      new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.err), true, utf8)
+    System.setOut(out)
+    System.setErr(err)
 
   /**
    * Extracts the invocation name from the runtime.

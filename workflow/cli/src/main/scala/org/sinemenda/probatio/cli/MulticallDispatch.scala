@@ -57,28 +57,41 @@ object MulticallDispatch:
     name: InvocationName,
     args: ProgramArgs
   ): Either[CliError, (Subcommand, ProgramArgs)] =
-    val base: String = name.basename
-    // Priority 1: the invocation name's basename names a tool — select it
-    // and pass ALL arguments unchanged (no argument is consumed as a tool
-    // name).
-    Subcommand.fromString(base) match
-      case Right(sub) => Right((sub, args))
-      case Left(_)    =>
-        // Priority 2: the basename is a generic name — dispatch by the first
-        // argument.
-        if genericNames.contains(base) then
-          // POSIX `--` separator: consume it and dispatch by the next arg.
-          val effectiveArgs: ProgramArgs =
-            if args.headOption.contains("--") then args.tail else args
-          effectiveArgs.headOption match
-            case Some(firstArg) =>
-              Subcommand.fromString(firstArg) match
-                case Right(sub) => Right((sub, effectiveArgs.tail))
-                case Left(_)    => Left(CliError.UnknownSubcommand(firstArg))
-            case None =>
-              // Edge case: no arguments at all under the generic name
-              // (after consuming `--` if present).
-              Left(CliError.UnknownSubcommand("(none)"))
-        else
-          // Priority 3: the invocation name names nothing.
-          Left(CliError.UnknownSubcommand(base))
+    name.source match
+      // An archive path is a build artifact, not a tool name — dispatch
+      // exactly as the generic name does: by the first argument.
+      // spec: jar-launcher-dispatch — Requirement: A tool run through its archive dispatches by its first argument
+      case InvocationSource.Archive(_) => byFirstArgument(args)
+      case InvocationSource.NamedExecutable(base) =>
+        // Priority 1: the invocation name's basename names a tool — select it
+        // and pass ALL arguments unchanged (no argument is consumed as a tool
+        // name).
+        Subcommand.fromString(base) match
+          case Right(sub) => Right((sub, args))
+          case Left(_)    =>
+            // Priority 2: the basename is a generic name — dispatch by the
+            // first argument.
+            if genericNames.contains(base) then byFirstArgument(args)
+            else
+              // Priority 3: the invocation name names nothing.
+              Left(CliError.UnknownSubcommand(base))
+
+  /**
+   * Dispatch by the first argument — the shared rule for the generic
+   * invocation names and the archive source.
+   */
+  private def byFirstArgument(
+    args: ProgramArgs
+  ): Either[CliError, (Subcommand, ProgramArgs)] =
+    // POSIX `--` separator: consume it and dispatch by the next arg.
+    val effectiveArgs: ProgramArgs =
+      if args.headOption.contains("--") then args.tail else args // danger-scan:allow total-tail — ProgramArgs.tail is drop(1), never throws
+    effectiveArgs.headOption match
+      case Some(firstArg) =>
+        Subcommand.fromString(firstArg) match
+          case Right(sub) => Right((sub, effectiveArgs.tail)) // danger-scan:allow total-tail — ProgramArgs.tail is drop(1), never throws
+          case Left(_)    => Left(CliError.UnknownSubcommand(firstArg))
+      case None =>
+        // Edge case: no arguments at all under the generic name
+        // (after consuming `--` if present).
+        Left(CliError.UnknownSubcommand("(none)"))

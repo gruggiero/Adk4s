@@ -33,9 +33,18 @@ final class EntrypointContractTypeContract extends ProbatioCliSuite:
   val programArgsFromFixtureSig: List[String] => ProgramArgs =
     ProgramArgs.fromFixture
 
-  // InvocationName.fromRuntime: String => Either[String, InvocationName]
-  val invocationNameFromRuntimeSig: String => Either[String, InvocationName] =
+  // InvocationName.fromRuntime: InvocationSource => Either[String, InvocationName]
+  // spec: jar-launcher-dispatch — InvocationName is constructed from an InvocationSource
+  val invocationNameFromRuntimeSig: InvocationSource => Either[String, InvocationName] =
     InvocationName.fromRuntime
+
+  // InvocationSource.classify: String => InvocationSource
+  val invocationSourceClassifySig: String => InvocationSource =
+    InvocationSource.classify
+
+  // InvocationSource is a closed enum with exactly two cases.
+  val invocationSourceVariants: List[InvocationSource] =
+    List(InvocationSource.NamedExecutable("probatio"), InvocationSource.Archive("probatio-cli-assembly.jar"))
 
   // ── Compile-negative: ProgramArgs from a program-name-prefixed list ─────
   // spec: cli-entrypoint-contract — Compile-Negative: ProgramArgs from a program-name-prefixed list
@@ -83,6 +92,22 @@ final class EntrypointContractTypeContract extends ProbatioCliSuite:
   test("InvocationName cannot be directly constructed from a String"):
     val err: String = compileErrors("InvocationName(\"probatio\")")
     assert(err.nonEmpty, "InvocationName(...) should not compile — no public apply")
+
+  // spec: jar-launcher-dispatch — Compile-Negative: A program name built from an unclassified string
+  test("InvocationName cannot be built from an unclassified archive path string"):
+    val err: String = compileErrors("InvocationName(\"probatio-cli-assembly.jar\")")
+    assert(
+      err.nonEmpty,
+      "InvocationName(\"...jar\") should not compile — construction requires an InvocationSource"
+    )
+
+  // spec: jar-launcher-dispatch — Compile-Negative: An archive source carrying a tool name
+  test("InvocationSource.Archive cannot carry a tool name"):
+    val err: String = compileErrors("InvocationSource.Archive(Subcommand.Gate)")
+    assert(
+      err.nonEmpty,
+      "InvocationSource.Archive(Subcommand.Gate) should not compile — the variant takes a path"
+    )
 
   // ── Property & generator obligations (become the Ring 3 test oracle) ───
   //

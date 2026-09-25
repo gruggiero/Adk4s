@@ -28,7 +28,7 @@ final class EntrypointBridgeSpec extends ProbatioCliSuite:
 
   /** Constructs an InvocationName from a raw string (fails the test if empty). */
   private def inv(name: String): InvocationName =
-    InvocationName.fromRuntime(name) match
+    InvocationName.fromRuntime(InvocationSource.classify(name)) match
       case Right(value) => value
       case Left(err)    => fail(s"invalid invocation name '$name': $err")
 
@@ -112,6 +112,123 @@ final class EntrypointBridgeSpec extends ProbatioCliSuite:
           modelNorm(model),
           s"shipped and model disagree on name='${name.basename}' args=${pa.toList}"
         )
+
+  // ── spec: jar-launcher-dispatch — the resolveSource bridge ───────────────
+  //
+  // `SourceModel` lifts the name reduction: the shipped `InvocationName` now
+  // carries an `InvocationSource`, and the model's `resolveSource` covers all
+  // four source shapes — tool-named, generic, archive, foreign. A foreign
+  // basename is IN the model's domain (rejected by its own name code).
+
+  /**
+   * A positive code for a foreign executable name — the model's offender
+   * domain distinguishes name codes (>= 1) from token classifications (0,
+   * Sep, NoArg). `hashCode` collisions are harmless here: the bridge only
+   * ever compares a name against itself.
+   */
+  private def nameCode(s: String): BigInt =
+    BigInt(s.hashCode).abs + 1
+
+  /**
+   * Maps the shipped invocation source to the model's `SourceModel`. Total:
+   * every source shape is in the model's domain.
+   */
+  private def sourceToModel(name: InvocationName): DispatchKernel.SourceModel =
+    name.source match
+      case InvocationSource.Archive(_) => DispatchKernel.ArchiveNamed()
+      case InvocationSource.NamedExecutable(base) =>
+        Subcommand.fromString(base) match
+          case Right(sub) => DispatchKernel.ToolNamed(toolIndex(sub))
+          case Left(_)    =>
+            if MulticallDispatch.genericNames.contains(base) then DispatchKernel.GenericNamed()
+            else DispatchKernel.ForeignNamed(nameCode(base))
+
+  /**
+   * Normalises the shipped result to `Either[offenderCode, (tool, tokens)]`.
+   * The offender code convention mirrors the model's: the foreign basename's
+   * code under a foreign source, `"(none)"` → `NoArg`, otherwise the head
+   * token's classification (`0` for a non-tool token, `Sep` for `--`).
+   */
+  private def shippedSourceNorm(
+    r: Either[CliError, (Subcommand, ProgramArgs)],
+    isForeign: Boolean
+  ): Either[BigInt, (BigInt, ScalaList[BigInt])] =
+    r match
+      case Right((sub, rest)) => Right((toolIndex(sub), toScalaTokens(rest)))
+      case Left(CliError.UnknownSubcommand(tok)) =>
+        Left(
+          if isForeign then nameCode(tok)
+          else if tok == "(none)" then DispatchKernel.NoArg
+          else tokenToModel(tok)
+        )
+      case Left(other) => fail(s"unexpected non-UnknownSubcommand error: $other")
+
+  /** Normalises the model result to the same shape. */
+  private def modelSourceNorm(
+    r: DispatchKernel.DispatchModel
+  ): Either[BigInt, (BigInt, ScalaList[BigInt])] =
+    r match
+      case DispatchKernel.SelectedTool(tool, rest) => Right((tool, toScalaList(rest)))
+      case DispatchKernel.Rejected(offender)       => Left(offender)
+
+  /** Runs shipped and model `resolveSource` on the same input and asserts agreement. */
+  private def assertSourceAgreement(name: InvocationName, pa: ProgramArgs): Unit =
+    val shipped: Either[CliError, (Subcommand, ProgramArgs)] =
+      MulticallDispatch.resolveAndSplit(name, pa)
+    val isForeign: Boolean = name.source match
+      case InvocationSource.NamedExecutable(base) =>
+        Subcommand.fromString(base).isLeft && !MulticallDispatch.genericNames.contains(base)
+      case InvocationSource.Archive(_) => false
+    val model: DispatchKernel.DispatchModel =
+      DispatchKernel.resolveSource(sourceToModel(name), toStainless(toScalaTokens(pa)))
+    assertEquals(
+      shippedSourceNorm(shipped, isForeign),
+      modelSourceNorm(model),
+      s"shipped and model disagree on source='${name.source}' args=${pa.toList}"
+    )
+
+  // spec: jar-launcher-dispatch — Scenario: Adversarial — the archive's file name is never reported as an unknown subcommand
+  test("bridge — archive invocation: <assembly.jar> gate --event session-start"):
+    assertSourceAgreement(
+      inv("/opt/builds/probatio-cli-assembly-0.1.0-SNAPSHOT.jar"),
+      fixture("gate", "--event", "session-start")
+    )
+
+  // spec: jar-launcher-dispatch — Scenario: Adversarial — an unknown first argument through the archive is still rejected
+  test("bridge — archive invocation with unknown first argument: <assembly.jar> frobnicate"):
+    assertSourceAgreement(inv("x.jar"), fixture("frobnicate"))
+
+  // spec: jar-launcher-dispatch — Scenario: Happy path — help runs through the archive
+  test("bridge — archive invocation with --help first argument"):
+    assertSourceAgreement(inv("probatio-cli-assembly.jar"), fixture("--help"))
+
+  // spec: jar-launcher-dispatch — Scenario: Edge case — an executable with an unrecognised name is still rejected
+  test("bridge — foreign executable is rejected by its own name"):
+    assertSourceAgreement(inv("/usr/local/bin/frobnicate"), fixture("gate"))
+
+  // spec: jar-launcher-dispatch — Contract: resolveSource (bridge property test)
+  property("bridge-source-property — shipped and model agree over all source kinds"):
+    for
+      nameKind    <- Gen.element1("tool-name", "generic", "archive", "foreign").forAll
+      toolIdx     <- Gen.int(Range.linear(0, Subcommand.values.length - 1)).forAll
+      foreignName <- Gen.string(Gen.alphaNum, Range.linear(1, 20)).map((s: String) => s"x-$s").forAll
+      argList     <- genBridgeArgs.forAll
+    yield
+      val name: InvocationName = nameKind match
+        case "tool-name" =>
+          inv(s"/usr/local/bin/${Subcommand.cliName(Subcommand.values(toolIdx))}")
+        case "generic" => inv("probatio")
+        case "archive" => inv(s"/opt/builds/$foreignName.jar")
+        case _         => inv(s"/usr/local/bin/$foreignName")
+      val pa: ProgramArgs = ProgramArgs.fromFixture(argList)
+      val shipped: Either[CliError, (Subcommand, ProgramArgs)] =
+        MulticallDispatch.resolveAndSplit(name, pa)
+      val isForeign: Boolean = nameKind == "foreign"
+      val model: DispatchKernel.DispatchModel =
+        DispatchKernel.resolveSource(sourceToModel(name), toStainless(toScalaTokens(pa)))
+      Result
+        .assert(shippedSourceNorm(shipped, isForeign) == modelSourceNorm(model))
+        .log(s"shipped=${shippedSourceNorm(shipped, isForeign)} model=${modelSourceNorm(model)} kind=$nameKind name='${name.source}' args=$argList")
 
   // ── Bridge scenarios — spec scenarios through both implementations ───────
 
