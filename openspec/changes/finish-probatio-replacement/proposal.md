@@ -64,7 +64,8 @@ fixtures (the locks block correctly once a tool name is supplied); six `chain-st
 failures shared by both are not root-caused; four environment variables have no probatio
 name, and the gate's own refusal message tells users to set one of them; the schema
 directory rename is recorded as deferred; and three specs' mutation scores fell below
-their thresholds against a 4,701-line file that holds every subcommand.
+their thresholds — two of them measured against a 4,701-line file that holds every
+subcommand.
 
 ### A caveat on the measurements
 
@@ -108,7 +109,12 @@ absent-tool-name behaviour keeps predecessor parity, gaining only a diagnostic l
   tool-name field is confirmed against its documentation (Finding G1).
 - `specs/delivery-verified/spec.md` — `verify.yml` is observed to run, and observed to
   fail on a deliberately regressing branch; a release candidate is built and validated by
-  the release check locally (Findings A2, A3).
+  the release check locally. The delivered binary is the one that was tested: today local
+  builds use GraalVM 22.3.1 (the plugin's unpinned default) while the release workflow
+  installs 21.0.2, so every test and the recorded latency ran against a toolchain no
+  release would use. Either the toolchain is pinned to one version, or the conformance
+  suite and latency measurement also run against the release toolchain (Findings A2, A3;
+  toolchain finding added by this change's capability-check).
 - `specs/entrypoint-split/spec.md` — the 4,701-line entrypoints file is split one file
   per subcommand, preserving behaviour, so each later spec's mutation score measures its
   own code (Finding H).
@@ -127,8 +133,16 @@ absent-tool-name behaviour keeps predecessor parity, gaining only a diagnostic l
   new variables; the gate state directory and the pi adapter take probatio names, with the
   state directory migrated on first use (Findings E2–E4).
 - `specs/schema-directory-rename/spec.md` — the schema directory takes its probatio name,
-  and the previous name stays resolvable so all 19 changes that pin it keep resolving; the
-  105 tracked references move with it; the recorded deferral is discharged (Finding E1).
+  and the previous name stays resolvable through an alias so **active** changes that pin it
+  keep resolving; the 105 tracked references move with it; the recorded deferral is
+  discharged and its coupling corrected (Finding E1). Measured while drafting (openspec
+  1.3.1): the CLI never resolves archived changes, so the 19 archived pins do not break —
+  the recorded deferral overstated the coupling. A symbolic-link alias restores resolution
+  for an active change.
+- `specs/cli-wiring/spec.md` — **MODIFIED** delta to a live requirement that has contradicted
+  the tool surface since `cli-entrypoint-contract`: it still named `scan`, `removal-audit`,
+  `impact-scan` and `concept-scanner` as wired subcommands, and carried a `metals start`
+  scenario the shipped operation never met. Restated to the post-change surface.
 
 ### Out of Scope
 
@@ -150,25 +164,27 @@ absent-tool-name behaviour keeps predecessor parity, gaining only a diagnostic l
 
 ## Approach
 
-**Make it run anywhere, make the tests trustworthy, then finish the swaps, then rename.**
+**Make the tests trustworthy, make it run anywhere, then finish the swaps, then rename.**
+(The order below was revised while writing the implementation order, when two forward
+dependencies surfaced — see step 1 and step 3.)
 
-1. **Fix the launchers first.** Until the JAR path dispatches, every environment except
-   one developer machine is broken, including the CI that is meant to guard the rest of
-   this change.
-2. **Make the tests hermetic and archive-safe.** Both are test-infrastructure defects
-   that make a result depend on who ran it or on where the change directory lives.
-   Nothing measured afterwards is trustworthy until they are fixed.
-3. **Make the oracle independent, then repair its fixtures.** Fixing the stale fixtures
-   means editing the oracle, which must go through the sanction mechanism — so the
-   mechanism comes first.
-4. **Observe CI.** Once the suites can be green, run `verify.yml` for real: once at a
+1. **Make the tests hermetic first.** Every later spec's properties spawn processes, and
+   the launcher's own conformance property runs them in the hermetic environment, so it
+   must exist first. Until it does, a result depends on who ran it.
+2. **Fix the launchers.** Until the JAR path dispatches, every environment except one
+   developer machine is broken, including the CI that is meant to guard the rest of this
+   change.
+3. **Split the entrypoints before any spec edits them.** The fixture repair, the swaps, the
+   surface change and the environment-variable work all edit entrypoints. Splitting first
+   makes each diff reviewable and each mutation score meaningful.
+4. **Make fixtures archive-safe, make the oracle independent, then repair its fixtures.**
+   Fixing the stale fixtures means editing the oracle, which must go through the sanction
+   mechanism — so the mechanism comes first.
+5. **Observe CI.** Once the suites can be green, run `verify.yml` for real: once at a
    known-good commit, once on a deliberately regressing branch. This needs the branch
    pushed where the workflow runs, which the maintainer authorises at apply time.
-5. **Split the entrypoints before touching them again.** The remaining specs all change
-   entrypoints. Splitting first makes each one's mutation score meaningful and each diff
-   reviewable.
-6. **Finish the swaps and the surface.** Installers, the honest surface, the registry
-   verifier.
+6. **Finish the swaps and the surface.** Installers, the honest surface (with the
+   `cli-wiring` delta), the registry verifier.
 7. **Rename last.** The environment variables and state directory, then the schema
    directory. The directory rename touches 105 files and would conflict with everything
    else if done earlier.
@@ -210,7 +226,9 @@ resolving.
       Whether that is enforced on passing runs is to be established in
       `hermetic-test-processes`, not assumed.
 - [x] Ring 4: Wire/persistence compatibility — REQUIRED. (a) The schema directory rename
-      must keep all 19 recorded changes resolving; each is checked, and none is assumed.
+      must keep every **active** change resolving under either name; the alias mechanism is
+      re-established on the CLI in use at apply time. (The 19 archived pins are not resolved
+      by the CLI — measured — and are left unedited as history.)
       (b) The gate state directory migration must carry existing state, and must be
       idempotent and lossless. (c) The oracle-sanction record is a new persisted format
       and must round-trip. (d) The three `.jq` contracts and the graph export must still
@@ -227,7 +245,9 @@ resolving.
       through a launcher resolves to the multicall name, and resolution is total) extends
       `DispatchKernel`. The sanctioned-modification decision (the guard passes iff every
       modification is sanctioned) is a set-inclusion law over finite sets, added to the
-      cutover kernel. Stainless 0.9.9.3, `probatio-verified` pinned to Scala 3.7.2,
+      spec-lint kernel alongside the existing guard outcome. The registry verifier's pass
+      decision (no stale and no spec problem; weak never fails) is a fold over its verdicts,
+      also added there. Stainless 0.9.9.3, `probatio-verified` pinned to Scala 3.7.2,
       invoked directly (the `ring6` alias is broken under sbt 1.12). Specs with no
       decision at their centre state their skip.
 - [ ] Ring 7: Model checking — not applicable. No distributed or event-ordering invariant;
@@ -251,13 +271,14 @@ resolving.
 | `specs/archive-safe-fixtures/spec.md` | minimal | a resolver and a lint; no production type changes |
 | `specs/oracle-independence/spec.md` | full | new persisted sanction record; splits the oracle into two suite kinds; changes the guard's decision |
 | `specs/oracle-fixture-repair/spec.md` | minimal | fixture edits through the sanction mechanism, plus one diagnostic line |
-| `specs/delivery-verified/spec.md` | waiver — **pending human approval** | CI and release-candidate validation; test-and-configuration only, no production code. A waiver needs explicit approval; until given, this spec takes a minimal contract |
+| `specs/delivery-verified/spec.md` | full | introduces `ToolchainIdentity` and changes the release check's signature. (First drafted as a waiver for a test-and-configuration-only spec; withdrawn once the capability check's toolchain finding made it production code) |
 | `specs/entrypoint-split/spec.md` | minimal | behaviour-preserving refactor; signatures of the moved objects only |
 | `specs/installer-swap/spec.md` | minimal | seam wiring and shim swap; no new domain type |
 | `specs/surface-honesty/spec.md` | full | `Subcommand` loses a case; the register's classification changes to live-path |
 | `specs/registry-check-port/spec.md` | full | new registry-verifier engine and output format |
 | `specs/legacy-name-retirement/spec.md` | full | new alias table; state-directory migration |
-| `specs/schema-directory-rename/spec.md` | full | schema resolution changes; the persisted pins of 19 recorded changes are a compatibility surface |
+| `specs/schema-directory-rename/spec.md` | full | schema resolution changes; active changes' pins are a compatibility surface |
+| `specs/cli-wiring/spec.md` | minimal | MODIFIED delta restating one requirement to the actual surface; no code of its own |
 
 ## Existing Concepts to Reuse
 
@@ -309,5 +330,5 @@ Verified against `openspec/concept-inventory.md` (404 typed rows) and `openspec/
 | The six `chain-state` failures turn out to be a shared implementation defect, not a stale fixture | Root-cause first, in `oracle-fixture-repair` Step 1 | If fixing them would change a verdict, the spec records the finding and stops; resolving it becomes a scoped R-X1 exception rather than a quiet fix. |
 | Running CI requires pushing the branch — an outward action | The spec names the step | The push happens only with the maintainer's explicit authorisation at apply time. |
 | The entrypoint split changes behaviour it was meant to preserve | The full suites, the differential and the subprocess conformance runs before and after, plus the parity properties | The split is mechanical: one object per file, no edits inside moved code. Ring 8 compares the moved code byte-for-byte against its origin. |
-| The directory rename breaks resolution of archived changes | Ring 4 resolves all 19 pinned changes after the move | The previous name stays resolvable. How the workflow tool resolves a schema is **MUST-CONFIRM** against its own behaviour — tested, not assumed — before the directory moves. |
+| The directory rename breaks resolution of active changes | Ring 4 resolves every active change under both names after the move | A symbolic-link alias keeps the previous name resolvable — measured to work on openspec 1.3.1 on Linux, and re-established at apply time. It does not exist on checkouts with symbolic links disabled (Windows default), which the alias check reports rather than passes. |
 | Removing `metals` from the surface breaks an agent instruction that invokes it | The unported register's citation check | The register's citations list every instruction that references the tool; each is updated in the same commit. |
