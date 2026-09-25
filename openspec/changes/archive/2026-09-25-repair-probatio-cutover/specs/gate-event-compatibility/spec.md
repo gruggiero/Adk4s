@@ -121,7 +121,7 @@ the exit status are unchanged; only the diagnostic gains a line.
 **When** the gate runs
 **Then** the diagnostic output contains no unrecognised-name line
 
-### MUST-CONFIRM — the harness event vocabularies
+## MUST-CONFIRM — the harness event vocabularies
 
 The names each harness uses for its own hook events are **not** this repository's to
 define. They are set by each harness's hook API, and this spec must not invent them.
