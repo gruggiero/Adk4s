@@ -1,5 +1,7 @@
 package org.sinemenda.probatio.guard
 
+import org.sinemenda.probatio.migration.ChangeLocation
+
 /**
  * The feature-freeze guard's corpus types (spec 6,
  * feature-freeze-guard-integrity).
@@ -69,64 +71,48 @@ object FixtureCorpus:
         .getOrElse(Nil)
 
   /**
-   * An archived change directory is `YYYY-MM-DD-<name>` — it matches when
-   * its name equals `changeName` (a bare directory under `archive/`) or is
-   * exactly `<date>-<changeName>`. The date prefix is required on the
-   * dated arm: a suffix check would let `probatio-cutover` silently
-   * resolve `…-complete-probatio-cutover`'s corpus.
-   */
-  private def matchesArchived(changeName: String, dirName: String): Boolean =
-    dirName == changeName ||
-      dirName.matches(s"\\d{4}-\\d{2}-\\d{2}-${java.util.regex.Pattern.quote(changeName)}")
-
-  /**
    * Every location `resolve` probes for `changeName`'s corpus, in search
-   * order: the active area's spec directory, the archive root (probed for a
-   * change directory matching the name), then each matching archived
-   * change's spec directory.
+   * order: the shared archive-aware resolver's searched locations with
+   * each located change directory refined to its `specs/` — the active
+   * area's spec directory, the archive root (probed for a change
+   * directory matching the name), then each matching archived change's
+   * spec directory, newest first.
    *
    * spec: feature-freeze-guard-integrity — Scenario: Adversarial — a corpus present in neither location is not silently accepted
+   * spec: archive-safe-fixtures — Requirement: Test code locates a change through the archive-aware resolver
    */
   def searchedLocations(changeName: String, openspecDir: os.Path): List[os.Path] =
     // `os.SubPath` runtime segments, not literal `/` segments: the os-lib
     // literal-path macro makes `""` StringLiteral mutants a COMPILE error,
     // which aborts the Ring-5 run (spec-1's debugging trail).
-    val activeSpecs: os.Path  = openspecDir / os.SubPath(s"changes/$changeName/specs")
-    val archiveRoot: os.Path  = openspecDir / os.SubPath("changes/archive")
-    val archived: List[os.Path] =
-      if !os.isDir(archiveRoot) then Nil
-      else
-        scala.util
-          .Try(
-            os.list(archiveRoot)
-              .filter((d: os.Path) => os.isDir(d) && matchesArchived(changeName, d.last))
-              .map((d: os.Path) => d / os.SubPath("specs"))
-              .toList
-              .sortBy((p: os.Path) => p.toString)
-          )
-          .getOrElse(Nil)
-    List(activeSpecs, archiveRoot) ++ archived
+    val archiveRoot: os.Path = openspecDir / os.SubPath("changes/archive")
+    ChangeLocation.searchedLocations(changeName, openspecDir).map { (loc: os.Path) =>
+      if loc == archiveRoot then loc else loc / os.SubPath("specs")
+    }
 
   /**
    * Locate the specification corpus for `changeName` under `openspecDir`.
    *
-   * Probes `searchedLocations` in order and resolves to the first spec
-   * directory containing at least one fixture; a directory that exists but
-   * holds no fixtures does not resolve — an empty corpus is not a corpus.
-   * When no probed location yields fixtures, `NotFound` names every
-   * location searched.
+   * The shared resolver decides WHERE the change is (active first, then
+   * the newest archive match); this layer reads that location's `specs/`.
+   * A located change whose spec directory holds no fixtures does not
+   * resolve — an empty corpus is not a corpus, and the resolved location
+   * is authoritative rather than a fall-through to a staler archive
+   * entry. When no corpus is found, `NotFound` names every location
+   * searched.
    *
    * spec: feature-freeze-guard-integrity — Requirement: The guard locates its corpus wherever the change resides
+   * spec: archive-safe-fixtures — Requirement: Test code locates a change through the archive-aware resolver
    */
   def resolve(changeName: String, openspecDir: os.Path): CorpusResolution =
     val searched: List[os.Path] = searchedLocations(changeName, openspecDir)
-    val candidates: List[os.Path] = searched.filter((p: os.Path) => p.last == "specs")
-    candidates
-      .map((d: os.Path) => d -> fixtureFiles(d))
-      .collectFirst { case (d, specs) if specs.nonEmpty => new FixtureCorpus(specs, d) }
-      match
-        case Some(corpus) => CorpusResolution.Resolved(corpus)
-        case None         => CorpusResolution.NotFound(searched)
+    ChangeLocation.resolve(changeName, openspecDir).foundDir match
+      case None => CorpusResolution.NotFound(searched)
+      case Some(dir) =>
+        val specsDir: os.Path = dir / os.SubPath("specs")
+        fixtureFiles(specsDir) match
+          case Nil   => CorpusResolution.NotFound(searched)
+          case specs => CorpusResolution.Resolved(new FixtureCorpus(specs, specsDir))
 
 /**
  * The outcome of locating a change's specification corpus.

@@ -229,7 +229,27 @@ object DifferentialHarness:
    * spec: archive-safe-fixtures — Requirement: The recorded predecessor control is read after archiving
    * spec: archive-safe-fixtures — Scenario: Adversarial — a missing control fails naming every searched location
    */
-  def predecessorControl(changeName: String, openspecDir: os.Path): Outcome[os.Path] = ???
+  def predecessorControl(changeName: String, openspecDir: os.Path): Outcome[os.Path] =
+    ChangeLocation.resolve(changeName, openspecDir) match
+      case ChangeLocation.Absent(searched) =>
+        Outcome.Undetermined(
+          s"recorded predecessor control of '$changeName' not located; searched: ${searched.mkString(", ")}"
+        )
+      case ChangeLocation.Active(dir)      => controlFixture(changeName, dir)
+      case ChangeLocation.Archived(dir, _) => controlFixture(changeName, dir)
+
+  /**
+   * The control fixture under a located change directory — `Ran(path)`
+   * when it exists, `Undetermined` naming the probed path when the
+   * located change lacks it.
+   */
+  private def controlFixture(changeName: String, dir: os.Path): Outcome[os.Path] =
+    val fixture: os.Path = dir / "fixtures" / "predecessor-control.json"
+    if os.exists(fixture) then Outcome.Ran(fixture)
+    else
+      Outcome.Undetermined(
+        s"change '$changeName' resolved to $dir but no fixtures/predecessor-control.json exists under it"
+      )
 
   /**
    * Compute the differential result from two suite runs.

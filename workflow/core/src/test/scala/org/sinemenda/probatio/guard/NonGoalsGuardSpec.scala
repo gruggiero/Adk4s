@@ -757,6 +757,83 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
       )
     }
 
+  // spec: archive-safe-fixtures — Requirement: Test code locates a change through the archive-aware resolver
+  // Ring-5 coverage: a bare `archive/<name>` entry carries no date and
+  // resolves with `date = None` (this shape was uncovered).
+  test("a bare archive entry resolves with no date"):
+    ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      val dir: os.Path = openspec / "changes" / "archive" / "old-change"
+      ChangeLocationGens.writeFixtures(dir, List("specs/a/spec.md"))
+      ChangeLocation.resolve("old-change", openspec) match
+        case ChangeLocation.Archived(found, date) =>
+          assertEquals(found, dir)
+          assertEquals(date, None)
+        case other => fail(s"expected Archived($dir, None), got $other")
+    }
+
+  // spec: archive-safe-fixtures — Requirement: Test code locates a change through the archive-aware resolver
+  // Ring-5 coverage: a dated entry outranks a bare one — the (Some, None)
+  // ordering arm is observable only when both shapes exist.
+  test("a dated archive entry outranks a bare archive entry"):
+    ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      val bare: os.Path  = openspec / "changes" / "archive" / "mixed-change"
+      val dated: os.Path = openspec / "changes" / "archive" / "2026-05-05-mixed-change"
+      ChangeLocationGens.writeFixtures(bare, List("specs/bare.md"))
+      ChangeLocationGens.writeFixtures(dated, List("specs/dated.md"))
+      ChangeLocation.resolve("mixed-change", openspec) match
+        case ChangeLocation.Archived(dir, date) =>
+          assertEquals(dir, dated)
+          assertEquals(date, Some("2026-05-05"))
+        case other => fail(s"expected Archived($dated), got $other")
+      val searched: List[os.Path] = ChangeLocation.searchedLocations("mixed-change", openspec)
+      assert(
+        searched.contains(bare) && searched.contains(dated),
+        s"the resolution must name both archive locations: $searched"
+      )
+    }
+
+  // spec: archive-safe-fixtures — Scenario: Adversarial — a change in neither place is not silently accepted
+  // Ring-8 remediation: a name that cannot denote a change — empty,
+  // separator-carrying, `.`/`..`, or the reserved `archive` segment —
+  // must never resolve to a directory. `resolve("archive")` would
+  // otherwise return the archive ROOT as an active change.
+  test("an unlocatable change name resolves Absent, probing nothing"):
+    ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      List("", ".", "archive", "..", "a/b").foreach { (name: String) =>
+        ChangeLocation.resolve(name, openspec) match
+          case ChangeLocation.Absent(searched) =>
+            assertEquals(searched, Nil, s"'$name' is unlocatable — nothing was probed")
+          case other =>
+            fail(s"unlocatable name '$name' must resolve Absent, got $other")
+        assertEquals(
+          ChangeLocation.searchedLocations(name, openspec),
+          Nil,
+          s"'$name' is unlocatable — searchedLocations reports no probes"
+        )
+      }
+    }
+
+  // spec: archive-safe-fixtures — Scenario: Adversarial — a change in neither place is not silently accepted
+  // Ring-5 coverage: an archive entry that is a FILE, not a directory,
+  // must not resolve (the os.isDir(d) guard inside archiveMatches).
+  test("a non-directory archive entry is not resolved"):
+    ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      val archiveRoot: os.Path = openspec / "changes" / "archive"
+      os.makeDir.all(archiveRoot)
+      os.write(archiveRoot / "file-change", "a file, not a directory\n")
+      ChangeLocation.resolve("file-change", openspec) match
+        case ChangeLocation.Absent(searched) =>
+          assert(
+            !searched.contains(archiveRoot / "file-change"),
+            s"a non-directory entry must not be a searched location: $searched"
+          )
+          assert(
+            searched.contains(archiveRoot),
+            s"searched must name the archive root: $searched"
+          )
+        case other => fail(s"expected Absent, got $other")
+    }
+
   // ── Property: resolution-is-location-independent
   // spec: archive-safe-fixtures — Property: resolution-is-location-independent
   property("resolution-is-location-independent"):

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # spec: hermetic-test-processes — planted-violation check for the test lint.
+# spec: archive-safe-fixtures — same check for the literal change-path bans.
 #
 # Scalafix has no negative fixture of its own: this script plants a file
-# violating EVERY raw-process ban into each workflow module's test sources,
+# violating EVERY banned shape into each workflow module's test sources,
 # runs `Test / scalafix`, asserts the lint rejects each banned shape with
 # file and rule id, then removes the plant. A lint that passes a planted
 # violation — or a rule whose pattern never fires — proves nothing.
@@ -10,7 +11,9 @@
 # Banned shapes proven here: `new ProcessBuilder`, `scala.sys.process` AND
 # the Predef-alias `sys.process`, `os.proc`, `.environment` (parenless —
 # Java nullary methods need no parens), `Runtime.getRuntime` (Runtime.exec
-# inherits the invoking environment too).
+# inherits the invoking environment too), and repo-root-anchored literal
+# `openspec/changes/<name>` paths in their segment-chain, resolve,
+# interpolated, and cwd-anchored-constructor spellings.
 #
 # Usage: workflow/verify-test-lint.sh          (all three modules)
 #        workflow/verify-test-lint.sh core     (one module: core|cli|plugin)
@@ -54,6 +57,15 @@ object LintNegativePlanted {
   val p: scala.sys.process.ProcessBuilder = sys.process.Process("echo y")
   val r: Process = Runtime.getRuntime().exec("echo w")
   val s: String = "os.proc(\\"x\\")"
+  // spec: archive-safe-fixtures — the plugin has no os-lib; the segment
+  // chain is planted as source text (the DisableSyntax check is
+  // text-level), the resolve/interp/cwd shapes compile on java.nio.
+  val repoRoot: java.nio.file.Path = java.nio.file.Paths.get("/tmp")
+  val chain: String = """repoRoot / "openspec" / "changes" / "x" banned"""
+  val res: java.nio.file.Path = repoRoot.resolve("openspec/changes/x")
+  val interp: String = s"\$repoRoot/openspec/changes/x"
+  val cwd: java.nio.file.Path = java.nio.file.Paths.get("openspec/changes/x")
+  val cwdVar: java.nio.file.Path = java.nio.file.Paths.get("openspec", "changes", "x")
 }
 EOF
   else
@@ -66,6 +78,16 @@ object LintNegativePlanted {
   val p: scala.sys.process.ProcessBuilder = sys.process.Process("echo y")
   val r: Process = Runtime.getRuntime().exec("echo w")
   val o: os.proc = os.proc("echo", "z")
+  // spec: archive-safe-fixtures — a planted violation must compile
+  // (scalafix runs after Test/compile). os.Path has no resolve method,
+  // so the resolve spelling is planted as source text; the other three
+  // shapes compile as written.
+  val repoRoot: os.Path = os.pwd
+  val chain: os.Path = repoRoot / "openspec" / "changes" / "x"
+  val res: String = """repoRoot.resolve("openspec/changes/x") banned"""
+  val interp: String = s"\$repoRoot/openspec/changes/x"
+  val cwd: os.Path = os.Path("openspec/changes/x", os.pwd)
+  val cwdVar: String = """Paths.get("openspec", "changes", "x") banned"""
 }
 EOF
   fi
@@ -76,7 +98,9 @@ EOF
     status=1
     continue
   fi
-  for rule in NoRawProcessBuilder NoScalaSysProcess NoOsProc NoBuilderEnvMutation NoRuntimeExec; do
+  for rule in NoRawProcessBuilder NoScalaSysProcess NoOsProc NoBuilderEnvMutation NoRuntimeExec \
+              NoRepoRootChangePathChain NoRepoRootChangeResolve NoRepoRootChangeInterp \
+              NoCwdChangePath NoCwdChangePathVariadic; do
     if printf '%s' "$out" | grep -q "LintNegativePlanted.scala:.*$rule"; then
       echo "ok [$mod]: $rule fired with file and line"
     else

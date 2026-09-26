@@ -34,6 +34,28 @@ final class OracleDiffRunner extends ProbatioSuite:
   override val munitTimeout: FiniteDuration =
     FiniteDuration(5, TimeUnit.MINUTES)
 
+  /**
+   * The repository root, resolved via git — `os.pwd` is unreliable under
+   * forked test runners (sbt `Test / fork` and the Stryker4s runner set
+   * the working directory to the module base). Unresolvable is an
+   * error, not a fallback: a wrong cwd must never read as "the schema
+   * is absent" and silently skip the check.
+   */
+  private def repoRoot: os.Path =
+    // spec: hermetic-test-processes — via the shared helper.
+    scala.util
+      .Try(
+        HermeticEnv.capture(
+          List("git", "rev-parse", "--show-toplevel"),
+          HermeticEnv.empty,
+          cwd = Some(os.pwd.toIO)
+        )
+      )
+      .toOption
+      .filter((r: HermeticResult) => r.exitCode == 0)
+      .map((r: HermeticResult) => os.Path(r.out.trim))
+      .getOrElse(sys.error("repository root could not be resolved via git rev-parse"))
+
   // ── probatioOracleDiff entry point
   // Materialises both arms, asserts divergence, runs the differential,
   // and prints the result + verdict.
@@ -42,7 +64,7 @@ final class OracleDiffRunner extends ProbatioSuite:
   // to exist. In environments without bats, it will fail with a clear
   // message.
   test("probatioOracleDiff: run differential and decide"):
-    val schemaDir: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3"
+    val schemaDir: os.Path = repoRoot / "openspec" / "schemas" / "verified-scala3"
     if !os.exists(schemaDir / "tests") then
       println("[probatioOracleDiff] oracle directory not found: " + (schemaDir / "tests").toString)
       println("[probatioOracleDiff] SKIPPED — no oracle to compare against")
@@ -125,14 +147,35 @@ final class OracleDiffRunner extends ProbatioSuite:
   //
   // spec: differential-harness-integrity — Requirement: The comparison reproduces the recorded predecessor control
   test("probatioOracleControl: predecessor arm reproduces the recorded control"):
-    val schemaDir: os.Path = os.pwd / "openspec" / "schemas" / "verified-scala3"
-    val controlPath: os.Path =
-      os.pwd / "openspec" / "changes" / "repair-probatio-cutover" / "fixtures" / "predecessor-control.json"
-    if !os.exists(schemaDir / "tests") || !os.exists(controlPath) then
-      println("[probatioOracleControl] SKIPPED — schema tests or control fixture absent")
+    val schemaDir: os.Path = repoRoot / "openspec" / "schemas" / "verified-scala3"
+    if !os.exists(schemaDir / "tests") then println("[probatioOracleControl] SKIPPED — schema tests absent")
     else
+      // spec: archive-safe-fixtures — the control is located through
+      // the archive-aware resolver, never a literal active-area path:
+      // the change is archived and its fixtures live under
+      // `changes/archive/`. An unlocatable control is a loud
+      // undetermined naming every searched location — never a silent
+      // skip.
+      val controlPath: os.Path =
+        DifferentialHarness.predecessorControl("repair-probatio-cutover", repoRoot / "openspec") match
+          case Outcome.Ran(path) => path
+          case other =>
+            println(s"[probatioOracleControl] UNDETERMINED — $other")
+            fail(s"the recorded predecessor control could not be located: $other")
+      // spec: archive-safe-fixtures — a present-but-malformed control is
+      // a loud undetermined, not a raw parse exception (and never a pass).
       val controlBaseline: String =
-        ujson.read(os.read(controlPath))("measuredAtBaseline").str
+        scala.util
+          .Try(ujson.read(os.read(controlPath))("measuredAtBaseline").str)
+          .fold(
+            (e: Throwable) => {
+              val msg: String =
+                s"the recorded predecessor control at $controlPath is unreadable or malformed: ${e.getMessage}"
+              println(s"[probatioOracleControl] UNDETERMINED — $msg")
+              fail(msg)
+            },
+            (s: String) => s
+          )
       val allPredecessor: SeamConfiguration =
         SeamConfiguration.fromPorted(ToolId.swapOrder.toSet).withPredecessor
       val workRoot: os.Path = os.temp.dir(prefix = "probatio-control-", deleteOnExit = true)

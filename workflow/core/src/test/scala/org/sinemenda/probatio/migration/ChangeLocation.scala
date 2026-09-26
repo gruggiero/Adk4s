@@ -67,27 +67,107 @@ enum ChangeLocation:
 
 object ChangeLocation:
 
+  private val archiveDateRe: scala.util.matching.Regex =
+    "^(\\d{4}-\\d{2}-\\d{2})-(.+)$".r
+
+  /**
+   * `Some(date)` when `dirName` is an archive entry for `changeName` —
+   * `Some(None)` for a bare `archive/<name>` entry, `Some(Some(date))`
+   * for `archive/<date>-<name>`. The date-stripped remainder must EQUAL
+   * the name: a suffix check would let `probatio-cutover` silently
+   * resolve `complete-probatio-cutover`.
+   */
+  private def archivedMatch(changeName: String, dirName: String): Option[Option[String]] =
+    if dirName == changeName then Some(None)
+    else
+      dirName match
+        case archiveDateRe(date, name) if name == changeName => Some(Some(date))
+        case _                                               => None
+
+  /**
+   * Every archive entry matching `changeName`, newest first: dated
+   * entries sort by ISO date descending; a bare `archive/<name>` entry
+   * carries no date and ranks below all dated ones.
+   */
+  private def archiveMatches(
+    changeName: String,
+    archiveRoot: os.Path
+  ): List[(os.Path, Option[String])] =
+    scala.util
+      .Try(
+        os.list(archiveRoot)
+          .flatMap { (d: os.Path) =>
+            if os.isDir(d) then archivedMatch(changeName, d.last).map((date: Option[String]) => d -> date)
+            else None
+          }
+          .toList
+      )
+      .getOrElse(Nil)
+      // ISO dates compare correctly as strings; Option ordering puts
+      // Some(date) above None, so reversed ordering sorts newest dated
+      // entry first and every bare entry last. Equal dates are
+      // unreachable — two entries for one name under one date are one
+      // directory.
+      .sortBy((e: (os.Path, Option[String])) => e._2)(using
+        Ordering[Option[String]].reverse
+      )
+
+  /**
+   * A name that can denote a change directory. Empty names, names with
+   * path separators, `.`/`..`, and the reserved `archive` segment are
+   * unlocatable: `resolve("archive")` would otherwise return the archive
+   * ROOT as an active change — a wrong-directory answer, not an absence.
+   */
+  private def isLocatable(changeName: String): Boolean =
+    changeName.nonEmpty &&
+      !changeName.contains('/') &&
+      changeName != "." &&
+      changeName != ".." &&
+      changeName != "archive"
+
   /**
    * Every location `resolve` probes for `changeName`, in search order:
    * the active change directory, the archive root, then each archive
-   * entry matching the name. The list is computed from the same
-   * arguments as `resolve`, so a resolution — found or absent — always
-   * names where it looked: an archive that matched twice names both.
+   * entry matching the name (newest first). The list is computed from
+   * the same arguments as `resolve`, so a resolution — found or absent —
+   * always names where it looked: an archive that matched twice names
+   * both. An unlocatable name probes nothing, and reports it: `Nil`.
    *
    * spec: archive-safe-fixtures — Scenario: Adversarial — a change in neither place is not silently accepted
    * spec: archive-safe-fixtures — Scenario: Edge case — a change archived more than once resolves to the latest
    */
-  def searchedLocations(changeName: String, openspecDir: os.Path): List[os.Path] = ???
+  def searchedLocations(changeName: String, openspecDir: os.Path): List[os.Path] =
+    // `os.SubPath` runtime segments, not literal `/` segments: the os-lib
+    // literal-path macro makes `""` StringLiteral mutants a COMPILE error,
+    // which aborts the Ring-5 run (spec-1's debugging trail).
+    if !isLocatable(changeName) then Nil
+    else
+      val activeDir: os.Path   = openspecDir / os.SubPath(s"changes/$changeName")
+      val archiveRoot: os.Path = openspecDir / os.SubPath("changes/archive")
+      List(activeDir, archiveRoot) ++
+        archiveMatches(changeName, archiveRoot).map((d: os.Path, _: Option[String]) => d)
 
   /**
    * Locate the change `changeName` under `openspecDir`: the active
    * directory wins when the name is present in both areas; among archive
-   * matches the most recent date wins; a name present in neither place
-   * resolves to `Absent` carrying `searchedLocations`.
+   * matches the most recent date wins (a bare `archive/<name>` entry
+   * ranks below dated ones); a name present in neither place — or an
+   * unlocatable name — resolves to `Absent` carrying `searchedLocations`.
    *
    * spec: archive-safe-fixtures — Requirement: Test code locates a change through the archive-aware resolver
    */
-  def resolve(changeName: String, openspecDir: os.Path): ChangeLocation = ???
+  def resolve(changeName: String, openspecDir: os.Path): ChangeLocation =
+    if !isLocatable(changeName) then ChangeLocation.Absent(Nil)
+    else
+      val activeDir: os.Path   = openspecDir / os.SubPath(s"changes/$changeName")
+      val archiveRoot: os.Path = openspecDir / os.SubPath("changes/archive")
+      if os.isDir(activeDir) then ChangeLocation.Active(activeDir)
+      else
+        archiveMatches(changeName, archiveRoot).headOption match
+          case Some((dir, date)) => ChangeLocation.Archived(dir, date)
+          case None              => ChangeLocation.Absent(searchedLocations(changeName, openspecDir))
+
+
 
 /**
  * Generators and materialisation helpers for the spec-4 oracle —

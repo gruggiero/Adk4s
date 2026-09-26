@@ -188,9 +188,9 @@ or law at its centre; pinned by the two properties above.
 | An absent location cannot omit its search list | Compile-Negative: An absent location that names no searched place | compile-negative test | `FeatureFreezeGuardIntegrityTypeContract` |
 | The archived control is well-formed | Requirement: The predecessor-control fixture is read after archiving + Scenario: Happy path — the archived control is well-formed | scenario test | `DifferentialHarnessSpec` |
 | A missing control fails naming locations | Requirement: The predecessor-control fixture is read after archiving + Scenario: Adversarial — a missing control is a failure, not a pass | scenario test | `DifferentialHarnessSpec` |
-| Resolver-based code is lint-clean | Requirement: A literal active-change path in test code is rejected + Scenario: Happy path — resolver-based test code is clean | static rule (scalafix), plus a bats-side check for the suites | `.scalafix.conf` |
-| A literal active-change path is rejected | Requirement: A literal active-change path in test code is rejected + Scenario: Adversarial — a literal active-change path is rejected | static rule with a negative fixture | `.scalafix.conf` |
-| A synthetic temporary path is allowed | Requirement: A literal active-change path in test code is rejected + Scenario: Edge case — a generic fixture path for a synthetic change is allowed | static rule with a positive fixture | `.scalafix.conf` |
+| Resolver-based code is lint-clean | Requirement: A literal active-change path in test code is rejected + Scenario: Happy path — resolver-based test code is clean | static rule (scalafix), plus a bats-side check for the suites | `.scalafix-tests.conf`, `.scalafix-tests-2.12.conf` |
+| A literal active-change path is rejected | Requirement: A literal active-change path in test code is rejected + Scenario: Adversarial — a literal active-change path is rejected | static rule with a planted negative fixture | `workflow/verify-test-lint.sh` |
+| A synthetic temporary path is allowed | Requirement: A literal active-change path in test code is rejected + Scenario: Edge case — a generic fixture path for a synthetic change is allowed | fixture-anchored spellings carry no `repoRoot`/`os.pwd` anchor; permitted by construction, exercised by the oracle's temp-repo scenarios | `NonGoalsGuardSpec`, `DifferentialHarnessSpec` |
 
 ## Implementation Anchors
 
@@ -198,6 +198,6 @@ or law at its centre; pinned by the two properties above.
 |--------|------|-------|------|
 | The defect site | munit suite | `workflow/core/src/test/scala/org/sinemenda/probatio/migration/DifferentialHarnessSpec.scala:458–459` | Names `openspec/changes/repair-probatio-cutover/fixtures/predecessor-control.json`; the fixture is under `openspec/changes/archive/2026-09-25-repair-probatio-cutover/fixtures/` |
 | The first fix, to generalise | test source | `workflow/core/src/test/scala/org/sinemenda/probatio/guard/GuardCorpus.scala` | The feature-freeze guard's resolver; becomes the shared one |
-| The lint | scalafix `DisableSyntax` block | `.scalafix.conf` | Pattern over `openspec/changes/<name>` literals that are not under `archive/`, scoped to `workflow/*/src/test/scala/**` |
+| The lint | scalafix `DisableSyntax` block | `.scalafix-tests.conf`, `.scalafix-tests-2.12.conf` | Pattern over `openspec/changes/<name>` literals that are not under `archive/`, anchored at `repoRoot`/`os.pwd`/cwd constructors — the test-source confs carry the ban (`fileFilter` in `.scalafix.conf` is inert for `DisableSyntax`; spec-1 precedent); planted-violation polarity via `workflow/verify-test-lint.sh`; bats suites covered by the munit scanner in `DifferentialHarnessSpec` |
 | `ChangeLocation` | new type | shared test-support source | New |
 | Ring 5 note | — | `stryker4s.conf` | Test infrastructure; the move-to-main-and-back procedure applies |

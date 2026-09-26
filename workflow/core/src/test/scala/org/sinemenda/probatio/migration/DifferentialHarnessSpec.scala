@@ -1136,19 +1136,25 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
 
   /**
    * A `openspec/changes/` literal anchored at the repository root —
-   * `repo_root`, `$ROOT`, `${ROOT}`, `$root`, `${root}` — followed by a
-   * literal path segment. A glob segment (`*`, discovery) or a
-   * variable-named segment (`$CHANGE`, an argument to the tool under
-   * test, not a literal name) is not a violation. `archive/<x>` IS a
-   * literal change path — a hardcoded dated archive entry does not go
-   * through the resolver either.
+   * `repo_root`, `$ROOT`, `${ROOT}`, `$root`, `${root}`, `$REPO_ROOT`,
+   * `${REPO_ROOT}`, or `$(git rev-parse --show-toplevel)` — followed by a
+   * literal name segment. Discovery is exempt: a glob segment (`*`),
+   * a variable-named segment (`$CHANGE`, an argument to the tool under
+   * test, not a literal name), and everything under `archive/` (the
+   * spec targets active-area literals — `archive/` entries are already
+   * archive paths). The span between anchor and literal may cross `;`:
+   * `cd "$ROOT"; cat openspec/changes/x` is the same literal.
    *
    * Fixture- and tmpdir-anchored spellings (`$FX/…`, `$BATS_TEST_TMPDIR/…`,
    * `$(mktemp -d)`-derived) are the suite's own synthetic fixtures and
-   * are permitted.
+   * are permitted. The residual evasion the text-level mechanism cannot
+   * close is indirection (`base="$ROOT"; …` on a later line) — accepted
+   * boundary, same as the Scala-side anchor rules.
    */
   private def repoRootAnchoredChangePath: scala.util.matching.Regex =
-    "(repo_root\\b|\\$\\{?ROOT\\b|\\$\\{?root\\b)[^\\n|;]*openspec/changes/[^\"'\\s$*{]".r
+    ("(repo_root\\b|\\$\\{?ROOT\\b|\\$\\{?root\\b|\\$\\{?REPO_ROOT\\b|" +
+      "\\$\\(git\\s+rev-parse\\s+--show-toplevel\\))[^\\n|]*" +
+      "openspec/changes/(?!archive\\b)[^\"'\\s$*{]").r
 
   /**
    * `file:line: text` diagnostics for every repo-root-anchored literal
@@ -1189,6 +1195,7 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
         |  ctrl="$(repo_root)/openspec/changes/some-change/fixtures/c.json"
         |  ls "$ROOT/openspec/changes/named-change/specs"
         |  echo "${root}/openspec/changes/named-change"
+        |  cat "$(git rev-parse --show-toplevel)/openspec/changes/x/specs"
         |}
         |""".stripMargin
     )
@@ -1200,8 +1207,8 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
     )
     assertEquals(
       violations.map((v: String) => v.dropWhile(_ != ':').drop(1).takeWhile(_ != ':')).sorted,
-      List("5", "6", "7"),
-      s"the planted literals on lines 5–7 are reported with their line numbers: $violations"
+      List("5", "6", "7", "8"),
+      s"the planted literals on lines 5–8 are reported with their line numbers: $violations"
     )
     // The setup assignment itself is clean — the anchor name alone is
     // not a violation; only an anchored `openspec/changes/<literal>` is.
