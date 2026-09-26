@@ -5,6 +5,11 @@ import hedgehog.core.PropertyConfig
 import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.Outcome
 import org.sinemenda.probatio.core.ProbatioSuite
+import org.sinemenda.probatio.migration.ChangeLocation
+import org.sinemenda.probatio.migration.ChangeLocationGens
+import org.sinemenda.probatio.migration.ChangeLocationGens.AbsentFixture
+import org.sinemenda.probatio.migration.ChangeLocationGens.ChangePlacement
+import org.sinemenda.probatio.migration.ChangeLocationGens.Placement
 
 /**
  * Non-goals guard spec — feature-freeze contract, dependency boundary,
@@ -655,6 +660,169 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
     yield
       val result: OracleImmutabilityResult = oracleResults(commit)
       Result.assert(isImmutable(result))
+
+  // ══ spec: archive-safe-fixtures — the shared archive-aware resolver ════
+
+  // ── Scenario: Happy path — an active change resolves
+  // spec: archive-safe-fixtures — Scenario: Happy path — an active change resolves
+  test("an active change resolves to its active-area directory"):
+    ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      val dir: os.Path = openspec / "changes" / "new-change"
+      ChangeLocationGens.writeFixtures(dir, List("specs/a/spec.md", "fixtures/b.json"))
+      ChangeLocation.resolve("new-change", openspec) match
+        case ChangeLocation.Active(found) => assertEquals(found, dir)
+        case other                        => fail(s"expected Active($dir), got $other")
+    }
+
+  // ── Scenario: Happy path — an archived change resolves to the same fixtures
+  // spec: archive-safe-fixtures — Scenario: Happy path — an archived change resolves to the same fixtures
+  test("an archived change resolves to the same fixtures"):
+    val placed: List[String] =
+      List("specs/a/spec.md", "fixtures/b/control.json", "fixtures/a/spec.md")
+    ChangeLocationGens.withTempOpenspec { (activeOpenspec: os.Path) =>
+      val activeDir: os.Path = activeOpenspec / "changes" / "new-change"
+      ChangeLocationGens.writeFixtures(activeDir, placed)
+      ChangeLocationGens.withTempOpenspec { (archivedOpenspec: os.Path) =>
+        val archivedDir: os.Path =
+          archivedOpenspec / "changes" / "archive" / "2026-08-01-new-change"
+        ChangeLocationGens.writeFixtures(archivedDir, placed)
+        val activeFixtures: List[String] =
+          os.walk(activeDir)
+            .filter((p: os.Path) => os.isFile(p))
+            .map((p: os.Path) => p.relativeTo(activeDir).toString)
+            .toList
+            .sorted
+        ChangeLocation.resolve("new-change", archivedOpenspec) match
+          case ChangeLocation.Archived(found, date) =>
+            assertEquals(date, Some("2026-08-01"))
+            assertEquals(found, archivedDir)
+            val foundFixtures: List[String] =
+              os.walk(found)
+                .filter((p: os.Path) => os.isFile(p))
+                .map((p: os.Path) => p.relativeTo(found).toString)
+                .toList
+                .sorted
+            assertEquals(foundFixtures, activeFixtures)
+          case other => fail(s"expected Archived($archivedDir), got $other")
+      }
+    }
+
+  // ── Scenario: Adversarial — a change that is in neither place is absent
+  // spec: archive-safe-fixtures — Scenario: Adversarial — a change in neither place is not silently accepted
+  test("a change in neither place is Absent, naming every location searched"):
+    ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      ChangeLocationGens.writeFixtures(
+        openspec / "changes" / "archive" / "2026-01-15-other-change",
+        List("specs/spec.md")
+      )
+      ChangeLocation.resolve("absent-change", openspec) match
+        case ChangeLocation.Absent(searched) =>
+          assertEquals(searched, ChangeLocation.searchedLocations("absent-change", openspec))
+          assert(
+            searched.contains(openspec / "changes" / "absent-change"),
+            s"searched must name the active location: $searched"
+          )
+          assert(
+            searched.contains(openspec / "changes" / "archive"),
+            s"searched must name the archive root: $searched"
+          )
+        case other => fail(s"expected Absent, got $other")
+    }
+
+  // ── Scenario: Edge case — a change that is archived twice resolves to the most recent
+  // spec: archive-safe-fixtures — Scenario: Edge case — a change archived more than once resolves to the latest
+  test("a change archived twice resolves to the most recent, naming both locations"):
+    ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      val older: os.Path = openspec / "changes" / "archive" / "2026-03-10-dup-change"
+      val newer: os.Path = openspec / "changes" / "archive" / "2026-09-01-dup-change"
+      ChangeLocationGens.writeFixtures(older, List("specs/old.md"))
+      ChangeLocationGens.writeFixtures(newer, List("specs/new.md", "fixtures/x.txt"))
+      ChangeLocation.resolve("dup-change", openspec) match
+        case ChangeLocation.Archived(dir, date) =>
+          assertEquals(dir, newer)
+          assertEquals(date, Some("2026-09-01"))
+          assertEquals(
+            os.walk(dir)
+              .filter((p: os.Path) => os.isFile(p))
+              .map((p: os.Path) => p.relativeTo(dir).toString)
+              .toList
+              .sorted,
+            List("fixtures/x.txt", "specs/new.md")
+          )
+        case other => fail(s"expected Archived($newer), got $other")
+      val searched: List[os.Path] = ChangeLocation.searchedLocations("dup-change", openspec)
+      assert(
+        searched.contains(older) && searched.contains(newer),
+        s"the resolution must name both archive locations: $searched"
+      )
+    }
+
+  // ── Property: resolution-is-location-independent
+  // spec: archive-safe-fixtures — Property: resolution-is-location-independent
+  property("resolution-is-location-independent"):
+    for
+      p <- ChangeLocationGens.genChangePlacement.forAll
+        .cover(25, "active", (c: ChangePlacement) => c.placement == Placement.InActiveArea)
+        .cover(25, "archived once", (c: ChangePlacement) =>
+          c.placement match
+            case Placement.ArchivedOnce(_) => true
+            case _                         => false
+        )
+        .cover(25, "archived twice", (c: ChangePlacement) =>
+          c.placement match
+            case Placement.ArchivedTwice(_, _) => true
+            case _                             => false
+        )
+        .cover(10, "single fixture", (c: ChangePlacement) => c.fixtures.length == 1)
+        .cover(10, "same-named fixture in different subdirs", (c: ChangePlacement) =>
+          c.fixtures.map((f: String) => f.substring(f.lastIndexOf('/'))).distinct.length <
+            c.fixtures.length
+        )
+    yield ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      val expected: List[String] = ChangeLocationGens.place(openspec, p)
+      def checkFixtures(dir: os.Path): Result =
+        val found: List[String] =
+          os.walk(dir)
+            .filter((f: os.Path) => os.isFile(f))
+            .map((f: os.Path) => f.relativeTo(dir).toString)
+            .toList
+            .sorted
+        Result
+          .assert(found == expected.sorted)
+          .log(s"resolved $dir; expected ${expected.sorted}, found $found")
+      (p.placement, ChangeLocation.resolve(p.changeName, openspec)) match
+        case (Placement.InActiveArea, ChangeLocation.Active(dir))           => checkFixtures(dir)
+        case (Placement.ArchivedOnce(_), ChangeLocation.Archived(dir, _))   => checkFixtures(dir)
+        case (Placement.ArchivedTwice(_, _), ChangeLocation.Archived(dir, _)) => checkFixtures(dir)
+        case (_, other) =>
+          Result.failure.log(s"placement ${p.placement} resolved as $other")
+    }
+
+  // ── Property: absent-names-every-searched-location
+  // spec: archive-safe-fixtures — Property: absent-names-every-searched-location
+  property("absent-names-every-searched-location"):
+    for
+      f <- ChangeLocationGens.genAbsentName.forAll
+        .cover(40, "suffix-colliding sibling", (a: AbsentFixture) =>
+          a.others.exists((other, _) => other.endsWith(s"-${a.name}"))
+        )
+        .cover(40, "an archived sibling", (a: AbsentFixture) =>
+          a.others.exists((_, archived) => archived)
+        )
+    yield ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      ChangeLocationGens.placeAbsentFixture(openspec, f)
+      ChangeLocation.resolve(f.name, openspec) match
+        case ChangeLocation.Absent(searched) =>
+          Result
+            .assert(searched.contains(openspec / "changes" / f.name))
+            .log(s"searched must name the active location: $searched")
+            .and(
+              Result
+                .assert(searched.contains(openspec / "changes" / "archive"))
+                .log(s"searched must name the archive root: $searched")
+            )
+        case other => Result.failure.log(s"expected Absent, got $other")
+    }
 
   // ══ Implementations (Step 3 — GREEN run) ═════════════════════════════════
 

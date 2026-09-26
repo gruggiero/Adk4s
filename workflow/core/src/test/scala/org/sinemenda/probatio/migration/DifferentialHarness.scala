@@ -217,6 +217,21 @@ object DifferentialHarness:
         )
 
   /**
+   * Locate the recorded predecessor control fixture of `changeName`
+   * through the archive-aware resolver and return its path.
+   *
+   * `Ran(path)` when the change resolves and `fixtures/predecessor-control.json`
+   * exists under the resolved directory; `Undetermined` naming every
+   * searched location when the change is absent, or naming the resolved
+   * directory when the fixture file is missing — a missing control is
+   * never a pass.
+   *
+   * spec: archive-safe-fixtures — Requirement: The recorded predecessor control is read after archiving
+   * spec: archive-safe-fixtures — Scenario: Adversarial — a missing control fails naming every searched location
+   */
+  def predecessorControl(changeName: String, openspecDir: os.Path): Outcome[os.Path] = ???
+
+  /**
    * Compute the differential result from two suite runs.
    *
    * Both runs must have used the same repository and the same suite

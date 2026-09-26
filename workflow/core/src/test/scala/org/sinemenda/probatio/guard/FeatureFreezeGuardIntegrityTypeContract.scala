@@ -130,3 +130,17 @@ final class FeatureFreezeGuardIntegrityTypeContract extends ProbatioSuite:
     assertEquals(KnownCheckId.allIds, (1 to 10).map(i => s"F$i").toSet)
     assert(!KnownCheckId.isKnown("F11"))
     assert(!KnownCheckId.isKnown("W3"))
+
+  // ── Compile-Negative: An absent location that names no searched place
+  // spec: archive-safe-fixtures — Compile-Negative: An absent location that names no searched place
+  // `ChangeLocation` lives in `org.sinemenda.probatio.migration` — the
+  // snippet is fully qualified so the failure, if it ever went away,
+  // cannot be a silent unresolved-name error: the assertion pins the
+  // missing-parameter diagnostic specifically.
+  test("compile-negative: an absent location without searched places does not compile"):
+    val err: String =
+      compileErrors("org.sinemenda.probatio.migration.ChangeLocation.Absent()")
+    assert(
+      err.nonEmpty && err.contains("searched"),
+      s"Absent() must not compile — the variant requires the searched list; got: $err"
+    )

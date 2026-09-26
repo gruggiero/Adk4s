@@ -489,23 +489,64 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
       case Outcome.Undetermined(r) =>
         fail(s"a same-baseline count mismatch is a Finding, not Undetermined: $r")
 
-  // ── The recorded control fixture itself is well-formed
-  // spec: differential-harness-integrity — Requirement: The comparison reproduces the recorded predecessor control
-  // GREEN-BY-DESIGN: the fixture was written at Step 0; this pins its shape
-  // (17 files, 282 tests, 18 failures, valid baseline) against later drift.
+  // ── The recorded control fixture itself is well-formed — after archiving
+  // spec: archive-safe-fixtures — Scenario: Happy path — the archived control is well-formed
+  // spec: archive-safe-fixtures — Requirement: The recorded predecessor control is read after archiving
+  // RED at Step 2: `predecessorControl` is `???` until Step 3 routes the
+  // read through the archive-aware resolver — `repair-probatio-cutover`
+  // has been archived since 2026-09-25.
   test("the recorded predecessor control fixture is well-formed"):
-    val fixture: os.Path =
-      repoRoot / "openspec" / "changes" / "repair-probatio-cutover" / "fixtures" / "predecessor-control.json"
-    assert(os.exists(fixture), s"control fixture missing: $fixture")
-    val json: ujson.Value = ujson.read(os.read(fixture))
-    val baseline: String  = json("measuredAtBaseline").str
-    assertEquals(baseline.length, 40, "the recorded baseline must be a full commit sha")
-    val perFile: Map[String, ujson.Value] = json("perFile").obj.toMap
-    val totals: ujson.Obj                 = json("suiteTotals").obj
-    assertEquals(perFile.size, totals("files").num.toInt, "perFile must list every suite file")
-    assertEquals(perFile.values.map(_("total").num.toInt).sum, totals("tests").num.toInt)
-    assertEquals(perFile.values.map(_("failures").num.toInt).sum, totals("failures").num.toInt)
-    assertEquals(totals("failures").num.toInt, 18, "the recorded control is 18 failures")
+    DifferentialHarness.predecessorControl("repair-probatio-cutover", repoRoot / "openspec") match
+      case Outcome.Ran(fixture) =>
+        val json: ujson.Value = ujson.read(os.read(fixture))
+        val baseline: String  = json("measuredAtBaseline").str
+        assertEquals(baseline.length, 40, "the recorded baseline must be a full commit sha")
+        val perFile: Map[String, ujson.Value] = json("perFile").obj.toMap
+        val totals: ujson.Obj                 = json("suiteTotals").obj
+        assertEquals(perFile.size, totals("files").num.toInt, "perFile must list every suite file")
+        assertEquals(perFile.values.map(_("total").num.toInt).sum, totals("tests").num.toInt)
+        assertEquals(perFile.values.map(_("failures").num.toInt).sum, totals("failures").num.toInt)
+        assertEquals(totals("failures").num.toInt, 18, "the recorded control is 18 failures")
+      case other =>
+        fail(s"the recorded predecessor control could not be located: $other")
+
+  // ── Scenario: Adversarial — a missing control fails naming every searched location
+  // spec: archive-safe-fixtures — Scenario: Adversarial — a missing control fails naming every searched location
+  test("a change with no recorded control in either place fails naming every location searched"):
+    ChangeLocationGens.withTempOpenspec { (openspec: os.Path) =>
+      // Unrelated changes in both areas — the sought change is genuinely
+      // absent, not merely unlooked-for.
+      ChangeLocationGens.writeFixtures(
+        openspec / "changes" / "other-change",
+        List("specs/spec.md")
+      )
+      ChangeLocationGens.writeFixtures(
+        openspec / "changes" / "archive" / "2026-02-20-yet-another",
+        List("specs/spec.md")
+      )
+      DifferentialHarness.predecessorControl("absent-change", openspec) match
+        case Outcome.Undetermined(reason) =>
+          assert(
+            reason.contains("absent-change"),
+            s"the failure must name the active location searched: $reason"
+          )
+          assert(
+            reason.contains("archive"),
+            s"the failure must name the archive area searched: $reason"
+          )
+        case other => fail(s"a missing control must be Undetermined, got $other")
+      // A located change that lacks the control fixture — undetermined,
+      // naming the probed fixture path.
+      val bare: os.Path = openspec / "changes" / "bare-change"
+      ChangeLocationGens.writeFixtures(bare, List("specs/spec.md"))
+      DifferentialHarness.predecessorControl("bare-change", openspec) match
+        case Outcome.Undetermined(reason) =>
+          assert(
+            reason.contains("predecessor-control.json"),
+            s"the failure must name the probed fixture path: $reason"
+          )
+        case other => fail(s"a missing control must be Undetermined, got $other")
+    }
 
   // ── Requirement: Retargeted source-inspection tests assert over the ported implementation
   // spec: differential-harness-integrity — Requirement: Retargeted source-inspection acceptance tests
@@ -1086,3 +1127,104 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
           Result
             .assert(dependent.isEmpty)
             .log(s"environment-dependent tests in ${suite.last} under $declared: $dependent")
+
+  // ══ spec: archive-safe-fixtures — the bats-side literal-path check ═════
+  //
+  // The Scala side is the scalafix rules in `.scalafix-tests.conf`; bats
+  // is not scalafix-checked, so the suite files are scanned here — the
+  // same file-and-line diagnostics, enforced by this spec.
+
+  /**
+   * A `openspec/changes/` literal anchored at the repository root —
+   * `repo_root`, `$ROOT`, `${ROOT}`, `$root`, `${root}` — followed by a
+   * literal path segment. A glob segment (`*`, discovery) or a
+   * variable-named segment (`$CHANGE`, an argument to the tool under
+   * test, not a literal name) is not a violation. `archive/<x>` IS a
+   * literal change path — a hardcoded dated archive entry does not go
+   * through the resolver either.
+   *
+   * Fixture- and tmpdir-anchored spellings (`$FX/…`, `$BATS_TEST_TMPDIR/…`,
+   * `$(mktemp -d)`-derived) are the suite's own synthetic fixtures and
+   * are permitted.
+   */
+  private def repoRootAnchoredChangePath: scala.util.matching.Regex =
+    "(repo_root\\b|\\$\\{?ROOT\\b|\\$\\{?root\\b)[^\\n|;]*openspec/changes/[^\"'\\s$*{]".r
+
+  /**
+   * `file:line: text` diagnostics for every repo-root-anchored literal
+   * change path in `files`.
+   */
+  private def anchoredLiteralViolations(files: List[os.Path]): List[String] =
+    files.flatMap { (f: os.Path) =>
+      os.read(f).linesIterator.zipWithIndex.collect {
+        case (line: String, i: Int) if repoRootAnchoredChangePath.findFirstIn(line).nonEmpty =>
+          s"${f.last}:${i + 1}: $line"
+      }.toList
+    }
+
+  // ── Scenario: Happy path — resolver-based test code is clean (bats side)
+  // spec: archive-safe-fixtures — Scenario: Happy path — resolver-based test code is clean
+  test("the acceptance suite carries no repo-root-anchored literal change path"):
+    val testsDir: os.Path = repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests"
+    val suiteFiles: List[os.Path] =
+      os.list(testsDir).filter((f: os.Path) => f.ext == "bats").toList ++
+        List(testsDir / "helpers.bash")
+    assertEquals(
+      anchoredLiteralViolations(suiteFiles),
+      Nil,
+      "a literal change path anchored at the repository root breaks on archive — resolve by name"
+    )
+
+  // ── Scenario: Adversarial — a literal active-change path in test code is rejected (bats side)
+  // spec: archive-safe-fixtures — Scenario: Adversarial — a literal active-change path in test code is rejected, reporting that path
+  test("the bats-side check reports a repo-root-anchored literal with its file and line"):
+    val dir: os.Path   = os.temp.dir(prefix = "bats-literal-check")
+    val suite: os.Path = dir / "planted.bats"
+    os.write(
+      suite,
+      """#!/usr/bin/env bats
+        |setup() { ROOT="$(repo_root)"; }
+        |
+        |@test "reads the control" {
+        |  ctrl="$(repo_root)/openspec/changes/some-change/fixtures/c.json"
+        |  ls "$ROOT/openspec/changes/named-change/specs"
+        |  echo "${root}/openspec/changes/named-change"
+        |}
+        |""".stripMargin
+    )
+    val violations: List[String] = anchoredLiteralViolations(List(suite))
+    assertEquals(
+      violations.map(_.takeWhile(_ != ':')).distinct,
+      List("planted.bats"),
+      s"every finding names its file: $violations"
+    )
+    assertEquals(
+      violations.map((v: String) => v.dropWhile(_ != ':').drop(1).takeWhile(_ != ':')).sorted,
+      List("5", "6", "7"),
+      s"the planted literals on lines 5–7 are reported with their line numbers: $violations"
+    )
+    // The setup assignment itself is clean — the anchor name alone is
+    // not a violation; only an anchored `openspec/changes/<literal>` is.
+    assert(
+      violations.forall(!_.contains(":2:")),
+      s"the root assignment must not be flagged: $violations"
+    )
+
+  // ── Scenario: Edge case — a synthetic temporary path is allowed (bats side)
+  // spec: archive-safe-fixtures — Scenario: Edge case — a synthetic temporary path is allowed
+  test("the bats-side check permits fixture- and tmpdir-anchored synthetic paths"):
+    val dir: os.Path   = os.temp.dir(prefix = "bats-literal-permitted")
+    val suite: os.Path = dir / "synthetic.bats"
+    os.write(
+      suite,
+      """#!/usr/bin/env bats
+        |@test "synthetic fixture" {
+        |  mkdir -p "$FX/openspec/changes/test-change/specs"
+        |  echo "$BATS_TEST_TMPDIR/openspec/changes/x/fixtures/predecessor-control.json"
+        |  local schema_tmp; schema_tmp="$(mktemp -d)"
+        |  mkdir -p "$schema_tmp/openspec/changes/change-xyz/specs"
+        |  for d in "$root"/openspec/changes/*/; do basename "$d"; done
+        |}
+        |""".stripMargin
+    )
+    assertEquals(anchoredLiteralViolations(List(suite)), Nil)
