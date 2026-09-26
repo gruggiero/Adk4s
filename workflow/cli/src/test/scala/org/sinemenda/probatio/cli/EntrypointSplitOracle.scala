@@ -163,7 +163,9 @@ object EntrypointSplitOracle:
   def objectSpan(lines: Vector[String], name: String): Option[(Int, Int)] =
     val decls: Vector[Int] = lines.indices.filter((i: Int) => lines(i).matches(s"^object [A-Za-z0-9_]+:.*")).toVector
     def spanStart(decl: Int): Int =
-      (decl - 1 to 0 by -1).takeWhile((i: Int) => commentLine(lines(i))).lastOption.getOrElse(decl - 1) + 1
+      // The smallest index of the contiguous comment run immediately above
+      // the decl (the object's doc block); `decl` itself when there is none.
+      (decl - 1 to 0 by -1).takeWhile((i: Int) => commentLine(lines(i))).lastOption.getOrElse(decl)
     decls.find((i: Int) => lines(i).matches(s"^object $name:.*")) match
       case None => None
       case Some(decl) =>
