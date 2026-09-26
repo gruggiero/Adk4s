@@ -188,7 +188,8 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
     val r: org.sinemenda.probatio.migration.HermeticResult =
       row.artifact match
         case "archive" => HermeticEnv.capture(List("java", "-jar", archivePath) ++ row.argv, HermeticEnv.empty)
-        case _         => HermeticEnv.capture(List(artifactPath) ++ row.argv, HermeticEnv.empty)
+        case "native"  => HermeticEnv.capture(List(artifactPath) ++ row.argv, HermeticEnv.empty)
+        case other     => sys.error(s"corpus row names an unknown artifact: $other")
     (r.exitCode, r.out, r.err)
 
   // spec: entrypoint-split — Property: split-preserves-every-observable

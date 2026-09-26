@@ -1,0 +1,17 @@
+ambient-capture-wiring.bats tests=32 failures=0
+ambient-evidence-capture.bats tests=9 failures=0
+chain-state.bats tests=24 failures=6
+checkpoint-from-ledger.bats tests=19 failures=0
+correctness-invariant.bats tests=31 failures=0
+discharge-fidelity.bats tests=11 failures=0
+evidence-capture.bats tests=13 failures=0
+evidence-ledger.bats tests=23 failures=0
+fact-extraction.bats tests=10 failures=0
+gate-payload.bats tests=25 failures=0
+harness-install-verification.bats tests=12 failures=0
+hook-tiers.bats tests=28 failures=0
+human-grant-lock.bats tests=10 failures=4
+judgment-ring-integrity.bats tests=7 failures=0
+judgment-ring-provenance.bats tests=10 failures=0
+oracle-ordering-lock.bats tests=13 failures=7
+workflow-hygiene.bats tests=12 failures=0

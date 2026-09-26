@@ -155,3 +155,22 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
       ),
       s"expected a violation naming Merged.scala, GateCmd and SpecLintCmd; got: ${violations.mkString("; ")}"
     )
+
+  // The same adversarial end to end: a real file holding two entrypoint
+  // declarations must be caught by scanDir itself, not only by
+  // layoutViolations over pre-parsed declarations.
+  test("scanDir reads both entrypoint declarations out of a real crowded file"):
+    org.sinemenda.probatio.cli.LiveFactFixtures.withTempDir("entrypoint-split-crowded") { (dir: java.nio.file.Path) =>
+      java.nio.file.Files.writeString(
+        dir.resolve("Merged.scala"),
+        "package org.sinemenda.probatio.cli\n\nobject GateCmd:\n  def placeholder: Int = 1\n\nobject SpecLintCmd:\n  def placeholder: Int = 2\n"
+      )
+      val decls: List[(String, List[String])] = EntrypointSplitOracle.scanDir(dir)
+      val violations: List[String]        = EntrypointSplitOracle.layoutViolations(decls)
+      assert(
+        violations.exists((v: String) =>
+          v.contains("Merged.scala") && v.contains("GateCmd") && v.contains("SpecLintCmd")
+        ),
+        s"a real file holding two entrypoints must be reported naming both; got: ${violations.mkString("; ")}"
+      )
+    }

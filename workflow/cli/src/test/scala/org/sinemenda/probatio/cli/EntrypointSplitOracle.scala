@@ -81,14 +81,21 @@ object EntrypointSplitOracle:
     parseCorpus(Files.readAllLines(fixturesDir.resolve("corpus-before.tsv")).toArray(Array.ofDim[String](_)).toList)
 
   /**
+   * Lines of a source file preserving the carriage return: read as raw
+   * bytes and split on `\n`, so a CR stays attached to its line's end and
+   * an LF→CRLF edit inside a moved body is a divergence the comparison
+   * reports — `Files.readAllLines` would strip both terminators and hide
+   * the change.
+   */
+  def readLines(p: Path): Vector[String] =
+    new String(Files.readAllBytes(p), java.nio.charset.StandardCharsets.UTF_8).split("\n", -1).toVector
+
+  /**
    * The recorded before-split entrypoint source — the comparison baseline
    * for the moved-body check.
    */
   def loadBeforeSource: Vector[String] =
-    Files
-      .readAllLines(fixturesDir.resolve("SubcommandEntrypoints.before.scala"))
-      .toArray(Array.ofDim[String](_))
-      .toVector
+    readLines(fixturesDir.resolve("SubcommandEntrypoints.before.scala"))
 
   // ── Layout check ────────────────────────────────────────────────────────
   //
@@ -117,10 +124,7 @@ object EntrypointSplitOracle:
       else List.empty
     files.map { (p: Path) =>
       val objects: List[String] =
-        Files
-          .readAllLines(p)
-          .toArray(Array.ofDim[String](_))
-          .toList
+        readLines(p).toList
           .collect { case line if line.matches("^object [A-Za-z0-9_]+:.*") =>
             line.trim.stripPrefix("object ").takeWhile(_ != ':')
           }

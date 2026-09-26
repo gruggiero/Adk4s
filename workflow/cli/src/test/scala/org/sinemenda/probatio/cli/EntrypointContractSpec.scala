@@ -424,8 +424,7 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
     EntrypointSplitOracle.entrypointObjects.foreach { (name: String) =>
       val newFile: java.nio.file.Path = srcDir.resolve(s"$name.scala")
       val after: Vector[String] =
-        if java.nio.file.Files.isRegularFile(newFile) then
-          java.nio.file.Files.readAllLines(newFile).toArray(Array.ofDim[String](_)).toVector
+        if java.nio.file.Files.isRegularFile(newFile) then EntrypointSplitOracle.readLines(newFile)
         else Vector.empty
       val diffs: List[String] = EntrypointSplitOracle.movedBodyDiffs(before, after, name)
       assert(

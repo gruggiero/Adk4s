@@ -36,17 +36,17 @@ Every spec takes **two separate human gates** — the change's correctness risk 
 
 ## 3. entrypoint-split
 
-- [ ] Prerequisite — record the acceptance suite's per-file counts and the conformance corpus's outputs **before** the split
-- [ ] Step 1 — typed contract: the eleven entrypoint signatures, unchanged, each in its own file (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 6 scenarios + 1 property (`split-preserves-every-observable`); the layout check and the byte-for-byte move comparison; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: move each entrypoint to its own file and the shared helpers to one file; no edit inside any moved body
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean
-- [ ] Ring 2 — dependency lint clean; no decision logic moves into the adapter
-- [ ] Ring 3 — every observable identical before and after, through both artifacts, hermetically; every moved body identical
-- [ ] Ring 5 — stated skip (no logic changed). Record a per-file baseline score for the later specs
-- [ ] Ring 8 — fresh-context review comparing each moved body against its origin
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Prerequisite — record the acceptance suite's per-file counts and the conformance corpus's outputs **before** the split
+- [x] Step 1 — typed contract: the eleven entrypoint signatures, unchanged, each in its own file (compiles; **human gate**)
+- [x] Step 2 — test oracle: 6 scenarios + 1 property (`split-preserves-every-observable`); the layout check and the byte-for-byte move comparison; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: move each entrypoint to its own file and the shared helpers to one file; no edit inside any moved body
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean
+- [x] Ring 2 — dependency lint clean; no decision logic moves into the adapter
+- [x] Ring 3 — every observable identical before and after, through both artifacts, hermetically; every moved body identical
+- [x] Ring 5 — stated skip (no logic changed). Record a per-file baseline score for the later specs
+- [x] Ring 8 — fresh-context review comparing each moved body against its origin
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 4. archive-safe-fixtures
 
