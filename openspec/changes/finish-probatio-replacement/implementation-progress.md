@@ -67,7 +67,16 @@ SHA `f11a390d35415178a0a9d2f9ca24664185123a82` (recorded at Step 0)
 
 ### 3. entrypoint-split
 
-- **Status**: PENDING
+### Baseline
+SHA `556c881520f5bd5ae254c1f6e10ba67dfb331bae` (recorded at Step 0)
+
+- **Status**: IN PROGRESS — Step 1 contract compiled, awaiting human gate
+- **BASELINE SHA**: `556c881520f5bd5ae254c1f6e10ba67dfb331bae`
+
+### Step Progress
+
+- **Step 0 (prerequisite + checks)**: DONE — inventory snapshot `inventory-snapshots/entrypoint-split-before.md` (scan-concepts, same counts as spec-2 baseline: 11 opaque, 151 sealed, 521 case classes); registry-check OK (817 tokens, 5 pre-existing weak bindings); danger-scan clean; spec-lint 0 FAIL (1 WARN: W3 negative requirement, same class as the other 12 specs). **Before-split observables recorded**: `workflow/cli/src/test/fixtures/entrypoint-split/SubcommandEntrypoints.before.scala` (4,704-line byte-for-byte reference of the file being split); `corpus-before.tsv` (33 invocations — `--help`, `--nonexistent-flag-xyz`, and one missing-value/rejection form per subcommand — × native+archive, exit + base64 stdout + base64 stderr, hermetic env PATH/HOME/TMPDIR); `inventory-snapshots/entrypoint-split-bats-before.txt` (17-file acceptance suite per-file test/failure counts).
+- **Step 1 (typed contract)**: DONE pending gate — `EntrypointSplitTypeContract.scala` compiles; pins all 11 `run: Array[String] => Outcome[Int]` dispatch-surface signatures unchanged, plus the 8 cross-entrypoint `private[cli]` members pinned **on their current owners** (`SpecLintCmd.gitOut`/`findSpecs`/`repoRoot`/`userHome`, `LedgerCmd.runAppend`/`readRowsFiltered`, `ChainStateCmd.forgivePredicate`, `GraphCmd.exportObligations`). Design note for the gate: moving those members to a shared-helpers object would require call-site rewrites *inside* moved bodies — forbidden by "no line inside a moved body MAY change"; they are already package-visible, so they stay put and no shared-helpers file is needed.
 
 ---
 
