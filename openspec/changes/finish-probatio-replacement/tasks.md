@@ -50,16 +50,16 @@ Every spec takes **two separate human gates** — the change's correctness risk 
 
 ## 4. archive-safe-fixtures
 
-- [ ] Step 1 — typed contract: `ChangeLocation` (`Active`, `Archived`, `Absent(searched)`) (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 9 scenarios + 2 properties (`resolution-is-location-independent`, `absent-names-every-searched-location`) + 1 compile-negative stub; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: generalise the guard's resolver; route every fixture read through it; add the literal-path lint (Scala) and its bats-side check
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean, including the new lint with a planted literal and a permitted synthetic path
-- [ ] Ring 2 — dependency lint clean
-- [ ] Ring 3 — suites green; **`DifferentialHarnessSpec` green with the fixture in the archive**
-- [ ] Ring 5 — move test sources to main, retarget, run, move back; read the score (80%)
-- [ ] Ring 8 — fresh-context review
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Step 1 — typed contract: `ChangeLocation` (`Active`, `Archived`, `Absent(searched)`) (compiles; **human gate**)
+- [x] Step 2 — test oracle: 9 scenarios + 2 properties (`resolution-is-location-independent`, `absent-names-every-searched-location`) + 1 compile-negative stub; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: generalise the guard's resolver; route every fixture read through it; add the literal-path lint (Scala) and its bats-side check
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean, including the new lint with a planted literal and a permitted synthetic path
+- [x] Ring 2 — dependency lint clean
+- [x] Ring 3 — suites green; **`DifferentialHarnessSpec` green with the fixture in the archive**
+- [x] Ring 5 — move test sources to main, retarget, run, move back; read the score (80%)
+- [x] Ring 8 — fresh-context review
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 5. oracle-independence
 
