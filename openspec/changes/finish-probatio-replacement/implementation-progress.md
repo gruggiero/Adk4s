@@ -43,7 +43,7 @@ SHA `8a0c15f4a10046d041a09ef7fb3a839fb095ad29` (recorded at Step 0)
 ### Baseline
 SHA `f11a390d35415178a0a9d2f9ca24664185123a82` (recorded at Step 0)
 
-- **Status**: COMPLETE — implementation committed `6efcd43`; Rings 0/1/2/3/5/6/8 green; chain-state discharges all 4 of this spec's requirements — HUMAN GATE pending
+- **Status**: COMPLETE — implementation committed `6efcd43`; checkpoint `429a4c5`; Rings 0/1/2/3/5/6/8 green; chain-state discharges all 4 of this spec's requirements — HUMAN GATE approved
 - **BASELINE SHA**: `f11a390d35415178a0a9d2f9ca24664185123a82`
 | Commit | `6efcd43` |
 
