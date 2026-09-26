@@ -90,7 +90,7 @@ object RenameDeferral:
       blockedBy = Coupling(
         resolutionMechanism = "the workflow tool resolves a schema by its directory name",
         configurationPin = "openspec/config.yaml pins schema: verified-scala3",
-        recordedChangesPinning = 19
+        recordedChangesPinning = 20
       )
     )
   )

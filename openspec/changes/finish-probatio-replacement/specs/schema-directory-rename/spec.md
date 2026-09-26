@@ -228,7 +228,7 @@ or law at their centre.
 | Configuration | project config | `openspec/config.yaml:8` (`schema: verified-scala3`) | Set to `probatio` |
 | Active changes | change metadata | `openspec/changes/<active>/.openspec.yaml` | This change itself pins `verified-scala3` and resolves through the alias |
 | Archived pins | change metadata | 19 archived `.openspec.yaml` files | Not resolved by the CLI; counted by one test. Left unedited — they are history |
-| The deferral | core | `workflow/core/src/main/scala/org/sinemenda/probatio/core/RenameDeferral.scala:84–95` | `recordedChangesPinning = 19`; its entry is removed |
+| The deferral | core | `workflow/core/src/main/scala/org/sinemenda/probatio/core/RenameDeferral.scala:84–95` | `recordedChangesPinning = 20`; its entry is removed |
 | The pin-counting test | munit suite | `workflow/cli/src/test/scala/org/sinemenda/probatio/migration/MigrationProtocolSpec.scala` | The only reader of `.openspec.yaml` outside the CLI |
 | References to rewrite | tracked files | 105 outside the archive on 2026-09-25 | Including the forwarding scripts' and launcher's path assumptions, the CI workflow, the adapters, the oracle's schema-directory helper, and the banner's schema line |
 | Ordering | — | last spec of the change | It touches files every other spec edits |
