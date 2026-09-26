@@ -213,4 +213,130 @@ object SpecLintKernel:
     (result.isViolation ==> result.namedFixtures.nonEmpty)
   }
 
+  // ---------------------------------------------------------------------------
+  // sanctionVerdict — the oracle guard's three-way decision
+  // (spec: oracle-independence — Contract: sanctionVerdict)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The sanction verdict's report classification, mirrored. `mods` are
+   * the modification identities since the recorded baseline, `accepted`
+   * the modification identities the sanction record accepts, `readable`
+   * the three guard inputs (baseline record, history, sanction record)
+   * collapsed to readable/not-readable.
+   */
+  case class VerdictModel(
+    isAllSanctioned: Boolean,
+    isUnsanctioned: Boolean,
+    isUndeterminable: Boolean,
+    named: List[BigInt]
+  )
+
+  /**
+   * Every modification identity is among the accepted identities — the
+   * spec's `mods.forall(m => accepted.contains(m))`, structurally
+   * unfolded (a stdlib `forall` call leaves an unsolvable VC; see
+   * docs/ring6-stainless-verification-experience.md §4–5).
+   */
+  @pure
+  def allAccepted(mods: List[BigInt], accepted: List[BigInt]): Boolean =
+    decreases(mods.size)
+    mods match
+      case Nil()          => true
+      case Cons(m, rest)  => accepted.contains(m) && allAccepted(rest, accepted)
+
+  /**
+   * Every `res` element is a member of `mods` with no accepted sanction —
+   * the spec's `named.forall(m => mods.contains(m) && !accepted.contains(m))`,
+   * structurally unfolded for the same reason.
+   */
+  @pure
+  def allUncovered(res: List[BigInt], mods: List[BigInt], accepted: List[BigInt]): Boolean =
+    decreases(res.size)
+    res match
+      case Nil()         => true
+      case Cons(m, rest) =>
+        mods.contains(m) && !accepted.contains(m) && allUncovered(rest, mods, accepted)
+
+  /**
+   * The modification identities with no accepted sanction, in `mods`
+   * order — the shipped side's `history.filterNot(accepted)`.
+   */
+  @pure
+  def uncoveredMods(mods: List[BigInt], accepted: List[BigInt]): List[BigInt] =
+    decreases(mods.size)
+    mods match
+      case Nil() => Nil()
+      case Cons(m, rest) =>
+        if accepted.contains(m) then uncoveredMods(rest, accepted)
+        else Cons(m, uncoveredMods(rest, accepted))
+
+  /**
+   * Law (weakening): `allUncovered` against `mods` also holds against
+   * `Cons(h, mods)` — membership survives a head extension because
+   * `contains` is head-or-tail. The recursive call is the induction
+   * hypothesis.
+   */
+  @pure
+  def allUncoveredWeaken(res: List[BigInt], h: BigInt, mods: List[BigInt], accepted: List[BigInt]): Unit = {
+    require(allUncovered(res, mods, accepted))
+    decreases(res.size)
+    res match
+      case Nil()      => ()
+      case Cons(_, t) => allUncoveredWeaken(t, h, mods, accepted)
+  }.ensuring { (_: Unit) => allUncovered(res, Cons(h, mods), accepted) }
+
+  /**
+   * Law (soundness): `uncoveredMods` reports only uncovered members of
+   * `mods`. The `allUncoveredWeaken` call lifts the recursive result's
+   * predicate from `rest` to `Cons(m, rest)` — the step Z3 cannot
+   * discharge on its own.
+   */
+  @pure
+  def uncoveredSound(mods: List[BigInt], accepted: List[BigInt]): Unit = {
+    decreases(mods.size)
+    mods match
+      case Nil()         => ()
+      case Cons(m, rest) =>
+        uncoveredSound(rest, accepted)
+        allUncoveredWeaken(uncoveredMods(rest, accepted), m, rest, accepted)
+  }.ensuring { (_: Unit) => allUncovered(uncoveredMods(mods, accepted), mods, accepted) }
+
+  /**
+   * Law: when not every modification is accepted, some modification is
+   * uncovered. The recursive call is the induction hypothesis; the
+   * `!accepted.contains(m)` head case is immediate.
+   */
+  @pure
+  def uncoveredExists(mods: List[BigInt], accepted: List[BigInt]): Unit = {
+    require(!allAccepted(mods, accepted))
+    decreases(mods.size)
+    mods match
+      case Nil()         => ()
+      case Cons(m, rest) =>
+        if !accepted.contains(m) then () else uncoveredExists(rest, accepted)
+  }.ensuring { (_: Unit) => uncoveredMods(mods, accepted).nonEmpty }
+
+  /**
+   * The verdict's three-way report, mirrored. An unreadable input is
+   * `isUndeterminable`, never a pass; otherwise all-sanctioned passes
+   * and any uncovered modification is named.
+   *
+   * spec: oracle-independence — Contract: sanctionVerdict
+   */
+  @pure
+  def sanctionVerdict(mods: List[BigInt], accepted: List[BigInt], readable: Boolean): VerdictModel = {
+    if !readable then VerdictModel(false, false, true, Nil())
+    else if allAccepted(mods, accepted) then VerdictModel(true, false, false, Nil())
+    else
+      uncoveredExists(mods, accepted)
+      uncoveredSound(mods, accepted)
+      VerdictModel(false, true, false, uncoveredMods(mods, accepted))
+  }.ensuring { (result: VerdictModel) =>
+    (!readable ==> result.isUndeterminable) &&
+    (result.isAllSanctioned == (readable && allAccepted(mods, accepted))) &&
+    (result.isUnsanctioned ==> allUncovered(result.named, mods, accepted)) &&
+    (result.isUnsanctioned ==> result.named.nonEmpty)
+  }
+
 end SpecLintKernel

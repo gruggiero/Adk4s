@@ -139,19 +139,19 @@ enum SanctionVerdict:
   /** True iff every modification since the baseline is sanctioned. */
   def isAllSanctioned: Boolean = this match
     case SanctionVerdict.AllSanctioned(_) => true
-    case _                              => false
+    case _                              => false // danger-scan:allow projection — only AllSanctioned is a pass
 
   /** True iff at least one modification has no accepted sanction. */
   def isUnsanctioned: Boolean = this match
     case SanctionVerdict.Unsanctioned(_) => true
-    case _                             => false
+    case _                             => false // danger-scan:allow projection — other variants are not findings
 
   /** True iff an input could not be read — never a pass. */
   def isUndeterminable: Boolean = this match
     case SanctionVerdict.Undeterminable(_) => true
-    case _                               => false
+    case _                               => false // danger-scan:allow projection — other variants are determined
 
   /** The modifications an unsanctioned verdict names; empty otherwise. */
   def namedModifications: List[OracleModification] = this match
     case SanctionVerdict.Unsanctioned(mods) => mods
-    case _                                => List.empty[OracleModification]
+    case _                                => List.empty[OracleModification] // danger-scan:allow projection — a pass or unreadable verdict names nothing

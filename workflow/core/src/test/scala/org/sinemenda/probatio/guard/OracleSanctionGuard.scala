@@ -92,7 +92,7 @@ object OracleSanctionGuard:
           s.file == m.file && s.commit == m.commit &&
             (checkSanction(s, requirementText, testTitles) match
               case SanctionCheck.Accepted(_) => true
-              case _                         => false)
+              case _                         => false) // danger-scan:allow fail-closed — a rejected sanction never covers a modification
         }
       }
       .toSet
@@ -234,10 +234,13 @@ object OracleSanctionGuard:
         val codeRead: Boolean = token
           .findAllMatchIn(line)
           .map { (m: scala.util.matching.Regex.Match) =>
+            // `raw` strips the quoting characters — a quoted token's
+            // content. A match always sets exactly one alternative's
+            // group, so no fallback arm is needed.
             val raw: String =
-              List(m.group(1), m.group(2), m.group(3))
-                .find((g: String) => g != null)
-                .getOrElse("")
+              if m.group(1) != null then m.group(1)
+              else if m.group(2) != null then m.group(2)
+              else m.group(3)
             val resolved: String = varRef
               .findFirstMatchIn(raw)
               .map((v: scala.util.matching.Regex.Match) =>
@@ -336,7 +339,7 @@ object OracleSanctionGuard:
       text.split("\n").toList.map(_.trim).filter(_.nonEmpty)
     lines match
       case List(sha) if sha.matches("[0-9a-f]{40}") => Right(OracleBaseline(sha))
-      case _ =>
+      case _ => // danger-scan:allow fail-closed — a malformed baseline record is a Left, never a baseline
         Left(
           s"baseline record malformed: expected one 40-hex commit line, got ${lines.length} non-empty line(s)"
         )
@@ -375,7 +378,7 @@ object OracleSanctionGuard:
                 requirement = obj("requirement").str
               )
             )
-          case _ => Left(s"sanction record line ${i + 1} is not a JSON object")
+          case _ => Left(s"sanction record line ${i + 1} is not a JSON object") // danger-scan:allow fail-closed — a non-object line is a Left, never a sanction
       catch
         case e: Exception =>
           Left(s"sanction record line ${i + 1} malformed: ${e.getMessage}")

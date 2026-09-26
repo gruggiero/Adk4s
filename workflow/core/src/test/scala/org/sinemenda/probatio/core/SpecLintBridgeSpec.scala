@@ -11,6 +11,11 @@ import org.sinemenda.probatio.guard.FeatureFreezeVerdict
 import org.sinemenda.probatio.guard.FeatureFreezeViolation
 import org.sinemenda.probatio.guard.FixtureCorpus
 import org.sinemenda.probatio.guard.GuardCorpusFixtures
+import org.sinemenda.probatio.guard.OracleBaseline
+import org.sinemenda.probatio.guard.OracleModification
+import org.sinemenda.probatio.guard.OracleSanction
+import org.sinemenda.probatio.guard.OracleSanctionGuard
+import org.sinemenda.probatio.guard.SanctionVerdict
 import org.sinemenda.probatio.verified.SpecLintKernel
 
 import scala.collection.immutable.List as ScalaList
@@ -215,6 +220,144 @@ final class SpecLintBridgeSpec extends ProbatioSuite:
           Result
             .assert(!shUnd || !shUp)
             .log("could-not-determine must never be upheld")
+        )
+
+  // ---------------------------------------------------------------------------
+  // sanctionVerdict bridge (spec: oracle-independence — Contract: sanctionVerdict)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The verdict's three classes, mirrored. `named` is recovered from the
+   * shipped `Unsanctioned` payload by parsing the generated file names.
+   */
+  private def verdictClasses(
+    v: SanctionVerdict
+  ): (Boolean, Boolean, Boolean, ScalaList[BigInt]) =
+    v match
+      case SanctionVerdict.AllSanctioned(_)  => (true, false, false, ScalaList.empty)
+      case SanctionVerdict.Undeterminable(_) => (false, false, true, ScalaList.empty)
+      case SanctionVerdict.Unsanctioned(ms) =>
+        (
+          false,
+          true,
+          false,
+          ms.map((m: OracleModification) =>
+            BigInt(m.file.stripPrefix("mod-").stripSuffix(".bats"))
+          )
+        )
+
+  // spec: oracle-independence — Contract: sanctionVerdict (bridge)
+  property("bridge-sanctionVerdict — mirror equals the shipped verdict on generated inputs"):
+    val genInput
+      : Gen[(ScalaList[BigInt], ScalaList[BigInt], ScalaList[BigInt], Boolean, Int)] =
+      for
+        shape <- Gen.frequency1(
+          30 -> Gen.constant(0), // all covered
+          50 -> Gen.constant(1), // at least one uncovered
+          20 -> Gen.constant(2)  // unconstrained mix
+        )
+        n    <- Gen.int(Range.linear(if shape == 1 then 1 else 0, 6))
+        mods <- Gen
+          .int(Range.linear(0, 30))
+          .map(BigInt.apply)
+          .list(Range.constant(n, n))
+          .map((ms: ScalaList[BigInt]) => ms.distinct)
+        mask <- shape match
+          case 0 => Gen.constant(ScalaList.fill(mods.length)(true))
+          case 1 =>
+            Gen.boolean
+              .list(Range.constant(mods.length, mods.length))
+              .map((ms: ScalaList[Boolean]) =>
+                if mods.nonEmpty && ms.forall((b: Boolean) => b) then ms.updated(0, false)
+                else ms
+              )
+          case _ => Gen.boolean.list(Range.constant(mods.length, mods.length))
+        foreign  <- Gen.int(Range.linear(31, 60)).map(BigInt.apply).list(Range.linear(0, 2))
+        ghost    <- Gen.int(Range.linear(61, 90)).map(BigInt.apply).list(Range.linear(0, 2))
+        readable <- Gen.frequency1(70 -> Gen.constant(true), 30 -> Gen.constant(false))
+        failed   <- Gen.int(Range.linear(0, 2))
+        accepted: ScalaList[BigInt] =
+          mods.zip(mask).collect { case (m, true) => m } ++ foreign
+      yield (mods, accepted, ghost, readable, failed)
+    for (mods, accepted, ghost, readable, failed) <- genInput.forAll
+        .cover(60, "readable", (p: (ScalaList[BigInt], ScalaList[BigInt], ScalaList[BigInt], Boolean, Int)) => p._4)
+        .cover(25, "not-readable", (p: (ScalaList[BigInt], ScalaList[BigInt], ScalaList[BigInt], Boolean, Int)) => !p._4)
+        .cover(
+          40,
+          "has-uncovered",
+          (p: (ScalaList[BigInt], ScalaList[BigInt], ScalaList[BigInt], Boolean, Int)) =>
+            p._1.exists(m => !p._2.contains(m))
+        )
+        .cover(
+          30,
+          "all-covered",
+          (p: (ScalaList[BigInt], ScalaList[BigInt], ScalaList[BigInt], Boolean, Int)) =>
+            p._1.forall(m => p._2.contains(m))
+        )
+    yield
+      // Accepted ids get a sanction citing a requirement whose text names
+      // the file's basename; ghost ids get a sanction whose requirement
+      // resolves to nothing — rejected, so they never cover.
+      val reqText: Map[(String, String), String] =
+        accepted
+          .map(id => (s"spec-$id", s"req-$id") -> s"the requirement names mod-$id.bats")
+          .toMap
+      val requirementText: (String, String) => Option[String] =
+        (spec: String, req: String) => reqText.get((spec, req))
+      val testTitles: String => ScalaList[String] =
+        (_: String) => ScalaList.empty[String]
+      val record: ScalaList[OracleSanction] =
+        accepted.map(id =>
+          OracleSanction(s"mod-$id.bats", s"c$id", s"spec-$id", s"req-$id")
+        ) ++ ghost.map(id =>
+          OracleSanction(s"mod-$id.bats", s"c$id", "ghost-spec", "ghost-req")
+        )
+      val history: ScalaList[OracleModification] =
+        mods.map(id => OracleModification(s"mod-$id.bats", s"c$id"))
+      val base: Option[OracleBaseline]         = Option(OracleBaseline("a" * 40))
+      val hist: Option[ScalaList[OracleModification]] = Option(history)
+      val rec: Option[ScalaList[OracleSanction]]      = Option(record)
+      val shipped: SanctionVerdict =
+        if readable then
+          OracleSanctionGuard.sanctionVerdict(base, hist, rec, requirementText, testTitles)
+        else
+          failed match
+            case 0 =>
+              OracleSanctionGuard.sanctionVerdict(None, hist, rec, requirementText, testTitles)
+            case 1 =>
+              OracleSanctionGuard.sanctionVerdict(base, None, rec, requirementText, testTitles)
+            case _ =>
+              OracleSanctionGuard.sanctionVerdict(base, hist, None, requirementText, testTitles)
+
+      val kern: SpecLintKernel.VerdictModel =
+        SpecLintKernel.sanctionVerdict(
+          scalaToStainlessList(mods),
+          scalaToStainlessList(accepted),
+          readable
+        )
+      val (shAll, shUns, shUnd, shNamed): (Boolean, Boolean, Boolean, ScalaList[BigInt]) =
+        verdictClasses(shipped)
+      val kernNamed: ScalaList[BigInt] = stainlessListToScala(kern.named)
+
+      Result
+        .assert(
+          shAll == kern.isAllSanctioned && shUns == kern.isUnsanctioned &&
+            shUnd == kern.isUndeterminable
+        )
+        .log(
+          s"shipped ($shAll,$shUns,$shUnd) != kernel " +
+            s"(${kern.isAllSanctioned},${kern.isUnsanctioned},${kern.isUndeterminable}) " +
+            s"on mods=$mods accepted=$accepted readable=$readable"
+        )
+        .and(
+          Result
+            .assert(shNamed == kernNamed)
+            .log(s"shipped named $shNamed != kernel named $kernNamed")
+        )
+        .and(
+          Result
+            .assert(!shUnd || !shAll)
+            .log("could-not-determine must never be all-sanctioned")
         )
 
 end SpecLintBridgeSpec

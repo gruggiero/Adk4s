@@ -1266,6 +1266,187 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
         .assert(findings.isEmpty)
         .log(s"structural tests in the oracle: ${findings.mkString(", ")}")
 
+  // ── Surgical kills (Ring 5 survivors) ────────────────────────────────────
+  // The real-oracle corpus alone cannot distinguish these mutants — the
+  // oracle now holds zero structural tests, so a weakened detector still
+  // reports an empty finding set. Each test pins a detection path on
+  // synthetic bats text.
+
+  test("a literal (non-variable) code path is structural"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest("reads the gate source", "cat workflow/hooks/gate.sh"),
+      OracleTestKind.Structural
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("reads a quoted variable's extension", "cat \"$GATE.ts\""),
+      OracleTestKind.Structural,
+      "an unbound $VAR.ext token is still a code-source read"
+    )
+
+  test("an unquoted X=$VAR/... binding resolves the read target"):
+    val bats: String =
+      """SRC="/repo"
+        |helper=$SRC/x.scala
+        |
+        |@test "the gate has a tool_call handler" {
+        |  run grep -q 'tool_call' "$helper"
+        |  [ "$status" -eq 0 ]
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List(StructuralTest("s.bats", "the gate has a tool_call handler")),
+      "the $helper token is not itself a code path — only the X=$VAR/... binding makes it one"
+    )
+
+  test("a file-scope binding resolves inside a test; a block-local binding does not leak"):
+    val bats: String =
+      """gate_ts="/repo/hooks/adapters/pi/verified-scala3-gate.ts"
+        |
+        |@test "reads the file-scope binding" {
+        |  run grep -q 'tool_call' "$gate_ts"
+        |}
+        |
+        |@test "does not see the sibling block's binding" {
+        |  run grep -q 'x' "$block_local"
+        |}
+        |
+        |@test "the block-local binding itself" {
+        |  run bash "$GATE"
+        |  block_local="/repo/a.scala"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("reads the file-scope binding"),
+      "only file-scope bindings resolve; a binding inside one @test block must not leak into a sibling"
+    )
+
+  test("a binding after a closed test block still resolves"):
+    val bats: String =
+      """@test "first test" {
+        |  run bash "$GATE"
+        |}
+        |late_reader="/repo/hooks/gate.ts"
+        |@test "second test" {
+        |  run cat "$late_reader"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("second test"),
+      "the column-0 } must close the block — bindings after it are file-scope"
+    )
+
+  test("a recursive grep over a source tree is structural; over a fixture dir, behavioural"):
+    val bats: String =
+      """root="/repo"
+        |@test "scans the workflow tree" {
+        |  run grep -rl 'needle' "$root/workflow"
+        |  [ "$status" -eq 0 ]
+        |}
+        |@test "scans a fixture copy" {
+        |  run grep -rl 'needle' "$TEST_TMPDIR/workflow"
+        |  [ "$status" -eq 0 ]
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("scans the workflow tree"),
+      "the -r flag plus a source-tree segment flags a tree read — a fixture path never does"
+    )
+
+  test("a @test marker must start the line and carry a quoted title"):
+    assertEquals(
+      OracleSanctionGuard.batsTestBlocks("  # @test \"phantom\" {\n}\n"),
+      Nil,
+      "an indented comment mentioning @test opens no block"
+    )
+    assertEquals(
+      OracleSanctionGuard.batsTestBlocks("@test unquoted {\nrun bash x\n}\n"),
+      Nil,
+      "an unquoted title is not a bats test header"
+    )
+    assertEquals(
+      OracleSanctionGuard.batsTestBlocks("@test \"wide spacing\"  {\nrun bash x\n}\n").map(_._1),
+      List("wide spacing"),
+      "whitespace before { is any run of spaces, not exactly one"
+    )
+
+  test("an unreadable history input is could-not-determine naming the history"):
+    OracleSanctionGuard.sanctionVerdict(
+      Some(OracleBaseline("b" * 40)),
+      None,
+      Some(Nil),
+      (_: String, _: String) => None,
+      (_: String) => Nil
+    ) match
+      case SanctionVerdict.Undeterminable(reason) =>
+        assert(reason.toLowerCase.contains("history"), s"the reason must name the history: $reason")
+      case other => fail(s"expected Undeterminable, got $other")
+
+  test("an unreadable sanction record is could-not-determine naming the record"):
+    OracleSanctionGuard.sanctionVerdict(
+      Some(OracleBaseline("b" * 40)),
+      Some(Nil),
+      None,
+      (_: String, _: String) => None,
+      (_: String) => Nil
+    ) match
+      case SanctionVerdict.Undeterminable(reason) =>
+        assert(
+          reason.toLowerCase.contains("sanction record"),
+          s"the reason must name the sanction record: $reason"
+        )
+      case other => fail(s"expected Undeterminable, got $other")
+
+  test("a baseline that is the newest history entry yields zero modifications"):
+    val baseline: OracleBaseline = OracleBaseline("b" * 40)
+    val history: List[HistoryEntry] =
+      List(HistoryEntry(baseline.commit, "created change", List("openspec/schemas/verified-scala3/tests/suite.bats")))
+    assertEquals(
+      OracleSanctionGuard.modificationsSince(baseline, history, isOracleFile),
+      Some(List.empty[OracleModification]),
+      "the baseline's own commit is not a modification since it — the cut is exclusive"
+    )
+
+  test("the baseline record's persisted form is the commit on one line"):
+    val baseline: OracleBaseline = OracleBaseline("e" * 40)
+    val written: String          = OracleSanctionGuard.writeBaseline(baseline)
+    assertEquals(written, "e" * 40 + "\n")
+    assertEquals(OracleSanctionGuard.readBaseline(written), Right(baseline))
+
+  test("a malformed baseline record is a named Left, not a baseline"):
+    OracleSanctionGuard.readBaseline("not-a-commit\n") match
+      case Left(msg) => assert(msg.contains("malformed"), s"the Left names the malformation: $msg")
+      case Right(b)  => fail(s"a non-hex line must not yield a baseline, got $b")
+
+  test("the sanction record writes one JSON object per line"):
+    val first: OracleSanction  = OracleSanction("a.bats", "1" * 40, "sp", "req-one")
+    val second: OracleSanction = OracleSanction("b.bats", "2" * 40, "sp", "req-two")
+    val written: String        = OracleSanctionGuard.writeSanctions(List(first, second))
+    assertEquals(
+      written.split("\n").toList.count((l: String) => l.trim.nonEmpty),
+      2,
+      "two sanctions must occupy two lines"
+    )
+    assert(written.endsWith("\n"), "each record line is newline-terminated")
+    assertEquals(OracleSanctionGuard.readSanctions(written), Right(List(first, second)))
+
+  test("a non-object sanction record line is a named Left"):
+    OracleSanctionGuard.readSanctions("[1,2]\n") match
+      case Left(msg) =>
+        assert(
+          msg.contains("not a JSON object") && msg.contains("line 1"),
+          s"the Left names the line and the shape: $msg"
+        )
+      case Right(r) => fail(s"a JSON array must not yield a sanction, got $r")
+
+  test("a malformed sanction record line is a named Left"):
+    OracleSanctionGuard.readSanctions("{\"file\":\n") match
+      case Left(msg) => assert(msg.contains("malformed"), s"the Left names the malformation: $msg")
+      case Right(r)  => fail(s"unparseable JSON must not yield a sanction, got $r")
+
   // ══ Implementations (Step 3 — GREEN run) ═════════════════════════════════
 
   // `reviewFeatureFreeze` and `guardOutcome` live in `FeatureFreezeGuard`
