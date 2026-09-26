@@ -95,7 +95,15 @@ SHA `556c881520f5bd5ae254c1f6e10ba67dfb331bae` (recorded at Step 0)
 
 ### 4. archive-safe-fixtures
 
-- **Status**: PENDING
+### Baseline
+SHA `8ea5f6f7fc357bba0cba4e7d4969b05036ec3533` (recorded at Step 0)
+
+- **Status**: IN PROGRESS — Step 1 typed contract compiles; awaiting human gate
+- **BASELINE SHA**: `8ea5f6f7fc357bba0cba4e7d4969b05036ec3533`
+
+### Step Progress
+- [x] Step 0 — Baseline + concept check: baseline `8ea5f6f`; snapshot `inventory-snapshots/archive-safe-fixtures-before.md` (11 opaque, 151 sealed, 521 case classes, 18 service traits, 62 Smithy, 499 generators); registry-check PASS (817 tokens, 15 spec refs, 5 weak bindings non-blocking); danger-scan `8ea5f6f` clean; spec-lint 0 FAIL / 34 WARN (all W3 negative-requirement class, same as the other 12 specs); no MUST-CONFIRM; no public type widened — `ChangeLocation` is new, `CorpusResolution` keeps its shape (see Step-1 note). Impact scans (textual — Metals endpoint down): `CorpusResolution` ~42 refs / 5 files, all in test sources (guard trio + `SpecLintBridgeSpec` + the type contract); every match site is exhaustive or a `case other => fail` oracle arm — no silent catch-alls. `FixtureCorpus.resolve`: 15 call sites, all in `NonGoalsGuardSpec`/`SpecLintBridgeSpec`/the type contract. Spec-4-owned pre-existing red confirmed on the defect site: `DifferentialHarnessSpec` "the recorded predecessor control fixture is well-formed" reads `openspec/changes/repair-probatio-cutover/…`, the fixture lives under `openspec/changes/archive/2026-09-25-repair-probatio-cutover/…`; a second literal read of the same fixture found in `OracleDiffRunner.scala:130` (os.pwd-anchored).
+- [x] Step 1 — typed contract: `ChangeLocation` enum — `Active(dir)`, `Archived(dir, date: Option[String])`, `Absent(searched)` — plus `resolve`/`searchedLocations` signatures (`???` bodies) in `migration/ChangeLocation.scala`; `ChangeLocationTypeContract` pins all signatures under `-Werror`. Design decisions flagged for the gate: `date` is `Option[String]` (bare `archive/<name>` entries carry no date); `CorpusResolution`/`FixtureCorpus.resolve`/`guardOutcome` keep their shapes — the generalisation is delegation (corpus reads the resolved location's `specs/`); among multiple archive entries the LATEST resolves per spec, replacing the pre-existing oldest-first probe — **human gate: PENDING**
 
 ---
 
