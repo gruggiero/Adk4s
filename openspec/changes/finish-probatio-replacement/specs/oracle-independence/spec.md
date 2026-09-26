@@ -171,12 +171,41 @@ moves the baseline, and with it every verdict.
 
 ### Requirement: The existing modifications are resolved, not waved through
 
-Every oracle modification made since the migration began SHALL be either moved to the
+Every oracle modification made since the recorded baseline SHALL be either moved to the
 implementation-shape suite (if structural), sanctioned by a requirement that names it (if
 behavioural), or reverted — and none MAY remain unaccounted for.
 
-**Given** the oracle modifications made by the previous change — to the schema-hygiene,
-fact-extraction, schema-version and install-verification suite files
+The oracle files modified since the baseline are `ambient-capture-wiring.bats`,
+`ambient-evidence-capture.bats`, `chain-state.bats`, `correctness-invariant.bats`,
+`fact-extraction.bats`, `gate-payload.bats`, `harness-install-verification.bats`,
+`hook-tiers.bats`, `human-grant-lock.bats`, `oracle-ordering-lock.bats` and
+`workflow-hygiene.bats`. The edits to `ambient-capture-wiring.bats`,
+`ambient-evidence-capture.bats`, `gate-payload.bats`, `hook-tiers.bats`,
+`human-grant-lock.bats` and `oracle-ordering-lock.bats` were this change's own
+hermetic-test-processes and jar-launcher-dispatch work — behavioural edits that declared
+controlled variables and followed the launcher seam, sanctioned by this requirement. The
+earlier edits to `correctness-invariant.bats`, `fact-extraction.bats`,
+`harness-install-verification.bats` and `workflow-hygiene.bats` were the previous change's
+retargeting after tools became forwarding scripts; their behavioural half is sanctioned
+here, and their source-text half is moved to the shape suite.
+
+The tests that assert over a tool's source text — `D7: spec-lint.sh drift message
+references scanner/install-skills.sh, not sync-skills.sh`; `D7: every tool-name in
+scanner messages resolves to a tracked file`; `D8: the ledger tool has no mutation
+operation in the ported subcommand dispatch`; `D8: gate.sh extracts cwd from hook JSON
+using jq, not sed`; `chain-state.sh contains no independent artifact-existence check`;
+`the gate script header no longer asserts the superseded rule`; `the harness
+configuration files register the prompt-submission event`; `pi adapter has a tool_call
+handler that shells out to gate.sh` — SHALL reside in `tests/shape/`, and the commits
+removing them from `workflow-hygiene.bats`, `chain-state.bats`,
+`correctness-invariant.bats`, `gate-payload.bats` and `harness-install-verification.bats`
+are sanctioned by this requirement.
+
+**Given** the oracle modifications made since the recorded baseline — to
+`workflow-hygiene.bats`, `fact-extraction.bats`, `correctness-invariant.bats`,
+`harness-install-verification.bats`, `chain-state.bats`, `gate-payload.bats`,
+`ambient-capture-wiring.bats`, `ambient-evidence-capture.bats`, `hook-tiers.bats`,
+`human-grant-lock.bats` and `oracle-ordering-lock.bats`
 **When** this spec is complete
 **Then** each is in the shape suite, sanctioned, or reverted, and the guard passes
 

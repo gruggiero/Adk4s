@@ -70,27 +70,9 @@ README_MD="$SCHEMA_DIR/hooks/README.md"
 }
 
 # spec: harness-install-verification — Scenario: pi tool_call handler wired
-@test "pi adapter has a tool_call handler that shells out to gate.sh" {
-  local pi_adapter="$ADAPTERS/pi/verified-scala3-gate.ts"
-  [ -f "$pi_adapter" ] || {
-    printf 'pi adapter not found: %s\n' "$pi_adapter" >&2
-    return 1
-  }
-  # The adapter must register a tool_call handler
-  grep -q 'tool_call' "$pi_adapter" || {
-    printf 'pi adapter missing tool_call handler\n' >&2
-    return 1
-  }
-  # The handler must shell out to gate.sh with --event tool-call
-  grep -q 'tool-call' "$pi_adapter" || {
-    printf 'pi adapter tool_call handler missing --event tool-call\n' >&2
-    return 1; }
-  # The handler must map a block decision to {block:true,reason}
-  grep -q 'block.*true\|block:.*true' "$pi_adapter" || {
-    printf 'pi adapter missing block:true mapping\n' >&2
-    return 1
-  }
-}
+# MOVED to shape/harness-install-verification-shape.bats by
+# spec:oracle-independence: the test asserts over the .ts adapter SOURCE,
+# which is implementation shape, not behaviour.
 
 # ═════════════════════════════════════════════════════════════════════════
 # Requirement: Apply Step 0 verifies the gate is installed and firing

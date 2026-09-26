@@ -10,6 +10,8 @@ import org.sinemenda.probatio.migration.ChangeLocationGens
 import org.sinemenda.probatio.migration.ChangeLocationGens.AbsentFixture
 import org.sinemenda.probatio.migration.ChangeLocationGens.ChangePlacement
 import org.sinemenda.probatio.migration.ChangeLocationGens.Placement
+import org.sinemenda.probatio.migration.HermeticEnv
+import org.sinemenda.probatio.migration.HermeticResult
 
 /**
  * Non-goals guard spec — feature-freeze contract, dependency boundary,
@@ -99,10 +101,6 @@ enum PayloadStabilityResult:
   case Stable
   case Unstable(field: String, before: String, after: String)
 
-enum OracleImmutabilityResult:
-  case Immutable(commit: String)
-  case Modified(commit: String, file: String)
-
 // ══ Spec ══════════════════════════════════════════════════════════════════
 
 final class NonGoalsGuardSpec extends ProbatioSuite:
@@ -140,10 +138,6 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
   private def isClean(r: DependencyBoundaryResult): Boolean = r match
     case DependencyBoundaryResult.Clean(_)        => true
     case DependencyBoundaryResult.Violation(_, _) => false
-
-  private def isImmutable(r: OracleImmutabilityResult): Boolean = r match
-    case OracleImmutabilityResult.Immutable(_)   => true
-    case OracleImmutabilityResult.Modified(_, _) => false
 
   // ══ R-X1: Feature-freeze contract scenarios ══════════════════════════════
 
@@ -648,18 +642,25 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
       val result: DependencyBoundaryResult = checkClasspath(subproject, forbidden)
       Result.assert(isClean(result))
 
-  // ── Property: oracle immutability at every migration step
-  // spec: non-goals-guard — Property: oracle immutability at every migration step
-  // The oracle check results are cached so git show is invoked once per
-  // commit, not once per Hedgehog iteration.
-  property("oracle immutability at every migration step"):
-    val commits: List[String] = migrationCommitsOnMain
-    val oracleResults: Map[String, OracleImmutabilityResult] =
-      commits.map(c => c -> checkOracleImmutability(c)).toMap
-    for commit <- Gen.element(commits(0), commits.drop(1)).forAll
-    yield
-      val result: OracleImmutabilityResult = oracleResults(commit)
-      Result.assert(isImmutable(result))
+  // ── Property: every oracle modification since the recorded baseline is sanctioned
+  // spec: oracle-independence — Requirement: The guard passes exactly when every modification is sanctioned
+  // Supersedes spec:non-goals-guard — Property: oracle immutability at every
+  // migration step: "modified" stops being a verdict on its own. The guard
+  // reads the recorded baseline, the oracle's history since it, and the
+  // sanction record — all as Options, so an unreadable input is
+  // could-not-determine, never a pass.
+  test("every oracle modification since the recorded baseline is sanctioned"):
+    val verdict: SanctionVerdict = OracleSanctionGuard.sanctionVerdict(
+      recordedBaseline,
+      oracleModifications,
+      sanctionRecord,
+      requirementTextOf,
+      oracleTestTitles
+    )
+    assert(
+      verdict.isAllSanctioned,
+      s"the oracle guard passes exactly when every modification is sanctioned; verdict: $verdict"
+    )
 
   // ══ spec: archive-safe-fixtures — the shared archive-aware resolver ════
 
@@ -901,6 +902,370 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
         case other => Result.failure.log(s"expected Absent, got $other")
     }
 
+  // ══ spec: oracle-independence — the sanction-aware oracle guard ═════════
+  //
+  // Step-2 oracle: these scenarios and properties are written from the
+  // spec's requirements, before the implementation. `OracleSanctionGuard`'s
+  // bodies are `???` at this step — every test below is RED by design until
+  // Step 3. The compile-negative obligations live in
+  // `FeatureFreezeGuardIntegrityTypeContract` and are GREEN now.
+
+  import OracleSanctionGens.UnreadableInput
+
+  // The guard's oracle-file domain: top-level `tests/*.bats` — not the
+  // shape suite, not the sanction record files beside the oracle.
+  private def isOracleFile(p: String): Boolean =
+    p.startsWith("openspec/schemas/verified-scala3/tests/") &&
+      p.endsWith(".bats") &&
+      !p.contains("/shape/")
+
+  // The confirmed structural tests named in the spec's anchors — the
+  // ledger-mutation test, the working-directory-parse test, and the
+  // drift-message test, all in `workflow-hygiene.bats`.
+  private def confirmedStructuralTitles: List[String] = List(
+    // split like DifferentialHarnessSpec.scala:613 — the moved D7 drift
+    // test greps workflow/**/*.scala for the contiguous literal and must
+    // not find its own title quoted here
+    "D7: spec-lint.sh drift message references scanner/install-skills.sh, not " + "sync-skills" + ".sh",
+    "D8: the ledger tool has no mutation operation in the ported subcommand dispatch",
+    "D8: gate.sh extracts cwd from hook JSON using jq, not sed"
+  )
+
+  // ── Scenario: Happy path — a behavioural test stays in the oracle
+  // spec: oracle-independence — Scenario: Happy path — a behavioural test stays in the oracle
+  test("a behavioural test stays in the oracle"):
+    val body: String =
+      """run bash "$GATE" --payload "$FX/payload.json"
+        |[ "$status" -eq 0 ]
+        |echo "$output" | grep -q 'allowed'
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.classifyTest("the gate rejects the malformed payload", body),
+      OracleTestKind.Behavioural
+    )
+
+  // ── Scenario: Happy path — a source-inspecting test moves to the shape suite
+  // spec: oracle-independence — Scenario: Happy path — a source-inspecting test moves to the shape suite
+  test("a source-inspecting test is classified structural"):
+    val body: String =
+      """local root reader
+        |root="$(repo_root)"
+        |reader="$root/workflow/cli/src/main/scala/org/sinemenda/probatio/cli/HarnessPayloadReader.scala"
+        |[ -f "$reader" ]
+        |run grep -c 'ujson' "$reader"
+        |[ "$status" -eq 0 ]
+        |run grep -cE 'findFirstMatchIn|util\.matching\.Regex|sed -[ne]' "$reader"
+        |[ "$output" -eq 0 ]
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.classifyTest("the gate reads cwd with the structured parser", body),
+      OracleTestKind.Structural
+    )
+
+  // ── Scenario: Adversarial — a structural test left in the oracle is reported
+  // spec: oracle-independence — Scenario: Adversarial — a structural test left in the oracle is reported
+  test("a structural test left in the oracle is reported, naming its file"):
+    val bats: String =
+      """@test "the gate rejects the malformed payload" {
+        |  run bash "$GATE" --payload "$FX/payload.json"
+        |  [ "$status" -eq 1 ]
+        |}
+        |
+        |@test "the ledger source has no mutation case" {
+        |  local root subcommand
+        |  root="$(repo_root)"
+        |  subcommand="$root/workflow/cli/src/main/scala/org/sinemenda/probatio/cli/Subcommand.scala"
+        |  [ -f "$subcommand" ]
+        |  run grep -cE '\bUpdate\b|\bDelete\b' "$subcommand"
+        |  [ "$output" -eq 0 ]
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("suite.bats", bats),
+      List(StructuralTest("suite.bats", "the ledger source has no mutation case"))
+    )
+
+  // ── Scenario: Happy path — a requirement that names the test sanctions its edit
+  // spec: oracle-independence — Scenario: Happy path — a requirement that names the test sanctions its edit
+  test("a sanction whose cited requirement names the test is accepted"):
+    val sanction: OracleSanction = OracleSanction(
+      "suite.bats",
+      "a" * 40,
+      "this-spec",
+      "The acceptance suite asserts the schema's actual version"
+    )
+    val requirementTexts: Map[(String, String), String] = Map(
+      (sanction.spec, sanction.requirement) ->
+        "The acceptance suite asserts the schema's actual version — it names the test the gate rejects the malformed payload."
+    )
+    val testTitles: String => List[String] =
+      (f: String) => Map("suite.bats" -> List("the gate rejects the malformed payload")).getOrElse(f, Nil)
+    assertEquals(
+      OracleSanctionGuard.checkSanction(sanction, (s: String, r: String) => requirementTexts.get((s, r)), testTitles),
+      SanctionCheck.Accepted(sanction)
+    )
+    val accepted: Set[OracleModification] = OracleSanctionGuard.acceptedModifications(
+      List(OracleModification(sanction.file, sanction.commit)),
+      List(sanction),
+      (s: String, r: String) => requirementTexts.get((s, r)),
+      testTitles
+    )
+    assertEquals(accepted, Set(OracleModification(sanction.file, sanction.commit)))
+
+  // ── Scenario: Adversarial — a sanction citing an unrelated requirement is rejected
+  // spec: oracle-independence — Scenario: Adversarial — a sanction citing an unrelated requirement is rejected
+  test("a sanction citing an unrelated requirement is rejected, naming both"):
+    val sanction: OracleSanction = OracleSanction(
+      "suite.bats",
+      "b" * 40,
+      "this-spec",
+      "The system SHALL emit diagnostics in order"
+    )
+    val requirementTexts: Map[(String, String), String] = Map(
+      (sanction.spec, sanction.requirement) ->
+        "The system SHALL emit diagnostics in order."
+    )
+    val testTitles: String => List[String] =
+      (f: String) => Map("suite.bats" -> List("the gate rejects the malformed payload")).getOrElse(f, Nil)
+    val check: SanctionCheck =
+      OracleSanctionGuard.checkSanction(sanction, (s: String, r: String) => requirementTexts.get((s, r)), testTitles)
+    check match
+      case SanctionCheck.RejectedUnrelated(s) =>
+        assertEquals(s, sanction, "the rejection names the modification and the cited requirement")
+      case other => fail(s"expected RejectedUnrelated, got $other")
+
+  // ── Scenario: Adversarial — a sanction citing a requirement that does not exist is rejected
+  // spec: oracle-independence — Scenario: Adversarial — a sanction citing a requirement that does not exist is rejected
+  test("a sanction citing a nonexistent requirement is rejected as unresolvable"):
+    val sanction: OracleSanction = OracleSanction(
+      "suite.bats",
+      "c" * 40,
+      "this-spec",
+      "A requirement title absent from the spec"
+    )
+    val check: SanctionCheck = OracleSanctionGuard.checkSanction(
+      sanction,
+      (_: String, _: String) => None,
+      (_: String) => Nil
+    )
+    check match
+      case SanctionCheck.RejectedUnresolvable(s) => assertEquals(s, sanction)
+      case other                                 => fail(s"expected RejectedUnresolvable, got $other")
+
+  // ── Scenario: Happy path — all modifications sanctioned passes
+  // spec: oracle-independence — Scenario: Happy path — all modifications sanctioned passes
+  test("the guard passes when every modification is sanctioned, carrying the baseline"):
+    val baseline: OracleBaseline = OracleBaseline("d" * 40)
+    val mods: List[OracleModification] = List(
+      OracleModification("suite-a.bats", "1" * 40),
+      OracleModification("suite-b.bats", "2" * 40)
+    )
+    val record: List[OracleSanction] = mods.zipWithIndex.map { case (m, i) =>
+      OracleSanction(m.file, m.commit, "this-spec", s"naming requirement $i")
+    }
+    val requirementTexts: Map[(String, String), String] =
+      record.map(s => (s.spec, s.requirement) -> s"This requirement names ${s.file} verbatim.").toMap
+    val verdict: SanctionVerdict = OracleSanctionGuard.sanctionVerdict(
+      Some(baseline),
+      Some(mods),
+      Some(record),
+      (s: String, r: String) => requirementTexts.get((s, r)),
+      (_: String) => Nil
+    )
+    assertEquals(verdict, SanctionVerdict.AllSanctioned(baseline))
+    assert(verdict.isAllSanctioned)
+
+  // ── Scenario: Adversarial — one unsanctioned modification fails the guard
+  // spec: oracle-independence — Scenario: Adversarial — one unsanctioned modification fails the guard
+  test("one unsanctioned modification fails the guard, naming file and commit"):
+    val sanctioned: OracleModification   = OracleModification("suite-a.bats", "1" * 40)
+    val unsanctioned: OracleModification = OracleModification("suite-b.bats", "2" * 40)
+    val sanction: OracleSanction =
+      OracleSanction(sanctioned.file, sanctioned.commit, "this-spec", "naming requirement")
+    val requirementTexts: Map[(String, String), String] = Map(
+      (sanction.spec, sanction.requirement) -> s"This names ${sanction.file} verbatim."
+    )
+    val verdict: SanctionVerdict = OracleSanctionGuard.sanctionVerdict(
+      Some(OracleBaseline("d" * 40)),
+      Some(List(sanctioned, unsanctioned)),
+      Some(List(sanction)),
+      (s: String, r: String) => requirementTexts.get((s, r)),
+      (_: String) => Nil
+    )
+    verdict match
+      case SanctionVerdict.Unsanctioned(mods) =>
+        assertEquals(mods, List(unsanctioned), "the verdict names the uncovered (file, commit)")
+      case other => fail(s"expected Unsanctioned naming $unsanctioned, got $other")
+
+  // ── Scenario: Error path — an unreadable baseline is could-not-determine, not a pass
+  // spec: oracle-independence — Scenario: Error path — an unreadable baseline is could-not-determine, not a pass
+  test("an unreadable baseline is could-not-determine naming the baseline, never a pass"):
+    val verdict: SanctionVerdict = OracleSanctionGuard.sanctionVerdict(
+      None,
+      Some(Nil),
+      Some(Nil),
+      (_: String, _: String) => None,
+      (_: String) => Nil
+    )
+    verdict match
+      case SanctionVerdict.Undeterminable(reason) =>
+        assert(
+          reason.toLowerCase.contains("baseline"),
+          s"the undetermined reason must name the baseline: $reason"
+        )
+      case other => fail(s"expected Undeterminable, got $other")
+    assert(!verdict.isAllSanctioned, "an unreadable baseline is never a pass")
+    // A recorded baseline that does not resolve to a commit is the same
+    // outcome one level down: the history cannot be cut at it.
+    val history: List[HistoryEntry] =
+      List(HistoryEntry("e" * 40, "a commit", List("openspec/schemas/verified-scala3/tests/suite.bats")))
+    assertEquals(
+      OracleSanctionGuard.modificationsSince(OracleBaseline("f" * 40), history, isOracleFile),
+      None
+    )
+
+  // ── Scenario: Happy path — the recorded baseline is used
+  // spec: oracle-independence — Scenario: Happy path — the recorded baseline is used
+  test("the recorded baseline is read from the record and counts modifications from it"):
+    val baseline: OracleBaseline = OracleBaseline("6b837661db9061a66c91d6f539b0a4b0ec773973")
+    assertEquals(
+      OracleSanctionGuard.readBaseline(s"${baseline.commit}\n"),
+      Right(baseline),
+      "the persisted record yields the recorded commit verbatim"
+    )
+    // History is newest-first: c9 and c7 post-date the baseline; c5 pre-dates it.
+    val history: List[HistoryEntry] = List(
+      HistoryEntry("9" * 40, "a later commit", List("openspec/schemas/verified-scala3/tests/suite-a.bats")),
+      HistoryEntry("7" * 40, "another later commit", List("docs/readme.md")),
+      HistoryEntry(baseline.commit, "created change", List("openspec/schemas/verified-scala3/tests/suite-b.bats")),
+      HistoryEntry("5" * 40, "a pre-baseline commit", List("openspec/schemas/verified-scala3/tests/suite-c.bats"))
+    )
+    assertEquals(
+      OracleSanctionGuard.modificationsSince(baseline, history, isOracleFile),
+      Some(List(OracleModification("openspec/schemas/verified-scala3/tests/suite-a.bats", "9" * 40))),
+      "only post-baseline oracle-file modifications are counted — the docs file and the pre-baseline entry are not"
+    )
+
+  // ── Scenario: Adversarial — a commit message containing the old search phrase does not move the baseline
+  // spec: oracle-independence — Scenario: Adversarial — a commit message containing the old search phrase does not move the baseline
+  test("a commit message containing the old search phrase does not move the baseline"):
+    val baseline: OracleBaseline = OracleBaseline("8" * 40)
+    // A commit AFTER the recorded baseline carries the message the old
+    // guard searched for. The recorded baseline still wins: the planted
+    // commit's own oracle edit counts, and nothing earlier is reached.
+    val history: List[HistoryEntry] = List(
+      HistoryEntry("a" * 40, "created change", List("openspec/schemas/verified-scala3/tests/suite-a.bats")),
+      HistoryEntry(baseline.commit, "the recorded baseline", List("openspec/schemas/verified-scala3/tests/suite-b.bats")),
+      HistoryEntry("6" * 40, "created change", List("openspec/schemas/verified-scala3/tests/suite-c.bats"))
+    )
+    assertEquals(
+      OracleSanctionGuard.modificationsSince(baseline, history, isOracleFile),
+      Some(List(OracleModification("openspec/schemas/verified-scala3/tests/suite-a.bats", "a" * 40))),
+      "messages are never searched — the pre-baseline 'created change' commit is not a baseline"
+    )
+
+  // ── Scenario: Happy path — the retargeted source tests land in the shape suite
+  // spec: oracle-independence — Scenario: Happy path — the retargeted source tests land in the shape suite
+  test("the retargeted source tests reside in the shape suite, not the oracle"):
+    val testsDir: os.Path = repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests"
+    val shapeDir: os.Path = testsDir / "shape"
+    assert(os.exists(shapeDir), s"the implementation-shape suite must exist at $shapeDir")
+    val shapeTitles: Set[String] =
+      os.list(shapeDir)
+        .filter((p: os.Path) => os.isFile(p) && p.last.endsWith(".bats"))
+        .flatMap((p: os.Path) =>
+          OracleSanctionGuard.batsTestBlocks(os.read(p)).map((title, _) => title)
+        )
+        .toSet
+    confirmedStructuralTitles.foreach { (title: String) =>
+      assert(
+        shapeTitles.contains(title),
+        s"the structural test '$title' must reside in the shape suite"
+      )
+    }
+    val oracleTitles: Set[String] =
+      os.list(testsDir)
+        .filter((p: os.Path) => os.isFile(p) && p.last.endsWith(".bats"))
+        .flatMap((p: os.Path) =>
+          OracleSanctionGuard.batsTestBlocks(os.read(p)).map((title, _) => title)
+        )
+        .toSet
+    confirmedStructuralTitles.foreach { (title: String) =>
+      assert(!oracleTitles.contains(title), s"'$title' must not remain in the oracle")
+    }
+
+  // ── Property: guard-passes-iff-all-sanctioned
+  // spec: oracle-independence — Property: guard-passes-iff-all-sanctioned
+  // Constructive: each modification's sanction disposition is DRAWN from
+  // {absent, names file, names test, unrelated, nonexistent} so the
+  // expected accepted set is known without rerunning the decision.
+  property("guard passes iff every modification is sanctioned"):
+    for
+      history    <- OracleSanctionGens.genModificationHistory.forAll
+      fixture    <- OracleSanctionGens.genSanctionFixture(history).forAll
+      unreadable <- OracleSanctionGens.genUnreadable.forAll
+    yield
+      val baseline: OracleBaseline = OracleBaseline("f" * 40)
+      val requirementText: (String, String) => Option[String] =
+        (s: String, r: String) => fixture.requirementTexts.get((s, r))
+      val verdict: SanctionVerdict = OracleSanctionGuard.sanctionVerdict(
+        if unreadable.contains(UnreadableInput.Baseline) then None else Some(baseline),
+        if unreadable.contains(UnreadableInput.History) then None else Some(fixture.history),
+        if unreadable.contains(UnreadableInput.Record) then None else Some(fixture.record),
+        requirementText,
+        fixture.testTitles
+      )
+      val readable: Boolean     = unreadable.isEmpty
+      val allSanctioned: Boolean =
+        fixture.history.forall((m: OracleModification) => fixture.accepted.contains(m))
+      Result
+        .assert(verdict.isAllSanctioned == (readable && allSanctioned))
+        .log(s"verdict=$verdict readable=$readable accepted=${fixture.accepted} history=${fixture.history}")
+        .and(
+          Result
+            .assert(verdict.isUndeterminable == unreadable.isDefined)
+            .log(s"an unreadable input must be could-not-determine: $verdict")
+        )
+        .and(Result.diff(verdict, ()) { (v, _) =>
+          v match
+            case SanctionVerdict.AllSanctioned(b)   => b == baseline
+            case SanctionVerdict.Unsanctioned(mods) =>
+              mods.nonEmpty &&
+                mods.forall((m: OracleModification) =>
+                  fixture.history.contains(m) && !fixture.accepted.contains(m)
+                )
+            case SanctionVerdict.Undeterminable(_) => true
+        })
+
+  // ── Property: sanction-record-round-trips
+  // spec: oracle-independence — Property: sanction-record-round-trips
+  // Requirement titles carry quotes, em-dashes, JSON metacharacters and
+  // non-ASCII characters — the characters real requirement titles use.
+  property("the sanction record round-trips"):
+    for record <- OracleSanctionGens.genSanctionList.forAll
+    yield
+      Result.diff(
+        OracleSanctionGuard.readSanctions(OracleSanctionGuard.writeSanctions(record)),
+        record
+      )((readback, expected) => readback == Right(expected))
+
+  // ── Property: oracle-contains-no-structural-test
+  // spec: oracle-independence — Property: oracle-contains-no-structural-test
+  // Enumerated, not sampled: the domain is the oracle's test list,
+  // discovered at test time so a new test is covered automatically.
+  property("the oracle contains no structural test"):
+    for _ <- Gen.constant(()).forAll
+    yield
+      val testsDir: os.Path = repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests"
+      val findings: List[StructuralTest] =
+        os.list(testsDir)
+          .filter((p: os.Path) => os.isFile(p) && p.last.endsWith(".bats"))
+          .toList
+          .flatMap((p: os.Path) => OracleSanctionGuard.structuralIn(p.last, os.read(p)))
+      Result
+        .assert(findings.isEmpty)
+        .log(s"structural tests in the oracle: ${findings.mkString(", ")}")
+
   // ══ Implementations (Step 3 — GREEN run) ═════════════════════════════════
 
   // `reviewFeatureFreeze` and `guardOutcome` live in `FeatureFreezeGuard`
@@ -1049,96 +1414,121 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
         // This is a real violation of the dependency boundary.
         DependencyBoundaryResult.Violation(subproject, module)
 
-  /**
-   * The migration commits on main (for the oracle-immutability property).
-   *
-   * Enumerates the commits on the current branch that are part of the
-   * port-scanner-to-probatio migration, starting from the "created change"
-   * commit. Each commit is a known checkpoint where the oracle must be
-   * unmodified. Pre-migration commits (before the change was created) are
-   * excluded — the oracle immutability invariant applies only during the
-   * migration, not to the entire branch history.
-   */
-  def migrationCommitsOnMain: List[String] =
-    // Find the "created change" commit — the first commit of the migration
-    val createdResult: os.CommandResult = os
-      .proc(
-        "git",
-        "rev-list",
-        "--reverse",
-        "--grep=created change",
-        "--format=%H",
-        "probatio/porting"
-      )
-      .call(check = false, stdout = os.Pipe)
-    val createdCommit: Option[String] = createdResult.out
-      .text()
-      .linesIterator
-      .filter(_.matches("[0-9a-f]{40}"))
-      .toList
-      .headOption
-    createdCommit match
-      case Some(base) =>
-        // Get all commits from the created-change commit to HEAD
-        val result: os.CommandResult = os
-          .proc(
-            "git",
-            "rev-list",
-            s"$base^..HEAD"
-          )
-          .call(check = false, stdout = os.Pipe)
-        result.out.text().linesIterator.filter(_.nonEmpty).toList
-      case None =>
-        // Fallback: if "created change" commit not found, use the last 5 commits
-        val result: os.CommandResult = os
-          .proc(
-            "git",
-            "rev-list",
-            "-5",
-            "HEAD"
-          )
-          .call(check = false, stdout = os.Pipe)
-        result.out.text().linesIterator.filter(_.nonEmpty).toList
+  // ── spec: oracle-independence — the sanction guard's adapters ═══════════
+  //
+  // The pure decision lives in `OracleSanctionGuard`; these adapters produce
+  // its inputs — `None` where the input cannot be read, so the verdict is
+  // could-not-determine rather than a silent pass.
+
+  private def oracleTestsDir: os.SubPath =
+    os.sub / "openspec" / "schemas" / "verified-scala3" / "tests"
 
   /**
-   * Checks that the bats oracle is unmodified at a given commit (R-X1).
+   * The recorded baseline beside the oracle — the commit from which
+   * modifications are counted, persisted in `tests/oracle-baseline` and
+   * never searched for by commit message. `None` when the record is
+   * absent or malformed.
    *
-   * Compares the oracle files at the given commit against the oracle files
-   * at the migration start commit. Returns `Immutable` if they match,
-   * `Modified` naming the first divergent file.
+   * spec: oracle-independence — Requirement: The baseline is recorded, not discovered
    */
-  def checkOracleImmutability(commit: String): OracleImmutabilityResult =
-    val oracleDir: os.SubPath = os.sub / "openspec" / "schemas" / "verified-scala3" / "tests"
-    val oracleDirStr: String  = oracleDir.toString
-    // Get the list of bats files at this commit
-    val lsResult: os.CommandResult = os
-      .proc(
-        "git",
-        "show",
-        s"$commit:$oracleDirStr"
-      )
-      .call(check = false, stdout = os.Pipe, stderr = os.Pipe)
-    if lsResult.exitCode != 0 then OracleImmutabilityResult.Immutable(commit)
+  private def recordedBaseline: Option[OracleBaseline] =
+    val path: os.Path = repoRoot / oracleTestsDir / "oracle-baseline"
+    if !os.exists(path) then None
     else
-      // Compare each bats file at this commit against the working tree
-      val files: List[String] = lsResult.out
-        .text()
-        .linesIterator
-        .filter(_.endsWith(".bats"))
+      OracleSanctionGuard.readBaseline(os.read(path)) match
+        case Right(b) => Some(b)
+        case Left(_)  => None
+
+  /**
+   * The persisted sanction record beside the oracle. `None` when the
+   * record is absent or malformed.
+   */
+  private def sanctionRecord: Option[List[OracleSanction]] =
+    val path: os.Path = repoRoot / oracleTestsDir / "oracle-sanctions.jsonl"
+    if !os.exists(path) then None
+    else
+      OracleSanctionGuard.readSanctions(os.read(path)) match
+        case Right(record) => Some(record)
+        case Left(_)       => None
+
+  /**
+   * The repository's history newest-first as `HistoryEntry`s — the raw
+   * material `modificationsSince` cuts at the recorded baseline. `None`
+   * when git cannot produce the log.
+   */
+  private def gitHistory: Option[List[HistoryEntry]] =
+    val result: HermeticResult = HermeticEnv.capture(
+      List("git", "log", "--format=%x1e%H%x1f%s", "--name-only", "HEAD"),
+      HermeticEnv.empty,
+      cwd = Some(repoRoot.toIO)
+    )
+    if result.exitCode != 0 then None
+    else Some(parseGitHistory(result.out))
+
+  /** Parse `git log --format=%x1e%H%x1f%s --name-only` output. */
+  private def parseGitHistory(text: String): List[HistoryEntry] =
+    text.split('\u001e').toList.flatMap { (chunk: String) =>
+      chunk.split("\n").toList match
+        case head :: rest =>
+          head.trim.split("\u001f", 2).toList match
+            case commit :: message :: Nil if commit.matches("[0-9a-f]{40}") =>
+              List(HistoryEntry(commit, message, rest.filter(_.nonEmpty)))
+            case _ => List.empty[HistoryEntry]
+        case Nil => List.empty[HistoryEntry]
+    }
+
+  /**
+   * The oracle modifications since the recorded baseline: `None` when
+   * either input is unreadable or the recorded baseline is absent from
+   * history — could-not-determine upstream.
+   */
+  private def oracleModifications: Option[List[OracleModification]] =
+    for
+      baseline <- recordedBaseline
+      history  <- gitHistory
+      mods     <- OracleSanctionGuard.modificationsSince(baseline, history, isOracleFile)
+    yield mods
+
+  /**
+   * The text of the requirement `requirement` in the spec named `spec` —
+   * the block from its `### Requirement:` heading to the next level-3 or
+   * higher heading, including its `#### Scenario` subsections. The spec
+   * document is located by name under `openspec/changes` (active area or
+   * archive): `.../specs/<spec>/spec.md`. `None` when no spec document by
+   * that name carries a requirement by that title.
+   */
+  private def requirementTextOf(spec: String, requirement: String): Option[String] =
+    val changesDir: os.Path = repoRoot / "openspec" / "changes"
+    if !os.exists(changesDir) then None
+    else
+      val documents: List[os.Path] = os
+        .walk(changesDir)
+        .filter { (p: os.Path) =>
+          os.isFile(p) && p.last == "spec.md" &&
+            (p / os.up).last == spec && (p / os.up / os.up).last == "specs"
+        }
         .toList
-      val modified: Option[String] = files.find { file =>
-        val showResult: os.CommandResult = os
-          .proc(
-            "git",
-            "show",
-            s"$commit:$oracleDirStr/$file"
-          )
-          .call(check = false, stdout = os.Pipe, stderr = os.Pipe)
-        val atCommit: String     = showResult.out.text()
-        val workingTree: os.Path = repoRoot / oracleDir / file
-        if !os.exists(workingTree) then true // file was deleted — that's a modification
-        else atCommit != os.read(workingTree)
-      }
-      modified match
-        case Some(file) => OracleImmutabilityResult.Modified(commit, file)
-        case None       => OracleImmutabilityResult.Immutable(commit)
+        .sorted
+      documents.headOption.flatMap((doc: os.Path) => requirementBlock(os.read(doc), requirement))
+
+  /** The `### Requirement: <title>` block text, scenarios included. */
+  private def requirementBlock(specText: String, title: String): Option[String] =
+    val lines: List[String] = specText.linesIterator.toList
+    val start: Int          = lines.indexWhere((l: String) => l.trim == s"### Requirement: $title")
+    if start < 0 then None
+    else
+      val end: Int = lines.indexWhere(
+        (l: String) => l.startsWith("### ") || l.startsWith("## ") || l.startsWith("# "),
+        start + 1
+      )
+      Some(lines.slice(start, if end < 0 then lines.length else end).mkString("\n"))
+
+  /**
+   * The `@test` titles of an oracle file, read from the worktree — the
+   * "names the test" half of the sanction check. Empty when the file is
+   * gone (a sanction for a removed file is covered by its basename).
+   */
+  private def oracleTestTitles(file: String): List[String] =
+    val path: os.Path = repoRoot / os.SubPath(file)
+    if !os.exists(path) then List.empty[String]
+    else OracleSanctionGuard.batsTestBlocks(os.read(path)).map((title, _) => title)

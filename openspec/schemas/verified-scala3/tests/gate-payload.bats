@@ -126,16 +126,8 @@ run_gate() { # extra args after --repo $FX are passed through
 }
 
 # spec: gate-payload — Requirement: the gate is invoked on prompt submission as well as session start
-@test "the harness configuration files register the prompt-submission event" {
-  # Testable half of a manual obligation: the CONFIGURATION names the event.
-  # Whether the harness actually FIRES it is Ring 8 / the README procedure.
-  run cat "$SCHEMA/hooks/adapters/claude.settings.json"
-  assert_contains "$output" "UserPromptSubmit" "Claude Code config names the event"
-  run cat "$SCHEMA/hooks/adapters/devin.hooks.v1.json"
-  assert_contains "$output" "UserPromptSubmit" "Devin config names the event"
-  run cat "$SCHEMA/hooks/adapters/pi/verified-scala3-gate.ts"
-  assert_contains "$output" "before_agent_start" "pi's per-prompt equivalent event"
-}
+# MOVED to shape/gate-payload-shape.bats by spec:oracle-independence: the
+# test asserts over the .ts adapter SOURCE, which is implementation shape.
 
 # ═════════════════════════════════════════════════════════════════════════
 # Requirement: An unchanged payload is not re-injected

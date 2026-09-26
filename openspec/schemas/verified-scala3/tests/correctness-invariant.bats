@@ -256,11 +256,9 @@ EOF
   done
 }
 
-@test "the gate script header no longer asserts the superseded rule" {
-  run cat "$GATE_SH"
-  assert_status 0 "$status" "reading hooks/gate.sh"
-  assert_not_contains "$output" "no jq" "hooks/gate.sh header"
-}
+# spec:oracle-independence — "the gate script header no longer asserts the
+# superseded rule" MOVED to shape/correctness-invariant-shape.bats: it
+# asserts over gate.sh source text, which is implementation shape.
 
 @test "the retained reasoning survives the rule change" {
   # The spec replaces the MECHANISM, not the reasoning. Losing the rationale

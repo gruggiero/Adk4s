@@ -667,20 +667,6 @@ conforms() { printf '%s' "$1" | jq -e -f "$CONTRACT" >/dev/null 2>&1; }
 # ═════════════════════════════════════════════════════════════════════════
 # Manual obligation: no second implementation of reachability/resolution
 # ═════════════════════════════════════════════════════════════════════════
-# Verified structurally: chain-state.sh must never call `git ls-files` or
-# otherwise independently decide artifact existence — that judgment must come
-# only from spec-lint's F9 output.
-
-@test "chain-state.sh contains no independent artifact-existence check" {
-  [ -f "$CS" ] || skip "chain-state.sh not yet implemented"
-  # `git ls-files` deciding what resolves is spec-lint's job alone. Spec-file
-  # DISCOVERY (`find ... -name spec.md`) is legitimate structural bookkeeping
-  # (enumerating requirement TITLES, not deciding artifact existence) and is
-  # explicitly excluded — flagging it would make this guard fail on the
-  # tool's own approved design.
-  run grep -nE 'git .*ls-files' "$CS"
-  [ "$status" -ne 0 ] || {
-    printf 'chain-state.sh appears to check artifact existence independently:\n%s\n' "$output" >&2
-    return 1
-  }
-}
+# MOVED to shape/chain-state-shape.bats by spec:oracle-independence — it
+# asserts over chain-state.sh source text, which is implementation shape,
+# not behaviour.

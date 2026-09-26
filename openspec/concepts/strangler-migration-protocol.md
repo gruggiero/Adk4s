@@ -23,6 +23,19 @@ seam. The gate is always swapped last because it is the only blocking hook.
 - `ArmDivergence` — the pre-suite verdict over two arms' resolutions:
   `Identical` (a refusal — never a passing verdict) or `Diverged` (the
   seams whose resolved contents differ)
+- `OracleTestKind` — whether a test observes a tool's behaviour or asserts
+  over its source text; only behavioural tests belong to the acceptance
+  oracle
+- `OracleBaseline` — the commit from which oracle modifications are
+  counted, recorded explicitly beside the oracle rather than discovered
+  by searching commit messages
+- `OracleSanction` — a persisted record that one oracle modification was
+  required by a named requirement of a named spec, where the cited
+  requirement's text names the modified file or one of its tests
+- `SanctionVerdict` — the guard's decision over the sanction record:
+  `AllSanctioned(baseline)`, `Unsanctioned` (naming each uncovered
+  modification by file and commit), or `Undeterminable` (an unreadable
+  input — never a pass)
 
 ## Actions
 
@@ -77,6 +90,10 @@ binary but its subcommands are not yet verified.
   gate decides on
 - The `OracleGreenGate.apply(tool, seamConfig)` function gates each swap
   on the cutover gate's decision
+- The `OracleSanctionGuard.sanctionVerdict` decision checks the oracle's
+  modifications since the recorded baseline against the sanction record:
+  the gate is green exactly when every modification is sanctioned, and an
+  unreadable baseline, history or record is could-not-determine
 - The `SwapOrder` enum encodes the binding dependency order
 - The `ShimSwap` case class records each swap event as an immutable audit
   trail entry

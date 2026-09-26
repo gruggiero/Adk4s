@@ -131,6 +131,33 @@ final class FeatureFreezeGuardIntegrityTypeContract extends ProbatioSuite:
     assert(!KnownCheckId.isKnown("F11"))
     assert(!KnownCheckId.isKnown("W3"))
 
+  // ── Compile-Negative: A sanction with no cited requirement
+  // spec: oracle-independence — Compile-Negative: A sanction with no cited requirement
+  // The snippet is same-package-resolvable so a passing compile could only
+  // mean the constructor dropped its mandatory fields; the assertion pins
+  // the missing-argument diagnostic on `spec` specifically, so a failure
+  // that went away cannot surface as a silent unrelated error.
+  test("compile-negative: a sanction without spec and requirement does not compile"):
+    val err: String =
+      compileErrors("""OracleSanction("suite.bats", "deadbeef")""")
+    assert(
+      err.nonEmpty && err.contains("spec"),
+      s"OracleSanction(file, commit) must not compile — spec and requirement are required; got: $err"
+    )
+
+  // ── Compile-Negative: A guard verdict built without the baseline
+  // spec: oracle-independence — Compile-Negative: A guard verdict built without the baseline
+  // `AllSanctioned` bare eta-expands to a FUNCTION, so the failing shape is
+  // assigning it where a `SanctionVerdict` is required — the verdict must
+  // carry the baseline it was earned against.
+  test("compile-negative: a passing verdict without a baseline does not compile"):
+    val err: String =
+      compileErrors("val v: SanctionVerdict = SanctionVerdict.AllSanctioned")
+    assert(
+      err.nonEmpty && err.contains("AllSanctioned"),
+      s"SanctionVerdict.AllSanctioned without a baseline must not compile; got: $err"
+    )
+
   // ── Compile-Negative: An absent location that names no searched place
   // spec: archive-safe-fixtures — Compile-Negative: An absent location that names no searched place
   // `ChangeLocation` lives in `org.sinemenda.probatio.migration` — the
