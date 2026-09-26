@@ -86,3 +86,69 @@ final class CliParseErrorSpec extends ProbatioCliSuite:
       Result
         .assert(msg.contains(expectedToken))
         .and(Result.assert(msg.nonEmpty))
+
+  // ── spec: entrypoint-split — Step 2 oracle ────────────────────────────
+  // A rejected invocation stays rejected identically: same message, same
+  // termination status. The recorded before-split rows are the oracle;
+  // each row must have been a rejection (non-zero exit) AND replay
+  // identically through the artifact it names.
+  //
+  // spec: entrypoint-split — Scenario: Adversarial — a rejected invocation is still rejected identically
+  test("a rejected invocation is still rejected identically after the split"):
+    val repoRoot: java.nio.file.Path = EntrypointSplitOracle.repoRoot
+    val native: String = repoRoot.resolve("workflow/cli/target/native-image/probatio").toString
+    val jarDir: java.nio.file.Path =
+      repoRoot.resolve("workflow/cli/target/scala-3.8.4")
+    val jar: String =
+      val candidates: List[java.nio.file.Path] =
+        if java.nio.file.Files.isDirectory(jarDir) then
+          scala.util
+            .Using(java.nio.file.Files.list(jarDir))(
+              _.filter((p: java.nio.file.Path) => p.getFileName.toString.matches("probatio-cli-assembly-.*\\.jar"))
+                .toArray(Array.ofDim[java.nio.file.Path](_))
+                .toList
+            )
+            .fold(
+              (e: Throwable) => fail(s"could not list $jarDir: ${e.getMessage}"),
+              (l: List[java.nio.file.Path]) => l
+            )
+        else List.empty
+      candidates match
+        case List(single) => single.toAbsolutePath.toString
+        case Nil          => fail(s"no assembly jar under $jarDir — cannot replay the corpus")
+        case many         => fail(s"multiple assembly jars under $jarDir: ${many.mkString}")
+    val rejectionArgs: List[List[String]] = List(
+      List("gate", "--repo"),
+      List("spec-lint", "--format", "json", "--nonexistent-flag-xyz"),
+      List("chain-state", "--change"),
+      List("graph", "impact"),
+      List("ledger", "read", "--file"),
+      List("checkpoint", "--change"),
+      List("reconcile", "--file"),
+      List("danger-scan", "--nonexistent-flag-xyz"),
+      List("metals"),
+      List("install-skills", "--frobnicate"),
+      List("install-hooks", "--agent")
+    )
+    val corpus: List[EntrypointSplitOracle.CorpusRow] = EntrypointSplitOracle.loadCorpus
+    rejectionArgs.foreach { (argv: List[String]) =>
+      List("native" -> List(native), "archive" -> List("java", "-jar", jar)).foreach {
+        case (artifact: String, cmd: List[String]) =>
+          val recorded: EntrypointSplitOracle.CorpusRow = corpus.find { (r: EntrypointSplitOracle.CorpusRow) =>
+            r.artifact == artifact && r.argv == argv
+          } match
+            case Some(row) => row
+            case None      => fail(s"no recorded corpus row for $artifact ${argv.mkString(" ")}")
+          assert(recorded.exit != 0, s"the recorded rejection was not a rejection: ${argv.mkString(" ")}")
+          val r: org.sinemenda.probatio.migration.HermeticResult =
+            org.sinemenda.probatio.migration.HermeticEnv.capture(
+              cmd ++ argv,
+              org.sinemenda.probatio.migration.HermeticEnv.empty
+            )
+          assertEquals(
+            (r.exitCode, r.out, r.err),
+            (recorded.exit, recorded.out, recorded.err),
+            s"rejection changed after the split: $artifact ${argv.mkString(" ")}"
+          )
+      }
+    }

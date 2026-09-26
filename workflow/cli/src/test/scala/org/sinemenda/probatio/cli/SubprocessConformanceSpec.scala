@@ -178,6 +178,47 @@ final class SubprocessConformanceSpec extends ProbatioCliSuite:
       assert(out.nonEmpty, "the gate's injection tier must produce output")
     }
 
+  // ── spec: entrypoint-split — the before/after-observable corpus ────────
+
+  /**
+   * Run the recorded corpus row through the artifact it names, under the
+   * same hermetic base the recording used: `(exit, stdout, stderr)`.
+   */
+  private def replay(row: EntrypointSplitOracle.CorpusRow): (Int, String, String) =
+    val r: org.sinemenda.probatio.migration.HermeticResult =
+      row.artifact match
+        case "archive" => HermeticEnv.capture(List("java", "-jar", archivePath) ++ row.argv, HermeticEnv.empty)
+        case _         => HermeticEnv.capture(List(artifactPath) ++ row.argv, HermeticEnv.empty)
+    (r.exitCode, r.out, r.err)
+
+  // spec: entrypoint-split — Property: split-preserves-every-observable
+  //
+  // For every invocation in the enumerated corpus — every conformance
+  // invocation plus the rejection forms — the output and termination
+  // status after the split equal those recorded before it. The domain is
+  // finite and enumerated in full (corpus-before.tsv); each process runs
+  // in the hermetic environment, so the comparison cannot pass because of
+  // an inherited variable.
+  property("the split preserves every observable"):
+    val rows: List[EntrypointSplitOracle.CorpusRow] = EntrypointSplitOracle.loadCorpus
+    for row <- Gen.elementUnsafe(rows).forAll
+    yield
+      val after: (Int, String, String) = replay(row)
+      val before: (Int, String, String) = (row.exit, row.out, row.err)
+      Result
+        .assert(after == before)
+        .log(s"argv=${row.argv.mkString(" ")} artifact=${row.artifact} before=$before after=$after")
+
+  // The domain is finite: enumerate it in full so coverage cannot depend
+  // on the sample draw.
+  test("every recorded corpus invocation is replayed, byte for byte"):
+    val rows: List[EntrypointSplitOracle.CorpusRow] = EntrypointSplitOracle.loadCorpus
+    val mismatches: List[String] = rows.collect {
+      case row if replay(row) != (row.exit, row.out, row.err) =>
+        s"${row.artifact} ${row.argv.mkString(" ")}: expected exit ${row.exit}"
+    }
+    assert(mismatches.isEmpty, "post-split observables diverged:\n" + mismatches.mkString("\n"))
+
   // ── Scenario: Happy path — every tool conforms through the archive
   // spec: jar-launcher-dispatch — Scenario: Happy path — every tool conforms through the archive
   // spec: jar-launcher-dispatch — Property: archive-conformance-matches-native-conformance

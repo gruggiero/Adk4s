@@ -126,3 +126,32 @@ final class CliSurfaceSpec extends ProbatioCliSuite:
         fail("an unknown operation must not terminate with the clean status")
       case Outcome.Finding(d)      => assert(d.contains("transmogrify"), s"must name the op: $d")
       case Outcome.Undetermined(r) => assert(r.contains("transmogrify"), s"must name the op: $r")
+
+  // ── spec: entrypoint-split — Step 2 oracle ────────────────────────────
+  // The layout check scans the cli package's real sources: one file per
+  // entrypoint, no file holding two. RED at polarity — all eleven still
+  // live in SubcommandEntrypoints.scala.
+
+  // spec: entrypoint-split — Requirement: Each subcommand's entrypoint resides in its own source file
+  // spec: entrypoint-split — Scenario: Happy path — every subcommand has its own file
+  test("every subcommand's entrypoint resides in a source file of its own"):
+    val decls: List[(String, List[String])] =
+      EntrypointSplitOracle.scanDir(EntrypointSplitOracle.cliSourceDir)
+    val violations: List[String] = EntrypointSplitOracle.layoutViolations(decls)
+    assert(
+      violations.isEmpty,
+      "entrypoint layout violations:\n" + violations.mkString("\n")
+    )
+
+  // spec: entrypoint-split — Scenario: Adversarial — a file holding two entrypoints is reported
+  test("a file holding two entrypoints is reported, naming both"):
+    val decls: List[(String, List[String])] = EntrypointSplitOracle.scanDir(
+      EntrypointSplitOracle.cliSourceDir
+    ) :+ ("Merged.scala" -> List("GateCmd", "SpecLintCmd"))
+    val violations: List[String] = EntrypointSplitOracle.layoutViolations(decls)
+    assert(
+      violations.exists((v: String) =>
+        v.contains("Merged.scala") && v.contains("GateCmd") && v.contains("SpecLintCmd")
+      ),
+      s"expected a violation naming Merged.scala, GateCmd and SpecLintCmd; got: ${violations.mkString("; ")}"
+    )

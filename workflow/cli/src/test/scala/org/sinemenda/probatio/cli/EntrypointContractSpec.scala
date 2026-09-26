@@ -409,3 +409,40 @@ final class EntrypointContractSpec extends ProbatioCliSuite:
       head <- nonToolFirst
       tail <- genArgList
     yield head :: tail
+
+  // ── spec: entrypoint-split — Step 2 oracle ────────────────────────────
+  // The mechanical move comparison: each entrypoint's body in its new file
+  // must equal its body in the recorded before-split source, ignoring
+  // package, import and file-header lines. RED at polarity — the new files
+  // do not exist yet.
+
+  // spec: entrypoint-split — Requirement: Moved code is moved, not edited
+  // spec: entrypoint-split — Scenario: Happy path — a moved body compares identical
+  test("every moved body compares identical to the recorded before-split source"):
+    val before: Vector[String] = EntrypointSplitOracle.loadBeforeSource
+    val srcDir: java.nio.file.Path = EntrypointSplitOracle.cliSourceDir
+    EntrypointSplitOracle.entrypointObjects.foreach { (name: String) =>
+      val newFile: java.nio.file.Path = srcDir.resolve(s"$name.scala")
+      val after: Vector[String] =
+        if java.nio.file.Files.isRegularFile(newFile) then
+          java.nio.file.Files.readAllLines(newFile).toArray(Array.ofDim[String](_)).toVector
+        else Vector.empty
+      val diffs: List[String] = EntrypointSplitOracle.movedBodyDiffs(before, after, name)
+      assert(
+        diffs.isEmpty,
+        s"$name's body diverged from the recorded origin:\n" + diffs.take(10).mkString("\n")
+      )
+    }
+
+  // spec: entrypoint-split — Scenario: Adversarial — an edit hidden in the move is detected
+  test("an edit hidden in the move is detected and the line is reported"):
+    val before: Vector[String] = EntrypointSplitOracle.loadBeforeSource
+    val spanStart: Int = EntrypointSplitOracle.objectSpan(before, "GateCmd") match
+      case Some((s, _)) => s
+      case None         => fail("GateCmd not found in the recorded before-split source")
+    val tampered: Vector[String] = before.updated(spanStart + 5, "  // a quiet behavioural edit")
+    val diffs: List[String] = EntrypointSplitOracle.movedBodyDiffs(before, tampered, "GateCmd")
+    assert(
+      diffs.headOption.exists((d: String) => d.contains("line 6")),
+      s"a changed line inside a moved body must be reported, naming it; got: $diffs"
+    )
