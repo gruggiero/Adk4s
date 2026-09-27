@@ -604,3 +604,181 @@ final class GateDecisionSpec extends ProbatioSuite:
       Result
         .assert(refusals <= 1)
         .and(Result.assert(refusals == (if anyWarrant then 1 else 0)))
+
+  // ════════════════════════════════════════════════════════════════════
+  // oracle-fixture-repair (spec 6 of finish-probatio-replacement)
+  //
+  // The pre-execution tier's tool-name decision. `preExecution` returns
+  // "allowed without consulting the lock state": true for a supplied
+  // read-only tool or an absent name (the predecessor's `""` member of
+  // `readOnlyTools`), false for a supplied edit tool — the lock then
+  // decides. Derived from the SPEC, not the implementation.
+  // ════════════════════════════════════════════════════════════════════
+
+  /**
+   * The predecessor's read-only tool names, enumerated literally — the
+   * spec-side expectation set, NOT `GateDecisions.readOnlyTools`
+   * (asserting against the implementation's own set would be circular).
+   */
+  private def readOnlyNameDomain: List[String] =
+    List("Read", "read", "View", "view", "Grep", "grep", "Glob", "glob", "Search", "search")
+
+  /**
+   * The edit-tool names the spec's rationale names — Claude's title
+   * case and pi's lowercase.
+   */
+  private def editNameDomain: List[String] =
+    List("Edit", "Write", "MultiEdit", "edit", "write", "bash")
+
+  /**
+   * genToolName — the closed domain, each name rendered in title case
+   * and in lower case. Finite and fully enumerated: every draw asserts
+   * every case-rendered name, so the enumeration is exhaustive by
+   * construction rather than sampled. `(name, isEdit)` pairs; a name is
+   * edit-like exactly when it is NOT one of the read-only names.
+   *
+   * spec: oracle-fixture-repair — Property: lock-decision-is-independent-of-name-case-and-channel (generator strategy)
+   */
+  private def preExecutionNameDomain: List[(String, Boolean)] =
+    (readOnlyNameDomain ++ editNameDomain)
+      .flatMap((n: String) => List(n, n.toLowerCase, n.toLowerCase.capitalize))
+      .distinct
+      .map((n: String) => (n, !readOnlyNameDomain.contains(n)))
+
+  /**
+   * The two channels a tool name arrives on: the `--tool` flag, or the
+   * payload's `tool_name` field (read only in the `--file`-absent
+   * branch — the predecessor's scoping). At the decision boundary both
+   * channels deliver `Supplied(name)` — the type erases the channel,
+   * which IS the independence claim; the flag/payload → source mapping
+   * itself is pinned end-to-end in `GateEventSpec`.
+   */
+  private enum ToolNameChannel:
+    case Flag, Payload
+
+  private def deliver(channel: ToolNameChannel, name: String): ToolNameSource =
+    channel match
+      case ToolNameChannel.Flag    => ToolNameSource.Supplied(name)
+      case ToolNameChannel.Payload => ToolNameSource.Supplied(name)
+
+  /**
+   * genPreExecutionFixture — constructive over phase × path × name, no
+   * filtering (the spec's declared strategy). The fixture carries the
+   * phase and path kind even though `preExecution` never sees them:
+   * enumerating them proves the tier's verdict is blind to the
+   * lock-relevant dimensions.
+   *
+   * spec: oracle-fixture-repair — Property: absent-name-always-allows-and-says-so (generator strategy)
+   */
+  private enum FixturePathKind:
+    case Production, TestPath, Artifact
+
+  private final case class PreExecFixture(
+    phase: SpecPhase,
+    path: FixturePathKind,
+    name: Option[String]
+  ):
+    def source: ToolNameSource =
+      name match
+        case Some(n: String) => ToolNameSource.Supplied(n)
+        case None            => ToolNameSource.Absent
+    /**
+     * The spec-side verdict: an absent name allows (predecessor parity);
+     * a supplied name allows iff it is one of the read-only names.
+     */
+    def expectedAllow: Boolean =
+      name.forall((n: String) => readOnlyNameDomain.contains(n))
+
+  private def preExecutionFixtureDomain: List[PreExecFixture] =
+    for
+      phase <- List(SpecPhase.Oracle, SpecPhase.Implementation, SpecPhase.Verified)
+      path  <- List(FixturePathKind.Production, FixturePathKind.TestPath, FixturePathKind.Artifact)
+      name  <- Option.empty[String] +: (readOnlyNameDomain ++ editNameDomain).map(Option(_))
+    yield PreExecFixture(phase, path, name)
+
+  // ── Property: lock-decision-is-independent-of-name-case-and-channel ──
+  // spec: oracle-fixture-repair — Property: lock-decision-is-independent-of-name-case-and-channel
+  //
+  // For every edit-tool name in either case, supplied by flag or by
+  // payload, the tier does not allow (the lock decides — block on a
+  // production path in the oracle phase); for every read-only name it
+  // allows. The domain is finite and fully enumerated.
+  property("lock-decision-is-independent-of-name-case-and-channel"):
+    for domain <- Gen.constant(preExecutionNameDomain).forAll
+    yield
+      domain.foldLeft(Result.success) { case (acc: Result, entry: (String, Boolean)) =>
+        val name: String   = entry._1
+        val isEdit: Boolean = entry._2
+        val flagVerdict: Boolean =
+          GateDecisions.preExecution(deliver(ToolNameChannel.Flag, name))
+        val payloadVerdict: Boolean =
+          GateDecisions.preExecution(deliver(ToolNameChannel.Payload, name))
+        acc
+          .and(Result.assert(flagVerdict == payloadVerdict))
+          .and(Result.assert(flagVerdict == !isEdit))
+      }
+
+  // ── Property: absent-name-always-allows-and-says-so ──────────────────
+  // spec: oracle-fixture-repair — Property: absent-name-always-allows-and-says-so
+  //
+  // For every fixture in which no tool name is supplied, the decision is
+  // allow AND absence is observable at the boundary (`isAbsent` is
+  // faithful — that observability is what lets the caller's diagnostic
+  // state the absence; the rendered text is pinned in `GateEventSpec`).
+  // For every supplied name, no absence exists to state.
+  property("absent-name-always-allows-and-says-so"):
+    for fixtures <- Gen.constant(preExecutionFixtureDomain).forAll
+    yield
+      fixtures.foldLeft(Result.success) { case (acc: Result, fx: PreExecFixture) =>
+        val allowed: Boolean = GateDecisions.preExecution(fx.source)
+        acc
+          .and(Result.assert(allowed == fx.expectedAllow))
+          .and(Result.assert(fx.source.isAbsent == fx.name.isEmpty))
+      }
+
+  // ── Scenario: the name tier's verdicts ───────────────────────────────
+
+  // spec: oracle-fixture-repair — Scenario: Happy path — a production edit in the oracle phase is blocked
+  // The tier leg of the scenario: a supplied edit name is NOT allowed at
+  // the name tier — it reaches the lock, which blocks in the oracle
+  // phase. The end-to-end block is the bats oracle's obligation.
+  test("a supplied title-case edit tool name is not allowed at the name tier"):
+    List("Edit", "Write", "MultiEdit").foreach { (name: String) =>
+      assertEquals(
+        GateDecisions.preExecution(ToolNameSource.Supplied(name)),
+        false,
+        s"$name must reach the lock, not allow at the name tier"
+      )
+    }
+
+  test("a supplied lowercase pi edit tool name is not allowed at the name tier"):
+    List("edit", "write", "bash").foreach { (name: String) =>
+      assertEquals(
+        GateDecisions.preExecution(ToolNameSource.Supplied(name)),
+        false,
+        s"$name must reach the lock, not allow at the name tier"
+      )
+    }
+
+  // spec: oracle-fixture-repair — Scenario: Adversarial — a read-only tool is not blocked
+  test("a supplied read-only tool name is allowed at the name tier"):
+    readOnlyNameDomain.foreach { (name: String) =>
+      assertEquals(
+        GateDecisions.preExecution(ToolNameSource.Supplied(name)),
+        true,
+        s"$name must allow without consulting the lock"
+      )
+    }
+
+  // spec: oracle-fixture-repair — Scenario: Happy path — an absent name allows with a stated reason
+  // The tier leg: absent allows (the stated-reason leg is the caller's
+  // diagnostic, pinned end-to-end in GateEventSpec).
+  test("an absent tool name is allowed at the name tier"):
+    assertEquals(GateDecisions.preExecution(ToolNameSource.Absent), true)
+
+  // A `Supplied("")` is unconstructible through the caller's mapping
+  // (empty maps to `Absent`) — but if one is ever smuggled, the verdict
+  // must stay the predecessor's: `""` is a `readOnlyTools` member, so a
+  // smuggled empty name allows rather than fabricating a block.
+  test("a supplied empty-string name keeps the predecessor's read-only verdict"):
+    assertEquals(GateDecisions.preExecution(ToolNameSource.Supplied("")), true)

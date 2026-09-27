@@ -1045,6 +1045,20 @@ final class GateEventSpec extends ProbatioCliSuite:
       if Files.isRegularFile(traceFile) then Files.readString(traceFile) else ""
     (text, outcome)
 
+  /** `runTraced` feeding `payload` through the input channel. */
+  private def runTracedPayload(
+    repo: Path,
+    args: List[String],
+    env: Map[String, String],
+    payload: String
+  ): (String, Outcome[Int]) =
+    val traceFile: Path = repo.resolve("trace.log")
+    val outcome: Outcome[Int] =
+      runGatePayload(repo, args, env + ("PROBATIO_HOOKS_TRACE" -> traceFile.toString), payload)
+    val text: String =
+      if Files.isRegularFile(traceFile) then Files.readString(traceFile) else ""
+    (text, outcome)
+
   private def traceLines(text: String, frag: String): Int =
     text.split("\n", -1).toList.count((l: String) => l.contains(frag))
 
@@ -4775,4 +4789,213 @@ final class GateEventSpec extends ProbatioCliSuite:
         case Outcome.Finding(_) => ()
         case Outcome.Ran(0)     => fail("the inherited hooks=off reached the tool and bypassed the tier")
         case other              => fail(s"expected the refusal, got $other")
+    }
+
+  // ════════════════════════════════════════════════════════════════════
+  // oracle-fixture-repair (spec 6 of finish-probatio-replacement)
+  //
+  // The pre-execution tier's tool-name source, end-to-end: `Absent` keeps
+  // the predecessor's allow AND the diagnostic states the absence; a
+  // supplied name produces no absence diagnostic; the Devin payload's
+  // `tool_name` field reaches the tier. The trace channel is where the
+  // tier narrates allow-path decisions — the absence statement rides it.
+  // ════════════════════════════════════════════════════════════════════
+
+  /**
+   * The phrase the spec's "stated" obligation pins: the diagnostic names
+   * the condition, not the absent value. Chosen at Step 2 so Step 3
+   * implements to it — `tool-call: no tool name supplied …`.
+   */
+  private def absentNameDiagnostic: String = "no tool name supplied"
+
+  // ── Scenario: an absent name allows with a stated reason ────────────
+  // spec: oracle-fixture-repair — Requirement: An absent tool name keeps parity and is stated
+  // spec: oracle-fixture-repair — Scenario: Happy path — an absent name allows with a stated reason
+
+  test("an absent tool name allows on a production path and the diagnostic says so"):
+    withTempDir("gate-absent-name-prod") { (repo: Path) =>
+      mkRepo(repo, withGit = true)
+      writeImplOrder(repo, "src/main/scala/A.scala")
+      val sd: Path = stateDir(repo)
+      Files.createDirectories(sd)
+      // Would-block state: prior-spec verified but uncheckpointed — a
+      // supplied edit name would refuse here; parity demands the absent
+      // name still allow, but now with the absence stated.
+      Files.writeString(sd.resolve(s"phase-$change-$priorSpec"), "verified")
+      Files.writeString(sd.resolve(s"phase-$change-$specName"), "verified")
+      val (trace: String, outcome: Outcome[Int]) = runTraced(
+        repo,
+        List(
+          "--event",
+          "tool-call",
+          "--format",
+          "text",
+          "--session",
+          "t",
+          "--file",
+          repo.resolve("src/main/scala/A.scala").toString
+        ),
+        Map.empty
+      )
+      assertEquals(
+        outcome,
+        Outcome.Ran(0),
+        "an absent tool name must allow — the predecessor's parity verdict"
+      )
+      assert(
+        trace.contains(absentNameDiagnostic),
+        s"the allow must state that no tool name was supplied: $trace"
+      )
+    }
+
+  // ── Scenario: a supplied name produces no absence diagnostic ────────
+  // spec: oracle-fixture-repair — Scenario: Adversarial — a supplied name produces no absence diagnostic
+
+  test("a supplied read-only tool name allows with no absence diagnostic"):
+    withTempDir("gate-supplied-name-prod") { (repo: Path) =>
+      mkRepo(repo, withGit = true)
+      writeImplOrder(repo, "src/main/scala/A.scala")
+      val sd: Path = stateDir(repo)
+      Files.createDirectories(sd)
+      Files.writeString(sd.resolve(s"phase-$change-$priorSpec"), "verified")
+      Files.writeString(sd.resolve(s"phase-$change-$specName"), "verified")
+      val (trace: String, outcome: Outcome[Int]) = runTraced(
+        repo,
+        List(
+          "--event",
+          "tool-call",
+          "--format",
+          "text",
+          "--session",
+          "t",
+          "--file",
+          repo.resolve("src/main/scala/A.scala").toString,
+          "--tool",
+          "Read"
+        ),
+        Map.empty
+      )
+      assertEquals(outcome, Outcome.Ran(0))
+      assert(
+        trace.contains("read-only tool 'Read'"),
+        s"the allow must name the supplied tool: $trace"
+      )
+      assert(
+        !trace.contains(absentNameDiagnostic),
+        s"a supplied name must not state absence: $trace"
+      )
+    }
+
+  // ── Scenario: a Devin-shaped payload yields the tool name ───────────
+  // spec: oracle-fixture-repair — Requirement: The Devin adapter delivers the tool name
+  // spec: oracle-fixture-repair — Scenario: Happy path — a Devin-shaped payload yields the tool name
+  //
+  // Devin's documented PreToolUse payload carries a lowercase `tool_name`
+  // (e.g. `edit`, `exec`) — confirmed against the bundled Devin docs
+  // (docs/extensibility/hooks/lifecycle-hooks.mdx, PreToolUse stdin
+  // table). The gate reads it, does not take the absent path, and the
+  // lowercase edit name reaches the lock — which blocks here.
+
+  test("a Devin-shaped payload's lowercase tool_name reaches the lock and blocks"):
+    withTempDir("gate-devin-payload-name") { (repo: Path) =>
+      mkRepo(repo, withGit = true)
+      writeImplOrder(repo, "src/main/scala/A.scala")
+      val sd: Path = stateDir(repo)
+      Files.createDirectories(sd)
+      Files.writeString(sd.resolve(s"phase-$change-$priorSpec"), "verified")
+      Files.writeString(sd.resolve(s"phase-$change-$specName"), "verified")
+      val payload: String = ujson.write(
+        ujson.Obj(
+          "tool_name" -> ujson.Str("edit"),
+          "tool_input" -> ujson.Obj(
+            "file_path" -> ujson.Str(repo.resolve("src/main/scala/A.scala").toString)
+          ),
+          "cwd" -> ujson.Str(repo.toString)
+        )
+      )
+      val (trace: String, outcome: Outcome[Int]) = runTracedPayload(
+        repo,
+        List("--event", "tool-call", "--format", "text", "--session", "t"),
+        Map.empty,
+        payload
+      )
+      outcome match
+        case Outcome.Undetermined(_) => ()
+        case other => // danger-scan:allow test assertion — a delivered edit name must reach the lock
+          fail(s"a Devin-shaped edit payload must block, got $other")
+      assert(
+        !trace.contains(absentNameDiagnostic),
+        s"a delivered tool name must not state absence: $trace"
+      )
+    }
+
+  // ── Adversarial: absence through each channel ───────────────────────
+  // spec: oracle-fixture-repair — Requirement: An absent tool name keeps parity and is stated
+
+  test("a payload with file_path but no tool_name takes the absent path"):
+    withTempDir("gate-payload-no-toolname") { (repo: Path) =>
+      mkRepo(repo, withGit = true)
+      writeImplOrder(repo, "src/main/scala/A.scala")
+      val sd: Path = stateDir(repo)
+      Files.createDirectories(sd)
+      Files.writeString(sd.resolve(s"phase-$change-$priorSpec"), "verified")
+      Files.writeString(sd.resolve(s"phase-$change-$specName"), "verified")
+      val payload: String = ujson.write(
+        ujson.Obj(
+          "tool_input" -> ujson.Obj(
+            "file_path" -> ujson.Str(repo.resolve("src/main/scala/A.scala").toString)
+          ),
+          "cwd" -> ujson.Str(repo.toString)
+        )
+      )
+      val (trace: String, outcome: Outcome[Int]) = runTracedPayload(
+        repo,
+        List("--event", "tool-call", "--format", "text", "--session", "t"),
+        Map.empty,
+        payload
+      )
+      assertEquals(
+        outcome,
+        Outcome.Ran(0),
+        "a missing payload tool_name is absence — the predecessor's allow"
+      )
+      assert(
+        trace.contains(absentNameDiagnostic),
+        s"the allow must state that no tool name was supplied: $trace"
+      )
+    }
+
+  test("an empty --tool flag is absence, not a supplied empty name"):
+    withTempDir("gate-empty-tool-flag") { (repo: Path) =>
+      mkRepo(repo, withGit = true)
+      writeImplOrder(repo, "src/main/scala/A.scala")
+      val sd: Path = stateDir(repo)
+      Files.createDirectories(sd)
+      Files.writeString(sd.resolve(s"phase-$change-$priorSpec"), "verified")
+      Files.writeString(sd.resolve(s"phase-$change-$specName"), "verified")
+      val (trace: String, outcome: Outcome[Int]) = runTraced(
+        repo,
+        List(
+          "--event",
+          "tool-call",
+          "--format",
+          "text",
+          "--session",
+          "t",
+          "--file",
+          repo.resolve("src/main/scala/A.scala").toString,
+          "--tool",
+          ""
+        ),
+        Map.empty
+      )
+      assertEquals(
+        outcome,
+        Outcome.Ran(0),
+        "an empty --tool flag is absence — the predecessor's allow"
+      )
+      assert(
+        trace.contains(absentNameDiagnostic),
+        s"the allow must state that no tool name was supplied: $trace"
+      )
     }
