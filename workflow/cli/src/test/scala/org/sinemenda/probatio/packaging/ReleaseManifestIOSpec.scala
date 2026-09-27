@@ -1,5 +1,7 @@
 package org.sinemenda.probatio.packaging
 
+import hedgehog.Gen
+import hedgehog.Result
 import org.sinemenda.probatio.cli.ProbatioCliSuite
 import upickle.default.write as writeJson
 
@@ -17,6 +19,8 @@ import java.nio.file.Path
  *
  * spec: native-gate-delivery — Requirement: A release SHALL be complete before it is delivered
  * spec: native-gate-delivery — Scenario: Error path — a manifest whose recorded checksum differs from the artifact's is detected
+ * spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
+ * spec: finish-probatio-replacement/delivery-verified — Property: toolchain-check-accepts-iff-identical
  */
 final class ReleaseManifestIOSpec extends ProbatioCliSuite:
 
@@ -29,6 +33,13 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
     ToolchainIdentity.Version.parse(s) match
       case Some(v) => v
       case None    => fail(s"'$s' must parse as a toolchain version")
+
+  // The closed sets `genToolchainPair` draws from (declared before the
+  // first test block so the init checker sees them as initialized).
+  private val toolchainDistributions: List[String] = List("GraalVM CE", "GraalVM EE", "Temurin")
+  private val toolchainVersions: List[String]      = List("21.0.2", "22.3.1", "17.0.9")
+  private val binaryNames: List[String] =
+    Platform.committedNativePlatforms.toList.map(p => s"probatio-${p.artifactSuffix}")
 
   private def withTempDir(f: Path => Unit): Unit =
     val dir: Path = Files.createTempDirectory("probatio-release")
@@ -343,3 +354,174 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
       case Left(err) =>
         assert(err.contains("release manifest could not be built"), s"the build failure is named: $err")
       case Right(_) => fail("a missing directory must not produce a report")
+
+  // ══════════════════════════════════════════════════════════════════════
+  // delivery-verified (spec 7) — the release check accepts a candidate iff
+  // every native binary's embedded toolchain identity equals the tested one
+  // spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
+  // ══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Synthetic binary bytes carrying a GraalVM embedded-toolchain marker —
+   * the observed format is `GraalVM <version> Java <major> <edition>`
+   * (measured on the local build: `GraalVM 22.3.1 Java 17 CE`).
+   */
+  private def binaryWithMarker(marker: String): String =
+    s"\u0000\u0001binary-bytes\u0001 $marker \u0001more-binary-bytes"
+
+  /** Writes a complete release whose native binaries all carry `marker`. */
+  private def writeReleaseWithMarker(dir: Path, version: String, marker: String): Unit =
+    val binaryNames: List[String] = List(
+      "probatio-linux-x86_64",
+      "probatio-macos-aarch64",
+      "probatio-macos-x86_64"
+    )
+    binaryNames.foreach(n => write(dir, n, binaryWithMarker(marker)))
+    List("probatio-assembly.jar", "probatio-sources.jar")
+      .foreach(n => write(dir, n, s"content-of-$n"))
+    val sbom: Sbom = Sbom.forRelease(version, List(SbomPackage("upickle", "4.4.3", "Maven")))
+    write(dir, "probatio-sbom.spdx.json", writeJson[Sbom](sbom))
+    (binaryNames ++ List("probatio-assembly.jar", "probatio-sources.jar"))
+      .foreach(n => writeSidecar(dir, n))
+
+  // spec: finish-probatio-replacement/delivery-verified — Scenario: Happy path — a candidate on the tested toolchain is accepted
+  test("a candidate built with the tested toolchain is accepted"):
+    withTempDir { dir =>
+      // testedToolchain is GraalVM CE/21.0.2 — the marker the release
+      // workflow's toolchain embeds.
+      writeReleaseWithMarker(dir, "v14.0.0", "GraalVM 21.0.2 Java 21 CE")
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true, testedToolchain) match
+        case Right(report) =>
+          assert(report.contains("release manifest complete"), s"the completion is reported: $report")
+        case Left(err) =>
+          fail(s"a candidate on the tested toolchain must be accepted: $err")
+    }
+
+  // spec: finish-probatio-replacement/delivery-verified — Scenario: Adversarial — a candidate on a different toolchain is rejected
+  test("a candidate built with a different toolchain is rejected naming both"):
+    withTempDir { dir =>
+      // The 22.3.1 toolchain is exactly what the unpinned local build
+      // produced — the real regression this spec guards against.
+      writeReleaseWithMarker(dir, "v14.0.0", "GraalVM 22.3.1 Java 17 CE")
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true, testedToolchain) match
+        case Left(err) =>
+          assert(err.contains("toolchain"), s"the toolchain must be named as the defect: $err")
+          assert(err.contains("21.0.2"), s"the tested identity must be named: $err")
+          assert(err.contains("22.3.1"), s"the candidate identity must be named: $err")
+        case Right(report) =>
+          fail(s"a candidate on 22.3.1 must not be accepted when 21.0.2 was tested: $report")
+    }
+
+  // spec: finish-probatio-replacement/delivery-verified — Scenario: Error path — an unreadable toolchain identity is could-not-determine
+  test("a binary whose toolchain identity cannot be read is could-not-determine"):
+    withTempDir { dir =>
+      // No marker at all — plain content, as writeCompleteRelease produces.
+      writeCompleteRelease(dir, "v14.0.0")
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true, testedToolchain) match
+        case Left(err) =>
+          assert(err.contains("could not determine"), s"the outcome is could-not-determine: $err")
+          assert(err.contains("probatio-linux-x86_64"), s"the binary is named: $err")
+        case Right(report) =>
+          fail(s"a candidate with no readable toolchain identity must not be accepted: $report")
+    }
+    // A native binary present in the manifest with NO recorded read is
+    // likewise could-not-determine — the check cannot silently skip it.
+    val noRead: ReleaseManifest = ReleaseManifest(
+      version = "v14.0.0",
+      artifacts = ReleaseManifest.expectedArtifacts,
+      checksums = ReleaseManifest.expectedArtifacts
+        .collect { case ReleaseArtifact.Checksum(n) => n -> ("a" * 64) }
+        .toMap,
+      sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
+      builtFromCI = true,
+      toolchains = List.empty
+    )
+    val noReadIssues: List[String] = ReleaseValidator.validateAll(noRead, testedToolchain)
+    assert(
+      noReadIssues.exists(i => i.contains("could not determine") || i.contains("no toolchain")),
+      s"a binary with no toolchain read must be reported: $noReadIssues"
+    )
+
+  // spec: finish-probatio-replacement/delivery-verified — Scenario: Adversarial — a candidate missing one artifact is rejected
+  test("a candidate missing its bill of materials is rejected naming it"):
+    withTempDir { dir =>
+      writeCompleteRelease(dir, "v14.0.0")
+      val _: Boolean = Files.deleteIfExists(dir.resolve("probatio-sbom.spdx.json"))
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true, testedToolchain) match
+        case Left(err) =>
+          assert(
+            err.contains("probatio-sbom.spdx.json"),
+            s"the missing bill of materials must be named: $err"
+          )
+        case Right(_) => fail("a candidate missing an artifact must not be delivered")
+    }
+
+  // ── Property: toolchain-check-accepts-iff-identical ─────────────────────
+  // spec: finish-probatio-replacement/delivery-verified — Property: toolchain-check-accepts-iff-identical
+
+  /**
+   * `genToolchainPair` — constructive over identities drawn from closed
+   * sets of distributions and versions, paired so that identical,
+   * differing-version, differing-distribution and unreadable cases all
+   * arise by construction (no filtering).
+   */
+  private def genToolchainPair: Gen[(ToolchainIdentity, ToolchainIdentity.Embedded)] =
+    for
+      dist     <- Gen.element1("GraalVM CE", toolchainDistributions.drop(1)*)
+      ver      <- Gen.element1("21.0.2", toolchainVersions.drop(1)*)
+      altDist  <- Gen.element1("GraalVM CE", toolchainDistributions.drop(1)*)
+      altVer   <- Gen.element1("21.0.2", toolchainVersions.drop(1)*)
+      kind     <- Gen.element1("identical", "version-differs", "distribution-differs", "unreadable")
+      bin      <- binaryNames match
+                    case h :: t => Gen.element1(h, t*)
+                    case Nil    => Gen.constant("probatio-linux-x86_64")
+      reason   <- Gen.element1("no embedded GraalVM marker", "marker truncated mid-version")
+    yield
+      val tested: ToolchainIdentity = ToolchainIdentity(dist, version(ver))
+      val candidate: ToolchainIdentity.Embedded =
+        kind match
+          case "identical" =>
+            ToolchainIdentity.Embedded.Found(bin, tested)
+          case "version-differs" =>
+            val differing: String = if altVer == ver then s"$altVer-next" else altVer
+            ToolchainIdentity.Embedded.Found(bin, ToolchainIdentity(dist, version(differing)))
+          case "distribution-differs" =>
+            val differing: String = if altDist == dist then s"$altDist-alt" else altDist
+            ToolchainIdentity.Embedded.Found(bin, ToolchainIdentity(differing, tested.version))
+          case "unreadable" =>
+            ToolchainIdentity.Embedded.Unreadable(bin, reason)
+          case other => // danger-scan:allow generator-invariant — `kind` is drawn from a closed 4-element set; an unknown draw is a generator bug, never a candidate
+            fail(s"genToolchainPair drew an unknown kind: $other")
+      (tested, candidate)
+
+  // spec: finish-probatio-replacement/delivery-verified — Property: toolchain-check-accepts-iff-identical
+  property("toolchain-check-accepts-iff-identical"):
+    for
+      pair <- genToolchainPair.forAll
+        .cover(20, "identical", (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) =>
+          p._2.identityOption.contains(p._1)
+        )
+        .cover(20, "readable-differs", (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) =>
+          p._2.readable && !p._2.identityOption.contains(p._1)
+        )
+        .cover(20, "unreadable", (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) =>
+          !p._2.readable
+        )
+      (tested, candidate) = pair
+    yield
+      val verdict: ToolchainVerdict = ReleaseValidator.toolchainVerdict(tested, candidate)
+      val expectedAccepted: Boolean = candidate.identityOption.contains(tested)
+      Result
+        .assert(verdict.accepted == expectedAccepted)
+        .log(s"verdict=$verdict tested=$tested candidate=$candidate")
+        .and(
+          verdict match
+            case ToolchainVerdict.Accepted(bin, identity) =>
+              Result.assert(bin == candidate.binary && identity == tested)
+            case ToolchainVerdict.Rejected(bin, t, c) =>
+              Result.assert(
+                bin == candidate.binary && t == tested && candidate.identityOption.contains(c)
+              )
+            case ToolchainVerdict.Undetermined(bin, reason) =>
+              Result.assert(bin == candidate.binary && !candidate.readable && reason.nonEmpty)
+        )

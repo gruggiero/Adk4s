@@ -325,10 +325,43 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
     }
   }
 
+  // The acceptance step's invocation signature — shared by the
+  // completeness check and the archive-path check so the two can never
+  // drift on what "the acceptance suite" means.
+  private val acceptanceNeedles: List[String] = List("bats", "verified-scala3/tests")
+
   private def requiredCiSteps(): List[RequiredStep] =
-    RequiredStep("acceptance suite (bats)", List("bats", "verified-scala3/tests")) ::
+    RequiredStep("acceptance suite (bats)", acceptanceNeedles) ::
       RequiredStep("differential comparison", List("probatioOracleDiff")) ::
       discoveredTestModules().map(m => RequiredStep(s"module suite $m", List(s"$m/test")))
+
+  // A line is inside a step block only if every line between the `- `
+  // marker and it is indented DEEPER than the marker — this keeps `- `
+  // items in `on:`/`env:` lists from masquerading as step blocks that
+  // would mask a job-level guard.
+  private def leadingIndent(l: String): Int = l.takeWhile(c => c == ' ' || c == '\t').length
+
+  // The `- ` item markers that begin real step blocks. `- ` items inside
+  // a literal block scalar (`run: |`) are script content, not step
+  // markers — those regions are excluded so a needle line inside one
+  // isn't counted as its own unguarded step.
+  private def stepMarkerIndices(lines: List[String]): List[Int] = {
+    val stepStarts: List[Int] =
+      lines.zipWithIndex.collect { case (l, i) if l.matches("^\\s+-\\s+\\S.*") => i }
+    val literalStart = "^\\s*.*:\\s*[|>][+-]?\\s*$".r
+    val inLiteral: Set[Int] =
+      lines.zipWithIndex
+        .foldLeft((Set.empty[Int], -1, -1)) { case ((acc, start, startIndent), (l, i)) =>
+          if (start >= 0 && (l.trim.isEmpty || leadingIndent(l) > startIndent))
+            (acc + i, start, startIndent)
+          else if (literalStart.pattern.matcher(l).matches())
+            (acc, i, leadingIndent(l))
+          else
+            (acc, -1, -1)
+        }
+        ._1
+    stepStarts.filterNot(inLiteral.contains)
+  }
 
   // Step blocks are the regions between `- ` item markers. A required
   // invocation that appears but is neutralised in its own step — an `if:`
@@ -338,29 +371,8 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
   // every step block is a job-level guard that neutralises every step.
   private def missingCiSteps(text: String): List[String] = {
     val lines: List[String] = text.linesIterator.toList
-    val stepStarts: List[Int] =
-      lines.zipWithIndex.collect { case (l, i) if l.matches("^\\s+-\\s+\\S.*") => i }
-    // A line is inside a step block only if every line between the `- `
-    // marker and it is indented DEEPER than the marker — this keeps `- `
-    // items in `on:`/`env:` lists from masquerading as step blocks that
-    // would mask a job-level guard.
-    def leading(l: String): Int = l.takeWhile(c => c == ' ' || c == '\t').length
-    // `- ` items inside a literal block scalar (`run: |`) are script
-    // content, not step markers — exclude those regions so a needle line
-    // inside one isn't counted as its own unguarded step.
-    val literalStart = "^\\s*.*:\\s*[|>][+-]?\\s*$".r
-    val inLiteral: Set[Int] =
-      lines.zipWithIndex
-        .foldLeft((Set.empty[Int], -1, -1)) { case ((acc, start, startIndent), (l, i)) =>
-          if (start >= 0 && (l.trim.isEmpty || leading(l) > startIndent))
-            (acc + i, start, startIndent)
-          else if (literalStart.pattern.matcher(l).matches())
-            (acc, i, leading(l))
-          else
-            (acc, -1, -1)
-        }
-        ._1
-    val realStepStarts: List[Int] = stepStarts.filterNot(inLiteral.contains)
+    def leading(l: String): Int = leadingIndent(l)
+    val realStepStarts: List[Int] = stepMarkerIndices(lines)
     def insideStepBlock(lineIdx: Int): Boolean =
       realStepStarts.filter(_ < lineIdx).lastOption.exists { s =>
         val ind: Int = leading(lines(s))
@@ -852,6 +864,165 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
       previousNameViolations(stamp).length,
       1,
       "an unmarked pre-rename stamp must be reported"
+    )
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // delivery-verified (spec 7 of finish-probatio-replacement) — the CI
+  // job's acceptance step exercises the archive path: an assembly build
+  // precedes it and no native build does.
+  // spec: finish-probatio-replacement/delivery-verified — Requirement: The CI job runs the tools through the archive
+  // ══════════════════════════════════════════════════════════════════════
+
+  // The workflow's step blocks as ordered text regions — the same `- `
+  // marker segmentation (with literal-block exclusion) the completeness
+  // check uses.
+  private def workflowStepBlocks(text: String): List[List[String]] = {
+    val lines: List[String]  = text.linesIterator.toList
+    val starts: List[Int]    = stepMarkerIndices(lines)
+    starts.zipWithIndex.map { case (s, k) =>
+      val e: Int = starts.drop(k + 1).headOption.getOrElse(lines.length)
+      lines.slice(s, e)
+    }
+  }
+
+  private def executableLines(block: List[String]): List[String] =
+    block.filter(l => !l.trim.startsWith("#"))
+
+  /**
+   * The archive-path issues in one workflow's text. The acceptance step
+   * (the step whose executable lines invoke `bats` over the
+   * `verified-scala3/tests` suite) exercises the archive path iff an
+   * `assembly` build precedes it and no `nativeImage` build does.
+   */
+  private def archivePathIssues(text: String): List[String] = {
+    val blocks: List[List[String]] = workflowStepBlocks(text)
+    val acceptanceIdx: Int =
+      blocks.indexWhere(b =>
+        executableLines(b).exists(l => acceptanceNeedles.forall(l.contains))
+      )
+    if (acceptanceIdx < 0)
+      List("no acceptance step (bats over the verified-scala3 suite) found")
+    else {
+      val before: List[List[String]] = blocks.take(acceptanceIdx)
+      val buildsArchive: Boolean =
+        before.exists(b => executableLines(b).exists(_.contains("assembly")))
+      val buildsNative: Boolean =
+        before.exists(b => executableLines(b).exists(_.contains("nativeImage")))
+      List(
+        if (buildsArchive) None
+        else Some(
+          "the acceptance suite runs with no archive build before it — the tools do not resolve to the archive"
+        ),
+        if (!buildsNative) None
+        else Some(
+          "a native build step precedes the acceptance suite — the suite no longer exercises the archive path"
+        )
+      ).flatten
+    }
+  }
+
+  // spec: finish-probatio-replacement/delivery-verified — Scenario: Happy path — the job's acceptance step uses the archive
+  test("the on-change CI job's acceptance step uses the archive") {
+    val (code, trackedOut): (Int, String) = runGit(List("ls-files", ".github/workflows"))
+    assertEquals(code, 0, s"git ls-files must succeed: $trackedOut")
+    val onChange: List[File] =
+      trackedOut.linesIterator.toList
+        .filter(p => p.endsWith(".yml") || p.endsWith(".yaml"))
+        .map(rel => new File(repoRoot, rel))
+        .filter(f => triggersOnChange(fileContents(f)))
+    assert(
+      onChange.nonEmpty,
+      "no on-change workflow exists — the archive-path check needs a subject"
+    )
+    for (f <- onChange) {
+      val issues: List[String] = archivePathIssues(fileContents(f))
+      assert(
+        issues.isEmpty,
+        s"${f.getName}: the acceptance step must exercise the archive path — ${issues.mkString("; ")}"
+      )
+    }
+  }
+
+  // spec: finish-probatio-replacement/delivery-verified — Scenario: Adversarial — a native build step before the acceptance step is reported
+  test("a native build step before the acceptance step is reported") {
+    // A native image built before the acceptance step — the suite can no
+    // longer be said to exercise the archive path.
+    val nativeFirst: String =
+      """name: verify
+        |on: [push, pull_request]
+        |jobs:
+        |  verify:
+        |    runs-on: ubuntu-latest
+        |    steps:
+        |      - name: Checkout
+        |        uses: actions/checkout@v4
+        |      - name: Build the native image
+        |        run: sbt -batch 'probatio-cli/nativeImage'
+        |      - name: Acceptance suite
+        |        run: bats openspec/schemas/verified-scala3/tests
+        |""".stripMargin
+    val nativeIssues: List[String] = archivePathIssues(nativeFirst)
+    assert(
+      nativeIssues.exists(_.contains("native build")),
+      s"a nativeImage step before the acceptance step must be reported, got: $nativeIssues"
+    )
+    // Acceptance with no archive build at all — the tools resolve to
+    // nothing built in the job.
+    val noArchive: String =
+      """name: verify
+        |on: [push, pull_request]
+        |jobs:
+        |  verify:
+        |    steps:
+        |      - name: Checkout
+        |        uses: actions/checkout@v4
+        |      - name: Acceptance suite
+        |        run: bats openspec/schemas/verified-scala3/tests
+        |""".stripMargin
+    val noArchiveIssues: List[String] = archivePathIssues(noArchive)
+    assert(
+      noArchiveIssues.exists(_.contains("no archive build")),
+      s"an acceptance step with no preceding archive build must be reported, got: $noArchiveIssues"
+    )
+    // The correct ordering reports nothing: archive first, acceptance second.
+    val archiveFirst: String =
+      """name: verify
+        |on: [push, pull_request]
+        |jobs:
+        |  verify:
+        |    steps:
+        |      - name: Checkout
+        |        uses: actions/checkout@v4
+        |      - name: Build the assembly
+        |        run: sbt -batch 'probatio-cli/assembly'
+        |      - name: Acceptance suite
+        |        run: bats openspec/schemas/verified-scala3/tests
+        |""".stripMargin
+    assertEquals(
+      archivePathIssues(archiveFirst),
+      Nil,
+      "an archive build preceding the acceptance step must satisfy the check"
+    )
+    // A native build AFTER the acceptance step does not contaminate it —
+    // the suite already ran against the archive.
+    val nativeAfter: String =
+      """name: verify
+        |on: [push, pull_request]
+        |jobs:
+        |  verify:
+        |    steps:
+        |      - name: Build the assembly
+        |        run: sbt -batch 'probatio-cli/assembly'
+        |      - name: Acceptance suite
+        |        run: bats openspec/schemas/verified-scala3/tests
+        |      - name: Build the native image
+        |        run: sbt -batch 'probatio-cli/nativeImage'
+        |""".stripMargin
+    assertEquals(
+      archivePathIssues(nativeAfter),
+      Nil,
+      "a nativeImage step AFTER the acceptance step is not an archive-path violation"
     )
   }
 }
