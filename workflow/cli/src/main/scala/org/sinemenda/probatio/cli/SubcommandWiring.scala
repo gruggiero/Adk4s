@@ -340,10 +340,26 @@ object SubcommandWiring:
     val repo: Option[java.nio.file.Path] = ledgerDir.flatMap(repoContaining)
     val baselineCache: java.util.concurrent.atomic.AtomicReference[Map[String, Option[Set[String]]]] =
       new java.util.concurrent.atomic.AtomicReference(Map.empty)
+    // Literal-pathspec rows share the same memoization contract — within
+    // one invocation a repeated `git diff --quiet <baseline> HEAD --
+    // <artifact>` cannot return a different answer, so the (baseline,
+    // artifact) pair is cached. Without it a directory pathspec like
+    // `tests/` (deliberately excluded from the name-only batch for
+    // pathspec parity) re-forks git once per record — ~270 subprocesses
+    // per gate invocation on a mid-size ledger.
+    val literalCache: java.util.concurrent.atomic.AtomicReference[Map[(String, String), Boolean]] =
+      new java.util.concurrent.atomic.AtomicReference(Map.empty)
     (rowBaseline: String, artifact: String) =>
       repo match
         case Some(r) if !isPlainPathspec(artifact) =>
-          gitExit(r, List("diff", "--quiet", rowBaseline, "HEAD", "--", artifact)) == 0
+          literalCache.get // danger-scan:allow memo-read — AtomicReference.get + Map.get returns Option, not an unsafe get
+            .get((rowBaseline, artifact)) match
+            case Some(result) => result
+            case None =>
+              val result: Boolean =
+                gitExit(r, List("diff", "--quiet", rowBaseline, "HEAD", "--", artifact)) == 0
+              literalCache.updateAndGet((m: Map[(String, String), Boolean]) => m + ((rowBaseline, artifact) -> result))
+              result
         case Some(r) =>
           val changed: Option[Set[String]] =
             baselineCache.get // danger-scan:allow memo-read — AtomicReference.get + Map.get returns Option, not an unsafe get
