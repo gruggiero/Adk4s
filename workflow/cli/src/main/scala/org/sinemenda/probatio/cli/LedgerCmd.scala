@@ -45,7 +45,7 @@ object LedgerCmd:
       // any parameter parsing (the predecessor refuses them by name).
       actionStr match
         case "update" | "delete" | "rewrite" | "edit" =>
-          SubcommandWiring.emitStderr(s"ledger: the ledger is append-only; '$actionStr' is not a subcommand.\n")
+          SubcommandWiring.emitStderr(s"ledger: '$actionStr' is not a subcommand.\n")
           Outcome.Finding(s"append-only: $actionStr")
         case _ => // danger-scan:allow string-rejection — non-mutation string falls through to parseAction which returns None→Finding for unknowns
           parseAction(actionStr) match
