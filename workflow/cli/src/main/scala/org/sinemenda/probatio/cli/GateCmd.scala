@@ -885,7 +885,12 @@ object GateCmd:
           .flatMap((v: String) => v.split(":").find((p: String) => file.startsWith(p)))
     allowPrefix match
       case Some(prefix: String) =>
-        trace(ctx, env, s"tool-call: file under allow-listed path $prefix, allow — $file")
+        toolName match
+          case ToolNameSource.Absent =>
+            // spec: oracle-fixture-repair — Requirement: An absent tool name keeps parity and is stated
+            trace(ctx, env, s"tool-call: file under allow-listed path $prefix, allow — $file — no tool name supplied")
+          case ToolNameSource.Supplied(_) =>
+            trace(ctx, env, s"tool-call: file under allow-listed path $prefix, allow — $file")
         Outcome.Ran(0)
       case None =>
         if GateDecisions.preExecution(toolName) then

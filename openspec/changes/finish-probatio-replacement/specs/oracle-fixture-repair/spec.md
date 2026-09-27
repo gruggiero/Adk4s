@@ -232,7 +232,7 @@ and this spec changes fixtures and adds a diagnostic, not the decision.
 |------------|--------|-------------|----------|
 | A production edit in the oracle phase is blocked | Requirement: The lock fixtures supply the tool name a harness supplies + Scenario: Happy path — a production edit in the oracle phase is blocked | bats oracle | `oracle-ordering-lock.bats` |
 | A spec start without a grant is blocked | Requirement: The lock fixtures supply the tool name a harness supplies + Scenario: Happy path — a spec start without a grant is blocked | bats oracle | `human-grant-lock.bats` |
-| A read-only tool is not blocked | Requirement: The lock fixtures supply the tool name a harness supplies + Scenario: Adversarial — a read-only tool is not blocked | bats oracle | `oracle-ordering-lock.bats` |
+| A read-only tool is not blocked | Requirement: The lock fixtures supply the tool name a harness supplies + Scenario: Adversarial — a read-only tool is not blocked | scenario tests | `GateEventSpec` (supplied `Read` on a production path allows), `GateDecisionSpec` (read-only name set) |
 | The decision is independent of case and channel | Property: lock-decision-is-independent-of-name-case-and-channel | Hedgehog property (enumerated) | `GateDecisionSpec` |
 | An absent name allows with a stated reason | Requirement: An absent tool name keeps parity and is stated + Scenario: Happy path — an absent name allows with a stated reason | scenario test | `GateEventSpec` |
 | A supplied name produces no absence diagnostic | Requirement: An absent tool name keeps parity and is stated + Scenario: Adversarial — a supplied name produces no absence diagnostic | scenario test | `GateEventSpec` |

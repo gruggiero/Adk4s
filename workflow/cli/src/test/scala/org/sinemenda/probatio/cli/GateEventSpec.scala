@@ -4999,3 +4999,96 @@ final class GateEventSpec extends ProbatioCliSuite:
         s"the allow must state that no tool name was supplied: $trace"
       )
     }
+
+  // ── Ring 8 remediation — absence is stated on the allow-prefix arm ──
+  // spec: oracle-fixture-repair — Requirement: An absent tool name keeps parity and is stated
+  //
+  // The VERIFIED_SCALA3_ALLOW_PATHS prefix short-circuit returns Ran(0)
+  // before preExecution runs; an absent name on that arm must still state
+  // its absence — the requirement admits no silent allow.
+
+  test("an absent tool name on an allow-listed production path still states the absence"):
+    withTempDir("gate-allow-prefix-absent") { (repo: Path) =>
+      mkRepo(repo, withGit = true)
+      writeImplOrder(repo, "src/main/scala/A.scala")
+      val sd: Path = stateDir(repo)
+      Files.createDirectories(sd)
+      Files.writeString(sd.resolve(s"phase-$change-$priorSpec"), "verified")
+      Files.writeString(sd.resolve(s"phase-$change-$specName"), "verified")
+      val (trace: String, outcome: Outcome[Int]) = runTraced(
+        repo,
+        List(
+          "--event",
+          "tool-call",
+          "--format",
+          "text",
+          "--session",
+          "t",
+          "--file",
+          repo.resolve("src/main/scala/A.scala").toString
+        ),
+        Map("VERIFIED_SCALA3_ALLOW_PATHS" -> repo.resolve("src/main").toString)
+      )
+      assertEquals(
+        outcome,
+        Outcome.Ran(0),
+        "the allow-list prefix keeps its allow verdict — parity"
+      )
+      assert(
+        trace.contains("allow-listed path"),
+        s"the allow must name the prefix that allowed it: $trace"
+      )
+      assert(
+        trace.contains(absentNameDiagnostic),
+        s"the allow must state that no tool name was supplied: $trace"
+      )
+    }
+
+  // A supplied --file suppresses the payload's tool_name (predecessor
+  // scoping): the name is absent and the diagnostic says so. The verdict
+  // leg — the payload's edit name does NOT reach the lock — is pinned at
+  // "the --file flag suppresses the payload's tool_name" above; this pins
+  // the diagnostic leg.
+
+  test("a --file flag suppresses the payload tool_name and the absence is stated"):
+    withTempDir("gate-file-suppresses-payload-name") { (repo: Path) =>
+      mkRepo(repo, withGit = true)
+      writeImplOrder(repo, "src/main/scala/A.scala")
+      val sd: Path = stateDir(repo)
+      Files.createDirectories(sd)
+      Files.writeString(sd.resolve(s"phase-$change-$priorSpec"), "verified")
+      Files.writeString(sd.resolve(s"phase-$change-$specName"), "verified")
+      val payload: String = ujson.write(
+        ujson.Obj(
+          "tool_name" -> ujson.Str("edit"),
+          "tool_input" -> ujson.Obj(
+            "file_path" -> ujson.Str(repo.resolve("src/main/scala/A.scala").toString)
+          ),
+          "cwd" -> ujson.Str(repo.toString)
+        )
+      )
+      val (trace: String, outcome: Outcome[Int]) = runTracedPayload(
+        repo,
+        List(
+          "--event",
+          "tool-call",
+          "--format",
+          "text",
+          "--session",
+          "t",
+          "--file",
+          repo.resolve("src/main/scala/A.scala").toString
+        ),
+        Map.empty,
+        payload
+      )
+      assertEquals(
+        outcome,
+        Outcome.Ran(0),
+        "a supplied --file suppresses the payload tool_name — absence allows"
+      )
+      assert(
+        trace.contains(absentNameDiagnostic),
+        s"the allow must state that no tool name was supplied: $trace"
+      )
+    }
