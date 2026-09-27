@@ -407,9 +407,10 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   // spec: finish-probatio-replacement/delivery-verified — Scenario: Happy path — a candidate on the tested toolchain is accepted
   test("a candidate built with the tested toolchain is accepted"):
     withTempDir { dir =>
-      // testedToolchain is GraalVM CE/21.0.2 — the marker the release
-      // workflow's toolchain embeds.
-      writeReleaseWithMarker(dir, "v14.0.0", "GraalVM 21.0.2 Java 21 CE")
+      // testedToolchain is GraalVM CE/21.0.2 — the marker the pinned
+      // toolchain actually embeds (observed via `strings` on the native
+      // binary: `GraalVM CE 21.0.2+13.1`).
+      writeReleaseWithMarker(dir, "v14.0.0", "GraalVM CE 21.0.2+13.1")
       ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true, testedToolchain) match
         case Right(report) =>
           assert(report.contains("release manifest complete"), s"the completion is reported: $report")
@@ -417,7 +418,27 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
           fail(s"a candidate on the tested toolchain must be accepted: $err")
     }
 
-  // spec: finish-probatio-replacement/delivery-verified — Scenario: Adversarial — a candidate on a different toolchain is rejected
+  // spec: finish-probatio-replacement/delivery-verified — Scenario: Happy path — a candidate on the tested toolchain is accepted
+  test("readEmbedded maps both observed GraalVM marker shapes to the recorded vocabulary"):
+    // The pinned local build embeds the modern form; the unpinned
+    // graalvm-java17/22.3.1 default embedded the legacy form. Both were
+    // directly observed on real binaries — neither may regress.
+    List(
+      ("GraalVM CE 21.0.2+13.1", ToolchainIdentity("GraalVM CE", version("21.0.2"))),
+      ("GraalVM 22.3.1 Java 17 CE", ToolchainIdentity("GraalVM CE", version("22.3.1")))
+    ).foreach { case (marker, expected) =>
+      ToolchainIdentity.readEmbedded(
+        "probatio-linux-x86_64",
+        binaryWithMarker(marker).getBytes(StandardCharsets.UTF_8)
+      ) match
+        case ToolchainIdentity.Embedded.Found(bin, identity) =>
+          assertEquals(bin, "probatio-linux-x86_64")
+          assertEquals(identity, expected, s"marker '$marker' must map to $expected")
+        case unreadable: ToolchainIdentity.Embedded.Unreadable =>
+          fail(s"observed marker '$marker' must read, got: ${unreadable.reason}")
+    }
+
+  // spec: finish-probatio-replacement/delivery-verified — Scenario: Adversarial — a candidate built with a different toolchain is rejected
   test("a candidate built with a different toolchain is rejected naming both"):
     withTempDir { dir =>
       // The 22.3.1 toolchain is exactly what the unpinned local build
