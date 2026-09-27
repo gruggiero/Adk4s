@@ -21,3 +21,4 @@
 {"file":"openspec/schemas/verified-scala3/tests/oracle-ordering-lock.bats","commit":"9630de8269cb00739f110e785865bc25ad9069a5","spec":"oracle-fixture-repair","requirement":"The lock fixtures supply the tool name a harness supplies"}
 {"file":"openspec/schemas/verified-scala3/tests/human-grant-lock.bats","commit":"9630de8269cb00739f110e785865bc25ad9069a5","spec":"oracle-fixture-repair","requirement":"The lock fixtures supply the tool name a harness supplies"}
 {"file":"openspec/schemas/verified-scala3/tests/chain-state.bats","commit":"9630de8269cb00739f110e785865bc25ad9069a5","spec":"oracle-fixture-repair","requirement":"The correctness-verdict fixture failures are root-caused before they are fixed"}
+{"file":"openspec/schemas/verified-scala3/tests/human-grant-lock.bats","commit":"f710197e023b8ab99947879404fb76aad2a1a676","spec":"oracle-fixture-repair","requirement":"The lock fixtures supply the tool name a harness supplies"}
