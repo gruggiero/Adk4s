@@ -6,6 +6,9 @@ import ujson.Value
 import upickle.default.ReadWriter
 import upickle.default.readwriter
 
+import java.nio.charset.StandardCharsets
+import scala.util.matching.Regex
+
 /**
  * The compiler toolchain a native binary was built with — a distribution
  * and a version — read from the binary rather than assumed from build
@@ -75,7 +78,11 @@ object ToolchainIdentity:
    *
    * spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
    */
-  def parse(text: String): Option[ToolchainIdentity] = ???
+  def parse(text: String): Option[ToolchainIdentity] =
+    text.split("/", -1).toList match
+      case distribution :: version :: Nil if distribution.nonEmpty =>
+        Version.parse(version).map(v => ToolchainIdentity(distribution, v))
+      case _ => None // danger-scan:allow type-rejection — a malformed recorded form is no identity, never a default
 
   /**
    * Scans a native binary's bytes for the embedded GraalVM toolchain
@@ -87,7 +94,37 @@ object ToolchainIdentity:
    *
    * spec: finish-probatio-replacement/delivery-verified — Scenario: Error path — an unreadable toolchain identity is could-not-determine
    */
-  def readEmbedded(binary: String, bytes: Array[Byte]): Embedded = ???
+  // GraalVM embeds the toolchain marker in two shapes:
+  //  - JDK 21+ community/Oracle builds: `GraalVM CE 21.0.2+13.1` — the
+  //    `+<build>` qualifier is the pinned release's build id; the
+  //    recorded identity is the release version, so it is dropped.
+  //  - CE/EE ≤ 23.x for older JDKs: `GraalVM 22.3.1 Java 17 CE` —
+  //    measured on the unpinned local build.
+  // Both map to the recorded vocabulary `GraalVM <edition>/<version>`.
+  private val jdk21Marker: Regex =
+    """GraalVM[ \t]+(CE|EE)[ \t]+([0-9][0-9.]*[0-9])""".r
+  private val legacyMarker: Regex =
+    """GraalVM[ \t]+([0-9][0-9.]*[0-9])[ \t]+Java[ \t]+[0-9]+[ \t]+(CE|EE)""".r
+
+  private def identityOf(distribution: String, version: String): Option[ToolchainIdentity] =
+    Version.parse(version).map(v => ToolchainIdentity(distribution, v))
+
+  def readEmbedded(binary: String, bytes: Array[Byte]): Embedded =
+    // ISO-8859-1 is byte-faithful: every byte maps to one char, so the
+    // marker scan over binary bytes cannot corrupt or skip content.
+    val text: String = new String(bytes, StandardCharsets.ISO_8859_1)
+    val identity: Option[ToolchainIdentity] =
+      jdk21Marker
+        .findFirstMatchIn(text)
+        .flatMap(m => identityOf(s"GraalVM ${m.group(1)}", m.group(2)))
+        .orElse(
+          legacyMarker
+            .findFirstMatchIn(text)
+            .flatMap(m => identityOf(s"GraalVM ${m.group(2)}", m.group(1)))
+        )
+    identity match
+      case Some(found) => Embedded.Found(binary, found)
+      case None        => Embedded.Unreadable(binary, "no embedded GraalVM toolchain marker")
 
   /**
    * `ToolchainIdentity` on the wire is its recorded form

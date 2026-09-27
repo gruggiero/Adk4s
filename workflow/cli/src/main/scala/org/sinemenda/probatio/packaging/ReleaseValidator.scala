@@ -130,7 +130,13 @@ object ReleaseValidator:
   def toolchainVerdict(
       tested: ToolchainIdentity,
       candidate: ToolchainIdentity.Embedded
-  ): ToolchainVerdict = ???
+  ): ToolchainVerdict =
+    candidate match
+      case ToolchainIdentity.Embedded.Found(binary, identity) =>
+        if identity == tested then ToolchainVerdict.Accepted(binary, tested)
+        else ToolchainVerdict.Rejected(binary, tested, identity)
+      case ToolchainIdentity.Embedded.Unreadable(binary, reason) =>
+        ToolchainVerdict.Undetermined(binary, reason)
 
   /**
    * Validates that every native binary in the manifest carries an
@@ -144,7 +150,28 @@ object ReleaseValidator:
   def validateToolchain(
       manifest: ReleaseManifest,
       tested: ToolchainIdentity
-  ): List[String] = ???
+  ): List[String] =
+    val reads: Map[String, ToolchainIdentity.Embedded] =
+      manifest.toolchains.map(e => e.binary -> e).toMap
+    val natives: List[String] =
+      manifest.artifacts.collect { case ReleaseArtifact.NativeBinary(p) =>
+        s"probatio-${p.artifactSuffix}"
+      }
+    natives.flatMap { name =>
+      reads.get(name) match
+        case None =>
+          List(s"could not determine the toolchain identity of $name: no toolchain read recorded")
+        case Some(embedded) =>
+          toolchainVerdict(tested, embedded) match
+            case ToolchainVerdict.Accepted(_, _) => Nil
+            case ToolchainVerdict.Rejected(_, t, c) =>
+              List(
+                s"$name toolchain rejected: built with ${c.distribution}/${c.version.value} " +
+                  s"but the tested toolchain is ${t.distribution}/${t.version.value}"
+              )
+            case ToolchainVerdict.Undetermined(_, reason) =>
+              List(s"could not determine the toolchain identity of $name: $reason")
+    }
 
   /**
    * Runs all validations and returns the combined list of issues.

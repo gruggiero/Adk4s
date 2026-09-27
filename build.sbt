@@ -556,6 +556,16 @@ lazy val `probatio-cli` = (project in file("workflow/cli"))
     assembly / mainClass := Some("org.sinemenda.probatio.cli.ProbatioMain"),
     nativeImageOptions ++= Seq("--no-fallback", "-O1"),
     nativeImageOutput := target.value / "native-image" / "probatio",
+    // Pin the local native-image toolchain to the release toolchain
+    // (release-probatio.yml matrix: graalvm-community / 21.0.2) so the
+    // binary tested locally is the same toolchain the release gate
+    // validates — the default graalvm-java17/22.3.1 embeds a different
+    // embedded toolchain marker and would fail the toolchain check.
+    // spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
+    // (Invisible rank: lintUnused cannot see the sbt-native-image task's
+    // consumption of these keys and would flag them as unused.)
+    nativeImageJvm.withRank(KeyRanks.Invisible) := "graalvm-community",
+    nativeImageVersion.withRank(KeyRanks.Invisible) := "21.0.2",
     // Several suites redirect the global System.out/System.err to assert on
     // emitted bytes. With fork=false, sbt's default parallel task groups let
     // another suite's production code print into a live capture buffer.

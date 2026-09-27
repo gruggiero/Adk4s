@@ -28,6 +28,9 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   private val testedToolchain: ToolchainIdentity =
     ToolchainIdentity("GraalVM CE", version("21.0.2"))
 
+  /** `testedToolchain` in embedded-marker form — the same toolchain in both vocabularies. */
+  private val testedMarker: String = "GraalVM 21.0.2 Java 21 CE"
+
   /** A version that must parse — the None arm is a test failure, never a default. */
   private def version(s: String): ToolchainIdentity.Version =
     ToolchainIdentity.Version.parse(s) match
@@ -58,8 +61,17 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
     val bytes: Array[Byte] = Files.readAllBytes(dir.resolve(artifactName))
     write(dir, s"$artifactName.sha256", s"${ChecksumVerifier.computeSha256(bytes)}  $artifactName\n")
 
-  /** Writes a complete release directory: 5 content artifacts + sbom + 5 sidecars. */
+  /**
+   * Writes a complete release directory: 5 content artifacts + sbom +
+   * 5 sidecars. A complete release is toolchain-conformant — the
+   * native binaries carry the tested toolchain's embedded marker; a
+   * marker-free release is written by `writeMarkerFreeRelease`.
+   */
   private def writeCompleteRelease(dir: Path, version: String): Unit =
+    writeReleaseWithMarker(dir, version, testedMarker)
+
+  /** Writes a complete release whose native binaries carry no toolchain marker. */
+  private def writeMarkerFreeRelease(dir: Path, version: String): Unit =
     val contentNames: List[String] = List(
       "probatio-linux-x86_64",
       "probatio-macos-aarch64",
@@ -415,8 +427,8 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   // spec: finish-probatio-replacement/delivery-verified — Scenario: Error path — an unreadable toolchain identity is could-not-determine
   test("a binary whose toolchain identity cannot be read is could-not-determine"):
     withTempDir { dir =>
-      // No marker at all — plain content, as writeCompleteRelease produces.
-      writeCompleteRelease(dir, "v14.0.0")
+      // No marker at all — plain content, as writeMarkerFreeRelease produces.
+      writeMarkerFreeRelease(dir, "v14.0.0")
       ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true, testedToolchain) match
         case Left(err) =>
           assert(err.contains("could not determine"), s"the outcome is could-not-determine: $err")

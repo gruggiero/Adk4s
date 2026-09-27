@@ -109,7 +109,17 @@ object ReleaseManifestIO:
   private def embeddedToolchains(
       dir: Path,
       binaries: List[String]
-  ): List[ToolchainIdentity.Embedded] = ???
+  ): List[ToolchainIdentity.Embedded] =
+    binaries.map { name =>
+      val path: Path = dir.resolve(name)
+      if !Files.isRegularFile(path) then
+        ToolchainIdentity.Embedded.Unreadable(name, "the binary file is not present")
+      else
+        try ToolchainIdentity.readEmbedded(name, Files.readAllBytes(path))
+        catch
+          case NonFatal(e) => // danger-scan:allow typed-catch — an unreadable binary is a could-not-determine naming it, never a manifest-build failure
+            ToolchainIdentity.Embedded.Unreadable(name, s"the binary could not be read: ${e.getMessage}")
+    }
 
   private def artifactFor(fileName: String): Option[ReleaseArtifact] =
     if fileName.endsWith(".sha256") then

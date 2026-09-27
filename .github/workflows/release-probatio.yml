@@ -25,6 +25,15 @@ on:
 permissions:
   contents: write
 
+env:
+  # The toolchain identity the tested binaries carry, in the recorded
+  # form <distribution>/<version> that ReleaseCheck requires. It MUST
+  # match the build-native matrix below — the release gate enforces
+  # this at run time by reading the marker embedded in each binary, so
+  # a drift surfaces as a rejection naming both identities.
+  # spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
+  TESTED_TOOLCHAIN: 'GraalVM CE/21.0.2'
+
 jobs:
   build-native:
     name: Build native binary (${{ matrix.platform }})
@@ -154,7 +163,7 @@ jobs:
         uses: sbt/setup-sbt@v1
 
       - name: Validate release manifest
-        run: sbt -batch 'probatio-cli/runMain org.sinemenda.probatio.packaging.ReleaseCheck release-artifacts ${{ github.ref_name }}'
+        run: sbt -batch 'probatio-cli/runMain org.sinemenda.probatio.packaging.ReleaseCheck release-artifacts ${{ github.ref_name }} "${{ env.TESTED_TOOLCHAIN }}"'
 
       - name: Create release
         uses: softprops/action-gh-release@v2
