@@ -461,6 +461,18 @@ lazy val dependencyLint = taskKey[Unit](
   "R-ARCH1: fail if this project's resolved classpath reaches a forbidden dependency"
 )
 
+// ── Release-artifact tasks named by release-probatio.yml ──────────────────
+// The release workflow calls `probatio-cli/sourceJar` and
+// `probatio-cli/sbomGenerate`; both keys exist only here (spec 4 named the
+// steps without defining them — the tag-triggered job never ran).
+lazy val sourceJar = taskKey[File](
+  "Build the sources JAR release artifact (alias of Compile/packageSrc)"
+)
+
+lazy val sbomGenerate = taskKey[File](
+  "Write probatio-sbom.spdx.json at repo root; RELEASE_VERSION env names the release"
+)
+
 /** R-ARCH1 forbidden predicate. Returns true if the module is in the closed
   * forbidden set: cats/cats-effect (org.typelevel), fs2 (co.fs2), llm4s
   * (org.llm4s), workflows4s (org.business4s), scalacheck (org.scalacheck),
@@ -566,6 +578,33 @@ lazy val `probatio-cli` = (project in file("workflow/cli"))
     // consumption of these keys and would flag them as unused.)
     nativeImageJvm.withRank(KeyRanks.Invisible) := "graalvm-community",
     nativeImageVersion.withRank(KeyRanks.Invisible) := "21.0.2",
+    // Release-artifact tasks the release workflow names (spec 4 named them
+    // without defining them). sourceJar is the standard packageSrc jar;
+    // sbomGenerate renders probatio-sbom.spdx.json from the RESOLVED
+    // dependency report via the SbomGenerate entrypoint — the schema lives
+    // in Sbom, not duplicated here. The release version comes from
+    // RELEASE_VERSION (the workflow sets it to github.ref_name).
+    sourceJar := (Compile / packageSrc).value,
+    sbomGenerate := {
+      val out: File = (ThisBuild / baseDirectory).value / "probatio-sbom.spdx.json"
+      val releaseVersion: String = sys.env.getOrElse(
+        "RELEASE_VERSION",
+        sys.error("RELEASE_VERSION must name the release (e.g. v14.0.0)")
+      )
+      // Runtime external classpath only — Test-scope deps and internal
+      // project deps do not ship in the artifacts.
+      val deps: Seq[String] = (Runtime / externalDependencyClasspath).value
+        .flatMap(_.get(moduleID.key))
+        .map(m => s"${m.organization}:${m.name}|${m.revision}|Maven")
+      val classpath: Seq[File] = (Compile / fullClasspath).value.map(_.data)
+      (Compile / runner).value.run(
+        "org.sinemenda.probatio.packaging.SbomGenerate",
+        classpath,
+        Seq(out.getAbsolutePath, releaseVersion) ++ deps,
+        streams.value.log
+      )
+      out
+    },
     // Several suites redirect the global System.out/System.err to assert on
     // emitted bytes. With fork=false, sbt's default parallel task groups let
     // another suite's production code print into a live capture buffer.

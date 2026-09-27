@@ -112,7 +112,7 @@ jobs:
       - name: Rename artifacts
         run: |
           cp workflow/cli/target/scala-*/probatio-cli-assembly-*.jar probatio-assembly.jar
-          cp workflow/cli/target/scala-*/probatio-cli-sources-*.jar probatio-sources.jar
+          cp workflow/cli/target/scala-*/probatio-cli_*-sources.jar probatio-sources.jar
 
       - name: Compute SHA-256 for JARs
         run: |
@@ -120,6 +120,9 @@ jobs:
           sha256sum probatio-sources.jar > probatio-sources.jar.sha256
 
       - name: Generate SBOM
+        env:
+          # Sbom.validate requires the SBOM version to equal the tag.
+          RELEASE_VERSION: ${{ github.ref_name }}
         run: |
           sbt -batch 'probatio-cli/sbomGenerate'
           # SBOM is generated as probatio-sbom.spdx.json
