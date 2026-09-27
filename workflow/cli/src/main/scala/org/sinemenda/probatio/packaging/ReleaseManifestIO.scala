@@ -79,6 +79,10 @@ object ReleaseManifestIO:
               .left
               .map(err => s"SBOM file present but unparseable: $err")
           else Right(None)
+        val binaries: List[String] =
+          artifacts
+            .collect { case ReleaseArtifact.NativeBinary(platform) => platform.artifactSuffix }
+            .map(suffix => s"probatio-$suffix")
         for
           s <- sbom
           c <- checksums
@@ -87,10 +91,25 @@ object ReleaseManifestIO:
           artifacts = artifacts,
           checksums = c,
           sbom = s,
-          builtFromCI = builtFromCI
+          builtFromCI = builtFromCI,
+          toolchains = embeddedToolchains(dir, binaries)
         )
       catch case NonFatal(e) => // danger-scan:allow typed-catch — a corrupt release directory maps to a named Left
         Left(s"release artifacts directory could not be read: ${e.getMessage}")
+
+  /**
+   * Reads the embedded toolchain marker of each native binary in the
+   * directory. Per-file failures (missing file, unreadable bytes, no
+   * marker) map to `Unreadable` — a could-not-determine verdict the
+   * validator reports against the named binary — rather than a
+   * manifest-build failure.
+   *
+   * spec: finish-probatio-replacement/delivery-verified — Scenario: Error path — an unreadable toolchain identity is could-not-determine
+   */
+  private def embeddedToolchains(
+      dir: Path,
+      binaries: List[String]
+  ): List[ToolchainIdentity.Embedded] = ???
 
   private def artifactFor(fileName: String): Option[ReleaseArtifact] =
     if fileName.endsWith(".sha256") then

@@ -9,7 +9,12 @@ import java.nio.file.Path
  * complete is not delivered: any issue fails the step with the full
  * issue list.
  *
- * Usage: `ReleaseCheck <artifacts-dir> <release-version>`
+ * Usage: `ReleaseCheck <artifacts-dir> <release-version> <tested-toolchain>`
+ *
+ * The third argument is the toolchain identity of the tested binary in
+ * the recorded form `<distribution>/<version>` (e.g. `GraalVM CE/21.0.2`)
+ * — the release check cannot run without it, and a candidate whose
+ * embedded toolchain differs is rejected.
  *
  * Wired into `release-probatio.yml` as the gate between artifact
  * download and release publication. Invoked via `runMain`, which is
@@ -17,6 +22,7 @@ import java.nio.file.Path
  * task); `sys.exit` would terminate the sbt JVM.
  *
  * spec: native-gate-delivery — Requirement: A release SHALL be complete before it is delivered
+ * spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
  */
 object ReleaseCheck:
 
@@ -30,22 +36,24 @@ object ReleaseCheck:
     env("CI").contains("true")
 
   /**
-   * Builds the manifest from `dir` and validates it. `Right` carries the
-   * completion report; `Left` carries the reason the release is not
-   * delivered — a manifest that could not be built, or the full issue
-   * list. `private[packaging]` so the gate is testable without a JVM
-   * exit.
+   * Builds the manifest from `dir` and validates it against `tested` —
+   * the toolchain identity of the binary the conformance and latency
+   * evidence was produced with. `Right` carries the completion report;
+   * `Left` carries the reason the release is not delivered — a manifest
+   * that could not be built, or the full issue list.
+   * `private[packaging]` so the gate is testable without a JVM exit.
    */
   private[packaging] def run(
     dir: Path,
     version: String,
-    builtFromCI: Boolean
+    builtFromCI: Boolean,
+    tested: ToolchainIdentity
   ): Either[String, String] =
     ReleaseManifestIO.fromDirectory(dir, version, builtFromCI) match
       case Left(err) =>
         Left(s"release manifest could not be built: $err")
       case Right(manifest) =>
-        ReleaseValidator.validateAll(manifest) match
+        ReleaseValidator.validateAll(manifest, tested) match
           case Nil =>
             Right(
               s"release manifest complete: ${manifest.artifacts.size} artifacts for $version"
@@ -58,9 +66,13 @@ object ReleaseCheck:
 
   def main(args: Array[String]): Unit =
     args.toList match
-      case dir :: version :: Nil =>
-        run(Path.of(dir), version, isCIEnvironment(sys.env.get)) match // scalafix:ok DisableSyntax.NoSysEnv,danger-scan:allow env-lookup — returns Option, not an unsafe get
-          case Right(report) => println(report)
-          case Left(err)     => sys.error(err)
+      case dir :: version :: tested :: Nil =>
+        ToolchainIdentity.parse(tested) match
+          case None => // danger-scan:allow decode-failure — an unparseable tested identity is a usage error, never an assumed toolchain
+            sys.error(s"not a toolchain identity: '$tested' (expected <distribution>/<version>)")
+          case Some(identity) =>
+            run(Path.of(dir), version, isCIEnvironment(sys.env.get), identity) match // scalafix:ok DisableSyntax.NoSysEnv,danger-scan:allow env-lookup — returns Option, not an unsafe get
+              case Right(report) => println(report)
+              case Left(err)     => sys.error(err)
       case _ => // danger-scan:allow arity-rejection — wrong argument count maps to usage error, never a valid manifest
-        sys.error("usage: ReleaseCheck <artifacts-dir> <release-version>")
+        sys.error("usage: ReleaseCheck <artifacts-dir> <release-version> <tested-toolchain>")

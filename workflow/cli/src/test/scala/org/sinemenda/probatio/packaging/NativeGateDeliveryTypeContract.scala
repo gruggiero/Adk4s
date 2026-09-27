@@ -93,3 +93,23 @@ final class NativeGateDeliveryTypeContract extends ProbatioCliSuite:
   test("BudgetVerdict.Met cannot be constructed without a measurement"):
     val err: String = compileErrors("BudgetVerdict.Met(LatencyBudget.perTurn)")
     assert(err.nonEmpty, "Met(budget) should not compile — Met requires the measurement that produced it")
+
+  // ── delivery-verified (spec 7): a release check that omits the toolchain
+  //    identity must not compile ───────────────────────────────────────────
+  // spec: finish-probatio-replacement/delivery-verified — Compile-Negative: A release check that omits the toolchain identity must not compile
+
+  test("validateAll cannot run without the tested toolchain identity"):
+    val err: String = compileErrors(
+      "ReleaseValidator.validateAll(ReleaseManifest(\"v1\", List.empty, Map.empty, None, false, List.empty))"
+    )
+    assert(err.nonEmpty, "validateAll(manifest) should not compile — the tested identity is mandatory")
+
+  test("ReleaseCheck.run cannot run without the tested toolchain identity"):
+    val err: String = compileErrors(
+      "ReleaseCheck.run(java.nio.file.Path.of(\"/tmp/x\"), \"v1\", true)"
+    )
+    assert(err.nonEmpty, "run(dir, version, ci) should not compile — the tested identity is mandatory")
+
+  test("ToolchainIdentity.Version cannot be constructed empty — no public apply"):
+    val err: String = compileErrors("ToolchainIdentity.Version(\"\")")
+    assert(err.nonEmpty, "Version(\"\") should not compile — an empty identity is unconstructible")

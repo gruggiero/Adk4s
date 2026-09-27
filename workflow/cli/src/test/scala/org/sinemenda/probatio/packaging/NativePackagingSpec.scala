@@ -18,6 +18,31 @@ import org.sinemenda.probatio.cli.ProbatioCliSuite
  */
 final class NativePackagingSpec extends ProbatioCliSuite:
 
+  /**
+   * The toolchain identity synthetic manifests are stamped with — the
+   * release-pinned GraalVM CE 21.0.2 (delivery-verified).
+   */
+  private val testedToolchain: ToolchainIdentity =
+    ToolchainIdentity("GraalVM CE", version("21.0.2"))
+
+  /** A version that must parse — the None arm is a test failure, never a default. */
+  private def version(s: String): ToolchainIdentity.Version =
+    ToolchainIdentity.Version.parse(s) match
+      case Some(v) => v
+      case None    => fail(s"'$s' must parse as a toolchain version")
+
+  /**
+   * One `Found` embedded-toolchain read per committed platform binary,
+   * all reporting `tested` — the shape a release built with the tested
+   * toolchain produces.
+   */
+  private def toolchainsMatching(
+      tested: ToolchainIdentity
+  ): List[ToolchainIdentity.Embedded] =
+    Platform.committedNativePlatforms.toList.map(p =>
+      ToolchainIdentity.Embedded.Found(s"probatio-${p.artifactSuffix}", tested)
+    )
+
   // ──────────────────────────────────────────────────────────────
   // Property 1: SHA-256 checksum round-trip
   // spec: native-packaging — Property: SHA-256 checksum round-trip
@@ -82,7 +107,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
         artifacts = ReleaseManifest.expectedArtifacts,
         checksums = Map.empty,
         sbom = sbom,
-        builtFromCI = true
+        builtFromCI = true,
+        toolchains = toolchainsMatching(testedToolchain)
       )
       val issues: List[String]   = ReleaseValidator.validateSbom(manifest)
       val expectedValid: Boolean = includeSbom && validSbom && hasDeps
@@ -111,7 +137,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
         artifacts = binaries ++ List(ReleaseArtifact.AssemblyJar, ReleaseArtifact.SourcesJar, ReleaseArtifact.Sbom),
         checksums = Map.empty,
         sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
-        builtFromCI = true
+        builtFromCI = true,
+        toolchains = toolchainsMatching(testedToolchain)
       )
       val issues: List[String]      = ReleaseValidator.validatePlatformCoverage(manifest)
       val expectedComplete: Boolean = includeLinux && includeMacosArm && includeMacosIntel && !includeWindows
@@ -263,9 +290,10 @@ final class NativePackagingSpec extends ProbatioCliSuite:
         "probatio-sources.jar"   -> "src-hash"
       ),
       sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
-      builtFromCI = true
+      builtFromCI = true,
+      toolchains = toolchainsMatching(testedToolchain)
     )
-    val issues: List[String] = ReleaseValidator.validateAll(manifest)
+    val issues: List[String] = ReleaseValidator.validateAll(manifest, testedToolchain)
     assertEquals(issues, Nil, s"complete manifest should have no issues, got: $issues")
 
   test("release missing assembly JAR is flagged"):
@@ -274,7 +302,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       artifacts = ReleaseManifest.expectedArtifacts.filterNot(_ == ReleaseArtifact.AssemblyJar),
       checksums = Map.empty,
       sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
-      builtFromCI = true
+      builtFromCI = true,
+      toolchains = toolchainsMatching(testedToolchain)
     )
     val issues: List[String] = ReleaseValidator.validateCompleteness(manifest)
     assert(issues.nonEmpty, "missing assembly JAR should be flagged")
@@ -286,7 +315,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       artifacts = ReleaseManifest.expectedArtifacts.filterNot(_ == ReleaseArtifact.SourcesJar),
       checksums = Map.empty,
       sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
-      builtFromCI = true
+      builtFromCI = true,
+      toolchains = toolchainsMatching(testedToolchain)
     )
     val issues: List[String] = ReleaseValidator.validateCompleteness(manifest)
     assert(issues.nonEmpty, "missing sources JAR should be flagged")
@@ -297,7 +327,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       artifacts = ReleaseManifest.expectedArtifacts.filterNot(_ == ReleaseArtifact.Sbom),
       checksums = Map.empty,
       sbom = None,
-      builtFromCI = true
+      builtFromCI = true,
+      toolchains = toolchainsMatching(testedToolchain)
     )
     val issues: List[String] = ReleaseValidator.validateSbom(manifest)
     assert(issues.nonEmpty, "missing SBOM should be flagged")
@@ -407,7 +438,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       artifacts = ReleaseManifest.expectedArtifacts,
       checksums = Map.empty,
       sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
-      builtFromCI = false
+      builtFromCI = false,
+      toolchains = toolchainsMatching(testedToolchain)
     )
     val issues: List[String] = ReleaseValidator.validateCIProvenance(manifest)
     assert(issues.nonEmpty, "non-CI build should be flagged")
@@ -418,7 +450,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       artifacts = ReleaseManifest.expectedArtifacts,
       checksums = Map.empty,
       sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
-      builtFromCI = true
+      builtFromCI = true,
+      toolchains = toolchainsMatching(testedToolchain)
     )
     val issues: List[String] = ReleaseValidator.validateCIProvenance(manifest)
     assertEquals(issues, Nil, "CI build should pass provenance check")
@@ -623,7 +656,8 @@ final class NativePackagingSpec extends ProbatioCliSuite:
       artifacts   = ReleaseManifest.expectedArtifacts,
       checksums   = completeChecksums,
       sbom        = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
-      builtFromCI = true
+      builtFromCI = true,
+      toolchains  = toolchainsMatching(testedToolchain)
     )
 
   /** spec: native-gate-delivery — Generator: genReleaseManifest. */
@@ -686,7 +720,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
             )
         )
     yield
-      val reported: Boolean = ReleaseValidator.validateAll(m).isEmpty
+      val reported: Boolean = ReleaseValidator.validateAll(m, testedToolchain).isEmpty
       val expected: Boolean = everyNamedArtifactPresent(m) && everyChecksumMatches(m)
       Result
         .assert(reported == expected)
@@ -695,7 +729,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
   // ── Scenario: Happy path — a complete manifest reports complete
   // spec: native-gate-delivery — Scenario: Happy path — a complete manifest reports complete
   test("a manifest carrying every named artifact for every supported platform reports complete"):
-    val issues: List[String] = ReleaseValidator.validateAll(completeManifest)
+    val issues: List[String] = ReleaseValidator.validateAll(completeManifest, testedToolchain)
     assertEquals(issues, Nil, s"complete manifest must report no issues: $issues")
 
   // ── Scenario: Adversarial — a manifest missing one artifact is not
@@ -705,7 +739,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
     val manifest: ReleaseManifest = completeManifest.copy(
       artifacts = ReleaseManifest.expectedArtifacts.filterNot(_ == ReleaseArtifact.AssemblyJar)
     )
-    val issues: List[String] = ReleaseValidator.validateAll(manifest)
+    val issues: List[String] = ReleaseValidator.validateAll(manifest, testedToolchain)
     assert(issues.nonEmpty, "a manifest missing an artifact must not report complete")
     assert(
       issues.exists(_.contains(ReleaseArtifact.AssemblyJar.fileName)),
@@ -719,7 +753,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
     val manifest: ReleaseManifest = completeManifest.copy(
       checksums = completeChecksums - "probatio-linux-x86_64"
     )
-    val issues: List[String] = ReleaseValidator.validateAll(manifest)
+    val issues: List[String] = ReleaseValidator.validateAll(manifest, testedToolchain)
     assert(issues.nonEmpty, "a checksum mismatch must prevent completeness")
     assert(
       issues.exists(_.contains("probatio-linux-x86_64")),

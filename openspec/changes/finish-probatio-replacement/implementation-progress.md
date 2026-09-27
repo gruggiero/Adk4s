@@ -173,7 +173,14 @@ SHA `b414a80fecb711672f9a12865bde724aeedcf259` (recorded at Step 0)
 
 ### 7. delivery-verified
 
-- **Status**: PENDING
+### Baseline
+SHA `38bfb2239c81a5cb7d1abe9c38e2e682d4fdc3d2` (recorded at Step 0)
+
+- **Status**: IN PROGRESS — Step 0 recorded
+- **BASELINE SHA**: `38bfb2239c81a5cb7d1abe9c38e2e682d4fdc3d2`
+
+### Step Progress
+- [x] Step 0 — Baseline + concept check: gate `--check-installed` → `installed:true`, last_run 2026-09-27T16:25:58Z (post-edit). Baseline `38bfb22`; tree clean of tracked changes (4 pre-existing untracked scratch docs — `devin-cli-bug-report-20260824.md`, `docs/implementation-plan/ring5-tutorial.html`, `docs/openPoints/RING5-IMPLEMENTATION.md`, `docs/probatio-howto.md` — outside every `git diff <baseline>`; the untracked-source blind spot is covered by `--also` scans of this spec's new files, same as spec-3/6). Snapshot `inventory-snapshots/delivery-verified-before.md` (11 opaque, 152 sealed, 522 case classes, 18 service traits, 62 Smithy, 518 generators). registry-check PASS (817 tokens, 15 spec refs, 5 weak bindings non-blocking — unchanged). danger-scan `38bfb22` clean (hook, no production .scala in diff). spec-lint 0 FAIL / 34 WARN (all W3, unchanged). **MUST-CONFIRM resolved**: maintainer authorised publishing `probatio/porting` to `github` remote (`git@github.com:gruggiero/Adk4s.git`) + PR + a deliberately-regressing branch, at the post-Step-3 task; `verify.yml` triggers on `pull_request`. Toolchain direction confirmed: pin `nativeImageVersion` to the RELEASE toolchain (GraalVM CE 21.0.2), re-establish conformance+latency on it. Concepts verified in `org.sinemenda.probatio.packaging`: `ReleaseCheck`, `ReleaseValidator`, `ReleaseManifest`, `LatencyMeasurement`, `BudgetVerdict` all exist. Behavioral concept `Strangler` — Gate action realized (`CutoverGate.decide`/`DifferentialHarness`); spec alters nothing. No public type widened — `ToolchainIdentity` is new; `ReleaseManifest` gains a field (constructor change, not a variant-set widening — impact-scan trigger not met; callers enumerated textually: `ReleaseManifestIOSpec`, `NativePackagingSpec`, `ReleaseManifestIO`, `release-probatio.yml` `runMain`). Embedded marker measured: built binary carries `GraalVM 22.3.1 Java 17 CE`. Proof-obligation table complete (13 rows). Environment gaps for later steps: no `gh`/`glab` CLI on PATH (PR opened via push + web or `git` only — decide at the publish task); no `hyperfine` on PATH (latency re-measurement at Step 3 needs an alternative harness or an install).
 
 ---
 

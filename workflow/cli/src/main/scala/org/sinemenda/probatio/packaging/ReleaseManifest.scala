@@ -12,16 +12,24 @@ import upickle.default.*
  * the same git tag with the same toolchain produces byte-identical
  * binaries and therefore byte-identical checksums.
  *
+ * `toolchains` carries one `Embedded` read per native binary in the
+ * candidate — the toolchain identity the binary itself declares, read
+ * from its embedded marker. It is what `ReleaseValidator.validateAll`
+ * compares against the tested identity; a binary with no read is a
+ * validation issue, not an absent fact.
+ *
  * spec: native-packaging — Requirement: Every release SHALL include per-platform binary, assembly JAR, SHA-256 checksums, SBOM, and sources
  * spec: native-packaging — Requirement: The release pipeline SHALL be CI-reproducible
  * spec: native-packaging — Property: Platform coverage is complete for committed platforms
+ * spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
  */
 case class ReleaseManifest(
   version: String,
   artifacts: List[ReleaseArtifact],
   checksums: Map[String, String],
   sbom: Option[Sbom],
-  builtFromCI: Boolean
+  builtFromCI: Boolean,
+  toolchains: List[ToolchainIdentity.Embedded]
 ) derives ReadWriter
 
 object ReleaseManifest:

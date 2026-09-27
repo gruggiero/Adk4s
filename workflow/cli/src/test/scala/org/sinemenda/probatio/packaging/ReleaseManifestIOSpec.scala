@@ -20,6 +20,16 @@ import java.nio.file.Path
  */
 final class ReleaseManifestIOSpec extends ProbatioCliSuite:
 
+  /** The identity the synthetic release binaries are stamped with. */
+  private val testedToolchain: ToolchainIdentity =
+    ToolchainIdentity("GraalVM CE", version("21.0.2"))
+
+  /** A version that must parse — the None arm is a test failure, never a default. */
+  private def version(s: String): ToolchainIdentity.Version =
+    ToolchainIdentity.Version.parse(s) match
+      case Some(v) => v
+      case None    => fail(s"'$s' must parse as a toolchain version")
+
   private def withTempDir(f: Path => Unit): Unit =
     val dir: Path = Files.createTempDirectory("probatio-release")
     try f(dir)
@@ -62,8 +72,8 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
           )
           assertEquals(manifest.checksums.size, 5, "one recorded digest per content artifact")
           assert(manifest.sbom.isDefined, "SBOM must be parsed")
-          assert(ReleaseValidator.validateAll(manifest).isEmpty,
-                 s"complete release must validate: ${ReleaseValidator.validateAll(manifest)}")
+          assert(ReleaseValidator.validateAll(manifest, testedToolchain).isEmpty,
+                 s"complete release must validate: ${ReleaseValidator.validateAll(manifest, testedToolchain)}")
         case Left(err) => fail(s"complete release must build: $err")
     }
 
@@ -118,7 +128,7 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
           assert(manifest.artifacts.contains(ReleaseArtifact.Checksum("probatio-ghost.bin")))
           assert(manifest.checksums.contains("probatio-ghost.bin"))
           assert(
-            ReleaseValidator.validateAll(manifest).nonEmpty,
+            ReleaseValidator.validateAll(manifest, testedToolchain).nonEmpty,
             "an orphan sidecar leaves the release incomplete"
           )
         case Left(err) => fail(s"orphan sidecar is a completeness issue, not a build failure: $err")
@@ -129,7 +139,7 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
       write(dir, "probatio-assembly.jar", "content")
       val thrown: Boolean =
         try
-          ReleaseCheck.main(Array(dir.toString, "v14.0.0"))
+          ReleaseCheck.main(Array(dir.toString, "v14.0.0", "GraalVM CE/21.0.2"))
           false
         catch case e: Exception => e.getMessage.contains("release")
       assert(thrown, "an incomplete release must fail the release step")
@@ -234,8 +244,15 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   test("validateAll issues name their defect, not a blank string"):
     // Missing everything.
     val empty: ReleaseManifest =
-      ReleaseManifest("v1", artifacts = List.empty, checksums = Map.empty, sbom = None, builtFromCI = false)
-    val issues: List[String] = ReleaseValidator.validateAll(empty)
+      ReleaseManifest(
+        "v1",
+        artifacts = List.empty,
+        checksums = Map.empty,
+        sbom = None,
+        builtFromCI = false,
+        toolchains = List.empty
+      )
+    val issues: List[String] = ReleaseValidator.validateAll(empty, testedToolchain)
     assert(issues.exists(_.contains("missing required artifact: probatio-linux-x86_64")), s"$issues")
     assert(issues.exists(_.contains("missing native binary for committed platform: linux-x86_64")), s"$issues")
     assert(issues.exists(_.contains("SBOM is missing from release manifest")), s"$issues")
@@ -291,7 +308,7 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   test("ReleaseCheck.run reports completion for a valid CI-built release"):
     withTempDir { dir =>
       writeCompleteRelease(dir, "v14.0.0")
-      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true) match
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true, testedToolchain) match
         case Right(report) =>
           assert(report.contains("release manifest complete"), s"the completion is reported: $report")
           assert(report.contains("v14.0.0"), s"the version is named: $report")
@@ -301,7 +318,7 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   test("ReleaseCheck.run blocks a complete release not built from CI"):
     withTempDir { dir =>
       writeCompleteRelease(dir, "v14.0.0")
-      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = false) match
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = false, testedToolchain) match
         case Left(err) =>
           assert(err.contains("release manifest incomplete"), s"the refusal is named: $err")
           assert(err.contains("built from CI"), s"the provenance issue is listed: $err")
@@ -312,7 +329,7 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   test("ReleaseCheck.run lists every issue on its own line"):
     withTempDir { dir =>
       write(dir, "probatio-assembly.jar", "content")
-      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true) match
+      ReleaseCheck.run(dir, "v14.0.0", builtFromCI = true, testedToolchain) match
         case Left(err) =>
           assert(
             err.count(_ == '\n') >= 2,
@@ -322,7 +339,7 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
     }
 
   test("ReleaseCheck.run names an unbuildable manifest"):
-    ReleaseCheck.run(Path.of("/nonexistent-probatio-release-dir"), "v1", builtFromCI = true) match
+    ReleaseCheck.run(Path.of("/nonexistent-probatio-release-dir"), "v1", builtFromCI = true, testedToolchain) match
       case Left(err) =>
         assert(err.contains("release manifest could not be built"), s"the build failure is named: $err")
       case Right(_) => fail("a missing directory must not produce a report")

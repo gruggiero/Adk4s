@@ -12,6 +12,7 @@ package org.sinemenda.probatio.packaging
  *
  * spec: native-packaging — Requirement: Every release SHALL include per-platform binary, assembly JAR, SHA-256 checksums, SBOM, and sources
  * spec: native-packaging — Requirement: The release pipeline SHALL be CI-reproducible
+ * spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
  */
 object ReleaseValidator:
 
@@ -117,12 +118,45 @@ object ReleaseValidator:
     else List("release artifacts must be built from CI, not a local machine")
 
   /**
-   * Runs all validations and returns the combined list of issues.
-   * An empty list means the manifest is fully valid.
+   * Compares one candidate binary's embedded toolchain read against the
+   * tested identity. `Found` with a different identity is a `Rejected`
+   * naming both; `Unreadable` is an `Undetermined` naming the binary —
+   * could-not-determine, never a pass.
+   *
+   * spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
+   * spec: finish-probatio-replacement/delivery-verified — Scenario: Error path — an unreadable toolchain identity is could-not-determine
+   * spec: finish-probatio-replacement/delivery-verified — Property: toolchain-check-accepts-iff-identical
    */
-  def validateAll(manifest: ReleaseManifest): List[String] =
+  def toolchainVerdict(
+      tested: ToolchainIdentity,
+      candidate: ToolchainIdentity.Embedded
+  ): ToolchainVerdict = ???
+
+  /**
+   * Validates that every native binary in the manifest carries an
+   * embedded toolchain identity identical to the tested one. A binary
+   * whose read is `Unreadable`, or a native binary with no read at all,
+   * is an issue naming the binary — the candidate is not accepted.
+   *
+   * spec: finish-probatio-replacement/delivery-verified — Scenario: Happy path — a candidate built with the tested toolchain is accepted
+   * spec: finish-probatio-replacement/delivery-verified — Scenario: Adversarial — a candidate built with a different toolchain is rejected
+   */
+  def validateToolchain(
+      manifest: ReleaseManifest,
+      tested: ToolchainIdentity
+  ): List[String] = ???
+
+  /**
+   * Runs all validations and returns the combined list of issues.
+   * An empty list means the manifest is fully valid. The release check
+   * requires the tested toolchain identity — it cannot run without one,
+   * and every `accepted`/`rejected`/`undetermined` verdict names the
+   * identity it compared against.
+   */
+  def validateAll(manifest: ReleaseManifest, tested: ToolchainIdentity): List[String] =
     validateCompleteness(manifest) ++
       validatePlatformCoverage(manifest) ++
       validateSbom(manifest) ++
       validateChecksums(manifest) ++
-      validateCIProvenance(manifest)
+      validateCIProvenance(manifest) ++
+      validateToolchain(manifest, tested)
