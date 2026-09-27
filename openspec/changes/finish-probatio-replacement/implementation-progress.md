@@ -147,7 +147,7 @@ SHA `8ea5f6f7fc357bba0cba4e7d4969b05036ec3533` (recorded at Step 0)
 ### Baseline
 SHA `b414a80fecb711672f9a12865bde724aeedcf259` (recorded at Step 0)
 
-- **Status**: COMPLETE — implementation committed `b3327de` (implementation chain: Step-0/1 `e6b838b`, Step-2 `1d07065`, Step-3 `9630de8`, test-9 re-assertion `f710197`, sanctions `a4f5d32`/`a457b65`, R8 remediation `b3327de`); Rings 0/1/2/3/5/8 all green; chain-state 51 bound / 51 resolved / 19 discharged (all 4 = this spec's requirements, zero spec-6 unresolved); checkpoint report R0/R1/R2/R3/R5/R8 green, degraded=false, R8 fresh-context verified + remediated
+- **Status**: COMPLETE — implementation committed `b3327de` (implementation chain: Step-0/1 `e6b838b`, Step-2 `1d07065`, Step-3 `9630de8`, test-9 re-assertion `f710197`, sanctions `a4f5d32`/`a457b65`, R8 remediation `b3327de`); checkpoint `e15782c`; Rings 0/1/2/3/5/8 all green; chain-state 51 bound / 51 resolved / 19 discharged (all 4 = this spec's requirements, zero spec-6 unresolved); checkpoint report R0/R1/R2/R3/R5/R8 green, degraded=false, R8 fresh-context verified + remediated — HUMAN GATE approved ("validated")
 - **BASELINE SHA**: `b414a80fecb711672f9a12865bde724aeedcf259`
 | Commit | `b3327de` |
 
