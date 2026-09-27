@@ -39,13 +39,17 @@ object GateDecisions:
    * tool name. `Absent` keeps the predecessor's verdict (the empty
    * string was a `readOnlyTools` member); the caller renders the absence
    * in its diagnostic, which only a `ToolNameSource` makes visible.
-   *
-   * Body lands at Step 3; the contract pins the signature.
+   * A `Supplied("")` — unconstructible through the caller's mapping —
+   * still reads the `""` member of `readOnlyTools`, so a smuggled
+   * empty name keeps the predecessor's verdict too.
    *
    * spec: oracle-fixture-repair — Requirement: An absent tool name keeps parity and is stated
    * spec: oracle-fixture-repair — Compile-Negative: A tool name represented as a possibly-empty string at the decision site
    */
-  def preExecution(@annotation.unused toolName: ToolNameSource): Boolean = ???
+  def preExecution(toolName: ToolNameSource): Boolean =
+    toolName match
+      case ToolNameSource.Absent          => true
+      case ToolNameSource.Supplied(name)  => isReadOnlyTool(name)
 
   /**
    * The oracle lock's production-edit scope: a `/src/main/` path

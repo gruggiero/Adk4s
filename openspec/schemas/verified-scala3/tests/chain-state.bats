@@ -29,7 +29,12 @@ setup() {
   LEDGER="$SCHEMA/scanner/ledger.sh"
   CONTRACT="$SCHEMA/scanner/chain-state-report-contract.jq"
   ROOT="$(repo_root)"
-  BASE="00d3de1"
+  # The baseline is resolved to its full SHA once, in the repo under test.
+  # Production passes `git rev-parse HEAD` (full) to chain-state and ledger
+  # rows carry that full SHA; discharge compares row.baseline to the
+  # resolved form of --baseline, so a short SHA here left every row
+  # unmatchable (spec:oracle-fixture-repair). 00d3de1 is spec 1's commit.
+  BASE="$(cd "$ROOT" && git rev-parse 00d3de1)"
   CHG="fixture-change"
   FX="$BATS_TEST_TMPDIR/$CHG"
 
