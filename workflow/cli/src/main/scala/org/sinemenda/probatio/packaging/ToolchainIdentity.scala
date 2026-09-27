@@ -102,7 +102,7 @@ object ToolchainIdentity:
   //    measured on the unpinned local build.
   // Both map to the recorded vocabulary `GraalVM <edition>/<version>`.
   private val jdk21Marker: Regex =
-    """GraalVM[ \t]+(CE|EE)[ \t]+([0-9][0-9.]*[0-9])""".r
+    """GraalVM[ \t]+(EE)[ \t]+([0-9][0-9.]*[0-9])""".r
   private val legacyMarker: Regex =
     """GraalVM[ \t]+([0-9][0-9.]*[0-9])[ \t]+Java[ \t]+[0-9]+[ \t]+(CE|EE)""".r
 
