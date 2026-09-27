@@ -246,20 +246,26 @@ write_checkpoint_output() {
 # ═════════════════════════════════════════════════════════════════════════
 
 # spec: human-grant-lock — Scenario: a grant does not leak across sessions
-@test "a grant does not leak across sessions" {
+# RE-ASSERTED under the oracle-fixture-repair scoped exception (approved):
+# the archived scenario required S2 to see no grant, but the deliberate
+# any-session waiver added at 283319a (predecessor gate.sh ~line 598;
+# ported GateCmd.findAnySessionGrant) makes a grant from ANY session
+# satisfy the requirement — human approval is durable across sessions.
+# What stays session-scoped is the REQUIREMENT: S2's own ungranted
+# presentation is what creates it. This test verifies the delivered
+# semantics: S1's grant satisfies S2's requirement; with no grant from
+# any session, S2's ungranted presentation still blocks.
+@test "a prior-session grant satisfies the requirement that an ungranted session still carries" {
   mk_repo
   # S1 has a presentation and a grant
   write_presentation
   write_grant
-  # S2 has a presentation (same checkpoint) but NO grant — S1's grant must
-  # not satisfy S2's requirement. Without a S2 presentation, the gate has
-  # nothing to require a grant for, so the isolation is only meaningful
-  # when S2 also has a presentation.
+  # S2 has a presentation (same checkpoint) but NO grant — S2 carries its
+  # own requirement, satisfied by S1's grant as durable human approval.
   local sd enc_other
   sd="$(state_dir)"
   enc_other="$(printf 'other-session' | jq -Rr '@base64' | tr '+/=' '-_.')"
   printf '%s' "fake-checkpoint-report-hash-$SPEC_N" >"$sd/presentation-$CHANGE-$SPEC_N-$enc_other"
-  # Query with S2 — should block because S2 has a presentation but no grant
   neutral_chain_state
   neutral_spec_lint
   run env \
@@ -268,7 +274,19 @@ write_checkpoint_output() {
     VERIFIED_SCALA3_SESSION_ID="other-session" \
     "$GATE" --repo "$FX" --event tool-call --tool Edit \
     --file "$FX/$PROGRESS_PATH" --format text
-  assert_status 2 "$status" "a grant from session S1 must not authorize session S2 — S2 has its own presentation but no grant"
+  assert_status 0 "$status" "a grant from a prior session satisfies the requirement — human approval is durable"
+  # Remove S1's grant — with no grant from any session, S2's own
+  # ungranted presentation still creates the requirement and blocks.
+  rm -f "$sd/grant-$CHANGE-$SPEC_N-$ENCODED_SESSION"
+  neutral_chain_state
+  neutral_spec_lint
+  run env \
+    CHAIN_STATE_OVERRIDE="$FAKE_CS" \
+    SPEC_LINT_OVERRIDE="$FAKE_SL" \
+    VERIFIED_SCALA3_SESSION_ID="other-session" \
+    "$GATE" --repo "$FX" --event tool-call --tool Edit \
+    --file "$FX/$PROGRESS_PATH" --format text
+  assert_status 2 "$status" "with no grant from any session, S2's ungranted presentation must still block"
   assert_contains "$output" "grant" "the block must mention the missing grant"
 }
 
