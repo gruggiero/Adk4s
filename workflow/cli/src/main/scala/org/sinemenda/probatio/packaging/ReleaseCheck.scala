@@ -71,7 +71,9 @@ object ReleaseCheck:
           case None => // danger-scan:allow decode-failure — an unparseable tested identity is a usage error, never an assumed toolchain
             sys.error(s"not a toolchain identity: '$tested' (expected <distribution>/<version>)")
           case Some(identity) =>
+            // format: off
             run(Path.of(dir), version, isCIEnvironment(sys.env.get), identity) match // scalafix:ok DisableSyntax.NoSysEnv,danger-scan:allow env-lookup — returns Option, not an unsafe get
+              // format: on
               case Right(report) => println(report)
               case Left(err)     => sys.error(err)
       case _ => // danger-scan:allow arity-rejection — wrong argument count maps to usage error, never a valid manifest

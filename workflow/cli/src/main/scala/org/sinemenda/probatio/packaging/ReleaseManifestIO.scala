@@ -107,17 +107,18 @@ object ReleaseManifestIO:
    * spec: finish-probatio-replacement/delivery-verified — Scenario: Error path — an unreadable toolchain identity is could-not-determine
    */
   private def embeddedToolchains(
-      dir: Path,
-      binaries: List[String]
+    dir: Path,
+    binaries: List[String]
   ): List[ToolchainIdentity.Embedded] =
     binaries.map { name =>
       val path: Path = dir.resolve(name)
-      if !Files.isRegularFile(path) then
-        ToolchainIdentity.Embedded.Unreadable(name, "the binary file is not present")
+      if !Files.isRegularFile(path) then ToolchainIdentity.Embedded.Unreadable(name, "the binary file is not present")
       else
         try ToolchainIdentity.readEmbedded(name, Files.readAllBytes(path))
         catch
+          // format: off
           case NonFatal(e) => // danger-scan:allow typed-catch — an unreadable binary is a could-not-determine naming it, never a manifest-build failure
+            // format: on
             ToolchainIdentity.Embedded.Unreadable(name, s"the binary could not be read: ${e.getMessage}")
     }
 

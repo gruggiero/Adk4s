@@ -37,7 +37,7 @@ final class NativePackagingSpec extends ProbatioCliSuite:
    * toolchain produces.
    */
   private def toolchainsMatching(
-      tested: ToolchainIdentity
+    tested: ToolchainIdentity
   ): List[ToolchainIdentity.Embedded] =
     Platform.committedNativePlatforms.toList.map(p =>
       ToolchainIdentity.Embedded.Found(s"probatio-${p.artifactSuffix}", tested)

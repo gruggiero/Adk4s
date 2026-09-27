@@ -128,8 +128,8 @@ object ReleaseValidator:
    * spec: finish-probatio-replacement/delivery-verified — Property: toolchain-check-accepts-iff-identical
    */
   def toolchainVerdict(
-      tested: ToolchainIdentity,
-      candidate: ToolchainIdentity.Embedded
+    tested: ToolchainIdentity,
+    candidate: ToolchainIdentity.Embedded
   ): ToolchainVerdict =
     candidate match
       case ToolchainIdentity.Embedded.Found(binary, identity) =>
@@ -148,8 +148,8 @@ object ReleaseValidator:
    * spec: finish-probatio-replacement/delivery-verified — Scenario: Adversarial — a candidate built with a different toolchain is rejected
    */
   def validateToolchain(
-      manifest: ReleaseManifest,
-      tested: ToolchainIdentity
+    manifest: ReleaseManifest,
+    tested: ToolchainIdentity
   ): List[String] =
     val reads: Map[String, ToolchainIdentity.Embedded] =
       manifest.toolchains.map(e => e.binary -> e).toMap

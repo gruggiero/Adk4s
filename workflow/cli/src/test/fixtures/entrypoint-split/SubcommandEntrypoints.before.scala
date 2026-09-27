@@ -870,13 +870,18 @@ object GateCmd:
     val flagTool: String = parsed.flags.getOrElse("--tool", "")
     // The predecessor reads the payload fields only inside the
     // `--file`-absent branch — a supplied --file also suppresses the
-    // payload's tool_name.
+    // payload's tool_name. An empty flag or payload value is absence,
+    // not a supplied empty name (spec 6, oracle-fixture-repair).
     val rawFile: String =
       if flagFile.nonEmpty then flagFile else payloadFilePath(payload)
-    val toolName: String =
-      if flagTool.nonEmpty then flagTool
-      else if flagFile.isEmpty then payload.map(_.toolName).getOrElse("")
-      else ""
+    val toolName: ToolNameSource =
+      if flagTool.nonEmpty then ToolNameSource.Supplied(flagTool)
+      else if flagFile.isEmpty then
+        payload
+          .map(_.toolName)
+          .filter(_.nonEmpty)
+          .fold[ToolNameSource](ToolNameSource.Absent)((n: String) => ToolNameSource.Supplied(n))
+      else ToolNameSource.Absent
     val file: String    = normalizeFilePath(ctx.repo, rawFile)
     val isProd: Boolean = GateDecisions.isProductionEdit(file)
     // VERIFIED_SCALA3_ALLOW_PATHS — a colon-separated prefix allowlist,
@@ -890,12 +895,23 @@ object GateCmd:
           .flatMap((v: String) => v.split(":").find((p: String) => file.startsWith(p)))
     allowPrefix match
       case Some(prefix: String) =>
-        trace(ctx, env, s"tool-call: file under allow-listed path $prefix, allow — $file")
+        toolName match
+          case ToolNameSource.Absent =>
+            // spec: oracle-fixture-repair — Requirement: An absent tool name keeps parity and is stated
+            trace(ctx, env, s"tool-call: file under allow-listed path $prefix, allow — $file — no tool name supplied")
+          case ToolNameSource.Supplied(_) =>
+            trace(ctx, env, s"tool-call: file under allow-listed path $prefix, allow — $file")
         Outcome.Ran(0)
       case None =>
-        if GateDecisions.isReadOnlyTool(toolName) then
-          if isProd then trace(ctx, env, s"tool-call: read-only tool '$toolName' on production path, allow — $file")
-          else trace(ctx, env, s"tool-call: read-only tool '$toolName', allow — $file")
+        if GateDecisions.preExecution(toolName) then
+          toolName match
+            case ToolNameSource.Absent =>
+              // spec: oracle-fixture-repair — Requirement: An absent tool name keeps parity and is stated
+              if isProd then trace(ctx, env, s"tool-call: no tool name supplied on production path, allow — $file")
+              else trace(ctx, env, s"tool-call: no tool name supplied, allow — $file")
+            case ToolNameSource.Supplied(name: String) =>
+              if isProd then trace(ctx, env, s"tool-call: read-only tool '$name' on production path, allow — $file")
+              else trace(ctx, env, s"tool-call: read-only tool '$name', allow — $file")
           Outcome.Ran(0)
         else
           ctx.stateDir match

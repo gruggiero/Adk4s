@@ -95,8 +95,10 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
           )
           assertEquals(manifest.checksums.size, 5, "one recorded digest per content artifact")
           assert(manifest.sbom.isDefined, "SBOM must be parsed")
-          assert(ReleaseValidator.validateAll(manifest, testedToolchain).isEmpty,
-                 s"complete release must validate: ${ReleaseValidator.validateAll(manifest, testedToolchain)}")
+          assert(
+            ReleaseValidator.validateAll(manifest, testedToolchain).isEmpty,
+            s"complete release must validate: ${ReleaseValidator.validateAll(manifest, testedToolchain)}"
+          )
         case Left(err) => fail(s"complete release must build: $err")
     }
 
@@ -441,9 +443,9 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
     val noRead: ReleaseManifest = ReleaseManifest(
       version = "v14.0.0",
       artifacts = ReleaseManifest.expectedArtifacts,
-      checksums = ReleaseManifest.expectedArtifacts
-        .collect { case ReleaseArtifact.Checksum(n) => n -> ("a" * 64) }
-        .toMap,
+      checksums = ReleaseManifest.expectedArtifacts.collect { case ReleaseArtifact.Checksum(n) =>
+        n -> ("a" * 64)
+      }.toMap,
       sbom = Some(Sbom.forRelease("v14.0.0", List(SbomPackage("upickle", "4.4.3", "Maven")))),
       builtFromCI = true,
       toolchains = List.empty
@@ -479,15 +481,15 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
    */
   private def genToolchainPair: Gen[(ToolchainIdentity, ToolchainIdentity.Embedded)] =
     for
-      dist     <- Gen.element1("GraalVM CE", toolchainDistributions.drop(1)*)
-      ver      <- Gen.element1("21.0.2", toolchainVersions.drop(1)*)
-      altDist  <- Gen.element1("GraalVM CE", toolchainDistributions.drop(1)*)
-      altVer   <- Gen.element1("21.0.2", toolchainVersions.drop(1)*)
-      kind     <- Gen.element1("identical", "version-differs", "distribution-differs", "unreadable")
-      bin      <- binaryNames match
-                    case h :: t => Gen.element1(h, t*)
-                    case Nil    => Gen.constant("probatio-linux-x86_64")
-      reason   <- Gen.element1("no embedded GraalVM marker", "marker truncated mid-version")
+      dist    <- Gen.element1("GraalVM CE", toolchainDistributions.drop(1)*)
+      ver     <- Gen.element1("21.0.2", toolchainVersions.drop(1)*)
+      altDist <- Gen.element1("GraalVM CE", toolchainDistributions.drop(1)*)
+      altVer  <- Gen.element1("21.0.2", toolchainVersions.drop(1)*)
+      kind    <- Gen.element1("identical", "version-differs", "distribution-differs", "unreadable")
+      bin <- binaryNames match
+        case h :: t => Gen.element1(h, t*)
+        case Nil    => Gen.constant("probatio-linux-x86_64")
+      reason <- Gen.element1("no embedded GraalVM marker", "marker truncated mid-version")
     yield
       val tested: ToolchainIdentity = ToolchainIdentity(dist, version(ver))
       val candidate: ToolchainIdentity.Embedded =
@@ -510,15 +512,17 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   property("toolchain-check-accepts-iff-identical"):
     for
       pair <- genToolchainPair.forAll
-        .cover(20, "identical", (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) =>
-          p._2.identityOption.contains(p._1)
+        .cover(
+          20,
+          "identical",
+          (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) => p._2.identityOption.contains(p._1)
         )
-        .cover(20, "readable-differs", (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) =>
-          p._2.readable && !p._2.identityOption.contains(p._1)
+        .cover(
+          20,
+          "readable-differs",
+          (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) => p._2.readable && !p._2.identityOption.contains(p._1)
         )
-        .cover(20, "unreadable", (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) =>
-          !p._2.readable
-        )
+        .cover(20, "unreadable", (p: (ToolchainIdentity, ToolchainIdentity.Embedded)) => !p._2.readable)
       (tested, candidate) = pair
     yield
       val verdict: ToolchainVerdict = ReleaseValidator.toolchainVerdict(tested, candidate)

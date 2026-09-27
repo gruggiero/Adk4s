@@ -14,15 +14,15 @@ package org.sinemenda.probatio.packaging
 enum ToolchainVerdict:
   case Accepted(binary: String, identity: ToolchainIdentity)
   case Rejected(
-      binary: String,
-      tested: ToolchainIdentity,
-      candidate: ToolchainIdentity
+    binary: String,
+    tested: ToolchainIdentity,
+    candidate: ToolchainIdentity
   )
   case Undetermined(binary: String, reason: String)
 
   /** Whether the candidate was accepted. Only `Accepted` is true. */
   def accepted: Boolean =
     this match
-      case ToolchainVerdict.Accepted(_, _)      => true
-      case ToolchainVerdict.Rejected(_, _, _)   => false
-      case ToolchainVerdict.Undetermined(_, _)  => false
+      case ToolchainVerdict.Accepted(_, _)     => true
+      case ToolchainVerdict.Rejected(_, _, _)  => false
+      case ToolchainVerdict.Undetermined(_, _) => false

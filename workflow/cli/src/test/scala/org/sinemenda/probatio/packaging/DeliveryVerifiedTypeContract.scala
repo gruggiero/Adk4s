@@ -37,8 +37,7 @@ final class DeliveryVerifiedTypeContract extends ProbatioCliSuite:
     ToolchainIdentity.readEmbedded
 
   // ReleaseValidator.toolchainVerdict: (ToolchainIdentity, Embedded) => ToolchainVerdict
-  val toolchainVerdictSig
-      : (ToolchainIdentity, ToolchainIdentity.Embedded) => ToolchainVerdict =
+  val toolchainVerdictSig: (ToolchainIdentity, ToolchainIdentity.Embedded) => ToolchainVerdict =
     ReleaseValidator.toolchainVerdict
 
   // ReleaseValidator.validateToolchain: (ReleaseManifest, ToolchainIdentity) => List[String]
@@ -64,9 +63,9 @@ final class DeliveryVerifiedTypeContract extends ProbatioCliSuite:
   // ── ToolchainIdentity — Concepts Introduced ─────────────────────────────
   // spec: finish-probatio-replacement/delivery-verified — Concepts Introduced: ToolchainIdentity
   test("ToolchainIdentity is a final case class carrying distribution and version"):
-    val v: ToolchainIdentity.Version = version("21.0.2")
-    val t: ToolchainIdentity = ToolchainIdentity("GraalVM CE", v)
-    val d: String                    = t.distribution
+    val v: ToolchainIdentity.Version   = version("21.0.2")
+    val t: ToolchainIdentity           = ToolchainIdentity("GraalVM CE", v)
+    val d: String                      = t.distribution
     val ver: ToolchainIdentity.Version = t.version
     assertEquals(d, "GraalVM CE")
     assertEquals(ver.value, "21.0.2")
@@ -91,7 +90,7 @@ final class DeliveryVerifiedTypeContract extends ProbatioCliSuite:
   // ── Embedded — the read result, carrying the binary name ────────────────
   test("Embedded projections: Found is readable and carries identity + binary"):
     val v: ToolchainIdentity.Version = version("21.0.2")
-    val t: ToolchainIdentity = ToolchainIdentity("GraalVM CE", v)
+    val t: ToolchainIdentity         = ToolchainIdentity("GraalVM CE", v)
     val found: ToolchainIdentity.Embedded =
       ToolchainIdentity.Embedded.Found("probatio-linux-x86_64", t)
     assertEquals(found.binary, "probatio-linux-x86_64")
@@ -108,8 +107,8 @@ final class DeliveryVerifiedTypeContract extends ProbatioCliSuite:
   // ── ToolchainVerdict — the verdict that names both halves ───────────────
   test("ToolchainVerdict: only Accepted is accepted; Rejected names tested and candidate"):
     val v: ToolchainIdentity.Version = version("21.0.2")
-    val t: ToolchainIdentity      = ToolchainIdentity("GraalVM CE", v)
-    val other: ToolchainIdentity  = ToolchainIdentity("GraalVM CE", version("22.3.1"))
+    val t: ToolchainIdentity         = ToolchainIdentity("GraalVM CE", v)
+    val other: ToolchainIdentity     = ToolchainIdentity("GraalVM CE", version("22.3.1"))
 
     val accepted: ToolchainVerdict     = ToolchainVerdict.Accepted("p-linux", t)
     val rejected: ToolchainVerdict     = ToolchainVerdict.Rejected("p-linux", t, other)
@@ -120,9 +119,9 @@ final class DeliveryVerifiedTypeContract extends ProbatioCliSuite:
     assertEquals(undetermined.accepted, false)
 
     def name(vd: ToolchainVerdict): String = vd match
-      case ToolchainVerdict.Accepted(_, _)      => "accepted"
-      case ToolchainVerdict.Rejected(_, _, _)   => "rejected"
-      case ToolchainVerdict.Undetermined(_, _)  => "undetermined"
+      case ToolchainVerdict.Accepted(_, _)     => "accepted"
+      case ToolchainVerdict.Rejected(_, _, _)  => "rejected"
+      case ToolchainVerdict.Undetermined(_, _) => "undetermined"
 
     assertEquals(name(accepted), "accepted")
     assertEquals(name(rejected), "rejected")
@@ -131,7 +130,7 @@ final class DeliveryVerifiedTypeContract extends ProbatioCliSuite:
   // ── ReleaseManifest carries the toolchain reads ──────────────────────────
   test("ReleaseManifest carries one Embedded read list alongside the artifact set"):
     val v: ToolchainIdentity.Version = version("21.0.2")
-    val t: ToolchainIdentity = ToolchainIdentity("GraalVM CE", v)
+    val t: ToolchainIdentity         = ToolchainIdentity("GraalVM CE", v)
     val reads: List[ToolchainIdentity.Embedded] =
       List(ToolchainIdentity.Embedded.Found("probatio-linux-x86_64", t))
     val m: ReleaseManifest = ReleaseManifest(
