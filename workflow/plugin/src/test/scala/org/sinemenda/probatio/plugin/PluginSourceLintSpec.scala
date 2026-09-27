@@ -370,8 +370,8 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
   // The same holds one level up: an `if:` or `continue-on-error` OUTSIDE
   // every step block is a job-level guard that neutralises every step.
   private def missingCiSteps(text: String): List[String] = {
-    val lines: List[String] = text.linesIterator.toList
-    def leading(l: String): Int = leadingIndent(l)
+    val lines: List[String]       = text.linesIterator.toList
+    def leading(l: String): Int   = leadingIndent(l)
     val realStepStarts: List[Int] = stepMarkerIndices(lines)
     def insideStepBlock(lineIdx: Int): Boolean =
       realStepStarts.filter(_ < lineIdx).lastOption.exists { s =>
@@ -874,15 +874,53 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
   // spec: finish-probatio-replacement/delivery-verified — Requirement: The CI job runs the tools through the archive
   // ══════════════════════════════════════════════════════════════════════
 
-  // The workflow's step blocks as ordered text regions — the same `- `
-  // marker segmentation (with literal-block exclusion) the completeness
-  // check uses.
-  private def workflowStepBlocks(text: String): List[List[String]] = {
-    val lines: List[String]  = text.linesIterator.toList
-    val starts: List[Int]    = stepMarkerIndices(lines)
+  // The workflow's step blocks as ordered text regions, paired with
+  // their start lines — the same `- ` marker segmentation (with
+  // literal-block exclusion) the completeness check uses.
+  private def workflowStepBlocks(text: String): List[(Int, List[String])] = {
+    val lines: List[String] = text.linesIterator.toList
+    val starts: List[Int]   = stepMarkerIndices(lines)
     starts.zipWithIndex.map { case (s, k) =>
       val e: Int = starts.drop(k + 1).headOption.getOrElse(lines.length)
-      lines.slice(s, e)
+      (s, lines.slice(s, e))
+    }
+  }
+
+  // The line ranges of each job's `steps:` list. Job keys are the
+  // two-space-indented keys under the top-level `jobs:` map; a job's
+  // steps region runs from its `steps:` line to the next line at
+  // same-or-lesser indent or the end of the job. The archive-path
+  // check must be evaluated inside the acceptance step's own job —
+  // artifacts do not cross jobs without an explicit upload/download,
+  // so an `assembly` step in a parallel job does not arm the
+  // acceptance suite's archive path. A document with no `jobs:` map
+  // is treated as a single range so the ordering checks still apply.
+  private def jobStepsRegions(lines: List[String]): List[(Int, Int)] = {
+    val jobsIdx: Int = lines.indexWhere(l => l.matches("^jobs:\\s*(#.*)?$"))
+    if (jobsIdx < 0) List((0, lines.length))
+    else {
+      val jobsEnd: Int =
+        lines.indices
+          .find(i => i > jobsIdx && lines(i).nonEmpty && leadingIndent(lines(i)) == 0)
+          .getOrElse(lines.length)
+      val jobKeys: List[Int] =
+        (jobsIdx + 1 until jobsEnd).toList.filter(i => lines(i).matches("^  [A-Za-z0-9_-]+:\\s*(#.*)?$"))
+      val jobRanges: List[(Int, Int)] =
+        jobKeys.zipWithIndex.map { case (s, k) =>
+          (s, jobKeys.drop(k + 1).headOption.getOrElse(jobsEnd))
+        }
+      jobRanges.flatMap { case (js, je) =>
+        (js + 1 until je).find(i => lines(i).trim == "steps:") match {
+          case Some(si) =>
+            val stepsIndent: Int = leadingIndent(lines(si))
+            val stepsEnd: Int =
+              (si + 1 until je)
+                .find(k => lines(k).trim.nonEmpty && leadingIndent(lines(k)) <= stepsIndent)
+                .getOrElse(je)
+            List((si, stepsEnd))
+          case None => Nil // a job without a steps list contributes no step region
+        }
+      }
     }
   }
 
@@ -893,32 +931,50 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
    * The archive-path issues in one workflow's text. The acceptance step
    * (the step whose executable lines invoke `bats` over the
    * `verified-scala3/tests` suite) exercises the archive path iff an
-   * `assembly` build precedes it and no `nativeImage` build does.
+   * `assembly` build precedes it *within the same job's steps* and no
+   * `nativeImage` build does.
    */
   private def archivePathIssues(text: String): List[String] = {
-    val blocks: List[List[String]] = workflowStepBlocks(text)
-    val acceptanceIdx: Int =
-      blocks.indexWhere(b =>
-        executableLines(b).exists(l => acceptanceNeedles.forall(l.contains))
-      )
-    if (acceptanceIdx < 0)
-      List("no acceptance step (bats over the verified-scala3 suite) found")
-    else {
-      val before: List[List[String]] = blocks.take(acceptanceIdx)
-      val buildsArchive: Boolean =
-        before.exists(b => executableLines(b).exists(_.contains("assembly")))
-      val buildsNative: Boolean =
-        before.exists(b => executableLines(b).exists(_.contains("nativeImage")))
-      List(
-        if (buildsArchive) None
-        else Some(
-          "the acceptance suite runs with no archive build before it — the tools do not resolve to the archive"
-        ),
-        if (!buildsNative) None
-        else Some(
-          "a native build step precedes the acceptance suite — the suite no longer exercises the archive path"
-        )
-      ).flatten
+    val lines: List[String]               = text.linesIterator.toList
+    val blocks: List[(Int, List[String])] = workflowStepBlocks(text)
+    val acceptance: Option[Int] =
+      blocks.collectFirst {
+        case (s, b) if executableLines(b).exists(l => acceptanceNeedles.forall(l.contains)) =>
+          s
+      }
+    acceptance match {
+      case None =>
+        List("no acceptance step (bats over the verified-scala3 suite) found")
+      case Some(acceptStart) =>
+        jobStepsRegions(lines).find { case (rs, re) =>
+          acceptStart >= rs && acceptStart < re
+        } match {
+          case None =>
+            List(
+              "the acceptance step is not inside a job's steps list — its archive path cannot be established"
+            )
+          case Some((rs, _)) =>
+            val before: List[List[String]] =
+              blocks
+                .filter { case (s, _) => s >= rs && s < acceptStart }
+                .map(_._2)
+            val buildsArchive: Boolean =
+              before.exists(b => executableLines(b).exists(_.contains("assembly")))
+            val buildsNative: Boolean =
+              before.exists(b => executableLines(b).exists(_.contains("nativeImage")))
+            List(
+              if (buildsArchive) None
+              else
+                Some(
+                  "the acceptance suite runs with no archive build before it in its own job — the tools do not resolve to the archive"
+                ),
+              if (!buildsNative) None
+              else
+                Some(
+                  "a native build step precedes the acceptance suite — the suite no longer exercises the archive path"
+                )
+            ).flatten
+        }
     }
   }
 
@@ -1023,6 +1079,54 @@ final class PluginSourceLintSpec extends ProbatioPluginSuite {
       archivePathIssues(nativeAfter),
       Nil,
       "a nativeImage step AFTER the acceptance step is not an archive-path violation"
+    )
+    // Ring-8 finding F1: an `assembly` step in a DIFFERENT job does not
+    // arm the acceptance step — artifacts do not cross jobs without an
+    // explicit upload/download step.
+    val assemblyInParallelJob: String =
+      """name: verify
+        |on: [push, pull_request]
+        |jobs:
+        |  build:
+        |    runs-on: ubuntu-latest
+        |    steps:
+        |      - name: Build the assembly
+        |        run: sbt -batch 'probatio-cli/assembly'
+        |  verify:
+        |    runs-on: ubuntu-latest
+        |    steps:
+        |      - name: Checkout
+        |        uses: actions/checkout@v4
+        |      - name: Acceptance suite
+        |        run: bats openspec/schemas/verified-scala3/tests
+        |""".stripMargin
+    val parallelIssues: List[String] = archivePathIssues(assemblyInParallelJob)
+    assert(
+      parallelIssues.exists(_.contains("no archive build")),
+      s"an assembly build in a parallel job must not satisfy the archive requirement, got: $parallelIssues"
+    )
+    // A `- ` item in a non-steps list inside the SAME job (a matrix
+    // include naming 'assembly') is not a build step.
+    val matrixFalsePositive: String =
+      """name: verify
+        |on: [push, pull_request]
+        |jobs:
+        |  verify:
+        |    runs-on: ubuntu-latest
+        |    strategy:
+        |      matrix:
+        |        include:
+        |          - platform: assembly-amd64
+        |    steps:
+        |      - name: Checkout
+        |        uses: actions/checkout@v4
+        |      - name: Acceptance suite
+        |        run: bats openspec/schemas/verified-scala3/tests
+        |""".stripMargin
+    val matrixIssues: List[String] = archivePathIssues(matrixFalsePositive)
+    assert(
+      matrixIssues.exists(_.contains("no archive build")),
+      s"an 'assembly'-named matrix item must not satisfy the archive requirement, got: $matrixIssues"
     )
   }
 }
