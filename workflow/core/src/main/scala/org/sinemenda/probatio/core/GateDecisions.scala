@@ -33,6 +33,21 @@ object GateDecisions:
     readOnlyTools.contains(toolName)
 
   /**
+   * The pre-execution tier's tool-name decision (spec 6,
+   * oracle-fixture-repair): whether the call is allowed without
+   * consulting the lock state — a supplied read-only tool, or an absent
+   * tool name. `Absent` keeps the predecessor's verdict (the empty
+   * string was a `readOnlyTools` member); the caller renders the absence
+   * in its diagnostic, which only a `ToolNameSource` makes visible.
+   *
+   * Body lands at Step 3; the contract pins the signature.
+   *
+   * spec: oracle-fixture-repair — Requirement: An absent tool name keeps parity and is stated
+   * spec: oracle-fixture-repair — Compile-Negative: A tool name represented as a possibly-empty string at the decision site
+   */
+  def preExecution(@annotation.unused toolName: ToolNameSource): Boolean = ???
+
+  /**
    * The oracle lock's production-edit scope: a `/src/main/` path
    * segment followed by a `.scala` file — the predecessor's glob
    * semantics. Relative `src/main/...` paths (no leading slash) do not

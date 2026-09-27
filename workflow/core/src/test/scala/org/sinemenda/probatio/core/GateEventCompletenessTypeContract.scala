@@ -223,4 +223,20 @@ final class GateEventCompletenessTypeContract extends ProbatioSuite:
       "EventDispatch.Injection must require the supplied name — the fallback names what it fell back from"
     )
 
+  // spec: oracle-fixture-repair — Compile-Negative: A tool name represented as a possibly-empty string at the decision site
+  // An empty string is how absence became indistinguishable from a
+  // read-only tool — `preExecution` takes a `ToolNameSource`, so a
+  // `String` argument must not compile, and the compiler's error must be
+  // the TYPE mismatch (found String, required ToolNameSource), not an
+  // unrelated failure.
+  test("a possibly-empty String tool name does not compile at the decision site"):
+    val err: String = compileErrors(
+      """GateDecisions.preExecution(toolName = "")"""
+    )
+    assert(err.nonEmpty, "preExecution(toolName = \"\") must not compile — the decision takes a ToolNameSource")
+    assert(
+      err.contains("ToolNameSource"),
+      s"the rejection must name the required type (ToolNameSource), got: $err"
+    )
+
 end GateEventCompletenessTypeContract
