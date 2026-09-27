@@ -79,18 +79,18 @@ Every spec takes **two separate human gates** — the change's correctness risk 
 
 ## 6. oracle-fixture-repair
 
-- [ ] Prerequisite — **root-cause the six shared `chain-state.bats` failures and record each cause with its evidence** before Step 1
-- [ ] Prerequisite — confirm the Devin hook payload's tool-name field against Devin's documentation; record the source
-- [ ] Step 1 — typed contract: `ToolNameSource` (`Supplied`, `Absent`) at the pre-execution decision (compiles; **human gate**)
-- [ ] Step 2 — test oracle: 10 scenarios + 2 properties (`lock-decision-is-independent-of-name-case-and-channel`, `absent-name-always-allows-and-says-so`) + 1 compile-negative stub; ORACLE POLARITY run (**human gate**)
-- [ ] Step 3 — implementation: supply tool names in the lock fixtures (sanctioned); state an absent tool name in the diagnostic; repair each stale `chain-state.bats` fixture (sanctioned), or record a shared implementation defect and stop
-- [ ] Ring 0 — compile clean
-- [ ] Ring 1 — lint clean; shellcheck on the edited suite files
-- [ ] Ring 2 — dependency lint clean
-- [ ] Ring 3 — **the three suite files pass under both implementations**; the guard stays green
-- [ ] Ring 5 — retarget to the gate's entrypoint file; read the score (80%)
-- [ ] Ring 8 — fresh-context review; reject any fixture change with no recorded root cause
-- [ ] Concept-delta check + inventory update + **checkpoint**
+- [x] Prerequisite — **root-cause the six shared `chain-state.bats` failures and record each cause with its evidence** before Step 1
+- [x] Prerequisite — confirm the Devin hook payload's tool-name field against Devin's documentation; record the source
+- [x] Step 1 — typed contract: `ToolNameSource` (`Supplied`, `Absent`) at the pre-execution decision (compiles; **human gate**)
+- [x] Step 2 — test oracle: 10 scenarios + 2 properties (`lock-decision-is-independent-of-name-case-and-channel`, `absent-name-always-allows-and-says-so`) + 1 compile-negative stub; ORACLE POLARITY run (**human gate**)
+- [x] Step 3 — implementation: supply tool names in the lock fixtures (sanctioned); state an absent tool name in the diagnostic; repair each stale `chain-state.bats` fixture (sanctioned), or record a shared implementation defect and stop
+- [x] Ring 0 — compile clean
+- [x] Ring 1 — lint clean; shellcheck on the edited suite files
+- [x] Ring 2 — dependency lint clean
+- [x] Ring 3 — **the three suite files pass under both implementations**; the guard stays green
+- [x] Ring 5 — retarget to the gate's entrypoint file; read the score (80%)
+- [x] Ring 8 — fresh-context review; reject any fixture change with no recorded root cause
+- [x] Concept-delta check + inventory update + **checkpoint**
 
 ## 7. delivery-verified
 
