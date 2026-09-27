@@ -2,6 +2,8 @@ package org.sinemenda.probatio.packaging
 
 import hedgehog.Gen
 import hedgehog.Result
+import hedgehog.core.PropertyConfig
+import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.cli.ProbatioCliSuite
 import upickle.default.write as writeJson
 
@@ -43,6 +45,10 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
   private val toolchainVersions: List[String]      = List("21.0.2", "22.3.1", "17.0.9")
   private val binaryNames: List[String] =
     Platform.committedNativePlatforms.toList.map(p => s"probatio-${p.artifactSuffix}")
+
+  /** Cover-thresholded properties need enough samples that a 20% floor is not luck. */
+  private def coverConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(300))
 
   private def withTempDir(f: Path => Unit): Unit =
     val dir: Path = Files.createTempDirectory("probatio-release")
@@ -485,7 +491,12 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
       ver     <- Gen.element1("21.0.2", toolchainVersions.drop(1)*)
       altDist <- Gen.element1("GraalVM CE", toolchainDistributions.drop(1)*)
       altVer  <- Gen.element1("21.0.2", toolchainVersions.drop(1)*)
-      kind    <- Gen.element1("identical", "version-differs", "distribution-differs", "unreadable")
+      kind <- Gen.frequency1(
+        3 -> Gen.constant("identical"),
+        2 -> Gen.constant("version-differs"),
+        2 -> Gen.constant("distribution-differs"),
+        3 -> Gen.constant("unreadable")
+      )
       bin <- binaryNames match
         case h :: t => Gen.element1(h, t*)
         case Nil    => Gen.constant("probatio-linux-x86_64")
@@ -509,7 +520,7 @@ final class ReleaseManifestIOSpec extends ProbatioCliSuite:
       (tested, candidate)
 
   // spec: finish-probatio-replacement/delivery-verified — Property: toolchain-check-accepts-iff-identical
-  property("toolchain-check-accepts-iff-identical"):
+  property("toolchain-check-accepts-iff-identical", coverConfig):
     for
       pair <- genToolchainPair.forAll
         .cover(
