@@ -117,6 +117,15 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
     (c: PropertyConfig) => c.copy(testLimit = SuccessCount(40))
 
   /**
+   * Cover-thresholded properties need headroom above the floors: at the
+   * default 100 successes a ~25% generator class can dip under its 25%
+   * cover bound on an unlucky seed. 300 successes makes a dip a >5σ
+   * event rather than an occasional flake.
+   */
+  private val coverConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(300))
+
+  /**
    * The repository root via `git rev-parse` — NOT `os.pwd`: the Ring-5
    * Stryker sandbox runs the suite from a `target/stryker4s-*` directory,
    * and `rev-parse` still resolves the real worktree root (spec-1's
@@ -837,7 +846,7 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
 
   // ── Property: resolution-is-location-independent
   // spec: archive-safe-fixtures — Property: resolution-is-location-independent
-  property("resolution-is-location-independent"):
+  property("resolution-is-location-independent", coverConfig):
     for
       p <- ChangeLocationGens.genChangePlacement.forAll
         .cover(25, "active", (c: ChangePlacement) => c.placement == Placement.InActiveArea)
