@@ -48,7 +48,7 @@ for mod in $modules; do
   # no os-lib dependency, so `os.proc` is planted as a string literal there:
   # the DisableSyntax check is text-level and must fire regardless.
   if [ "$mod" = "plugin" ]; then
-    cat > "$planted" <<EOF
+    cat >"$planted" <<EOF
 package ${PKG[$mod]}
 
 object LintNegativePlanted {
@@ -69,7 +69,7 @@ object LintNegativePlanted {
 }
 EOF
   else
-    cat > "$planted" <<EOF
+    cat >"$planted" <<EOF
 package ${PKG[$mod]}
 
 object LintNegativePlanted {
@@ -99,8 +99,8 @@ EOF
     continue
   fi
   for rule in NoRawProcessBuilder NoScalaSysProcess NoOsProc NoBuilderEnvMutation NoRuntimeExec \
-              NoRepoRootChangePathChain NoRepoRootChangeResolve NoRepoRootChangeInterp \
-              NoCwdChangePath NoCwdChangePathVariadic; do
+    NoRepoRootChangePathChain NoRepoRootChangeResolve NoRepoRootChangeInterp \
+    NoCwdChangePath NoCwdChangePathVariadic; do
     if printf '%s' "$out" | grep -q "LintNegativePlanted.scala:.*$rule"; then
       echo "ok [$mod]: $rule fired with file and line"
     else
