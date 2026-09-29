@@ -930,7 +930,7 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
 
   // The confirmed structural tests named in the spec's anchors — the
   // ledger-mutation test, the working-directory-parse test, and the
-  // drift-message test, all in `workflow-hygiene.bats`.
+  // drift-message test, all in `shape/workflow-hygiene-shape.bats`.
   private def confirmedStructuralTitles: List[String] = List(
     // split like DifferentialHarnessSpec.scala:613 — the moved D7 drift
     // test greps workflow/**/*.scala for the contiguous literal and must

@@ -19,9 +19,12 @@ import java.nio.charset.StandardCharsets
 final class DifferentialHarnessSpec extends ProbatioSuite:
 
   // The environment-independence property spawns two `bats` runs per
-  // generated case — the suite-level timeout matches the parity suites.
+  // generated case over the real acceptance suite — ~5 minutes through
+  // the native binary on a fast machine, and an order of magnitude more
+  // through the JAR launcher (each tool call pays JVM startup). The cap
+  // is sized for the hosted runner's native path with headroom.
   override val munitTimeout: scala.concurrent.duration.Duration =
-    scala.concurrent.duration.Duration(600, "s")
+    scala.concurrent.duration.Duration(1800, "s")
 
   /**
    * Absolute path of the repository root. `os.pwd` is unreliable under
@@ -559,10 +562,10 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
 
   test("the retargeted drift-message test asserts the property over the ported implementation's source"):
     val hygiene: String = os.read(
-      repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests" / "workflow-hygiene.bats"
+      repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests" / "shape" / "workflow-hygiene-shape.bats"
     )
     val body: String = batsTestBody(hygiene, "D7: spec-lint.sh drift message")
-      .getOrElse(fail("the D7 drift-message test must exist in workflow-hygiene.bats"))
+      .getOrElse(fail("the D7 drift-message test must exist in workflow-hygiene-shape.bats"))
     assert(
       body.contains("workflow"),
       "the ported implementation's source lives under workflow/ — the retargeted test must inspect it"
@@ -578,10 +581,10 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
 
   test("the retargeted cwd-parse test asserts the property over the ported implementation's source"):
     val hygiene: String = os.read(
-      repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests" / "workflow-hygiene.bats"
+      repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests" / "shape" / "workflow-hygiene-shape.bats"
     )
     val body: String = batsTestBody(hygiene, "D8: gate.sh extracts cwd")
-      .getOrElse(fail("the D8 cwd-parse test must exist in workflow-hygiene.bats"))
+      .getOrElse(fail("the D8 cwd-parse test must exist in workflow-hygiene-shape.bats"))
     assert(
       body.contains("workflow") || body.contains("HarnessPayload"),
       "the ported payload reader lives under workflow/ — the retargeted test must inspect it"
@@ -898,9 +901,14 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
     val realTests: os.Path = repoRoot / "openspec" / "schemas" / "verified-scala3" / "tests"
     os.write(tests / "helpers.bash", os.read(realTests / "helpers.bash"))
     if withHygiene then
-      // The REAL oracle file — the retargeted source-inspection tests run
-      // inside the arm against the arm's own workflow/ sources.
-      os.write(tests / "workflow-hygiene.bats", os.read(realTests / "workflow-hygiene.bats"))
+      // The REAL shape file — the source-inspection tests moved out of the
+      // acceptance oracle (spec: oracle-independence); inside the arm they
+      // still run against the arm's own workflow/ sources.
+      os.write(
+        tests / "shape" / "workflow-hygiene-shape.bats",
+        os.read(realTests / "shape" / "workflow-hygiene-shape.bats"),
+        createFolders = true
+      )
 
     // The built tool arm provisioning expects — a stub executable at the
     // origin's native-image path (spec: jar-launcher-dispatch — a
@@ -985,10 +993,10 @@ final class DifferentialHarnessSpec extends ProbatioSuite:
       perFile.keySet
     )
 
-  /** Run one named test of the arm's workflow-hygiene.bats; returns (exitCode, output). */
+  /** Run one named test of the arm's shape/workflow-hygiene-shape.bats; returns (exitCode, output). */
   private def runBatsFiltered(arm: ArmTree, namePattern: String): (Int, String) =
     val result = os
-      .proc("bats", "-f", namePattern, "workflow-hygiene.bats")
+      .proc("bats", "-f", namePattern, "shape/workflow-hygiene-shape.bats")
       .call(cwd = arm.root / "tests", check = false)
     (result.exitCode, result.out.text() + result.err.text())
 

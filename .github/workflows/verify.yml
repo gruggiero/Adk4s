@@ -106,6 +106,14 @@ jobs:
       - name: Ring 3 - acceptance suite
         run: bats openspec/schemas/verified-scala3/tests
 
+      # bin/probatio dispatches to this binary whenever it exists. Built
+      # only after the archive-based acceptance suite — which must resolve
+      # the tools through the JAR — so the differential's ported arm and
+      # the module suites exercise the same pinned GraalVM toolchain the
+      # release binaries are built with.
+      - name: Build the probatio native image (GraalVM 21.0.2)
+        run: sbt -batch 'probatio-cli/nativeImage'
+
       - name: Concept-registry drift check
         run: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
 
