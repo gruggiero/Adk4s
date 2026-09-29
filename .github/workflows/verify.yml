@@ -51,6 +51,14 @@ jobs:
           curl -fsSL -o /tmp/shfmt \
             https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
           sudo install -m 0755 /tmp/shfmt /usr/local/bin/shfmt
+          # probatio-verified resolves stainless-* artifacts from a
+          # repo-local Maven repo at stainless/ (gitignored, ~84MB; the
+          # artifacts are not published to Maven Central). Provision it
+          # from the pinned upstream release bundle — byte-identical to
+          # the vendored local copy.
+          curl -fsSL -o /tmp/sbt-stainless.zip \
+            https://github.com/epfl-lara/stainless/releases/download/v0.9.9.3/sbt-stainless.zip
+          unzip -o -q /tmp/sbt-stainless.zip 'stainless/*' -d .
 
       - name: Verify prerequisites are present
         run: |
