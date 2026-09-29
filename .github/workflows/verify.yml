@@ -40,7 +40,13 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y shellcheck jq python3
-          sudo npm install -g bats@1.14.0
+          # The npm `bats` package lags upstream (1.13.0 max); install the
+          # same 1.14.0 the suite is measured against from the release
+          # tarball, as the shfmt install does below.
+          curl -fsSL -o /tmp/bats.tar.gz \
+            https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz
+          tar -xzf /tmp/bats.tar.gz -C /tmp
+          sudo /tmp/bats-core-1.14.0/install.sh /usr/local
           sudo npm install -g @openspec/cli
           curl -fsSL -o /tmp/shfmt \
             https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
