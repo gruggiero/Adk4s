@@ -96,6 +96,13 @@ jobs:
       - name: Build the probatio assembly (launcher target)
         run: sbt -batch 'probatio-cli/assembly'
 
+      # harness-install-verification audits `generatedBy:` stamps in the
+      # searched agent skill roots (./.claude/skills, ./.pi/skills, and the
+      # $HOME counterparts). A clean checkout has none installed, so the
+      # suite first exercises the real installer through the JAR launcher.
+      - name: Install probatio skills into the checkout
+        run: ./openspec/schemas/verified-scala3/bin/probatio install-skills .
+
       - name: Ring 3 - acceptance suite
         run: bats openspec/schemas/verified-scala3/tests
 
