@@ -29,10 +29,12 @@ final class OracleDiffRunner extends ProbatioSuite:
 
   import SeamTypes.*
 
-  // The oracle diff runs all 17 bats files twice (~3 minutes).
-  // Override the default 30s timeout to allow the full run.
+  // The oracle diff runs all 17 bats files twice. ~3 minutes locally via
+  // the native binary; the hosted runner has no native image, so the
+  // ported arm pays JVM startup per tool call (~3m37s for the suite on a
+  // fast dev machine, ~2× on CI). 20 minutes is ~2× that worst case.
   override val munitTimeout: FiniteDuration =
-    FiniteDuration(5, TimeUnit.MINUTES)
+    FiniteDuration(20, TimeUnit.MINUTES)
 
   /**
    * The repository root, resolved via git — `os.pwd` is unreliable under
