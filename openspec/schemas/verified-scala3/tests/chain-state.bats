@@ -33,8 +33,11 @@ setup() {
   # Production passes `git rev-parse HEAD` (full) to chain-state and ledger
   # rows carry that full SHA; discharge compares row.baseline to the
   # resolved form of --baseline, so a short SHA here left every row
-  # unmatchable (spec:oracle-fixture-repair). 00d3de1 is spec 1's commit.
-  BASE="$(cd "$ROOT" && git rev-parse 00d3de1)"
+  # unmatchable (spec:oracle-fixture-repair). 705a926 is the mainline
+  # squash-landing of add-correctness-substratum — an ancestor of every
+  # pushed branch, so it resolves on clean checkouts (the side-branch
+  # commit it replaced existed only in the local object store).
+  BASE="$(cd "$ROOT" && git rev-parse 705a926)"
   CHG="fixture-change"
   FX="$BATS_TEST_TMPDIR/$CHG"
 
