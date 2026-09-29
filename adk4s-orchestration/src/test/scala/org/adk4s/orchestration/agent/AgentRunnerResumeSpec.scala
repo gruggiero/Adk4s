@@ -191,7 +191,8 @@ class AgentRunnerResumeSpec extends HedgehogSuite:
       initial <- Gen.int(Range.linear(-100, 100))
       value   <- Gen.int(Range.linear(-1000, 1000))
     yield
-      val cell: StateCell[Int] = StateCell[Int](MiddlewareName.refineEither(owner).fold(err => throw err, identity), name, initial)
+      val cell: StateCell[Int] =
+        StateCell[Int](MiddlewareName.refineEither(owner).fold(err => throw err, identity), name, initial)
       (cell, value)
 
   // ── Property (Ring 3) ─────────────────────────────────────────────────────

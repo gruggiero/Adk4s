@@ -62,7 +62,7 @@ class UnicodeQuoteNormalizationSpec extends HedgehogSuite:
     val stringGen: Gen[String] =
       Gen.string(charGen, Range.linear(0, 100))
     stringGen.forAll.map { (s: String) =>
-      val normalized: String = UnicodeQuoteNormalizer.normalize(s)
+      val normalized: String       = UnicodeQuoteNormalizer.normalize(s)
       val originalAsciiDouble: Int = s.count(_ == '"')
       val unicodeDoubleCount: Int =
         s.count(c => c == '\u201C' || c == '\u201D' || c == '\u201E' || c == '\u201F')
@@ -147,8 +147,8 @@ class UnicodeQuoteNormalizationSpec extends HedgehogSuite:
     )
     val stringGen: Gen[String] = Gen.string(charGen, Range.linear(2, 30))
     stringGen.forAll.map { (s: String) =>
-      val json: String = s"""{"note": "$s"}"""
-      val normalized: String = UnicodeQuoteNormalizer.normalize(json)
+      val json: String         = s"""{"note": "$s"}"""
+      val normalized: String   = UnicodeQuoteNormalizer.normalize(json)
       val parsed: JsonishValue = JsonishParser.parse(normalized)
       parsed match
         case JsonishValue.Obj(fields, _) =>

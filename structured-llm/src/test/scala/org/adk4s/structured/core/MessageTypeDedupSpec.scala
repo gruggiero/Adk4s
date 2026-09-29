@@ -39,7 +39,7 @@ class MessageTypeDedupSpec extends HedgehogSuite:
 
   test("Prompt.simple produces correct Conversation") {
     // spec: message-type-dedup — Scenario: Prompt.simple produces correct Conversation
-    val prompt: Prompt = Prompt.simple("You are helpful", "Parse this")
+    val prompt: Prompt              = Prompt.simple("You are helpful", "Parse this")
     val messages: Seq[Llm4sMessage] = prompt.conversation.messages
     assertEquals(messages.length, 2)
     messages(0) match
@@ -58,7 +58,7 @@ class MessageTypeDedupSpec extends HedgehogSuite:
   test("Prompt with ToolMessage preserves toolCallId") {
     // spec: message-type-dedup — Scenario: ToolMessage preserves toolCallId
     val toolMsg: ToolMessage = ToolMessage("result", "call-123")
-    val prompt: Prompt = Prompt.single(toolMsg)
+    val prompt: Prompt       = Prompt.single(toolMsg)
     prompt.conversation.messages(0) match
       case tm: ToolMessage =>
         assertEquals(tm.toolCallId, "call-123")
@@ -79,7 +79,7 @@ class MessageTypeDedupSpec extends HedgehogSuite:
       org.llm4s.llmconnect.model.ToolCall("call-2", "fetch", """{"url":"x"}""")
     )
     val asstMsg: AssistantMessage = AssistantMessage(contentOpt = Some("thinking"), toolCalls = calls)
-    val prompt: Prompt = Prompt.single(asstMsg)
+    val prompt: Prompt            = Prompt.single(asstMsg)
     prompt.conversation.messages(0) match
       case am: AssistantMessage =>
         assertEquals(am.toolCalls.length, 2)
@@ -96,9 +96,9 @@ class MessageTypeDedupSpec extends HedgehogSuite:
 
   test("withOutputFormat appends schema block to last user message") {
     // spec: message-type-dedup — Scenario: Schema appended to user message
-    val prompt: Prompt = Prompt.user("extract data")
+    val prompt: Prompt     = Prompt.user("extract data")
     val withSchema: Prompt = prompt.withOutputFormat[String]
-    val lastIdx: Int = withSchema.conversation.messages.length - 1
+    val lastIdx: Int       = withSchema.conversation.messages.length - 1
     withSchema.conversation.messages(lastIdx) match
       case um: UserMessage =>
         assert(um.content.startsWith("extract data"))
@@ -114,7 +114,7 @@ class MessageTypeDedupSpec extends HedgehogSuite:
 
   test("withOutputFormat appends new UserMessage when no user message exists") {
     // spec: message-type-dedup — Scenario: No user message present
-    val prompt: Prompt = Prompt.system("you are helpful")
+    val prompt: Prompt     = Prompt.system("you are helpful")
     val withSchema: Prompt = prompt.withOutputFormat[String]
     assertEquals(withSchema.conversation.messages.length, 2)
     withSchema.conversation.messages(0) match
@@ -153,11 +153,13 @@ class MessageTypeDedupSpec extends HedgehogSuite:
 
   test("Prompt.conversation is the wrapped Conversation (identity access)") {
     // spec: message-type-dedup — Scenario: toConversation is identity
-    val conv: Conversation = Conversation(Seq(
-      SystemMessage("sys"),
-      UserMessage("usr"),
-      AssistantMessage(contentOpt = Some("asst"), toolCalls = Seq.empty)
-    ))
+    val conv: Conversation = Conversation(
+      Seq(
+        SystemMessage("sys"),
+        UserMessage("usr"),
+        AssistantMessage(contentOpt = Some("asst"), toolCalls = Seq.empty)
+      )
+    )
     val prompt: Prompt = Prompt(conv)
     assertEquals(prompt.conversation, conv)
   }
@@ -171,7 +173,7 @@ class MessageTypeDedupSpec extends HedgehogSuite:
     // Generator strategy: constructive — genConversation generates Conversation values.
     // Classify by message count.
     val genSystemMsg: Gen[SystemMessage] = Gen.string(Gen.alphaNum, Range.linear(0, 100)).map(SystemMessage.apply)
-    val genUserMsg: Gen[UserMessage] = Gen.string(Gen.alphaNum, Range.linear(0, 100)).map(UserMessage.apply)
+    val genUserMsg: Gen[UserMessage]     = Gen.string(Gen.alphaNum, Range.linear(0, 100)).map(UserMessage.apply)
     val genAsstMsg: Gen[AssistantMessage] =
       Gen.string(Gen.alphaNum, Range.linear(0, 100)).map(c => AssistantMessage(Some(c), Seq.empty))
     val genToolMsg: Gen[ToolMessage] =
@@ -190,9 +192,7 @@ class MessageTypeDedupSpec extends HedgehogSuite:
     val genConversation: Gen[Conversation] =
       Gen.list(genMessage, Range.linear(0, 10)).map(msgs => Conversation(msgs.toSeq))
 
-    genConversation.forAll.map { (conv: Conversation) =>
-      Prompt(conv).conversation ==== conv
-    }
+    genConversation.forAll.map((conv: Conversation) => Prompt(conv).conversation ==== conv)
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -205,7 +205,7 @@ class MessageTypeDedupSpec extends HedgehogSuite:
     // where the last message is a UserMessage (so withOutputFormat appends to it in-place).
     // Classify by message count.
     val genSystemMsg: Gen[SystemMessage] = Gen.string(Gen.alphaNum, Range.linear(0, 100)).map(SystemMessage.apply)
-    val genUserMsg: Gen[UserMessage] = Gen.string(Gen.alphaNum, Range.linear(0, 100)).map(UserMessage.apply)
+    val genUserMsg: Gen[UserMessage]     = Gen.string(Gen.alphaNum, Range.linear(0, 100)).map(UserMessage.apply)
     val genAsstMsg: Gen[AssistantMessage] =
       Gen.string(Gen.alphaNum, Range.linear(0, 100)).map(c => AssistantMessage(Some(c), Seq.empty))
 

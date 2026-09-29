@@ -9,9 +9,13 @@ class StreamFieldSplitterTest extends CatsEffectSuite:
   final case class Pair(a: String, b: Int)
 
   test("split2 produces two streams with correct elements") {
-    val source: Stream[IO, Pair] = Stream.emits(List(
-      Pair("hello", 1), Pair("world", 2), Pair("foo", 3)
-    ))
+    val source: Stream[IO, Pair] = Stream.emits(
+      List(
+        Pair("hello", 1),
+        Pair("world", 2),
+        Pair("foo", 3)
+      )
+    )
     for
       (streamA, streamB) <- StreamFieldSplitter.split2[Pair, String, Int](
         source,
@@ -60,9 +64,12 @@ class StreamFieldSplitterTest extends CatsEffectSuite:
 
   test("withStaticValue injects value into each element") {
     final case class WithSubStr(fullStr: String, subStr: String)
-    val source: Stream[IO, WithSubStr] = Stream.emits(List(
-      WithSubStr("hello", ""), WithSubStr("world", "")
-    ))
+    val source: Stream[IO, WithSubStr] = Stream.emits(
+      List(
+        WithSubStr("hello", ""),
+        WithSubStr("world", "")
+      )
+    )
     val result: Stream[IO, WithSubStr] = StreamFieldSplitter.withStaticValue[WithSubStr, String](
       source,
       (item: WithSubStr, value: String) => item.copy(subStr = value),
@@ -76,9 +83,12 @@ class StreamFieldSplitterTest extends CatsEffectSuite:
 
   test("split3 produces three streams") {
     final case class Triple(a: String, b: Int, c: Boolean)
-    val source: Stream[IO, Triple] = Stream.emits(List(
-      Triple("x", 1, true), Triple("y", 2, false)
-    ))
+    val source: Stream[IO, Triple] = Stream.emits(
+      List(
+        Triple("x", 1, true),
+        Triple("y", 2, false)
+      )
+    )
     for
       (sA, sB, sC) <- StreamFieldSplitter.split3[Triple, String, Int, Boolean](
         source,

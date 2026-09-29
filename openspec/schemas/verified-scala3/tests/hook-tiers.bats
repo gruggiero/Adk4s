@@ -83,7 +83,7 @@ cs_undetermined() {
 }
 
 run_gate() { # extra args after --repo $FX are passed through
-  run env -u CLAUDE_CODE_SESSION_ID "$GATE" --repo "$FX" "$@"
+  run env "$GATE" --repo "$FX" "$@"
 }
 
 # FOUND while confirming RED polarity: gate.sh, before this spec, has no
@@ -107,7 +107,7 @@ EOF
 }
 run_gate_post_edit() { # $@ = args after --repo $FX
   neutral_chain_state
-  run env -u CLAUDE_CODE_SESSION_ID CHAIN_STATE_OVERRIDE="$FAKE_CS" "$GATE" --repo "$FX" "$@"
+  run env CHAIN_STATE_OVERRIDE="$FAKE_CS" "$GATE" --repo "$FX" "$@"
 }
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -400,7 +400,7 @@ claim_completion() { # $1=session — mark this turn as asserting completion
   fake_chain_state "$(cs_report 2)"
   local i
   for i in 1 2 3; do
-    CHAIN_STATE_OVERRIDE="$FAKE_CS" run env -u CLAUDE_CODE_SESSION_ID "$GATE" --repo "$no_git_fx" \
+    run env CHAIN_STATE_OVERRIDE="$FAKE_CS" "$GATE" --repo "$no_git_fx" \
       --event completion --session "sess-nogit-1" --format text
     assert_status 0 "$status" "attempt $i must not block: refusing without a bounding mechanism is not safe, so this event fails open"
   done
@@ -448,7 +448,7 @@ claim_completion() { # $1=session — mark this turn as asserting completion
   mk_repo
   fake_chain_state "$(cs_report 3)"
   claim_completion "sess-off-1"
-  run env -u CLAUDE_CODE_SESSION_ID VERIFIED_SCALA3_HOOKS=off CHAIN_STATE_OVERRIDE="$FAKE_CS" \
+  run env VERIFIED_SCALA3_HOOKS=off CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     "$GATE" --repo "$FX" --event completion --session "sess-off-1" --format text
   assert_status 0 "$status" "the escape hatch must disable the completion gate too"
 }
@@ -629,4 +629,42 @@ EOF
       return 1
     }
   done
+}
+
+# ── spec: hermetic-test-processes ─────────────────────────────────────────
+# Requirement: The acceptance suites clear controlled variables in one place.
+# The shared setup is the single place where inherited controlled variables
+# are cleared; a suite file must observe none of them unless a test declares
+# one. The invariant tested is that the INHERITED VALUE does not survive —
+# a name that a shell legitimately re-populates (e.g. PWD) may reappear, but
+# never carrying the inherited sentinel.
+
+# The closed set — the same 18 names the Scala ControlledVariable enum
+# carries. Duplicated here because bats cannot read the Scala enum; the
+# names are the spec's closed domain, not implementation detail.
+hermetic_controlled_names() {
+  printf '%s\n' \
+    CLAUDE_CODE_SESSION_ID CLAUDE_PROJECT_DIR \
+    VERIFIED_SCALA3_SESSION_ID VERIFIED_SCALA3_HOOKS VERIFIED_SCALA3_HOOKS_TRACE \
+    VERIFIED_SCALA3_ACTIVE_SPEC VERIFIED_SCALA3_ALLOW_PATHS \
+    VERIFIED_SCALA3_SKIP_PREDECESSOR_CHECK \
+    PROBATIO_HOOKS PROBATIO_HOOKS_TRACE PROBATIO_SCHEMA_DIR \
+    OPENSPEC_ROOT CI PWD \
+    CHAIN_STATE_OVERRIDE DANGER_SCAN_OVERRIDE RECONCILE_OVERRIDE SPEC_LINT_OVERRIDE
+}
+
+# spec: hermetic-test-processes — Requirement: The acceptance suites clear controlled variables in one place
+@test "the shared setup clears every inherited controlled variable" {
+  local v leaked=""
+  # The invoking shell carries every controlled variable at a sentinel
+  # value the suites themselves never use.
+  while IFS= read -r v; do export "$v=inherited-$v"; done < <(hermetic_controlled_names)
+  load helpers
+  while IFS= read -r v; do
+    if [ "${!v:-}" = "inherited-$v" ]; then leaked="$leaked $v"; fi
+  done < <(hermetic_controlled_names)
+  [ -z "$leaked" ] || {
+    printf 'inherited controlled variables survived the shared setup:%s\n' "$leaked" >&2
+    return 1
+  }
 }

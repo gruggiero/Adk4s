@@ -9,23 +9,18 @@ import scala.concurrent.duration.DurationInt
 class ToolMiddlewareTest extends CatsEffectSuite:
 
   test("identity middleware does nothing") {
-    val endpoint: ToolEndpoint = Kleisli((input: ToolInput) =>
-      IO.pure(ToolOutput(input.name, "result", "call_1"))
-    )
-    val wrapped: ToolEndpoint = ToolMiddleware.identity(endpoint)
-    val input: ToolInput = ToolInput("test", "{}", "call_1")
+    val endpoint: ToolEndpoint = Kleisli((input: ToolInput) => IO.pure(ToolOutput(input.name, "result", "call_1")))
+    val wrapped: ToolEndpoint  = ToolMiddleware.identity(endpoint)
+    val input: ToolInput       = ToolInput("test", "{}", "call_1")
 
-    wrapped.run(input).map { (result: ToolOutput) =>
-      assertEquals(result.result, "result")
-    }
+    wrapped.run(input).map((result: ToolOutput) => assertEquals(result.result, "result"))
   }
 
   test("timing middleware records execution time") {
     val input: ToolInput = ToolInput("test", "{}", "call_1")
 
     Ref.of[IO, Option[(String, Long)]](None).flatMap { (recordedTimeRef: Ref[IO, Option[(String, Long)]]) =>
-      val timingFn: (String, Long) => IO[Unit] = (name: String, ms: Long) =>
-        recordedTimeRef.set(Some((name, ms)))
+      val timingFn: (String, Long) => IO[Unit] = (name: String, ms: Long) => recordedTimeRef.set(Some((name, ms)))
       val endpoint: ToolEndpoint = Kleisli((input: ToolInput) =>
         IO.sleep(10.millis).flatMap((_: Unit) => IO.pure(ToolOutput(input.name, "result", "call_1")))
       )
@@ -42,27 +37,19 @@ class ToolMiddlewareTest extends CatsEffectSuite:
   }
 
   test("validation middleware passes valid input") {
-    val validate: ToolInput => IO[Either[String, Unit]] = (_: ToolInput) =>
-      IO.pure(Right(()))
-    val endpoint: ToolEndpoint = Kleisli((input: ToolInput) =>
-      IO.pure(ToolOutput(input.name, "result", "call_1"))
-    )
-    val wrapped: ToolEndpoint = ToolMiddleware.validation(validate)(endpoint)
-    val input: ToolInput = ToolInput("test", "{}", "call_1")
+    val validate: ToolInput => IO[Either[String, Unit]] = (_: ToolInput) => IO.pure(Right(()))
+    val endpoint: ToolEndpoint = Kleisli((input: ToolInput) => IO.pure(ToolOutput(input.name, "result", "call_1")))
+    val wrapped: ToolEndpoint  = ToolMiddleware.validation(validate)(endpoint)
+    val input: ToolInput       = ToolInput("test", "{}", "call_1")
 
-    wrapped.run(input).map { (result: ToolOutput) =>
-      assertEquals(result.result, "result")
-    }
+    wrapped.run(input).map((result: ToolOutput) => assertEquals(result.result, "result"))
   }
 
   test("validation middleware returns error on invalid input") {
-    val validate: ToolInput => IO[Either[String, Unit]] = (_: ToolInput) =>
-      IO.pure(Left("Invalid argument"))
-    val endpoint: ToolEndpoint = Kleisli((input: ToolInput) =>
-      IO.pure(ToolOutput(input.name, "result", "call_1"))
-    )
-    val wrapped: ToolEndpoint = ToolMiddleware.validation(validate)(endpoint)
-    val input: ToolInput = ToolInput("test", "{}", "call_1")
+    val validate: ToolInput => IO[Either[String, Unit]] = (_: ToolInput) => IO.pure(Left("Invalid argument"))
+    val endpoint: ToolEndpoint = Kleisli((input: ToolInput) => IO.pure(ToolOutput(input.name, "result", "call_1")))
+    val wrapped: ToolEndpoint  = ToolMiddleware.validation(validate)(endpoint)
+    val input: ToolInput       = ToolInput("test", "{}", "call_1")
 
     wrapped.run(input).map { (result: ToolOutput) =>
       assert(result.isError)
@@ -78,10 +65,8 @@ class ToolMiddlewareTest extends CatsEffectSuite:
         attemptsRef.get.flatMap { (attempts: Int) =>
           val next: Int = attempts + 1
           attemptsRef.set(next).flatMap { (_: Unit) =>
-            if next < 3 then
-              IO.raiseError(new RuntimeException("temporary error"))
-            else
-              IO.pure(ToolOutput(input.name, "result", "call_1"))
+            if next < 3 then IO.raiseError(new RuntimeException("temporary error"))
+            else IO.pure(ToolOutput(input.name, "result", "call_1"))
           }
         }
       )
@@ -97,25 +82,20 @@ class ToolMiddlewareTest extends CatsEffectSuite:
   }
 
   test("retry middleware exhausts retries") {
-    val endpoint: ToolEndpoint = Kleisli((_: ToolInput) =>
-      IO.raiseError(new RuntimeException("permanent error"))
-    )
-    val wrapped: ToolEndpoint = ToolMiddleware.retry(2, 10.millis)(endpoint)
-    val input: ToolInput = ToolInput("test", "{}", "call_1")
+    val endpoint: ToolEndpoint = Kleisli((_: ToolInput) => IO.raiseError(new RuntimeException("permanent error")))
+    val wrapped: ToolEndpoint  = ToolMiddleware.retry(2, 10.millis)(endpoint)
+    val input: ToolInput       = ToolInput("test", "{}", "call_1")
 
-    wrapped.run(input).attempt.map { (result: Either[Throwable, ToolOutput]) =>
-      assert(result.isLeft)
-    }
+    wrapped.run(input).attempt.map((result: Either[Throwable, ToolOutput]) => assert(result.isLeft))
   }
 
   test("middleware composition applies in order") {
     val input: ToolInput = ToolInput("test", "{}", "call_1")
 
     Ref.of[IO, List[String]](List.empty).flatMap { (orderRef: Ref[IO, List[String]]) =>
-      val log: String => IO[Unit] = (message: String) =>
-        orderRef.update((current: List[String]) => current :+ message)
-      val timing: (String, Long) => IO[Unit] = (_: String, _: Long) =>
-        orderRef.update((current: List[String]) => current :+ "timing")
+      val log: String => IO[Unit] = (message: String) => orderRef.update((current: List[String]) => current :+ message)
+      val timing: (String, Long) => IO[Unit] =
+        (_: String, _: Long) => orderRef.update((current: List[String]) => current :+ "timing")
       val endpoint: ToolEndpoint = Kleisli((input: ToolInput) =>
         orderRef
           .update((current: List[String]) => current :+ "endpoint")

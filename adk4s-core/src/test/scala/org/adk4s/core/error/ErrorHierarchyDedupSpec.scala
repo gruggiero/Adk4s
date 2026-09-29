@@ -38,8 +38,8 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
   test("LlmCallError.getCause returns LLMErrorCause wrapping original LLMError") {
     // spec: error-hierarchy-dedup — Scenario: getCause returns original LLMError
     val underlying: LLMError = RateLimitError("too many requests")
-    val error: LlmCallError = LlmCallError(underlying)
-    val cause: Throwable = error.getCause
+    val error: LlmCallError  = LlmCallError(underlying)
+    val cause: Throwable     = error.getCause
     cause match
       case llmCause: LLMErrorCause =>
         assertEquals(llmCause.error, underlying)
@@ -55,7 +55,7 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
   test("LlmCallError.underlying field preserved for source compatibility") {
     // spec: error-hierarchy-dedup — Scenario: underlying field preserved
     val underlying: LLMError = NetworkError("Connection timeout", None, "openai")
-    val error: LlmCallError = LlmCallError(underlying)
+    val error: LlmCallError  = LlmCallError(underlying)
     assertEquals(error.underlying, underlying)
   }
 
@@ -66,9 +66,9 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
 
   test("LLMCallFailed.getCause returns LLMErrorCause wrapping original LLMError") {
     // spec: error-hierarchy-dedup — Scenario: getCause returns original LLMError
-    val underlying: LLMError = TimeoutError("timed out", Duration.Zero, "openai", None, Map.empty)
+    val underlying: LLMError                    = TimeoutError("timed out", Duration.Zero, "openai", None, Map.empty)
     val error: StructuredLLMError.LLMCallFailed = StructuredLLMError.LLMCallFailed(underlying, testPrompt)
-    val cause: Throwable = error.getCause
+    val cause: Throwable                        = error.getCause
     cause match
       case llmCause: LLMErrorCause =>
         assertEquals(llmCause.error, underlying)
@@ -83,9 +83,9 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
 
   test("RetryTrigger.LLMError.shouldRetry returns true for LLMCallFailed") {
     // spec: error-hierarchy-dedup — Scenario: Retry on wrapped LLMError
-    val underlying: LLMError = RateLimitError("too many requests")
+    val underlying: LLMError                    = RateLimitError("too many requests")
     val error: StructuredLLMError.LLMCallFailed = StructuredLLMError.LLMCallFailed(underlying, testPrompt)
-    val result: Boolean = RetryTrigger.LLMError.shouldRetry(error)
+    val result: Boolean                         = RetryTrigger.LLMError.shouldRetry(error)
     assert(result, "Expected shouldRetry to return true for LLMCallFailed")
   }
 
@@ -97,7 +97,7 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
   test("RetryTrigger.LLMError.shouldRetry returns false for ParseFailed") {
     // spec: error-hierarchy-dedup — Scenario: No retry on non-LLM error
     val error: StructuredLLMError.ParseFailed = StructuredLLMError.ParseFailed(List.empty, "bad response")
-    val result: Boolean = RetryTrigger.LLMError.shouldRetry(error)
+    val result: Boolean                       = RetryTrigger.LLMError.shouldRetry(error)
     assert(!result, "Expected shouldRetry to return false for ParseFailed")
   }
 
@@ -109,8 +109,8 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
   test("RetryTrigger.LLMError.shouldRetry returns true for AdkError.LlmCallError") {
     // spec: error-hierarchy-dedup — Scenario: AdkError.LlmCallError triggers LLMError retry
     val underlying: LLMError = TimeoutError("timed out", Duration.Zero, "openai", None, Map.empty)
-    val error: LlmCallError = LlmCallError(underlying)
-    val result: Boolean = RetryTrigger.LLMError.shouldRetry(error)
+    val error: LlmCallError  = LlmCallError(underlying)
+    val result: Boolean      = RetryTrigger.LLMError.shouldRetry(error)
     assert(result, "Expected shouldRetry to return true for LlmCallError")
   }
 
@@ -122,23 +122,23 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
   test("RetryTrigger.All.shouldRetry returns true for LlmCallError") {
     // spec: error-hierarchy-dedup — Scenario: All triggers for all wrappers
     val underlying: LLMError = RateLimitError("rate limited")
-    val error: LlmCallError = LlmCallError(underlying)
-    val result: Boolean = RetryTrigger.All.shouldRetry(error)
+    val error: LlmCallError  = LlmCallError(underlying)
+    val result: Boolean      = RetryTrigger.All.shouldRetry(error)
     assert(result)
   }
 
   test("RetryTrigger.All.shouldRetry returns true for LLMCallFailed") {
     // spec: error-hierarchy-dedup — Scenario: All triggers for all wrappers
-    val underlying: LLMError = NetworkError("network error", None, "openai")
+    val underlying: LLMError                    = NetworkError("network error", None, "openai")
     val error: StructuredLLMError.LLMCallFailed = StructuredLLMError.LLMCallFailed(underlying, testPrompt)
-    val result: Boolean = RetryTrigger.All.shouldRetry(error)
+    val result: Boolean                         = RetryTrigger.All.shouldRetry(error)
     assert(result)
   }
 
   test("RetryTrigger.All.shouldRetry returns true for ParseFailed") {
     // spec: error-hierarchy-dedup — Scenario: All triggers for all wrappers
     val error: StructuredLLMError.ParseFailed = StructuredLLMError.ParseFailed(List.empty, "bad")
-    val result: Boolean = RetryTrigger.All.shouldRetry(error)
+    val result: Boolean                       = RetryTrigger.All.shouldRetry(error)
     assert(result)
   }
 
@@ -150,8 +150,8 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
   test("RetryTrigger.LLMError.shouldRetry accepts AdkError.LlmCallError as Throwable") {
     // spec: error-hierarchy-dedup — Scenario: shouldRetry accepts AdkError.LlmCallError
     val underlying: LLMError = AuthenticationError("invalid key", "openai")
-    val error: Throwable = LlmCallError(underlying)
-    val result: Boolean = RetryTrigger.LLMError.shouldRetry(error)
+    val error: Throwable     = LlmCallError(underlying)
+    val result: Boolean      = RetryTrigger.LLMError.shouldRetry(error)
     assert(result)
   }
 
@@ -163,7 +163,7 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
   test("RetryTrigger.LLMError.shouldRetry returns false for generic RuntimeException") {
     // spec: error-hierarchy-dedup — shouldRetry with non-LLM Throwable
     val error: Throwable = new RuntimeException("unrelated error")
-    val result: Boolean = RetryTrigger.LLMError.shouldRetry(error)
+    val result: Boolean  = RetryTrigger.LLMError.shouldRetry(error)
     assert(!result, "Expected shouldRetry to return false for non-LLM error")
   }
 
@@ -183,10 +183,10 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
       UnknownError("unknown", new Exception("cause"))
     )
     llmErrorGen.forAll.map { (e: LLMError) =>
-      val adkError: LlmCallError = LlmCallError(e)
+      val adkError: LlmCallError                            = LlmCallError(e)
       val structuredError: StructuredLLMError.LLMCallFailed = StructuredLLMError.LLMCallFailed(e, testPrompt)
-      val adkCause: Throwable = adkError.getCause
-      val structuredCause: Throwable = structuredError.getCause
+      val adkCause: Throwable                               = adkError.getCause
+      val structuredCause: Throwable                        = structuredError.getCause
       // Use pattern matching to extract LLMError from cause (avoids isInstanceOf)
       val adkExtracted: Option[LLMError] = adkCause match
         case llmCause: LLMErrorCause => Some(llmCause.error)
@@ -215,8 +215,8 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
       UnknownError("unknown", new Exception("cause"))
     )
     llmErrorGen.forAll.map { (e: LLMError) =>
-      val trigger: RetryTrigger = RetryTrigger.LLMError
-      val adkResult: Boolean = trigger.shouldRetry(LlmCallError(e))
+      val trigger: RetryTrigger     = RetryTrigger.LLMError
+      val adkResult: Boolean        = trigger.shouldRetry(LlmCallError(e))
       val structuredResult: Boolean = trigger.shouldRetry(StructuredLLMError.LLMCallFailed(e, testPrompt))
       (adkResult ==== true).and(structuredResult ==== true).and(adkResult ==== structuredResult)
     }
@@ -233,7 +233,7 @@ class ErrorHierarchyDedupSpec extends HedgehogSuite:
     val rawResponseGen: Gen[String] = Gen.string(Gen.alpha, Range.linear(0, 100))
     rawResponseGen.forAll.map { (raw: String) =>
       val parseError: StructuredLLMError.ParseFailed = StructuredLLMError.ParseFailed(List.empty, raw)
-      val result: Boolean = RetryTrigger.LLMError.shouldRetry(parseError)
+      val result: Boolean                            = RetryTrigger.LLMError.shouldRetry(parseError)
       result ==== false
     }
   }

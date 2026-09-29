@@ -1,4 +1,4 @@
-# hooks/ — harness enforcement for verified-scala3
+# hooks/ — harness enforcement for probatio
 
 Every check in this workflow lives in `scanner/*.sh`, and every one of them is
 **opt-in**: an agent that does not run the script never sees the fact that
@@ -29,7 +29,7 @@ two, matching how much each half can go wrong:
   Refuses turn completion when the turn claims a checkpoint/spec/ring result
   while chain state reports unresolved requirements or is itself
   undetermined. Bounded to at most one refusal per turn (never deadlocks —
-  see below) and respects the same `VERIFIED_SCALA3_HOOKS=off` escape hatch
+  see below) and respects the same `PROBATIO_HOOKS=off` escape hatch
   as everything else in this file.
 
 A blocking hook that misfires strands the agent with no way forward — that
@@ -133,7 +133,7 @@ disable, and a disabled hook enforces nothing.
 |---|---|---|---|
 | **pi** | `adapters/pi/verified-scala3-gate.ts` | `before_agent_start` (Tier B, once per prompt); `tool_call` on `write`/`edit`/`bash` (Tier A pre-execution, spec:harness-install-verification); `tool_result` on `write`/`edit` (Tier A post-edit) | Tier B: **end-to-end**, re-confirmed after the `gate.sh` rewrite that moved fingerprinting out of this adapter — ran under `pi -e`, payload appears in the message stream before the model call. Tier A post-edit: the extension **loads and runs without error** under `pi -e` after adding the `tool_result` handler (confirmed directly); the handler's own runtime behaviour was not exercised in that same run (no tool call reached — an unrelated provider-connectivity failure, not this code) — event name, tool-name filter, and `event.input.path` field are all verified against the installed `@earendil-works/pi-coding-agent` package's own `docs/extensions.md` and its `protected-paths.ts` example, not assumed. **`tool_call` pre-execution handler** added at schema v13 — shells out to `gate.sh --event tool-call` and maps `{"decision":"block"}` to `{block:true,reason}`, making specs 1–2 enforce on pi. **Completion gate: not wired** — verified absent from pi's extension API, not an oversight; see the adapter file's own comment for what was checked |
 | **Claude Code** | `adapters/claude.settings.json` | `SessionStart`, `UserPromptSubmit` (Tier B); `PreToolUse` (Tier A pre-execution, spec:harness-install-verification); `PostToolUse`, `Stop` (Tier A) | Tier B: **end-to-end**, both events, run live against this project's own `.claude/settings.json`. Tier A: **`PostToolUse` end-to-end** — installed live and confirmed firing on a real edit during this spec's own implementation (`--check-installed` flipped to `event:"post-edit"` immediately after a real `Edit` tool call, with no manual invocation in between). **`Stop` installed live, with human approval** given it is the one genuinely blocking mechanism in this schema — see `implementation-progress.md` for what it actually did when this spec's own checkpoint message triggered it. **`PreToolUse`** added at schema v13 — the universal pre-execution tier with matcher `Bash\|Edit\|Write\|MultiEdit`, making specs 1–2 enforce before the tool runs, not just after |
-| **Devin CLI** | `adapters/devin.hooks.v1.json` | `SessionStart`, `UserPromptSubmit`, `PreToolUse` (Tier A pre-execution); `PostToolUse`, `Stop` (Tier A) | All five are documented Devin events with the same command/stdin contract as Claude's. **First-hand verified (schema v13, harness-install-verification spec)** — three-level procedure executed from inside a live Devin session: **Level 1** (script works): `gate.sh --event session-start --format text` produces the context banner; **Level 2** (harness invokes it): `gate.sh --check-installed` returns `installed: true`, heartbeat shows `event: "session-start"`; **Level 3** (model received it): the verified-scala3 context banner appears in the session's own conversation. `PreToolUse` is wired with the same `Bash\|Edit\|Write\|MultiEdit` matcher as Claude Code, making the pre-execution `tool-call` gate the universal enforcement tier. **Stop blocking: NOT directly stress-tested** — would require triggering a completion-gate refusal mid-session; the JSON contract is identical to Claude Code's (which is verified end-to-end), but this is inference, not first-hand verification. If a future session triggers a Stop refusal and observes whether Devin honors it, update this row with the result. The adapter still passes no `--session`, falling to the PPID fallback — an inference, not a confirmed session identity; if Devin ever shares one PPID across concurrent conversations, both Tier B suppression and the Tier A completion-gate's bounded refusal could wrongly collapse across them. Flagged, not fixed blind — add a verified `--session` source here once Devin documents one |
+| **Devin CLI** | `adapters/devin.hooks.v1.json` | `SessionStart`, `UserPromptSubmit`, `PreToolUse` (Tier A pre-execution); `PostToolUse`, `Stop` (Tier A) | All five are documented Devin events with the same command/stdin contract as Claude's. **First-hand verified (schema v13, harness-install-verification spec)** — three-level procedure executed from inside a live Devin session: **Level 1** (script works): `gate.sh --event session-start --format text` produces the context banner; **Level 2** (harness invokes it): `gate.sh --check-installed` returns `installed: true`, heartbeat shows `event: "session-start"`; **Level 3** (model received it): the probatio context banner appears in the session's own conversation. `PreToolUse` is wired with the same `Bash\|Edit\|Write\|MultiEdit` matcher as Claude Code, making the pre-execution `tool-call` gate the universal enforcement tier. **Stop blocking: NOT directly stress-tested** — would require triggering a completion-gate refusal mid-session; the JSON contract is identical to Claude Code's (which is verified end-to-end), but this is inference, not first-hand verification. If a future session triggers a Stop refusal and observes whether Devin honors it, update this row with the result. The adapter still passes no `--session`, falling to the PPID fallback — an inference, not a confirmed session identity; if Devin ever shares one PPID across concurrent conversations, both Tier B suppression and the Tier A completion-gate's bounded refusal could wrongly collapse across them. Flagged, not fixed blind — add a verified `--session` source here once Devin documents one |
 
 pi has no return-based injection on `session_start`, so the SessionStart
 equivalent is `before_agent_start` fired once per prompt — already the
@@ -185,7 +185,7 @@ latest), set a trace file instead. Every invocation appends one line,
 fired" are indistinguishable from outside, and this is what separates them:
 
 ```bash
-export VERIFIED_SCALA3_HOOKS_TRACE=/tmp/vs3-hooks.log
+export PROBATIO_HOOKS_TRACE=/tmp/probatio-hooks.log
 ```
 
 Then start the agent, and read the log:
@@ -209,7 +209,7 @@ the output)
 
 | Harness | How |
 |---|---|
-| pi | `pi -e <adapter> --mode json -p "hi"` — look for `customType: "verified-scala3-context"` in the message stream |
+| pi | `pi -e <adapter> --mode json -p "hi"` — look for `customType: "probatio-context"` in the message stream |
 | Claude Code | start a session and ask, *before* it runs any tool: "how many concept files does the CONTEXT block report?" A correct number with no tool call means the injection landed |
 | Devin | same question as Claude Code; if it cannot answer without looking, `additionalContext` was dropped — switch that adapter to `--format text` |
 
@@ -220,7 +220,8 @@ now answer one *without* looking.
 ## Disable / uninstall
 
 ```bash
-export VERIFIED_SCALA3_HOOKS=off      # honoured by gate.sh, no uninstall needed
+export PROBATIO_HOOKS=off      # honoured by gate.sh, no uninstall needed
+# VERIFIED_SCALA3_HOOKS=off also works as a deprecated alias (one major version)
 ```
 
 Or remove `.pi/extensions/verified-scala3-gate.ts`, `.devin/hooks.v1.json`, and
@@ -239,15 +240,37 @@ testing that had to be hand-rolled were where the defects lived.
 |---|---|
 | `bash` | every check and every hook — the interpreter they are written in |
 | `git` | every check — diff, ls-files, and the per-spec baseline |
-| `jq` | `gate.sh` and the scanners, for JSON parse and emit |
-| `python3` | `openspec-graph.py` — the fact extractor for chain-state (D5) |
-| `shellcheck` | Ring 1 — shell lint, run in CI and at apply Step 4 |
 | `bats` | Ring 3 — the shell test suites in `../tests/`, run in CI and at apply Step 6 |
-| `shfmt` | Ring 1 — shell formatting check, run in CI and at apply Step 4 |
 | `openspec` | Ring 3 — the reachability tests render artifact instructions through the CLI, so the suite cannot run without it |
+| curl-equivalent HTTP | binary download via coursier/Java HTTP stack (install-time only, not at hook runtime) |
+| native-image toolkit | required only to build from source; prebuilt binaries otherwise (optional) |
+| Java runtime (JAR fallback) | required where the JAR fallback is active — not required under the default binary install |
+| Java runtime (native-binary happy path) | **not required** at runtime under the default binary install |
 
-Still excluded for any gate check: **JVM** and **network**.
+Retired at v14 (post-port): `jq`, `python3`, `shellcheck`, `shfmt` — their
+last consumer migrates to the ported native-binary tooling and they are no
+longer required at runtime.
+
+## Excluded resources (v14 rewrite)
+
+The prior statement — which excluded the JVM and network categorically from
+any gate check — is replaced with a statement that distinguishes runtime
+from install-time requirements:
+
+- **JVM**: not required at hook runtime under the default binary install;
+  required for build-from-source and JAR-fallback.
+- **Network**: not required at hook runtime; required once per version per
+  project for binary install.
 
 Superseded (schema v12): the rule was previously *"bash + git only — no JVM,
 no network, no JSON processor"*, and `gate.sh` hand-rolled its JSON escaping
 in `sed`/`awk` to honour it. That escaping is no longer required.
+
+Superseded (schema v14): the v12–v13 "Still excluded: JVM and network"
+statement was absolute because the prior tooling was bash/jq/python3 with
+no JVM and no network at runtime. The port moves the tooling to a native
+binary (no JVM at runtime in the happy path) but introduces a JAR fallback
+(JVM required there) and a binary download (network required once per
+version per project at install time, not at hook runtime). An unchanged
+statement would be a false claim; this rewrite keeps the documentation
+honest about what is and isn't required when.

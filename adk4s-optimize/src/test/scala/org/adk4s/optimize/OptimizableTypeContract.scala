@@ -20,9 +20,9 @@ import smithy4s.Document
 class OptimizableTypeContract extends FunSuite:
 
   test("Demo has exactly input: Document, output: Document"):
-    val demo: Demo            = Demo(input = Document.DString("in"), output = Document.DString("out"))
-    val input: Document       = demo.input
-    val output: Document      = demo.output
+    val demo: Demo       = Demo(input = Document.DString("in"), output = Document.DString("out"))
+    val input: Document  = demo.input
+    val output: Document = demo.output
     assertEquals(input, Document.DString("in"))
     assertEquals(output, Document.DString("out"))
 

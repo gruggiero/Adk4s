@@ -30,26 +30,30 @@ class RecordReplayExampleSpec extends HedgehogSuite:
   // spec: Scenario: Second run is zero-call
 
   test("Second run is zero-call: underlying call counter unchanged, output matches"):
-    RecordReplayExample.runZeroCallReplay.flatMap { result =>
-      IO {
-        assert(result.firstRunCalls > 0, "first run must make at least one underlying call")
-        assert(result.secondRunCalls == 0, "second run call count must be zero")
-        assertEquals(result.firstOutput, result.secondOutput, "final assistant message must match")
+    RecordReplayExample.runZeroCallReplay
+      .flatMap { result =>
+        IO {
+          assert(result.firstRunCalls > 0, "first run must make at least one underlying call")
+          assert(result.secondRunCalls == 0, "second run call count must be zero")
+          assertEquals(result.firstOutput, result.secondOutput, "final assistant message must match")
+        }
       }
-    }.unsafeRunSync()
+      .unsafeRunSync()
 
   // ── Scenario 2: Multi-turn full cache hit on replay ──────────────────
   // spec: Requirement: Multi-turn tool-calling conversation achieves full cache hit on replay
   // spec: Scenario: Multi-turn replay hits on every turn
 
   test("Multi-turn full cache hit: 3-turn conversation, tool calls in turns 1 and 2"):
-    RecordReplayExample.runMultiTurnReplay.flatMap { result =>
-      IO {
-        assertEquals(result.firstRunCalls, 3, "first run must make 3 underlying calls (one per turn)")
-        assertEquals(result.secondRunCalls, 0, "second run must make zero underlying calls (full cache hit)")
-        assertEquals(result.firstOutput, result.secondOutput, "final output must match across runs")
+    RecordReplayExample.runMultiTurnReplay
+      .flatMap { result =>
+        IO {
+          assertEquals(result.firstRunCalls, 3, "first run must make 3 underlying calls (one per turn)")
+          assertEquals(result.secondRunCalls, 0, "second run must make zero underlying calls (full cache hit)")
+          assertEquals(result.firstOutput, result.secondOutput, "final output must match across runs")
+        }
       }
-    }.unsafeRunSync()
+      .unsafeRunSync()
 
   // ── Scenario 3: Example runs without an API key ──────────────────────
   // spec: Requirement: Example runs without an API key

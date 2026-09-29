@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>8 · The apply loop — verified-scala3</title>
+<title>8 · The apply loop — probatio</title>
 <link rel="stylesheet" href="assets/tutorial.css">
 </head>
 <body>
 <div class="layout">
 
 <nav class="sidebar">
-  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand"><a href="index.html">probatio</a></div>
   <div class="brand-sub">Workflow tutorial</div>
   <ul class="chapters">
     <li><a href="index.html"><span class="num">·</span> Start here</a></li>
@@ -203,7 +203,16 @@
 
 <p>
   Mark progress, regenerate <code>tasks.md</code> from the progress file,
-  <strong>commit the spec</strong>, then present a fixed structure:
+  <strong>commit the spec</strong>, then present a fixed structure. Where
+  <code>scanner/checkpoint.sh</code> exists, running it is <strong>not
+  optional</strong> — it is the event that activates the completion gate
+  (chapter 12) and the predecessor check (chapter 11). Without it, the next
+  spec's production edits are blocked: the gate now requires a presentation
+  marker (the file <code>checkpoint.sh report</code> writes) before a
+  <code>verified</code>-phase spec counts as "done" for gating purposes.
+  Skipping the checkpoint was how a ledger text mismatch went undetected
+  across three specs — the phase advanced on RED+GREEN rows, but the
+  chain-state check that would have caught the mismatch never ran.
 </p>
 
 <pre data-lang="md"><code>## ✓ Spec 2/5 complete: cross-run-memory-example

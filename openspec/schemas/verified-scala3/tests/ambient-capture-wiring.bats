@@ -65,7 +65,7 @@ neutral_stubs() {
 run_gate_payload() { # $1=json payload; rest=extra args
   local payload="$1"; shift
   neutral_stubs
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="$SESSION" \
@@ -309,7 +309,7 @@ run_reconcile() {
       tool_input:{file_path:$f}}')"
   # No --repo: the repo must come from the payload AND the file path must
   # still be readable by the tool-call handler from the same payload.
-  run env -u CLAUDE_CODE_SESSION_ID VERIFIED_SCALA3_SESSION_ID="$SESSION" \
+  run env VERIFIED_SCALA3_SESSION_ID="$SESSION" \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" SPEC_LINT_OVERRIDE="$FAKE_SL" \
     bash -c 'printf "%s" "$1" | "$2" --event tool-call --format text' _ "$p" "$GATE"
   # The oracle phase is the default, so a production edit must be REFUSED.
@@ -434,7 +434,7 @@ run_completion() {
   encoded="$(printf '%s' "$SESSION" | jq -Rr '@base64' | tr '+/=' '-_.')"
   printf 'deadbeef' >"$state/presentation-$CHANGE-$SPEC-$encoded"
   rm -f "$state/completion-refused-$encoded"
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="$SESSION" \
     "$GATE" --repo "$FX" --event completion --format text --stop-hook-active false

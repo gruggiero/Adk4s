@@ -1,4 +1,4 @@
-// verified-scala3 adapter — pi.
+// probatio adapter — pi.
 //
 // Install to .pi/extensions/verified-scala3-gate.ts (project) or
 // ~/.pi/agent/extensions/ (global). Try it first with:
@@ -102,7 +102,7 @@ function runToolCallGate(
         try {
           const parsed = JSON.parse(output);
           if (parsed.decision === "block") {
-            resolve({ block: true, reason: parsed.reason ?? "blocked by verified-scala3 gate" });
+            resolve({ block: true, reason: parsed.reason ?? "blocked by probatio gate" });
           } else {
             resolve(undefined);
           }
@@ -121,7 +121,7 @@ export default function (pi: ExtensionAPI) {
 
     return {
       message: {
-        customType: "verified-scala3-context",
+        customType: "probatio-context",
         content: text,
         display: false,
       },
@@ -162,7 +162,7 @@ export default function (pi: ExtensionAPI) {
     // nothing here can alter whether the edit itself succeeded — matching
     // "Post-edit correction never blocks the edit".
     return {
-      content: [...event.content, { type: "text", text: `\n[verified-scala3 post-edit]\n${findings}` }],
+      content: [...event.content, { type: "text", text: `\n[probatio post-edit]\n${findings}` }],
     };
   });
 }

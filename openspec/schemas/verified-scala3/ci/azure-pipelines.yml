@@ -1,6 +1,6 @@
-# Gate checks for the verified-scala3 workflow.
+# Gate checks for the probatio workflow.
 #
-# Installs the DECLARED PREREQUISITE SET (schema v12 — see ../hooks/README.md):
+# Installs the DECLARED PREREQUISITE SET (schema v14 — see ../hooks/README.md):
 # bash, git, jq at runtime; shellcheck, bats, shfmt for Rings 1 and 3. No JDK,
 # no sbt, no internal artifact repository — the checks still run on a
 # restricted runner, which is the point of declaring the set rather than
@@ -73,5 +73,5 @@ steps:
   - bash: ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
     displayName: registry-check (concept registry drift)
 
-  - bash: ./openspec/schemas/verified-scala3/scanner/spec-lint.sh .
+  - bash: ./openspec/schemas/verified-scala3/bin/probatio spec-lint .
     displayName: spec-lint (active changes)

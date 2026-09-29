@@ -48,7 +48,11 @@ class CallKeySpec extends HedgehogSuite:
       val mutated          = mutation.apply(base)
       val kBase            = CallKey.fromCanonical(CanonicalFormOps.from(base))
       val kMutated         = CallKey.fromCanonical(CanonicalFormOps.from(mutated))
-      Result.assert(kBase != kMutated).log("RL3-key-sensitivity")
+      // The generator is not value-aware: a mutation can redraw the base's
+      // own value (ChangeRolloutId(Some(6)) onto rollout=Some(6)). A no-op
+      // is not an output-affecting mutation — the obligation is vacuous.
+      if mutated == base then Result.success
+      else Result.assert(kBase != kMutated).log("RL3-key-sensitivity")
 
   // ── RL4: key-insensitivity ──────────────────────────────────────────
   // spec: add-adk4s-record/call-key — Property: key-insensitivity

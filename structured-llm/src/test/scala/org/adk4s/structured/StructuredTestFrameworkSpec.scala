@@ -14,7 +14,7 @@ import smithy4s.schema.Schema as Smithy4sSchema
 class StructuredTestFrameworkSpec extends HedgehogSuite:
 
   given s4sString: Smithy4sSchema[String] = smithy4s.Schema.string
-  given schemaString: Schema[String] = Schema.instance("string String")(using s4sString)
+  given schemaString: Schema[String]      = Schema.instance("string String")(using s4sString)
 
   final case class Person(name: String, age: Int)
   given s4sPerson: Smithy4sSchema[Person] = smithy4s.Schema.recursive {
@@ -34,10 +34,13 @@ class StructuredTestFrameworkSpec extends HedgehogSuite:
 
   property("testParse succeeds for valid JSON") {
     val nameGen: Gen[String] = Gen.string(Gen.char('a', 'z'), Range.linear(1, 10))
-    val ageGen: Gen[Int] = Gen.int(Range.linear(0, 100))
-    val personGen: Gen[Person] = for n <- nameGen; a <- ageGen yield Person(n, a)
+    val ageGen: Gen[Int]     = Gen.int(Range.linear(0, 100))
+    val personGen: Gen[Person] = for
+      n <- nameGen
+      a <- ageGen
+    yield Person(n, a)
     personGen.forAll.map { (p: Person) =>
-      val json: String = s"""{"name": "${p.name}", "age": ${p.age}}"""
+      val json: String                    = s"""{"name": "${p.name}", "age": ${p.age}}"""
       val result: ParseTestResult[Person] = testParse[Person](json)
       result.parsed ==== true
     }
@@ -60,7 +63,7 @@ class StructuredTestFrameworkSpec extends HedgehogSuite:
   // ════════════════════════════════════════════════════════════════════════
 
   test("testParse returns the parsed value on success") {
-    val json: String = """{"name": "Alice", "age": 30}"""
+    val json: String                    = """{"name": "Alice", "age": 30}"""
     val result: ParseTestResult[Person] = testParse[Person](json)
     assertEquals(result.parsed, true)
     assertEquals(result.value.map(_.name), Some("Alice"))
@@ -72,7 +75,7 @@ class StructuredTestFrameworkSpec extends HedgehogSuite:
   // ════════════════════════════════════════════════════════════════════════
 
   test("testParse returns errors on failure") {
-    val json: String = "not json at all"
+    val json: String                    = "not json at all"
     val result: ParseTestResult[Person] = testParse[Person](json)
     assertEquals(result.parsed, false)
     assert(result.errors.nonEmpty)
@@ -84,7 +87,7 @@ class StructuredTestFrameworkSpec extends HedgehogSuite:
 
   test("testParseBatch runs multiple parse tests") {
     val inputs: Vector[(String, String)] = Vector(
-      "valid" -> """{"name": "Alice", "age": 30}""",
+      "valid"   -> """{"name": "Alice", "age": 30}""",
       "invalid" -> "garbage"
     )
     val results: Map[String, ParseTestResult[Person]] = testParseBatch[Person](inputs)
@@ -98,7 +101,13 @@ class StructuredTestFrameworkSpec extends HedgehogSuite:
 
   test("reportParseResults produces human-readable output") {
     val results: Map[String, ParseTestResult[Person]] = Map(
-      "valid" -> ParseTestResult[Person]("""{"name":"A","age":1}""", true, Some(Person("A", 1)), List.empty, List.empty),
+      "valid" -> ParseTestResult[Person](
+        """{"name":"A","age":1}""",
+        true,
+        Some(Person("A", 1)),
+        List.empty,
+        List.empty
+      ),
       "invalid" -> ParseTestResult[Person]("garbage", false, None, List.empty, List("parse error"))
     )
     val report: String = reportParseResults(results)

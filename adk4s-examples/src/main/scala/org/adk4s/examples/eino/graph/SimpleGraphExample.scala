@@ -5,7 +5,7 @@ import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.IOApp
 import org.adk4s.core.component.ChatModel
-import org.adk4s.core.types.{NodeKey, Reserved, given}
+import org.adk4s.core.types.{ NodeKey, Reserved, given }
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.examples.eino.common.MockChatModel
 import org.adk4s.orchestration.wiograph.WIOGraph

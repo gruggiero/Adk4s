@@ -25,7 +25,7 @@ class StructuredToolCallDeriveTest extends CatsEffectSuite:
     smithy4s.Schema.string.required[WeatherResult]("city", _.city)
   )(WeatherResult.apply)
 
-  given ToolSchema[WeatherQuery] = ToolSchema.derive[WeatherQuery]
+  given ToolSchema[WeatherQuery]  = ToolSchema.derive[WeatherQuery]
   given ToolSchema[WeatherResult] = ToolSchema.derive[WeatherResult]
 
   // Create a tool using ToolInfer
@@ -50,7 +50,7 @@ class StructuredToolCallDeriveTest extends CatsEffectSuite:
     )
 
     // Test 1: Decode arguments using derived ToolSchema
-    val querySchema: ToolSchema[WeatherQuery] = summon[ToolSchema[WeatherQuery]]
+    val querySchema: ToolSchema[WeatherQuery]               = summon[ToolSchema[WeatherQuery]]
     val decodedQuery: Either[ToolSchemaError, WeatherQuery] = querySchema.decoder(toolCallArguments)
 
     assert(decodedQuery.isRight)
@@ -61,13 +61,14 @@ class StructuredToolCallDeriveTest extends CatsEffectSuite:
     // Test 2: Execute tool with decoded arguments
     val toolResult: Either[String, ujson.Value] = weatherTool.run(toolCallArguments).attempt.unsafeRunSync() match
       case Right(value) => Right(value)
-      case Left(err) => Left(err.getMessage)
+      case Left(err)    => Left(err.getMessage)
 
     assert(toolResult.isRight)
 
     // Test 3: Encode result using derived ToolSchema
     val resultSchema: ToolSchema[WeatherResult] = summon[ToolSchema[WeatherResult]]
-    val decodedResult: Either[ToolSchemaError, WeatherResult] = resultSchema.decoder(toolResult.toOption.getOrElse(fail("expected Right")))
+    val decodedResult: Either[ToolSchemaError, WeatherResult] =
+      resultSchema.decoder(toolResult.toOption.getOrElse(fail("expected Right")))
 
     assert(decodedResult.isRight)
     val result: WeatherResult = decodedResult.toOption.getOrElse(fail("expected Right"))
@@ -97,7 +98,7 @@ class StructuredToolCallDeriveTest extends CatsEffectSuite:
 
   test("derived ToolSchema generates compatible JSON schema") {
     val querySchema: ToolSchema[WeatherQuery] = summon[ToolSchema[WeatherQuery]]
-    val jsonSchema: ujson.Value = querySchema.jsonSchema
+    val jsonSchema: ujson.Value               = querySchema.jsonSchema
 
     // Verify structure matches ToolInfer expectations
     assertEquals(jsonSchema("type").str, "object")

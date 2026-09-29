@@ -70,27 +70,9 @@ README_MD="$SCHEMA_DIR/hooks/README.md"
 }
 
 # spec: harness-install-verification — Scenario: pi tool_call handler wired
-@test "pi adapter has a tool_call handler that shells out to gate.sh" {
-  local pi_adapter="$ADAPTERS/pi/verified-scala3-gate.ts"
-  [ -f "$pi_adapter" ] || {
-    printf 'pi adapter not found: %s\n' "$pi_adapter" >&2
-    return 1
-  }
-  # The adapter must register a tool_call handler
-  grep -q 'tool_call' "$pi_adapter" || {
-    printf 'pi adapter missing tool_call handler\n' >&2
-    return 1
-  }
-  # The handler must shell out to gate.sh with --event tool-call
-  grep -q 'tool-call' "$pi_adapter" || {
-    printf 'pi adapter tool_call handler missing --event tool-call\n' >&2
-    return 1; }
-  # The handler must map a block decision to {block:true,reason}
-  grep -q 'block.*true\|block:.*true' "$pi_adapter" || {
-    printf 'pi adapter missing block:true mapping\n' >&2
-    return 1
-  }
-}
+# MOVED to shape/harness-install-verification-shape.bats by
+# spec:oracle-independence: the test asserts over the .ts adapter SOURCE,
+# which is implementation shape, not behaviour.
 
 # ═════════════════════════════════════════════════════════════════════════
 # Requirement: Apply Step 0 verifies the gate is installed and firing
@@ -186,6 +168,59 @@ README_MD="$SCHEMA_DIR/hooks/README.md"
   }
   echo "$v13_block" | grep -iq "pre-execution\|tool-call" || {
     printf 'v13 entry does not name the pre-execution fix\n' >&2
+    return 1
+  }
+}
+
+# ═════════════════════════════════════════════════════════════════════════
+# Requirement: Every installed document in a searched root carries the
+# current stamp (schema-rename-completion — Ring 8 found this obligation
+# had no bats oracle)
+# ═════════════════════════════════════════════════════════════════════════
+
+searched_roots() {
+  local repo_root="$SCHEMA_DIR/../../.."
+  printf '%s\n' \
+    "$repo_root/.agents/skills" \
+    "$repo_root/.claude/skills" \
+    "$repo_root/.pi/skills" \
+    "$HOME/.agents/skills" \
+    "$HOME/.claude/skills" \
+    "$HOME/.zcode/skills"
+}
+
+# spec: schema-rename-completion — Scenario: no searched root carries a pre-rename stamp
+@test "no instruction document in any searched root carries a pre-rename stamp" {
+  local root stale=""
+  while IFS= read -r root; do
+    [ -d "$root" ] || continue
+    local hit
+    hit="$(grep -rln 'generatedBy:[[:space:]]*verified-scala3-schema/' "$root" 2>/dev/null || true)"
+    [ -z "$hit" ] || stale="$stale$hit"$'\n'
+  done < <(searched_roots)
+  [ -z "$stale" ] || {
+    printf 'pre-rename stamps remain in searched roots:\n%s' "$stale" >&2
+    return 1
+  }
+}
+
+# spec: schema-rename-completion — Scenario: Happy path — every installed document carries the schema's current name and version
+@test "every schema-stamped document in a searched root carries the current stamp" {
+  local root doc bad="" count=0
+  while IFS= read -r root; do
+    [ -d "$root" ] || continue
+    while IFS= read -r doc; do
+      [ -f "$doc" ] || continue
+      count=$((count + 1))
+      grep -qE 'generatedBy:[[:space:]]*probatio-schema/14\.0\.0' "$doc" || bad="$bad$doc"$'\n'
+    done < <(grep -rlE 'generatedBy:[[:space:]]*[A-Za-z0-9_-]+-schema/' "$root" 2>/dev/null || true)
+  done < <(searched_roots)
+  [ "$count" -gt 0 ] || {
+    printf 'no schema-stamped documents found in any searched root\n' >&2
+    return 1
+  }
+  [ -z "$bad" ] || {
+    printf 'installed documents missing the current stamp (probatio-schema/14.0.0):\n%s' "$bad" >&2
     return 1
   }
 }

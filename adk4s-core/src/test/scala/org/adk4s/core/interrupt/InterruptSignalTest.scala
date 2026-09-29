@@ -13,16 +13,16 @@ class InterruptSignalTest extends FunSuite:
   }
 
   test("Stateful interrupt carries state") {
-    val state: JsonValue = Document.DObject(Map("key" -> Document.DString("value")))
+    val state: JsonValue                 = Document.DObject(Map("key" -> Document.DString("value")))
     val signal: InterruptSignal.Stateful = InterruptSignal.stateful("Confirm?", state)
     assertEquals(signal.state, state)
     assertEquals(signal.info, "Confirm?")
   }
 
   test("Composite interrupt wraps children") {
-    val child1: InterruptSignal.Simple = InterruptSignal.simple("child1")
-    val child2: InterruptSignal.Simple = InterruptSignal.simple("child2")
-    val state: JsonValue = Document.DObject(Map("parent" -> Document.DString("state")))
+    val child1: InterruptSignal.Simple       = InterruptSignal.simple("child1")
+    val child2: InterruptSignal.Simple       = InterruptSignal.simple("child2")
+    val state: JsonValue                     = Document.DObject(Map("parent" -> Document.DString("state")))
     val composite: InterruptSignal.Composite = InterruptSignal.composite("parent", state, List(child1, child2))
     assertEquals(composite.children.length, 2)
     assertEquals(composite.info, "parent")
@@ -30,14 +30,14 @@ class InterruptSignalTest extends FunSuite:
 
   test("withAddress updates address on Simple") {
     val signal: InterruptSignal.Simple = InterruptSignal.simple("test")
-    val updated: InterruptSignal = signal.withAddress(List(AddressSegment.Agent("supervisor")))
+    val updated: InterruptSignal       = signal.withAddress(List(AddressSegment.Agent("supervisor")))
     assertEquals(updated.address, List(AddressSegment.Agent("supervisor")))
   }
 
   test("withAddress updates address on Stateful") {
     val signal: InterruptSignal.Stateful = InterruptSignal.stateful("test", Document.DNull)
-    val addr: List[AddressSegment] = List(AddressSegment.Agent("agent"), AddressSegment.Tool("query"))
-    val updated: InterruptSignal = signal.withAddress(addr)
+    val addr: List[AddressSegment]       = List(AddressSegment.Agent("agent"), AddressSegment.Tool("query"))
+    val updated: InterruptSignal         = signal.withAddress(addr)
     assertEquals(updated.address, addr)
   }
 
@@ -52,9 +52,10 @@ class InterruptSignalTest extends FunSuite:
   }
 
   test("InterruptSignal serialization roundtrip via upickle") {
-    val signal: InterruptSignal = InterruptSignal.simple("test")
+    val signal: InterruptSignal = InterruptSignal
+      .simple("test")
       .withAddress(List(AddressSegment.Agent("a"), AddressSegment.Tool("t")))
-    val json: String = upickle.default.write(signal)
+    val json: String              = upickle.default.write(signal)
     val restored: InterruptSignal = upickle.default.read[InterruptSignal](json)
     assertEquals(restored.info, "test")
     assertEquals(restored.address.length, 2)

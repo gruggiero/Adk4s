@@ -47,26 +47,26 @@ class PackageExportsTest extends CatsEffectSuite:
 
   test("StreamConverter toFs2Stream extension works") {
     val result: Either[org.llm4s.error.LLMError, Iterator[Int]] = Right(Iterator(1, 2, 3))
-    val stream = result.toFs2Stream
-    val resultIO = stream.compile.toList
+    val stream                                                  = result.toFs2Stream
+    val resultIO                                                = stream.compile.toList
     assertIO(resultIO, List(1, 2, 3))
   }
 
   test("Message toStream extension works") {
     val message: Message = UserMessage("Hello")
-    val stream = message.toStream
-    val resultIO = stream.compile.toList
+    val stream           = message.toStream
+    val resultIO         = stream.compile.toList
     assertIO(resultIO, List(message))
   }
 
   test("Stream withTimeout extension works") {
-    val stream = Stream.emit(1).withTimeout(1.second)
+    val stream   = Stream.emit(1).withTimeout(1.second)
     val resultIO = stream.compile.toList
     assertIO(resultIO, List(1))
   }
 
   test("Stream withElementTimeout extension works") {
-    val stream = Stream.emit(1).withElementTimeout(1.second)
+    val stream   = Stream.emit(1).withElementTimeout(1.second)
     val resultIO = stream.compile.toList
     assertIO(resultIO, List(1))
   }
@@ -81,18 +81,17 @@ class PackageExportsTest extends CatsEffectSuite:
       )
       resultIO = stream.retryWithBackoff(5).compile.toList
       result <- resultIO
-    yield
-      assertEquals(result, List(3))
+    yield assertEquals(result, List(3))
   }
 
   test("Stream rateLimited extension works") {
-    val stream = Stream.emits(1 to 3).rateLimited(10)
+    val stream   = Stream.emits(1 to 3).rateLimited(10)
     val resultIO = stream.compile.toList
     assertIO(resultIO, List(1, 2, 3))
   }
 
   test("Stream debugLog extension works") {
-    val stream = Stream.emit("test").debugLog("PREFIX")
+    val stream   = Stream.emit("test").debugLog("PREFIX")
     val resultIO = stream.compile.toList
     assertIO(resultIO, List("test"))
   }

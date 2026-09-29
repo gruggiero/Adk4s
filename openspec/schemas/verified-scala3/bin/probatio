@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# probatio-jar-launcher.sh — JAR fallback launcher for the probatio binary.
+#
+# Resolves the assembly JAR relative to this script's location and invokes
+# it with java -jar. Used when no native-image binary is available.
+#
+# spec: hook-cutover — Requirement: Each bash hook is replaced by a 3-line exec shim pointing to the probatio binary
+
+# Resolve the repo root from this script's location.
+# Script is at openspec/schemas/verified-scala3/bin/probatio
+# Repo root is 4 levels up.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+NATIVE="$REPO_ROOT/workflow/cli/target/native-image/probatio"
+JAR_DIR="$REPO_ROOT/workflow/cli/target/scala-3.8.4"
+# Glob for the assembly — the version segment is build-defined, so a
+# version bump must not strand the launcher while an archive is present.
+JAR=""
+for candidate in "$JAR_DIR"/probatio-cli-assembly-*.jar; do
+  if [ -f "$candidate" ]; then JAR="$candidate"; break; fi
+done
+
+# Prefer the native image when it is built; otherwise run the assembly
+# archive. Archive invocation classifies as an InvocationSource.Archive
+# (spec: jar-launcher-dispatch) and dispatches by the first argument — the
+# archive's file name is never read as a tool name.
+if [ -x "$NATIVE" ]; then
+  exec "$NATIVE" "$@"
+fi
+
+if [ -n "$JAR" ]; then
+  exec java -jar "$JAR" "$@"
+fi
+
+# Neither artifact is built — report what was searched rather than letting
+# the JVM's jarfile error stand in for a verdict (spec: jar-launcher-dispatch
+# — Scenario: Adversarial — neither archive nor executable is
+# could-not-determine, named).
+{
+  echo "probatio: no built tool found — searched:"
+  echo "  native executable: $NATIVE"
+  echo "  assembly archive:  $JAR_DIR/probatio-cli-assembly-*.jar"
+  echo "build either with: sbt probatio-cli/assembly      (archive)"
+  echo "                   sbt probatio-cli/nativeImage   (executable)"
+} >&2
+exit 2

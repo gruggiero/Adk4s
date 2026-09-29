@@ -22,10 +22,12 @@ final class InMemoryAgentMemory[F[_]: Sync](ref: Ref[F, Vector[Episode]]) extend
   def recall(
     query: String,
     k: Int,
-    scope: Option[TemporalScope] = None
+    scope: Option[TemporalScope] = None,
+    groupId: Option[String] = None
   ): F[List[MemoryHit]] =
     ref.get.map { episodes =>
-      val scored: Vector[MemoryHit] = episodes.flatMap { ep =>
+      val filtered: Vector[Episode] = episodes.filter(ep => ep.groupId == groupId || groupId.isEmpty)
+      val scored: Vector[MemoryHit] = filtered.flatMap { ep =>
         val s: Double = InMemoryAgentMemory.naiveScore(
           ep.content.toLowerCase,
           query.toLowerCase

@@ -107,7 +107,8 @@ class FileBackedAgentMemorySpec extends HedgehogSuite:
       def recall(
         query: String,
         k: Int,
-        scope: Option[TemporalScope] = None
+        scope: Option[TemporalScope] = None,
+        groupId: Option[String] = None
       ): IO[List[MemoryHit]] =
         IO.pure(Nil)
     val result: IO[Boolean] = laws.all(brokenMem)

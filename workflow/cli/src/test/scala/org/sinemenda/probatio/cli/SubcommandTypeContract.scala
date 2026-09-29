@@ -1,0 +1,94 @@
+package org.sinemenda.probatio.cli
+
+/**
+ * Compile-negative tests for the Subcommand sealed enum and the append-only
+ * ledger surface.
+ *
+ * munit's `compileErrors` returns the compiler error string (empty if the
+ * code compiles successfully). We assert the error is non-empty — i.e. the
+ * forbidden construction does NOT compile.
+ *
+ * spec: port-scanner-to-probatio/cli-protocol — Compile-Negative: A subcommand named update/delete/rewrite/edit
+ * spec: port-scanner-to-probatio/cli-protocol — Compile-Negative: An exit code other than 0/1/2
+ * spec: port-scanner-to-probatio/cli-protocol — Compile-Negative: A CliError variant without offendingToken
+ */
+final class SubcommandTypeContract extends ProbatioCliSuite:
+
+  // ── Mutation subcommands do not exist in the sealed enum
+  // spec: cli-protocol — Compile-Negative: Subcommand.update
+  test("Subcommand.update does not compile (append-only invariant)"):
+    val err: String = compileErrors("Subcommand.update")
+    assert(err.nonEmpty, "Subcommand.update should not exist — append-only invariant")
+
+  test("Subcommand.delete does not compile (append-only invariant)"):
+    val err: String = compileErrors("Subcommand.delete")
+    assert(err.nonEmpty, "Subcommand.delete should not exist — append-only invariant")
+
+  test("Subcommand.rewrite does not compile (append-only invariant)"):
+    val err: String = compileErrors("Subcommand.rewrite")
+    assert(err.nonEmpty, "Subcommand.rewrite should not exist — append-only invariant")
+
+  test("Subcommand.edit does not compile (append-only invariant)"):
+    val err: String = compileErrors("Subcommand.edit")
+    assert(err.nonEmpty, "Subcommand.edit should not exist — append-only invariant")
+
+  // ── Compile-Negative (spec 8): a mutation operation on the evidence
+  //    record ──────────────────────────────────────────────────────────
+  // spec: ledger-checkpoint-cutover — Compile-Negative: A mutation operation on the evidence record
+  // The enum-case negatives above already pin that `update`/`delete`/
+  // `rewrite`/`edit` are not constructible. The spec's literal form
+  // `Subcommand.fromString("update")` COMPILES — `fromString` is the
+  // public parser and yields `Left` for unknown names — so the
+  // obligation is enforced where it can be: parsing cannot produce a
+  // mutation operation either.
+  test("no mutation operation exists: every mutation name is unparseable"):
+    List("update", "delete", "rewrite", "edit").foreach { token =>
+      assert(
+        Subcommand.fromString(token).isLeft,
+        s"'$token' must not parse to a subcommand — the record is append-only"
+      )
+    }
+
+  // ── No exit code outside {0,1,2} — the enum has exactly three cases
+  test("ExitCode has no fourth case"):
+    val err: String = compileErrors("ExitCode.FourthCase")
+    assert(err.nonEmpty, "ExitCode.FourthCase should not exist — exactly three cases")
+
+  // ── Outcome has no fourth case (exit-code mapping totality)
+  test("Outcome has no fourth case (exit-code mapping totality)"):
+    val err: String = compileErrors("Outcome.FourthCase[Int]()")
+    assert(err.nonEmpty, "Outcome.FourthCase should not exist — exactly three cases")
+
+  // ── CliError is an enum — no anonymous subclass possible, and every
+  // case carries the offending token by construction.
+  test("CliError cannot be anonymously instantiated (enum, not sealed trait)"):
+    val err: String = compileErrors("new CliError {}")
+    assert(err.nonEmpty, "CliError is an enum — anonymous instantiation should not compile")
+
+  // ── Compile-Negatives (spec 11): the unported-tool register ─────────
+  // spec: unported-tool-register — Compile-Negative: A third tool classification
+  test("a third tool classification does not compile"):
+    val err: String = compileErrors("org.sinemenda.probatio.core.ToolSurfaceClassification.Unknown")
+    assert(
+      err.nonEmpty,
+      "ToolSurfaceClassification has exactly two variants — a tool in neither is a check finding, not a state"
+    )
+
+  // spec: unported-tool-register — Compile-Negative: A register entry without a blocker
+  test("a register entry without a blocker does not compile"):
+    val err: String =
+      compileErrors("""org.sinemenda.probatio.core.UnportedTool("name", "path")""")
+    assert(
+      err.nonEmpty,
+      "UnportedTool requires the blocker and the citation list — an entry with no stated reason is an oversight"
+    )
+
+  // spec: unported-tool-register — Compile-Negative: A free-text blocker
+  test("a register entry with a free-text blocker does not compile"):
+    val err: String = compileErrors(
+      """org.sinemenda.probatio.core.UnportedTool("name", "path", "because", Nil)"""
+    )
+    assert(
+      err.nonEmpty,
+      "the blocker is a closed PortBlocker enumeration, not text — a free-text reason cannot be checked"
+    )

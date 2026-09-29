@@ -14,7 +14,7 @@ import smithy4s.schema.Schema as Smithy4sSchema
 class SemanticStreamingSpec extends HedgehogSuite:
 
   given s4sString: Smithy4sSchema[String] = smithy4s.Schema.string
-  given schemaString: Schema[String] = Schema.instance("string String")(using s4sString)
+  given schemaString: Schema[String]      = Schema.instance("string String")(using s4sString)
 
   // ════════════════════════════════════════════════════════════════════════
   // Property 1: StreamState.complete has Complete state

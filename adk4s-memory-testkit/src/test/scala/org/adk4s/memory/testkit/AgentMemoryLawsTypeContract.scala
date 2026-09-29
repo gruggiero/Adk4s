@@ -3,14 +3,15 @@ package org.adk4s.memory.testkit
 import cats.effect.IO
 import org.adk4s.memory.AgentMemory
 
-/** Type contract for spec:memory-testkit.
-  *
-  * Verifies that `AgentMemoryLaws` has the correct signatures. This file
-  * contains NO behavioral tests — those live in `AgentMemoryLawsSpec.scala`.
-  *
-  * Signature tests use `compileErrors` to verify compilation without invoking
-  * the stub bodies (which throw `???`).
-  */
+/**
+ * Type contract for spec:memory-testkit.
+ *
+ * Verifies that `AgentMemoryLaws` has the correct signatures. This file
+ * contains NO behavioral tests — those live in `AgentMemoryLawsSpec.scala`.
+ *
+ * Signature tests use `compileErrors` to verify compilation without invoking
+ * the stub bodies (which throw `???`).
+ */
 class AgentMemoryLawsTypeContract extends munit.FunSuite:
 
   // ── Signature verification (compile-only, no runtime invocation) ──────────

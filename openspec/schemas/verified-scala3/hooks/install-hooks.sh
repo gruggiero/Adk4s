@@ -17,7 +17,8 @@
 #
 # Uninstall: delete .pi/extensions/verified-scala3-gate.ts, delete
 # .devin/hooks.v1.json, remove the SessionStart entry from .claude/settings.json.
-# Or leave them and set VERIFIED_SCALA3_HOOKS=off, which gate.sh honours.
+# Or leave them and set PROBATIO_HOOKS=off, which gate.sh honours
+# (VERIFIED_SCALA3_HOOKS=off also works as a deprecated alias for one major version).
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -141,4 +142,4 @@ done
 echo
 echo "install-hooks: verify with"
 echo "  bash $SELF_DIR/gate.sh --event session-start --format text --repo $PROJECT"
-echo "install-hooks: disable at any time with  export VERIFIED_SCALA3_HOOKS=off"
+echo "install-hooks: disable at any time with  export PROBATIO_HOOKS=off"

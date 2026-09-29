@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>12 · The correctness substratum — verified-scala3</title>
+<title>12 · The correctness substratum — probatio</title>
 <link rel="stylesheet" href="assets/tutorial.css">
 </head>
 <body>
 <div class="layout">
 
 <nav class="sidebar">
-  <div class="brand"><a href="index.html">verified-scala3</a></div>
+  <div class="brand"><a href="index.html">probatio</a></div>
   <div class="brand-sub">Workflow tutorial</div>
   <ul class="chapters">
     <li><a href="index.html"><span class="num">·</span> Start here</a></li>
@@ -421,6 +421,21 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
   running under.
 </p>
 
+<p>
+  The pre-execution gate's predecessor check now requires a checkpoint
+  presentation marker — not just <code>verified</code> phase — before a
+  prior spec counts as "done" for gating purposes. This closes a gap that
+  was found in this chapter's own tooling: three specs advanced to
+  <code>verified</code> (RED+GREEN ledger rows existed) and the next spec
+  started, but <code>checkpoint.sh</code> was never run, so the chain-state
+  discharge check never fired. The ledger rows had descriptive run-result
+  text instead of the exact obligation text from the Proof-Obligations
+  table — a mismatch chain-state would have caught, but only if it had been
+  invoked. <code>verified</code> means "tests ran"; a presentation marker
+  means "the chain-state check ran." The gate now requires both before
+  allowing the next spec's production edits.
+</p>
+
 <div class="box insight">
   <div class="box-title">Why this had to be last, not first</div>
   <p style="margin-bottom:0">
@@ -547,6 +562,7 @@ $ scanner/ledger.sh read --file evidence-ledger.jsonl \
     <li>What <code>ledger.sh verify</code> adds: a row was re-checkable in principle; <code>verify</code> makes it re-checked in practice.</li>
     <li>Why the completion gate shipped last, and what would have gone wrong had it shipped first.</li>
     <li>The difference between the completion gate (2/3-harness backstop, schema v12) and the pre-execution <code>tool_call</code> gate (universal, schema v13) — and which one exists on pi.</li>
+    <li>Why the predecessor check requires a checkpoint presentation marker in addition to <code>verified</code> phase, and what defect class that closes (ledger text mismatch undetected because chain-state never ran).</li>
   </ul>
   <p style="margin-bottom:0">
     If you can only take one idea from this whole tutorial, it is the

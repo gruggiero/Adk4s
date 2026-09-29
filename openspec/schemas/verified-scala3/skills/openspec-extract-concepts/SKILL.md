@@ -7,7 +7,7 @@ description: >
   plus synchronizations — from the existing code. One-time per project (then
   the registry is maintained as a living document by every change).
 metadata:
-  generatedBy: verified-scala3-schema/7.0.0
+  generatedBy: probatio-schema/14.0.0
 ---
 
 # Extract Concepts Skill
@@ -22,7 +22,7 @@ code identifiers live.
 
 ## When to Use
 
-- Once, when adopting the verified-scala3 workflow's concept registry in a
+- Once, when adopting the probatio workflow's concept registry in a
   project (new or existing).
 - Again only if a whole new subsystem lands without specs (rare — normally
   changes maintain the registry incrementally).

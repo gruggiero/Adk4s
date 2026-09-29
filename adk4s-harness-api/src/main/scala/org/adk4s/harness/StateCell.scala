@@ -3,7 +3,7 @@ package org.adk4s.harness
 import upickle.default.ReadWriter
 import io.github.iltotore.iron.RefinedType
 import io.github.iltotore.iron.constraint.any.Not
-import io.github.iltotore.iron.constraint.string.{Blank, Match}
+import io.github.iltotore.iron.constraint.string.{ Blank, Match }
 import io.github.iltotore.iron.upickle.given
 import org.adk4s.core.types.NonEmpty
 import org.adk4s.core.error.ConfigError
@@ -34,16 +34,17 @@ final class StateCell[A] private (
   override def toString: String = s"StateCell($id, $visibility)"
 
 object StateCell:
-  /** Stable `"owner/name"` key for cell identity.
-    *
-    * An opaque type backed by `String :| (NonEmpty & Match["[^/]+/[^/]+"])`.
-    * Constructed via `CellId("owner/name")` (compile-time refinement for
-    * inline literals) or `CellId.refineEither(s)` (runtime refinement).
-    * The underlying value is accessed via the `.value` extension inherited
-    * from `Refined`.
-    *
-    * spec: harness-state — Requirement: StateCell.CellId rejects empty and malformed values
-    */
+  /**
+   * Stable `"owner/name"` key for cell identity.
+   *
+   * An opaque type backed by `String :| (NonEmpty & Match["[^/]+/[^/]+"])`.
+   * Constructed via `CellId("owner/name")` (compile-time refinement for
+   * inline literals) or `CellId.refineEither(s)` (runtime refinement).
+   * The underlying value is accessed via the `.value` extension inherited
+   * from `Refined`.
+   *
+   * spec: harness-state — Requirement: StateCell.CellId rejects empty and malformed values
+   */
   type CellId = CellId.T
 
   object CellId extends RefinedType[String, NonEmpty & Match["[^/]+/[^/]+"]]:
@@ -54,10 +55,12 @@ object StateCell:
         case Right(cid) => Right(cid)
         case Left(_)    => Left(ConfigError("CellId", s, "NonEmpty & Match[\"[^/]+/[^/]+\"]"))
 
-    /** Construct a CellId from an owner MiddlewareName and a name string.
-      * Refines the concatenated `owner/name` string at runtime via
-      * `refineEither`. Throws `ConfigError` on invalid input (empty name
-      * producing a malformed `owner/` string). */
+    /**
+     * Construct a CellId from an owner MiddlewareName and a name string.
+     * Refines the concatenated `owner/name` string at runtime via
+     * `refineEither`. Throws `ConfigError` on invalid input (empty name
+     * producing a malformed `owner/` string).
+     */
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
     def apply(owner: MiddlewareName, name: String): CellId =
       refineEither(s"${owner.value}/$name").fold(

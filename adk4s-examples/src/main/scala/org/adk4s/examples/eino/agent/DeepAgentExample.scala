@@ -28,14 +28,7 @@ import org.adk4s.harness.{
   ToolStep
 }
 import org.adk4s.orchestration.agent.{ HarnessAgent, HarnessResult }
-import org.llm4s.llmconnect.model.{
-  AssistantMessage,
-  Completion,
-  Conversation,
-  StreamedChunk,
-  ToolCall,
-  UserMessage
-}
+import org.llm4s.llmconnect.model.{ AssistantMessage, Completion, Conversation, StreamedChunk, ToolCall, UserMessage }
 import upickle.default.{ ReadWriter, given }
 
 import java.util.UUID
@@ -65,18 +58,22 @@ object DeepAgentExample extends IOApp.Simple:
   /** Todo list entries — the planning middleware's state. */
   final case class Todos(items: List[String])
   object Todos:
-    given ReadWriter[Todos] = upickle.default.readwriter[ujson.Value].bimap(
-      (t: Todos) => ujson.Arr(t.items.map(ujson.Str.apply)*),
-      (v: ujson.Value) => Todos(v.arr.toList.map((s: ujson.Value) => s.str))
-    )
+    given ReadWriter[Todos] = upickle.default
+      .readwriter[ujson.Value]
+      .bimap(
+        (t: Todos) => ujson.Arr(t.items.map(ujson.Str.apply)*),
+        (v: ujson.Value) => Todos(v.arr.toList.map((s: ujson.Value) => s.str))
+      )
 
   /** Audit log entries — the observability middleware's state. */
   final case class AuditLog(entries: List[String])
   object AuditLog:
-    given ReadWriter[AuditLog] = upickle.default.readwriter[ujson.Value].bimap(
-      (a: AuditLog) => ujson.Arr(a.entries.map(ujson.Str.apply)*),
-      (v: ujson.Value) => AuditLog(v.arr.toList.map((s: ujson.Value) => s.str))
-    )
+    given ReadWriter[AuditLog] = upickle.default
+      .readwriter[ujson.Value]
+      .bimap(
+        (a: AuditLog) => ujson.Arr(a.entries.map(ujson.Str.apply)*),
+        (v: ujson.Value) => AuditLog(v.arr.toList.map((s: ujson.Value) => s.str))
+      )
 
   // ── Middleware 1: TodoListMiddleware (planning) ──────────────────────────
 
@@ -97,8 +94,7 @@ object DeepAgentExample extends IOApp.Simple:
       name = "todos",
       initial = Todos(List("Analyze the user's request", "Gather information", "Synthesize a response")),
       visibility = CellVisibility.Shared,
-      merge = (parent: Todos, child: Todos) =>
-        Todos((parent.items ++ child.items).distinct)
+      merge = (parent: Todos, child: Todos) => Todos((parent.items ++ child.items).distinct)
     )
 
     override def stateCells: List[StateCell[?]] = List(todoCell)
@@ -112,8 +108,8 @@ object DeepAgentExample extends IOApp.Simple:
           "type" -> "object",
           "properties" -> ujson.Obj(
             "todos" -> ujson.Obj(
-              "type" -> "array",
-              "items" -> ujson.Obj("type" -> "string"),
+              "type"        -> "array",
+              "items"       -> ujson.Obj("type" -> "string"),
               "description" -> "The complete updated todo list"
             )
           ),
@@ -168,8 +164,8 @@ object DeepAgentExample extends IOApp.Simple:
         next.run(ctx).flatMap { (out: ToolCallOut) =>
           val entry: String =
             s"[${ctx.input.name}] -> ${out.output.result.take(80)}"
-          val updatedLog: AuditLog = ctx.state.get(logCell)
-          val newLog: AuditLog = AuditLog(updatedLog.entries :+ entry)
+          val updatedLog: AuditLog   = ctx.state.get(logCell)
+          val newLog: AuditLog       = AuditLog(updatedLog.entries :+ entry)
           val newState: HarnessState = out.state.set(logCell)(newLog)
           IO.pure(ToolCallOut(out.output, newState))
         }
@@ -179,9 +175,10 @@ object DeepAgentExample extends IOApp.Simple:
       val log: AuditLog = state.get(logCell)
       val body: String =
         if log.entries.isEmpty then "No tool calls executed yet."
-        else log.entries.zipWithIndex
-          .map { case (entry: String, idx: Int) => s"  ${idx + 1}. $entry" }
-          .mkString("\n")
+        else
+          log.entries.zipWithIndex
+            .map { case (entry: String, idx: Int) => s"  ${idx + 1}. $entry" }
+            .mkString("\n")
       List(PromptSection("Audit Trail", s"## Actions Taken So Far\n$body"))
   end AuditLogMiddleware
 
@@ -265,8 +262,8 @@ object DeepAgentExample extends IOApp.Simple:
       )
 
       // Build the middleware stack
-      todoMw = new TodoListMiddleware
-      auditMw = new AuditLogMiddleware
+      todoMw   = new TodoListMiddleware
+      auditMw  = new AuditLogMiddleware
       budgetMw = new BudgetGuardMiddleware(maxSteps = 10)
 
       stackResult = MiddlewareStack.validated[IO](List(todoMw, auditMw, budgetMw))
@@ -314,7 +311,7 @@ object DeepAgentExample extends IOApp.Simple:
 
         def stream(conversation: Conversation): fs2.Stream[IO, StreamedChunk] = fs2.Stream.empty
         def streamContent(conversation: Conversation): fs2.Stream[IO, String] = fs2.Stream.empty
-        def withConfig(config: ChatModelConfig): ChatModel[IO] = this
+        def withConfig(config: ChatModelConfig): ChatModel[IO]                = this
 
       // Build the HarnessAgent directly (not via ReactAgent.create sugar)
       agent = new HarnessAgent[IO](
@@ -359,8 +356,8 @@ object DeepAgentExample extends IOApp.Simple:
     auditMw: AuditLogMiddleware,
     budgetMw: BudgetGuardMiddleware
   ): IO[Unit] =
-    val todos: Todos = state.get(todoMw.todoCell)
-    val log: AuditLog = state.get(auditMw.logCell)
+    val todos: Todos   = state.get(todoMw.todoCell)
+    val log: AuditLog  = state.get(auditMw.logCell)
     val remaining: Int = state.get(budgetMw.remainingCell)
 
     ExampleUtils.printSubSection("Final HarnessState") *>

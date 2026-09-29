@@ -17,19 +17,19 @@ class BatchExecutorTest extends CatsEffectSuite:
     )
 
   test("invokeAll processes all inputs sequentially") {
-    val executor: BatchExecutor[Int, Int] = BatchExecutor.fromRunnable(doubler)
+    val executor: BatchExecutor[Int, Int]        = BatchExecutor.fromRunnable(doubler)
     val result: IO[List[Either[Throwable, Int]]] = executor.invokeAll(List(1, 2, 3))
     assertIO(result, List(Right(2), Right(4), Right(6)))
   }
 
   test("invokeAll returns empty list for empty input") {
-    val executor: BatchExecutor[Int, Int] = BatchExecutor.fromRunnable(doubler)
+    val executor: BatchExecutor[Int, Int]        = BatchExecutor.fromRunnable(doubler)
     val result: IO[List[Either[Throwable, Int]]] = executor.invokeAll(List.empty)
     assertIO(result, List.empty)
   }
 
   test("invokeAll isolates errors per item") {
-    val executor: BatchExecutor[Int, Int] = BatchExecutor.fromRunnable(failOnNegative)
+    val executor: BatchExecutor[Int, Int]        = BatchExecutor.fromRunnable(failOnNegative)
     val result: IO[List[Either[Throwable, Int]]] = executor.invokeAll(List(1, -2, 3))
     result.map { (results: List[Either[Throwable, Int]]) =>
       assertEquals(results.length, 3)
@@ -40,7 +40,7 @@ class BatchExecutorTest extends CatsEffectSuite:
   }
 
   test("invokeAllPar processes all inputs in parallel") {
-    val executor: BatchExecutor[Int, Int] = BatchExecutor.fromRunnable(doubler)
+    val executor: BatchExecutor[Int, Int]        = BatchExecutor.fromRunnable(doubler)
     val result: IO[List[Either[Throwable, Int]]] = executor.invokeAllPar(List(1, 2, 3, 4, 5), 3)
     result.map { (results: List[Either[Throwable, Int]]) =>
       assertEquals(results.length, 5)
@@ -50,11 +50,11 @@ class BatchExecutorTest extends CatsEffectSuite:
   }
 
   test("invokeAllPar isolates errors per item") {
-    val executor: BatchExecutor[Int, Int] = BatchExecutor.fromRunnable(failOnNegative)
+    val executor: BatchExecutor[Int, Int]        = BatchExecutor.fromRunnable(failOnNegative)
     val result: IO[List[Either[Throwable, Int]]] = executor.invokeAllPar(List(1, -2, 3, -4, 5), 2)
     result.map { (results: List[Either[Throwable, Int]]) =>
       assertEquals(results.length, 5)
-      val successes: List[Int] = results.collect { case Right(v) => v }
+      val successes: List[Int]      = results.collect { case Right(v) => v }
       val failures: List[Throwable] = results.collect { case Left(e) => e }
       assertEquals(successes.sorted, List(2, 6, 10))
       assertEquals(failures.length, 2)
@@ -78,7 +78,7 @@ class BatchExecutorTest extends CatsEffectSuite:
       executor.stream(List(1, -2, 3), 2).compile.toList
     result.map { (results: List[Either[Throwable, Int]]) =>
       assertEquals(results.length, 3)
-      val successes: List[Int] = results.collect { case Right(v) => v }
+      val successes: List[Int]      = results.collect { case Right(v) => v }
       val failures: List[Throwable] = results.collect { case Left(e) => e }
       assertEquals(successes.sorted, List(2, 6))
       assertEquals(failures.length, 1)

@@ -2,8 +2,8 @@ package org.adk4s.core.tools
 
 import cats.effect.IO
 import munit.CatsEffectSuite
-import org.adk4s.core.component.{InvokableTool, Tool}
-import org.llm4s.toolapi.{ToolFunction, ToolRegistry}
+import org.adk4s.core.component.{ InvokableTool, Tool }
+import org.llm4s.toolapi.{ ToolFunction, ToolRegistry }
 
 class ToolsNodeConfigExtensionsTest extends CatsEffectSuite:
 

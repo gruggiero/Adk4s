@@ -17,8 +17,8 @@ class CellIdSpec extends HedgehogSuite:
   // spec: add-iron-refined-types/harness-state — Scenario: Well-formed owner/name compiles
 
   test("well-formed owner/name literal compiles and .value returns the string"):
-    val id: StateCell.CellId  = StateCell.CellId("counter/n")
-    val underlying: String    = id.value
+    val id: StateCell.CellId = StateCell.CellId("counter/n")
+    val underlying: String   = id.value
     assertEquals(underlying, "counter/n")
 
   // ── Scenario: Empty string is rejected at runtime ────────────────────

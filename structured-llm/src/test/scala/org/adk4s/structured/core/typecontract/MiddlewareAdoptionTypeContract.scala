@@ -9,13 +9,7 @@ package org.adk4s.structured.core.typecontract
 // oracle (Step 2) and implementation (Step 3).
 
 import cats.effect.Async
-import org.adk4s.structured.core.{
-  Prompt,
-  Schema,
-  StructuredLLM,
-  StructuredLLMError,
-  ValidationResult
-}
+import org.adk4s.structured.core.{ Prompt, Schema, StructuredLLM, StructuredLLMError, ValidationResult }
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.middleware.LLMMiddleware
 import org.llm4s.llmconnect.model.{ Completion, CompletionOptions, Conversation }
