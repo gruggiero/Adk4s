@@ -174,47 +174,118 @@ object OracleSanctionGuard:
   // A test is STRUCTURAL when its body reads the text of a code-source
   // file in the repository under test — a read verb (grep, cat, sed, awk,
   // head, tail, diff, source) applied to a path ending in a code
-  // extension (.scala, .sh, .py, .ts, .js), directly or through a
-  // variable bound earlier, or a recursive read over the workflow/scanner
-  // trees filtered to code files. Test-created files (under $FX, $BATS_*,
-  // $TEST_*) and document/data files (.md, .yaml, .json, .html, .jq …)
-  // are behavioural: the first is a prop the tool acts on, the second is
-  // a spec-governed deliverable, not how a tool is written. `run`ning a
-  // tool is behavioural — execution observes output and status, never
-  // the source text.
+  // extension (.scala, .sh, .bash, .py, .ts, .js, .jq, .bats), to an
+  // extensionless file under a source-tree segment, or to a path reached
+  // through variable bindings resolved to a fixpoint; or a recursive read
+  // over a source tree. Test-created files (under the closed fixture set
+  // $FX, $FAKE_*, $BATS_*, TEST_TMPDIR) and document/data files (.md,
+  // .yaml, .json, .html …) are behavioural: the first is a prop the tool
+  // acts on, the second is a spec-governed deliverable, not how a tool is
+  // written. `run`ning a tool is behavioural — execution observes output
+  // and status, never the source text.
+  //
+  // Known under-match boundary (Ring 8 review): this is a heuristic over
+  // shell tokens. An indirection the fixpoint cannot reach — a source
+  // path smuggled through a variable whose VALUE lives in another file —
+  // stays behavioural; the closed fixture-name set and the extensionless
+  // rule are the deliberately conservative edges.
 
+  // `source` is gated: `--source`, `$source`, `.source` are arguments,
+  // not the shell builtin — the lookbehind keeps the flag out.
   private val readCmd: scala.util.matching.Regex =
-    "\\b(?:grep|cat|sed|awk|head|tail|diff|source)\\b".r
+    "\\b(?:grep|cat|sed|awk|head|tail|diff|find|xargs|eval)\\b|(?<![-$.])\\bsource\\b".r
   private val codeExt: scala.util.matching.Regex =
-    "\\.(scala|sh|py|ts|js)\\b".r
+    "\\.(scala|sh|bash|py|ts|js|jq|bats)\\b".r
   private val docExt: scala.util.matching.Regex =
     "\\.(md|json|jsonl|yaml|yml|html|txt|log)\\b".r
+  // A CLOSED set of harness fixture roots — $FX, $FAKE_*, $BATS_*,
+  // TEST_TMPDIR (and their ${...} spellings). An open prefix like $TEST_*
+  // is not a fixture: an unbound $TEST_* name may resolve to real source
+  // at run time, so it is classified on its suffix, not exempted by name.
   private val fixtureRef: scala.util.matching.Regex =
-    "\\$FX|\\$BATS|TEST_TMPDIR|\\$TEST_|\\$FAKE".r
+    "\\$\\{?(?:FX|FAKE[A-Z_0-9]*|BATS_[A-Z_0-9]*|TEST_TMPDIR)\\b|\\bTEST_TMPDIR\\b".r
+  // name="$(…)" | name="v" | name='v' | name=$v | name=literal — every
+  // assignment spelling the oracle uses feeds variable resolution. The
+  // `$(…)` alternative comes first: a quoted `[^"]*` capture truncates a
+  // substitution carrying its own quotes (git_dir="$(cd "$FX" && …)"),
+  // losing the fixture marker inside.
   private val binding: scala.util.matching.Regex =
-    "([A-Za-z_]\\w*)=\"([^\"]*)\"|([A-Za-z_]\\w*)=(\\$[^\\s\"]+)".r
+    "([A-Za-z_]\\w*)=\"(\\$\\(.*?\\))\"|([A-Za-z_]\\w*)=\"([^\"]*)\"|([A-Za-z_]\\w*)='([^']*)'|([A-Za-z_]\\w*)=(\\$[^\\s\"']+)|([A-Za-z_]\\w*)=([^\\s\"'$][^\\s\"']*)".r
   private val token: scala.util.matching.Regex =
     "\"([^\"]+)\"|'([^']+)'|(\\S+)".r
   private val varRef: scala.util.matching.Regex =
-    "\\$([A-Za-z_]\\w*)".r
+    "\\$(?:\\{([A-Za-z_]\\w*)[^}]*\\}|([A-Za-z_]\\w*))".r
+  // A WHOLE path segment, ended by `/` or the token's end: `verified`
+  // names the Stainless tree, NOT `verified-scala3-gate` (a state dir).
   private val sourceTree: scala.util.matching.Regex =
-    "/(?:workflow|scanner|hooks|bin|src|adapters)\\b".r
+    "/(?:workflow|scanner|hooks|bin|src|adapters|verified|openspec|tests|project)(?:/|$)".r
   private val recGrep: scala.util.matching.Regex =
     "\\bgrep\\s+-\\w*r".r
+
+  /**
+   * The line's command segments, split on UNQUOTED `|` `&` `;` — quote
+   * state and backslash escapes are tracked so a `'a|b'` pattern or a
+   * `\;` terminator stays inside its command.
+   */
+  private def segmentsOf(line: String): List[String] =
+    val (segs, cur, _, _, _) = line.foldLeft(
+      (List.empty[String], "", false, false, false)
+    ) { case ((segs, cur, sq, dq, esc), c) =>
+      if esc then (segs, cur :+ c, sq, dq, false)
+      else if !sq && c == '\\' then (segs, cur :+ c, sq, dq, true)
+      else if sq then (segs, cur :+ c, c != '\'', dq, false)
+      else if dq then (segs, cur :+ c, sq, c != '"', false)
+      else if c == '|' || c == '&' || c == ';' then (segs :+ cur, "", false, false, false)
+      else (segs, cur :+ c, c == '\'', c == '"', false)
+    }
+    segs :+ cur
 
   private def looksLikePath(tok: String): Boolean =
     tok.contains('/') || tok.startsWith("$")
 
-  /** Bindings visible to a body: `X="..."` and `X=$Y/...` assignments. */
+  /**
+   * The path's last segment is a CONCRETE name carrying no `.` — an
+   * extensionless tool. An unresolved `$VAR` basename is undecidable:
+   * it may be a fixture name, and is not evidence either way.
+   */
+  private def extensionless(tok: String): Boolean =
+    val base: String = tok.substring(tok.lastIndexOf('/') + 1)
+    base.nonEmpty && !base.contains('.') && !base.contains('$')
+
+  /** Bindings visible to a body: every `X=...` assignment spelling. */
   private def bindingsOf(text: String): Map[String, String] =
     binding
       .findAllMatchIn(text)
       .map { (m: scala.util.matching.Regex.Match) =>
-        val name: String = if m.group(1) != null then m.group(1) else m.group(3)
-        val value: String = if m.group(2) != null then m.group(2) else m.group(4)
-        name -> value
+        val groups: List[Int] = List(1, 3, 5, 7, 9)
+        val nameIdx: Int      = groups.find((g: Int) => m.group(g) != null).getOrElse(1)
+        m.group(nameIdx) -> m.group(nameIdx + 1)
       }
       .toMap
+
+  /**
+   * Resolve `$X`/`${X}` references to a fixpoint (bounded — reference
+   * cycles like `A=$B, B=$A` settle after the iteration cap instead of
+   * looping). Single-pass resolution misses `$A$B` two-step indirection
+   * and a binding whose value is itself a reference.
+   */
+  private def resolveAll(raw: String, binds: Map[String, String]): String =
+    def resolveOnce(s: String): String =
+      varRef.replaceAllIn(
+        s,
+        (m: scala.util.matching.Regex.Match) =>
+          val name: String =
+            if m.group(1) != null then m.group(1) else m.group(2)
+          binds.get(name) match
+            case Some(value) => java.util.regex.Matcher.quoteReplacement(value)
+            case None        => java.util.regex.Matcher.quoteReplacement(m.matched)
+      )
+    def loop(s: String, passes: Int): String =
+      if passes <= 0 then s
+      else
+        val next: String = resolveOnce(s)
+        if next == s then s else loop(next, passes - 1)
+    loop(raw, 10)
 
   /**
    * Classify one oracle test from its name and body: `Structural` when
@@ -229,41 +300,54 @@ object OracleSanctionGuard:
   /** The decision, with `binds` supplying variable resolution only. */
   private def classifyWith(body: String, binds: Map[String, String]): OracleTestKind =
     val structural: Boolean = body.linesIterator.exists { (line: String) =>
-      if !readCmd.findFirstIn(line).isDefined then false
+      // a `#`-led line is prose — a comment mentioning a read verb and a
+      // path runs nothing
+      if line.trim.startsWith("#") then false
       else
-        val codeRead: Boolean = token
-          .findAllMatchIn(line)
-          .map { (m: scala.util.matching.Regex.Match) =>
-            // `raw` strips the quoting characters — a quoted token's
-            // content. A match always sets exactly one alternative's
-            // group, so no fallback arm is needed.
-            val raw: String =
-              if m.group(1) != null then m.group(1)
-              else if m.group(2) != null then m.group(2)
-              else m.group(3)
-            val resolved: String = varRef
-              .findFirstMatchIn(raw)
-              .map((v: scala.util.matching.Regex.Match) =>
-                if binds.contains(v.group(1)) then
-                  raw.substring(0, v.start) + binds(v.group(1)) + raw.substring(v.end)
-                else raw
-              )
-              .getOrElse(raw)
-            fixtureRef.findFirstIn(resolved).isEmpty &&
+        // a line is a pipeline of COMMANDS — only segments that contain
+        // a read verb are reads: `tail f | jq -f contract.jq` reads f
+        // and EXECUTES the contract (jq is not a read verb), so the
+        // contract's own token must not flag the line.
+        segmentsOf(line).exists { (segment: String) =>
+          if readCmd.findFirstIn(segment).isEmpty then false
+          else
+            val resolvedTokens: List[String] = token
+              .findAllMatchIn(segment)
+              .map { (m: scala.util.matching.Regex.Match) =>
+                // `raw` strips the quoting characters — a quoted
+                // token's content. A match always sets exactly one
+                // alternative's group, so no fallback arm is needed.
+                val raw: String =
+                  if m.group(1) != null then m.group(1)
+                  else if m.group(2) != null then m.group(2)
+                  else m.group(3)
+                resolveAll(raw, binds)
+              }
+              .toList
+            val codeRead: Boolean = resolvedTokens.exists { (resolved: String) =>
+              fixtureRef.findFirstIn(resolved).isEmpty &&
               looksLikePath(resolved) &&
-              codeExt.findFirstIn(resolved).isDefined &&
-              docExt.findFirstIn(resolved).isEmpty
-          }
-          .exists((b: Boolean) => b)
-        // a recursive grep over a source tree
-        // (grep -rl … "$root/workflow" --include='*.scala'): the -r
-        // flag distinguishes reading a tree from grepping command
-        // output whose PATTERN mentions a path
-        val treeRead: Boolean =
-          recGrep.findFirstIn(line).isDefined &&
-            sourceTree.findFirstIn(line).isDefined &&
-            fixtureRef.findFirstIn(line).isEmpty
-        codeRead || treeRead
+              docExt.findFirstIn(resolved).isEmpty &&
+              (codeExt.findFirstIn(resolved).isDefined ||
+                // extensionless file under a source-tree segment —
+                // shipped tools include extensionless launchers
+                // (bin/probatio)
+                (sourceTree.findFirstIn(resolved).isDefined && extensionless(resolved)))
+            }
+            // a recursive grep over a source tree
+            // (grep -rl … "$root/workflow" --include='*.scala'): the -r
+            // flag distinguishes reading a tree from grepping command
+            // output whose PATTERN mentions a path; the tree segment is
+            // checked on the RESOLVED tokens so the bound value decides,
+            // not the variable's name
+            val treeRead: Boolean =
+              recGrep.findFirstIn(segment).isDefined &&
+                resolvedTokens.exists { (resolved: String) =>
+                  sourceTree.findFirstIn(resolved).isDefined &&
+                  fixtureRef.findFirstIn(resolved).isEmpty
+                }
+            codeRead || treeRead
+        }
     }
     if structural then OracleTestKind.Structural else OracleTestKind.Behavioural
 
@@ -271,57 +355,169 @@ object OracleSanctionGuard:
    * The structural tests in one bats file, each finding naming the file
    * and the `@test` title — what "a structural test left in the oracle
    * is reported, naming its file" requires. File-scope variable bindings
-   * (setup-scope `X="..."` assignments outside `@test` blocks) feed the
-   * variable RESOLUTION only — they are never scanned as read commands,
-   * so a setup helper that itself reads a forwarding script does not
-   * mark every test in the file structural.
+   * feed the variable resolution of every block.
+   *
+   * A source read inside a file-scope helper reaches the tests that
+   * CALL it: each `name() {…}` function whose name is invoked —
+   * transitively — from a `@test` block is classified and reported as
+   * `(file scope: name)`. Bats lifecycle machinery (`setup`,
+   * `teardown`, `setup_file`, `teardown_file`) is invoked by bats, not
+   * by the tests, so fixture-building reads there are setup-scope
+   * machinery — covered by the file's sanctions, not this check.
+   * Bare top-level executable lines run at file load for every test and
+   * are reported as `(file scope)`.
    */
   def structuralIn(file: String, text: String): List[StructuralTest] =
     val fileBinds: Map[String, String] = bindingsOutsideTestBlocks(text)
-    batsTestBlocks(text).flatMap { case (title: String, block: String) =>
-      classifyWith(block, fileBinds ++ bindingsOf(block)) match
-        case OracleTestKind.Structural  => List(StructuralTest(file, title))
-        case OracleTestKind.Behavioural => List.empty[StructuralTest]
+    val blocks: List[(String, String)] = batsTestBlocks(text)
+    val testFindings: List[StructuralTest] =
+      blocks.flatMap { case (title: String, block: String) =>
+        classifyWith(block, fileBinds ++ bindingsOf(block)) match
+          case OracleTestKind.Structural  => List(StructuralTest(file, title))
+          case OracleTestKind.Behavioural => List.empty[StructuralTest]
+      }
+    helperFindings(file, text, fileBinds, blocks) ++ testFindings
+
+  /**
+   * `(name, body)` pairs of the file-scope `name() {…}` functions, plus
+   * the bare top-level text (outside functions and tests) under the
+   * sentinel name `"(file scope)"`.
+   */
+  private def functionSpans(text: String): List[(String, String)] =
+    val fnRe: scala.util.matching.Regex =
+      "^([A-Za-z_]\\w*)\\s*\\(\\)\\s*\\{".r
+    val lines: List[String]  = text.split("\n", -1).toList
+    val marks: List[Boolean] = testLineMarks(lines)
+    val outsideTest: List[(String, Int)] =
+      lines.zip(marks).zipWithIndex.collect { case ((line, false), i) => (line, i) }
+    // walk the outside-test lines; a `name() {` header opens a function
+    // whose body runs to brace depth zero
+    val (spans, topLevel, open) = outsideTest.foldLeft(
+      (List.empty[(String, String)], List.empty[String], Option.empty[(String, List[String], Int)])
+    ) { case ((acc, top, open), (line, _)) =>
+      open match
+        case Some((name, body, depth)) =>
+          val next: Int = depth + bracesOf(line)
+          if next <= 0 then (acc :+ (name -> (line +: body).reverse.mkString("\n")), top, None)
+          else (acc, top, Some((name, line +: body, next)))
+        case None =>
+          fnRe.findFirstMatchIn(line) match
+            case Some(m) =>
+              val depth: Int = bracesOf(line)
+              if depth <= 0 then (acc :+ (m.group(1) -> ""), top, None)
+              else (acc, top, Some((m.group(1), List.empty[String], depth)))
+            case None => (acc, top :+ line, None)
+    }
+    val unclosed: List[(String, String)] =
+      open match
+        case Some((name, body, _)) => List(name -> body.reverse.mkString("\n"))
+        case None                  => List.empty[(String, String)]
+    spans ++ unclosed :+ ("(file scope)" -> topLevel.mkString("\n"))
+
+  /**
+   * The file-scope functions reachable — transitively — from a `@test`
+   * body. `setup`/`teardown`/`setup_file`/`teardown_file` are invoked
+   * by bats itself, so reads there stay out of scope.
+   */
+  private def helperFindings(
+    file: String,
+    text: String,
+    fileBinds: Map[String, String],
+    blocks: List[(String, String)]
+  ): List[StructuralTest] =
+    val fns: List[(String, String)] = functionSpans(text)
+    val batsLifecycle: Set[String] =
+      Set("setup", "teardown", "setup_file", "teardown_file", "(file scope)")
+    val invoked: String => scala.util.matching.Regex = (name: String) =>
+      ("\\b" + java.util.regex.Pattern.quote(name) + "\\b").r
+    val direct: Set[String] =
+      blocks.flatMap { case (_, block) =>
+        fns.collect { case (name, _) if !batsLifecycle(name) && invoked(name).findFirstIn(block).isDefined => name }
+      }.toSet
+    // transitively: a helper called by a REACHABLE helper is reachable
+    val bodyOf: Map[String, String] = fns.toMap
+    def reachable(seen: Set[String]): Set[String] =
+      val grown: Set[String] = fns.foldLeft(seen) { (s, fn) =>
+        fn match
+          case (name, _)
+              if !batsLifecycle(name) && !s(name) &&
+                s.exists((r: String) => invoked(name).findFirstIn(bodyOf.getOrElse(r, "")).isDefined) =>
+            s + name
+          case _ => s // danger-scan:allow fail-closed — a non-reachable helper stays out, never silently in
+      }
+      if grown == seen then seen else reachable(grown)
+    val scope: Set[String] = reachable(direct)
+    fns.flatMap { case (name: String, body: String) =>
+      if name == "(file scope)" then
+        // bare top-level lines run at file load — they reach every test
+        classifyWith(body, fileBinds) match
+          case OracleTestKind.Structural  => List(StructuralTest(file, "(file scope)"))
+          case OracleTestKind.Behavioural => List.empty[StructuralTest]
+      else if scope(name) then
+        classifyWith(body, fileBinds) match
+          case OracleTestKind.Structural =>
+            List(StructuralTest(file, s"(file scope: $name)"))
+          case OracleTestKind.Behavioural => List.empty[StructuralTest]
+      else List.empty[StructuralTest]
     }
 
   /** The file's variable bindings outside `@test` blocks. */
   private def bindingsOutsideTestBlocks(text: String): Map[String, String] =
-    // mark each line: inside a @test block from the `@test` line through
-    // the column-0 `}` that closes it
-    val (marks, _) = text.linesIterator.foldLeft((List.empty[Boolean], false)) {
-      case ((acc, inside), line) =>
-        if line.startsWith("@test") then (acc :+ true, true)
-        else if inside then (acc :+ true, line != "}")
-        else (acc :+ false, false)
-    }
-    text.linesIterator
+    val lines: List[String]  = text.split("\n", -1).toList
+    val marks: List[Boolean] = testLineMarks(lines)
+    lines
       .zip(marks)
       .collect { case (line, false) => line }
       .map(bindingsOf)
       .foldLeft(Map.empty[String, String])(_ ++ _)
 
   /**
+   * Per-line membership in a `@test` block, by brace depth: a block
+   * opens at `@test "…" {` and closes when the depth returns to zero —
+   * the oracle's column-0 `}` convention, or any brace balancing. A
+   * mid-test `}` that closes a NESTED group does not truncate the body.
+   */
+  private def testLineMarks(lines: List[String]): List[Boolean] =
+    val testRe: scala.util.matching.Regex = "^@test \"([^\"]+)\"\\s*\\{".r
+    val (marks, _, _) = lines.foldLeft((List.empty[Boolean], false, 0)) { case ((acc, inside, depth), line) =>
+      if !inside then
+        val opened: Int = depth + bracesOf(line)
+        if testRe.findFirstIn(line).isDefined then (acc :+ true, opened > 0, opened)
+        else (acc :+ false, false, depth)
+      else
+        // the line that returns depth to zero closes the block and is
+        // still part of it
+        val next: Int = depth + bracesOf(line)
+        (acc :+ true, next > 0, next)
+    }
+    marks
+
+  private def bracesOf(line: String): Int =
+    line.count((c: Char) => c == '{') - line.count((c: Char) => c == '}')
+
+  /**
    * The `@test` blocks of a bats file as (title, body) pairs — the unit
-   * of classification and the "names the test" domain. A block ends at
-   * the first column-0 `}` — the oracle's formatting convention.
+   * of classification and the "names the test" domain. A block ends
+   * when its brace depth returns to zero — the oracle's column-0 `}`
+   * convention.
    */
   def batsTestBlocks(text: String): List[(String, String)] =
     val testRe: scala.util.matching.Regex = "^@test \"([^\"]+)\"\\s*\\{".r
     val lines: List[String]               = text.split("\n", -1).toList
-    val (_, blocks) = lines.foldLeft(
-      (Option.empty[(String, List[String])], List.empty[(String, String)])
-    ) { case ((open, acc), line) =>
-      (open, line) match
-        case (None, _) =>
-          testRe.findFirstMatchIn(line) match
-            case Some(m) => (Some(m.group(1) -> List.empty[String]), acc)
-            case None    => (None, acc)
-        case (Some((title, body)), _) =>
-          if line == "}" then
-            (None, acc :+ (title -> body.reverse.mkString("\n")))
-          else (Some(title -> (line +: body)), acc)
+    val marks: List[Boolean]              = testLineMarks(lines)
+    lines.indices.toList.flatMap { (i: Int) =>
+      testRe.findFirstMatchIn(lines(i)) match
+        case Some(m) =>
+          // the block's last line is the one before the first
+          // OUTSIDE line OR the next `@test` header — adjacent blocks
+          // have no unmarked line between them
+          val end: Int = ((i + 1) until lines.length)
+            .find((j: Int) => !marks(j) || testRe.findFirstIn(lines(j)).isDefined)
+            .map((j: Int) => j - 1)
+            .getOrElse(lines.length - 1)
+          List(m.group(1) -> lines.slice(i + 1, end).mkString("\n"))
+        case None => List.empty[(String, String)]
     }
-    blocks
 
   /**
    * The persisted baseline record's text form — one 40-hex commit line.

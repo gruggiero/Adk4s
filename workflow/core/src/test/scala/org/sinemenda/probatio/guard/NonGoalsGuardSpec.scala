@@ -1382,6 +1382,471 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
       "whitespace before { is any run of spaces, not exactly one"
     )
 
+  // ── Surgical kills (Ring 8 remediation — oracle-independence) ────────────
+  // The Ring 8 review found under-match holes through which a structural
+  // test could reside in the oracle undetected. Each test pins one closed
+  // evasion shape; the last group documents the boundary that remains.
+
+  test("an unquoted literal binding resolves the read target"):
+    val bats: String =
+      """SRC=workflow/hooks/gate.sh
+        |@test "reads through an unquoted binding" {
+        |  run cat "$SRC"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("reads through an unquoted binding"),
+      "SRC=path (no quotes, no $) is an ordinary assignment — it must resolve"
+    )
+
+  test("a single-quoted binding resolves the read target"):
+    val bats: String =
+      """SRC='/repo/hooks/gate.sh'
+        |@test "reads through a single-quoted binding" {
+        |  run cat "$SRC"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("reads through a single-quoted binding")
+    )
+
+  test("an extensionless tool under a source-tree segment is structural"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest(
+        "reads the launcher",
+        """root="/repo"
+          |cat "$root/bin/probatio"""".stripMargin
+      ),
+      OracleTestKind.Structural,
+      "bin/probatio is a real extensionless tool — no code extension is needed"
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("reads an extensionless data file", "cat /repo/docs/notes"),
+      OracleTestKind.Behavioural,
+      "extensionless OUTSIDE a source-tree segment stays behavioural"
+    )
+
+  test("jq and bash sources are code, not documents"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest(
+        "reads the contract",
+        "cat openspec/schemas/verified-scala3/scanner/chain-state-report-contract.jq"
+      ),
+      OracleTestKind.Structural
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("reads the helpers", "cat tests/helpers.bash"),
+      OracleTestKind.Structural
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("reads another oracle file", "cat tests/suite.bats"),
+      OracleTestKind.Structural,
+      "a test file's text is source too"
+    )
+
+  test("a recursive grep over widened source-tree segments is structural"):
+    val bats: String =
+      """root="/repo"
+        |@test "scans the verified tree" {
+        |  run grep -rl 'invariant' "$root/verified"
+        |}
+        |@test "scans the openspec tree" {
+        |  run grep -rl 'obligation' "$root/openspec"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title).toSet,
+      Set("scans the verified tree", "scans the openspec tree")
+    )
+
+  test("a bound variable's value decides the recursive-grep tree segment"):
+    val bats: String =
+      """W=/repo/workflow
+        |@test "scans via a binding" {
+        |  run grep -rl 'needle' "$W"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("scans via a binding"),
+      "the tree segment is checked on the RESOLVED token, not the raw line"
+    )
+
+  test("a source read inside a file-scope helper is reported at file scope"):
+    val bats: String =
+      """check_src() {
+        |  grep -q 'tool_call' /repo/hooks/gate.sh
+        |}
+        |@test "asserts via the helper" {
+        |  run check_src
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List(StructuralTest("s.bats", "(file scope: check_src)")),
+      "the read is attributed to the file once — not hidden behind the call"
+    )
+
+  test("a transitively-reached helper's source read is reported"):
+    val bats: String =
+      """inner() {
+        |  cat /repo/hooks/gate.sh
+        |}
+        |outer() {
+        |  inner
+        |}
+        |@test "asserts via two hops" {
+        |  run outer
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List(StructuralTest("s.bats", "(file scope: inner)")),
+      "the test calls outer, outer calls inner — the read is still reached"
+    )
+
+  test("setup-scope machinery is not a test — bats lifecycle functions are out of scope"):
+    val bats: String =
+      """setup() {
+        |  grep -q '^exec' "$CHAIN_STATE"
+        |}
+        |@test "ordinary behavioural test" {
+        |  run bash "$GATE"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List.empty[StructuralTest],
+      "setup() is invoked by bats, not by the tests — its reads are fixture machinery, covered by file sanctions"
+    )
+
+  test("a bare top-level read is reported at file scope"):
+    val bats: String =
+      """GATE="$SCHEMA/hooks/gate.sh"
+        |cat /repo/hooks/gate.sh >/dev/null
+        |@test "ordinary behavioural test" {
+        |  run bash "$GATE"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List(StructuralTest("s.bats", "(file scope)")),
+      "top-level code runs at file load — it reaches every test"
+    )
+
+  test("two-step variable indirection resolves to the read target"):
+    val bats: String =
+      """A="/repo/hooks/"
+        |B="gate.sh"
+        |@test "reads through A+B" {
+        |  run cat "$A$B"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("reads through A+B"),
+      "fixpoint resolution reaches $A$B in two passes"
+    )
+
+  test("a cyclic binding pair does not hang resolution"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest(
+        "cyclic",
+        """A=$B
+          |B=$A
+          |cat "$A"""".stripMargin
+      ),
+      OracleTestKind.Behavioural,
+      "A=$B/B=$A never converges — the bounded fixpoint stops, unresolved"
+    )
+
+  test("an unbound $TEST_* name is not a fixture exemption"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest("reads via TEST_SRC", "cat \"$TEST_SRC/x.scala\""),
+      OracleTestKind.Structural,
+      "an env-provided $TEST_* value may be real source — only the closed fixture set exempts"
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("reads via TEST_TMPDIR", "cat \"$TEST_TMPDIR/x.scala\""),
+      OracleTestKind.Behavioural,
+      "TEST_TMPDIR is bats-provided — always a fixture"
+    )
+
+  test("a ${VAR} fixture spelling still exempts; a ${VAR} binding resolves"):
+    val bats: String =
+      """SRC='/repo/hooks/gate.sh'
+        |@test "braced binding" {
+        |  run cat "${SRC}"
+        |}
+        |@test "braced fixture" {
+        |  run cat "${FX}/fake.scala"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("braced binding"),
+      "${FX} is the same fixture root as $FX; ${SRC} resolves like $SRC"
+    )
+
+  test("a column-0 } closing a nested group does not truncate the test body"):
+    val bats: String =
+      """@test "grouped body" {
+        |  run bash "$GATE"
+        |  {
+        |    printf 'grouped\n'
+        |  }
+        |  run cat /repo/hooks/gate.sh
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("grouped body"),
+      "the nested group's } returns depth to one — the read after it is still in the body"
+    )
+
+  // ── Ring 5 surgical kills for the remediation itself ─────────────────────
+  // Each test pins one detection path in the widened classifier that the
+  // mutation run exposed as uncovered.
+
+  test("an 11-deep binding chain is beyond the resolution cap"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest(
+        "deep chain",
+        """V1="$V2"
+          |V2="$V3"
+          |V3="$V4"
+          |V4="$V5"
+          |V5="$V6"
+          |V6="$V7"
+          |V7="$V8"
+          |V8="$V9"
+          |V9="$V10"
+          |V10="$V11"
+          |V11="/repo/x.scala"
+          |cat "$V1"""".stripMargin
+      ),
+      OracleTestKind.Behavioural,
+      "the fixpoint cap is 10 passes — a deeper chain stays unresolved"
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest(
+        "at-cap chain",
+        """V9="$V10"
+          |V10="/repo/x.scala"
+          |cat "$V9"""".stripMargin
+      ),
+      OracleTestKind.Structural
+    )
+
+  test("a read verb and its path on separate lines are not a read"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest(
+        "split lines",
+        """cat
+          |/repo/x.scala""".stripMargin
+      ),
+      OracleTestKind.Behavioural,
+      "without a line continuation they are two commands — gluing them would invent a read"
+    )
+
+  test("a mixed line flags on the read segment alone"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest("piped read", "echo done | cat /repo/x.scala"),
+      OracleTestKind.Structural
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("chained read", "run true && cat /repo/y.scala"),
+      OracleTestKind.Structural
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("sequenced read", "a=1; cat /repo/z.scala"),
+      OracleTestKind.Structural
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("quoted separators stay inside", "cat 'a|b;c&d' /repo/q.scala"),
+      OracleTestKind.Structural,
+      "the | ; & inside single quotes are pattern text, not separators"
+    )
+
+  test("a recursive grep flags on ANY resolved tree token, fixture siblings aside"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest(
+        "two roots",
+        """W=/repo/workflow
+          |grep -rl 'needle' "$TEST_TMPDIR" "$W"""".stripMargin
+      ),
+      OracleTestKind.Structural,
+      "the fixture root does not neutralise the source-tree root"
+    )
+
+  test("an extensionless file needs only its own segment — earlier segments may carry dots"):
+    assertEquals(
+      OracleSanctionGuard.classifyTest("dotted dir", "cat /repo/scanner/x.y/probatio"),
+      OracleTestKind.Structural,
+      "the basename decides — a dotted directory segment is irrelevant"
+    )
+    assertEquals(
+      OracleSanctionGuard.classifyTest("non-code ext", "cat /repo/scanner/blob.foo"),
+      OracleTestKind.Behavioural,
+      "a DOTTED non-code extension is not extensionless"
+    )
+
+  test("a $(…) binding keeps inner quotes — the fixture marker survives"):
+    val bats: String =
+      """git_dir="$(cd "$FX" && git rev-parse --absolute-git-dir)"
+        |@test "reads the phase file" {
+        |  [ "$(cat "$git_dir/state/phase")" = "x" ]
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List.empty[StructuralTest],
+      "git_dir resolves into the fixture repo — the phase read is behavioural"
+    )
+
+  test("an uncalled helper's source read stays out of scope"):
+    val bats: String =
+      """never_called() {
+        |  cat /repo/hooks/gate.sh
+        |}
+        |@test "does not call it" {
+        |  run bash "$GATE"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List.empty[StructuralTest],
+      "reachability is real: the helper is never invoked from any test"
+    )
+
+  test("a helper called by one of several reachable helpers is reached"):
+    val bats: String =
+      """reads_src() {
+        |  cat /repo/hooks/gate.sh
+        |}
+        |caller_a() {
+        |  reads_src
+        |}
+        |caller_b() {
+        |  printf 'unrelated\n'
+        |}
+        |@test "calls both" {
+        |  run caller_a
+        |  run caller_b
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List(StructuralTest("s.bats", "(file scope: reads_src)")),
+      "exists-over-callers, not forall"
+    )
+
+  test("a name-prefix collision does not invoke: inner2 is not inner"):
+    val bats: String =
+      """inner() {
+        |  cat /repo/hooks/gate.sh
+        |}
+        |inner2() {
+        |  printf 'ok\n'
+        |}
+        |@test "calls inner2 only" {
+        |  run inner2
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List.empty[StructuralTest],
+      "the call check is word-bounded — a substring is not a call"
+    )
+
+  test("bats lifecycle helpers besides setup are out of scope"):
+    val bats: String =
+      """teardown() {
+        |  cat /repo/hooks/gate.sh
+        |}
+        |setup_file() {
+        |  cat /repo/hooks/gate.sh
+        |}
+        |teardown_file() {
+        |  cat /repo/hooks/gate.sh
+        |}
+        |@test "ordinary behavioural test" {
+        |  run bash "$GATE"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List.empty[StructuralTest],
+      "teardown/setup_file/teardown_file are bats-invoked like setup"
+    )
+
+  test("a function header requires empty parens: name(args) is not a bats function"):
+    val bats: String =
+      """note="the shape name() { is the convention"
+        |cat /repo/hooks/gate.sh >/dev/null
+        |@test "ordinary behavioural test" {
+        |  run bash "$GATE"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List(StructuralTest("s.bats", "(file scope)")),
+      "the cat line is top-level — a mid-line () { cannot swallow it into a phantom fn"
+    )
+
+  test("an unclosed function does not swallow the following function"):
+    val bats: String =
+      """first() {
+        |  cat /repo/a.scala
+        |}
+        |second() {
+        |  cat /repo/b.scala
+        |}
+        |@test "calls both" {
+        |  run first
+        |  run second
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).toSet,
+      Set(
+        StructuralTest("s.bats", "(file scope: first)"),
+        StructuralTest("s.bats", "(file scope: second)")
+      ),
+      "each closed function is its own span — an unclosed first() would swallow second's header and lose its finding"
+    )
+
+  test("a later @test block is not absorbed into an earlier one"):
+    val bats: String =
+      """@test "first test" {
+        |  run bash "$GATE"
+        |}
+        |@test "second test" {
+        |  run cat /repo/hooks/gate.sh
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats).map((t: StructuralTest) => t.title),
+      List("second test"),
+      "the first block's } returns depth to zero — the second opens cleanly"
+    )
+
+  test("a comment line mentioning a read verb and a code path is prose, not a read"):
+    val bats: String =
+      """# explains: cat /repo/hooks/gate.sh would be structural here
+        |@test "documented only" {
+        |  # e.g. run grep -q x /repo/hooks/gate.sh — DO NOT do this
+        |  run bash "$GATE"
+        |}
+        |""".stripMargin
+    assertEquals(
+      OracleSanctionGuard.structuralIn("s.bats", bats),
+      List.empty[StructuralTest],
+      "a #-led line runs nothing — file scope and block bodies alike"
+    )
+
   test("an unreadable history input is could-not-determine naming the history"):
     OracleSanctionGuard.sanctionVerdict(
       Some(OracleBaseline("b" * 40)),
