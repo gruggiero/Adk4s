@@ -40,6 +40,15 @@ final class SpecLintBridgeSpec extends ProbatioSuite:
   private val coverConfig: PropertyConfig => PropertyConfig =
     (c: PropertyConfig) => c.copy(testLimit = SuccessCount(200))
 
+  // Borderline legs need more samples than coverConfig provides: a leg
+  // drawn at rate p with floor f flakes when it lands within ~2 sigma of f.
+  // bridge-guardOutcome's resolved/not-resolved legs are Bern(0.5) vs a 40%
+  // floor (~5%/run at n=100) and bridge-sanctionVerdict's not-readable leg is
+  // 30% vs a 25% floor (~14%/run at n=100). 1000 samples puts every leg
+  // >3.5 sigma out. Floors and generators are unchanged.
+  private val wideCoverConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(1000))
+
   private def scalaToStainlessList[A](xs: ScalaList[A]): stainless.collection.List[A] =
     stainless.collection.List.fromScala(xs)
 
@@ -166,7 +175,7 @@ final class SpecLintBridgeSpec extends ProbatioSuite:
       case Outcome.Ran(_)                               => (false, false, false)
 
   // spec: feature-freeze-guard-integrity — Contract: guardOutcome (bridge)
-  property("bridge-guardOutcome — mirror equals the shipped classification on generated inputs"):
+  property("bridge-guardOutcome — mirror equals the shipped classification on generated inputs", wideCoverConfig):
     val genInput: Gen[(Boolean, ScalaList[FeatureFreezeViolation.VerdictAlteration])] =
       for
         resolved <- Gen.boolean
@@ -247,7 +256,7 @@ final class SpecLintBridgeSpec extends ProbatioSuite:
         )
 
   // spec: oracle-independence — Contract: sanctionVerdict (bridge)
-  property("bridge-sanctionVerdict — mirror equals the shipped verdict on generated inputs"):
+  property("bridge-sanctionVerdict — mirror equals the shipped verdict on generated inputs", wideCoverConfig):
     val genInput
       : Gen[(ScalaList[BigInt], ScalaList[BigInt], ScalaList[BigInt], Boolean, Int)] =
       for

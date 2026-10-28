@@ -53,12 +53,12 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
   // current-baseline arm is frequent enough.
   private val genCompletionRowPlan: Gen[CompletionRowPlan] =
     Gen.frequency1(
-      22 -> Gen.constant(CompletionRowPlan(0, atBaseline = true, corroborated = false)),
+      33 -> Gen.constant(CompletionRowPlan(0, atBaseline = true, corroborated = false)),
       25 -> Gen.constant(CompletionRowPlan(0, atBaseline = false, corroborated = false)),
-      18 -> Gen.constant(CompletionRowPlan(0, atBaseline = true, corroborated = true)),
+      10 -> Gen.constant(CompletionRowPlan(0, atBaseline = true, corroborated = true)),
       8  -> Gen.constant(CompletionRowPlan(0, atBaseline = false, corroborated = true)),
       12 -> Gen.constant(CompletionRowPlan(1, atBaseline = true, corroborated = false)),
-      15 -> Gen.constant(CompletionRowPlan(1, atBaseline = false, corroborated = false))
+      12 -> Gen.constant(CompletionRowPlan(1, atBaseline = false, corroborated = false))
     )
 
   private val genCompletionFixturePlan: Gen[CompletionFixturePlan] =
@@ -573,7 +573,7 @@ final class GateBannerCompatSpec extends ProbatioCliSuite:
   // The declared divergence is asserted, not excluded: a fixture whose
   // only uncorroborated greens are stale-baseline is a predecessor
   // warrant (unfiltered) but outside the port's current-baseline scope.
-  property("parity-with-predecessor-on-the-completion-tier"):
+  property("parity-with-predecessor-on-the-completion-tier", envelopeCoverConfig):
     for plan: CompletionFixturePlan <- genCompletionFixturePlan.forAll
         .cover(
           20,
