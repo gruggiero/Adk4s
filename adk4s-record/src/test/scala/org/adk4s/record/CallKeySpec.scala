@@ -186,11 +186,11 @@ object CallKeySpec:
       maxTokensVal <- Gen.int(Range.linear(1, 4096))
       maxTokens = if hasMaxTokens then Some(maxTokensVal) else None
       topP       <- Gen.double(Range.linearFrac(0.0, 1.0))
-      hasRollout <- Gen.frequency1(55 -> Gen.constant(true), 45 -> Gen.constant(false))
+      hasRollout <- Gen.frequency1(60 -> Gen.constant(true), 40 -> Gen.constant(false))
       rolloutVal <- genRolloutId
       rollout = if hasRollout then Some(rolloutVal) else None
       conv      <- genConversation
-      hasTools  <- Gen.frequency1(82 -> Gen.constant(true), 18 -> Gen.constant(false))
+      hasTools  <- Gen.frequency1(90 -> Gen.constant(true), 10 -> Gen.constant(false))
       toolCount <- Gen.int(Range.linear(1, 3))
       tools <-
         if hasTools then Gen.list(genToolDef, Range.linear(toolCount, toolCount))
