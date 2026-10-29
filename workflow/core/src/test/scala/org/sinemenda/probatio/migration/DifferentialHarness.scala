@@ -192,10 +192,35 @@ object DifferentialHarness:
       )
     else
       val perFile = control("perFile").obj
+      // bash >= 5.2 rejects `cd ""` with "null directory" where older
+      // bash treats it as a no-op. The predecessor resolves fixture
+      // baselines via `cd "$REPO" && git rev-parse ... || echo <raw>` —
+      // with REPO empty, newer bash makes the resolution fail and the
+      // fallback changes discharge matching. The control records the
+      // alternate expected counts under envVariance; probe the local
+      // bash once and pick the matching expectation column.
+      val cdEmptyFails: Boolean =
+        scala.util
+          .Try(
+            HermeticEnv
+              .capture(
+                List("bash", "-c", "cd \"\""),
+                HermeticEnv.empty,
+                cwd = Some(arm.root.toIO)
+              )
+              .exitCode != 0
+          )
+          .getOrElse(false)
+      val variancePerFile: Map[String, ujson.Value] =
+        if !cdEmptyFails then Map.empty
+        else
+          scala.util
+            .Try(control("envVariance")("perFile").obj.toMap)
+            .getOrElse(Map.empty)
       val runByFile: Map[String, BatsFileResult] =
         run.fileResults.map((r: BatsFileResult) => r.fileName -> r).toMap
       val differing: List[String] = perFile.keys.toList.sorted.flatMap { (file: String) =>
-        val expected = perFile(file).obj
+        val expected = variancePerFile.get(file).map(_.obj).getOrElse(perFile(file).obj)
         runByFile.get(file) match
           case None => Some(s"$file (absent from run)")
           case Some(result) =>

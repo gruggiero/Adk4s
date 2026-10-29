@@ -8,6 +8,13 @@
     "note": "objects the suite's fixtures name directly that must resolve in the repository for the measurement to reproduce — a clone that lacks them changes predecessor behaviour (e.g. a short-SHA baseline falls back to the raw string and discharge matching changes)",
     "objects": ["00d3de1"]
   },
+  "envVariance": {
+    "note": "alternate expected counts where `cd \"\"` fails (bash >= 5.2 'null directory'): with REPO empty the predecessor's `cd \"$REPO\" && git rev-parse` falls back to the raw short SHA, so ledger rows match and discharge succeeds — observed hosted run 24t/0f vs the recorded 24t/6f",
+    "probe": "bash -c 'cd \"\"' exits nonzero",
+    "perFile": {
+      "chain-state.bats": { "total": 24, "failures": 0 }
+    }
+  },
   "suiteTotals": { "files": 17, "tests": 282, "failures": 18 },
   "perFile": {
     "ambient-capture-wiring.bats":      { "total": 32, "failures": 0 },
