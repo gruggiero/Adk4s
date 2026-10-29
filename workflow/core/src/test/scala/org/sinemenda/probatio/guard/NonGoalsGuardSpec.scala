@@ -887,7 +887,7 @@ final class NonGoalsGuardSpec extends ProbatioSuite:
 
   // ── Property: absent-names-every-searched-location
   // spec: archive-safe-fixtures — Property: absent-names-every-searched-location
-  property("absent-names-every-searched-location"):
+  property("absent-names-every-searched-location", coverConfig):
     for
       f <- ChangeLocationGens.genAbsentName.forAll
         .cover(40, "suffix-colliding sibling", (a: AbsentFixture) =>
