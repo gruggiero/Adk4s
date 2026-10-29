@@ -244,6 +244,50 @@ final class OracleDiffRunner extends ProbatioSuite:
                 s"[probatioOracleControl] arm git rev-parse $rev -> exit=${probe.exitCode} out=${probe.out.trim.take(80)}"
               )
             }
+            // Decisive probe: replicate one discharge fixture (a requirement
+            // with a resolving obligation + green ledger row at the fixture
+            // baseline) and run the arm's predecessor chain-state on it
+            // with stderr visible — the report's discharged count and the
+            // script's own trace lines show which clause diverges.
+            val probeFx: os.Path = workRoot / "probe-fx"
+            os.makeDir.all(probeFx / "specs" / "only")
+            os.write(
+              probeFx / "specs" / "only" / "spec.md",
+              """# Spec: F
+                |
+                |## ADDED Requirements
+                |
+                |### Requirement: Solo Req
+                |
+                |x
+                |
+                |## Proof Obligations
+                |
+                || Obligation | Source | Enforcement | Artifact |
+                ||---|---|---|---|
+                || O1 | Requirement: Solo Req | manual | `tests/t.bats` |
+                |""".stripMargin
+            )
+            os.write(probeFx / "evidence-ledger.jsonl", "")
+            val ledgerSh: String = s"${arm.root}/scanner/ledger.sh"
+            val appendArgs: List[String] = List(
+              "bash", ledgerSh, "append", "--file", s"$probeFx/evidence-ledger.jsonl",
+              "--change", "fx", "--spec", "only", "--ring", "manual", "--obligation", "O1",
+              "--artifact", "tests/t.bats", "--command", "true", "--exit", "0",
+              "--baseline", "00d3de1"
+            )
+            val appendRes: HermeticResult =
+              HermeticEnv.capture(appendArgs, HermeticEnv.empty, cwd = Some(probeFx.toIO))
+            println(s"[probatioOracleControl] probe ledger append exit=${appendRes.exitCode} ${appendRes.err.trim.take(200)}")
+            val csProbe: HermeticResult = HermeticEnv.capture(
+              List("bash", "-c",
+                s"OPENSPEC_ROOT=/tmp ${arm.root}/scanner/chain-state.sh --change-dir $probeFx --change fx --baseline 00d3de1"),
+              HermeticEnv.empty,
+              cwd = Some((arm.root / "tests").toIO)
+            )
+            println(s"[probatioOracleControl] probe chain-state exit=${csProbe.exitCode}")
+            println(s"[probatioOracleControl] probe stdout: ${csProbe.out.trim.take(600)}")
+            println(s"[probatioOracleControl] probe stderr: ${csProbe.err.trim.take(600)}")
             val run: DifferentialHarness.SuiteRun = DifferentialHarness.runSuite(arm)
             val check: Outcome[Unit]              = DifferentialHarness.checkPredecessorControl(arm, run, controlPath)
             run.fileResults.foreach { (r: DifferentialHarness.BatsFileResult) =>
