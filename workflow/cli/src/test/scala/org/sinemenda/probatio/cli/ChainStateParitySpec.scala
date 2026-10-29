@@ -238,7 +238,7 @@ object ChainStateParitySpec:
   // the model an environment-dependent verdict the port cannot track.
   // Resolvable baselines stay covered by the fullBaseline/map cases —
   // full SHAs resolve to themselves whether or not the object exists.
-  private val baseline: String     = "no-such-baseline"
+  private val baseline: String     = "deadbee"
   private val fullBaseline: String = "00d3de1aa49141277dc4855a353f009fc7cc941a"
   private val change: String       = "fixture-change"
 
@@ -503,7 +503,7 @@ object ChainStateParitySpec:
       ),
       List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline)),
       progress = Some(
-        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nSHA `00d3de1`\n"
+        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nSHA `" + fullBaseline + "`\n"
       ),
       baselineArg = "dead000"
     ),
@@ -578,7 +578,7 @@ object ChainStateParitySpec:
       ),
       List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline)),
       progress = Some(
-        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nSHA `00d3de1`\n\n" +
+        "**BASELINE SHA**: `dead000`\n\n## Spec 1: only\n\n### Baseline\nSHA `" + fullBaseline + "`\n\n" +
           "## Spec 2: only\n\n### Baseline\nSHA `2ec4cbe`\n"
       ),
       baselineArg = "dead000"
