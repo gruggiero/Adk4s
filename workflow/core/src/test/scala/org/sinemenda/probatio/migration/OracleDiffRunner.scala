@@ -225,6 +225,25 @@ final class OracleDiffRunner extends ProbatioSuite:
           fail(s"predecessor arm materialisation reported a finding: $desc")
         case Outcome.Ran(arm) =>
           Using.resource(WorktreeCleanup(schemaDir, List(workRoot / "predecessor"))) { _ =>
+            // Diagnose the environment the predecessor's git calls run in:
+            // the recorded control is env-sensitive (fixture-named objects
+            // like 00d3de1 must resolve, and rev-parse runs in the
+            // invocation cwd). Print what the arm's repo actually sees so a
+            // hosted divergence is self-describing rather than a bare
+            // per-file mismatch.
+            List("TMPDIR", "BATS_RUN_TMPDIR", "BATS_TEST_TMPDIR", "GITHUB_WORKSPACE").foreach {
+              (k: String) => println(s"[probatioOracleControl] env $k=${sys.env.getOrElse(k, "")}")
+            }
+            List("00d3de1", "HEAD").foreach { (rev: String) =>
+              val probe: HermeticResult = HermeticEnv.capture(
+                List("git", "-C", arm.root.toString, "rev-parse", rev),
+                HermeticEnv.empty,
+                cwd = Some(arm.root.toIO)
+              )
+              println(
+                s"[probatioOracleControl] arm git rev-parse $rev -> exit=${probe.exitCode} out=${probe.out.trim.take(80)}"
+              )
+            }
             val run: DifferentialHarness.SuiteRun = DifferentialHarness.runSuite(arm)
             val check: Outcome[Unit]              = DifferentialHarness.checkPredecessorControl(arm, run, controlPath)
             run.fileResults.foreach { (r: DifferentialHarness.BatsFileResult) =>
