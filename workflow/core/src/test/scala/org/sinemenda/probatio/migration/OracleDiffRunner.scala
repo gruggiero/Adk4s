@@ -178,6 +178,39 @@ final class OracleDiffRunner extends ProbatioSuite:
             },
             (s: String) => s
           )
+      // The control was measured where every object its fixtures name
+      // resolved in the repository (e.g. a short-SHA baseline in a ledger
+      // row). A clone lacking such an object changes the predecessor's own
+      // behaviour — baseline resolution falls back to the raw string — so
+      // the run cannot be compared to the recording. Report the missing
+      // object loudly instead of a misleading per-file mismatch.
+      val requiredObjects: List[String] =
+        scala.util
+          .Try(
+            ujson
+              .read(os.read(controlPath))("requiredObjects")("objects")
+              .arr
+              .map((v: ujson.Value) => v.str)
+              .toList
+          )
+          .getOrElse(List.empty)
+      val missingObjects: List[String] =
+        requiredObjects.filter { (sha: String) =>
+          HermeticEnv
+            .capture(
+              List("git", "-C", repoRoot.toString, "rev-parse", "--verify", "--quiet", s"$sha^{object}"),
+              HermeticEnv.empty,
+              cwd = Some(repoRoot.toIO)
+            )
+            .exitCode != 0
+        }
+      if missingObjects.nonEmpty then
+        val msg: String =
+          s"the recorded control requires ${missingObjects.mkString(", ")} to resolve in this repository; " +
+            "it does not — the control was measured where every fixture-named object resolved. " +
+            "Push a ref containing the object and re-run."
+        println(s"[probatioOracleControl] UNDETERMINED — $msg")
+        fail(msg)
       val allPredecessor: SeamConfiguration =
         SeamConfiguration.fromPorted(ToolId.swapOrder.toSet).withPredecessor
       val workRoot: os.Path = os.temp.dir(prefix = "probatio-control-", deleteOnExit = true)

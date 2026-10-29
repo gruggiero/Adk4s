@@ -4,6 +4,10 @@
   "measuredAtBaseline": "817d18530cf03cd1484beac31148ad0b9aeb8f39",
   "mechanism": "detached git worktree at 817d185 with the five *.predecessor.bak files restored at their live paths; 17-file bats suite run in place",
   "baselineNote": "817d185 and the change baseline d1cf98a3dbb37e13f20d9b6e4fc2044ad3a5e1a9 differ only in openspec change documentation — the measured surface (scanner/, hooks/, tests/, bin/) is identical",
+  "requiredObjects": {
+    "note": "objects the suite's fixtures name directly that must resolve in the repository for the measurement to reproduce — a clone that lacks them changes predecessor behaviour (e.g. a short-SHA baseline falls back to the raw string and discharge matching changes)",
+    "objects": ["00d3de1"]
+  },
   "suiteTotals": { "files": 17, "tests": 282, "failures": 18 },
   "perFile": {
     "ambient-capture-wiring.bats":      { "total": 32, "failures": 0 },
