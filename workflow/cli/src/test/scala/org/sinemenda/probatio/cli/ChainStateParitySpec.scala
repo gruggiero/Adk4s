@@ -232,7 +232,13 @@ object ChainStateParitySpec:
   private val unresolvedArtifact: String =
     "tests/totally-fake-nonexistent-fixture-artifact.bats"
 
-  private val baseline: String     = "00d3de1"
+  // The default baseline is deliberately unresolvable: the predecessor's
+  // `cd "$REPO" && git rev-parse` fallback is bash-version-sensitive
+  // (`cd ""` fails on bash >= 5.2), so a resolvable short SHA would give
+  // the model an environment-dependent verdict the port cannot track.
+  // Resolvable baselines stay covered by the fullBaseline/map cases —
+  // full SHAs resolve to themselves whether or not the object exists.
+  private val baseline: String     = "no-such-baseline"
   private val fullBaseline: String = "00d3de1aa49141277dc4855a353f009fc7cc941a"
   private val change: String       = "fixture-change"
 

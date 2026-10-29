@@ -2,6 +2,8 @@ package org.sinemenda.probatio.cli
 
 import hedgehog.*
 import hedgehog.Range
+import hedgehog.core.PropertyConfig
+import hedgehog.core.SuccessCount
 import org.sinemenda.probatio.core.*
 import org.sinemenda.probatio.migration.HermeticEnv
 
@@ -19,6 +21,11 @@ import scala.jdk.CollectionConverters.*
  * spec: cli-wiring — Property: three-way-exit-protocol-faithfulness
  */
 final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
+
+  // Wider than the default: the corpus leg is a 10%-weighted draw
+  // against a 5% floor — at n=100 it flakes ~2% of seeds.
+  private val coverConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(300))
 
   // ── Scenario: A conformant record is appended successfully
   // spec: cli-wiring — Scenario: A conformant record is appended successfully
@@ -466,7 +473,7 @@ final class LedgerCmdConformanceSpec extends ProbatioCliSuite:
   // are a generated conforming row with exactly one clause mutated —
   // covering each clause independently. The judge on the contract side
   // is the EXECUTABLE contract itself (`jq -e -f`), not a restatement.
-  property("record-validator-agrees-with-the-contract"):
+  property("record-validator-agrees-with-the-contract", coverConfig):
     for pair <- genLedgerRecord.forAll
         .cover(30, "conforming", (p: (String, ujson.Obj)) => p._1 == "conforming")
         .cover(30, "violating", (p: (String, ujson.Obj)) => p._1.startsWith("violating"))
