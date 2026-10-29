@@ -232,14 +232,16 @@ object ChainStateParitySpec:
   private val unresolvedArtifact: String =
     "tests/totally-fake-nonexistent-fixture-artifact.bats"
 
-  // The default baseline is deliberately unresolvable: the predecessor's
-  // `cd "$REPO" && git rev-parse` fallback is bash-version-sensitive
-  // (`cd ""` fails on bash >= 5.2), so a resolvable short SHA would give
-  // the model an environment-dependent verdict the port cannot track.
-  // Resolvable baselines stay covered by the fullBaseline/map cases —
-  // full SHAs resolve to themselves whether or not the object exists.
-  private val baseline: String     = "deadbee"
+  // The predecessor resolves the baseline via
+  // `cd "$REPO" && git rev-parse <sha> || echo <sha>` — `cd ""` fails on
+  // bash >= 5.2, so the model emits the raw arg there but either the
+  // resolved SHA or `<sha>\n<sha>` (git echoes the failed arg to stdout
+  // before the fallback echoes it again) under older bash; the port
+  // mirrors the latter exactly. Parity is therefore deterministic only
+  // when the arg resolves to itself — a full SHA present in the repo —
+  // or is unresolvable AND carried by no ledger row.
   private val fullBaseline: String = "00d3de1aa49141277dc4855a353f009fc7cc941a"
+  private val baseline: String     = fullBaseline
   private val change: String       = "fixture-change"
 
   private def ledgerJson(
@@ -490,7 +492,11 @@ object ChainStateParitySpec:
         specHeader + reqBlock("Solo Req") + poHeader +
           titleRow("obl one", "Solo Req", resolvesArtifact)
       ),
-      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = "zzz")),
+      // The row's baseline must not equal the raw arg: on bash >= 5.2 the
+      // model's `cd ""` failure yields the literal "zzz" (which would
+      // match) while the port emits "zzz\nzzz" — an unresolvable arg is
+      // deterministic only for rows it cannot match.
+      List(ledgerJson("only", "obl one", resolvesArtifact, exit = 0, baseline = fullBaseline)),
       baselineArg = "zzz"
     ),
     // A populated per-spec baseline map — the spec's own baseline admits
