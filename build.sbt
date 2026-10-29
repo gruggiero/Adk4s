@@ -1,5 +1,6 @@
 import Dependencies._
 import wartremover.WartRemover
+import sbt.dsl.LinterLevel.Ignore
 
 ThisBuild / scalaVersion := Versions.Scala
 ThisBuild / organization := "org.adk4s"
@@ -57,6 +58,21 @@ lazy val scala3Options: Seq[String] = Seq(
   "-Wconf:name=PatternMatchExhaustivity:e",
   "-Wconf:name=MatchCaseUnreachable:e",
   // "-source:future"
+)
+
+// --- probatio strict compiler flags (R-CS1–R-CS5) ---
+// Scoped to probatio-core/probatio-cli ONLY (R-CS5). NOT applied repo-wide.
+// These flags make the silent-fallback defect class a compile error:
+//   R-CS1: -Werror (master switch — every other strict flag is load-bearing)
+//   R-CS2: deprecation + feature escalation (forbids deprecated-alias paths)
+//   R-CS3: -Wvalue:discard (discarded validator result = compile error)
+//   R-CS4: -Ysafe-init (unsafe init order = compile error)
+//   R-CS5: scoping (this val is only appended to probatio subprojects)
+lazy val probatioScalacOptions: Seq[String] = Seq(
+  "-Werror",
+  "-Wconf:cat=deprecation:e",
+  "-Wconf:cat=feature:e",
+  "-Wsafe-init"
 )
 
 // ---------------------------------------------------------------------------
@@ -434,6 +450,359 @@ lazy val `verified` = (project in file("verified"))
     }
   )
 
+// ── R-ARCH1: dependency-lint rule ──────────────────────────────────────────
+// Fails if any workflow/* project's resolved classpath reaches a forbidden
+// dependency (cats, cats-effect, fs2, llm4s, workflows4s, scalacheck, adk4s-*).
+// This is the build-level enforcement of the probatio leaf-by-construction
+// invariant: probatio depends on NOTHING adk4s-side. The rule checks the
+// resolved `update` report (not just direct deps) so transitive leaks are
+// caught too.
+lazy val dependencyLint = taskKey[Unit](
+  "R-ARCH1: fail if this project's resolved classpath reaches a forbidden dependency"
+)
+
+// ── Release-artifact tasks named by release-probatio.yml ──────────────────
+// The release workflow calls `probatio-cli/sourceJar` and
+// `probatio-cli/sbomGenerate`; both keys exist only here (spec 4 named the
+// steps without defining them — the tag-triggered job never ran).
+lazy val sourceJar = taskKey[File](
+  "Build the sources JAR release artifact (alias of Compile/packageSrc)"
+)
+
+lazy val sbomGenerate = taskKey[File](
+  "Write probatio-sbom.spdx.json at repo root; RELEASE_VERSION env names the release"
+)
+
+/** R-ARCH1 forbidden predicate. Returns true if the module is in the closed
+  * forbidden set: cats/cats-effect (org.typelevel), fs2 (co.fs2), llm4s
+  * (org.llm4s), workflows4s (org.business4s), scalacheck (org.scalacheck),
+  * adk4s-* (org.adk4s). For the sbt plugin (R-S1), org.sinemenda.probatio is
+  * also forbidden — the plugin must NOT link probatio-core via Maven artifact.
+  * probatio-cli legitimately depends on probatio-core via .dependsOn, so
+  * org.sinemenda.probatio is NOT forbidden for probatio-cli.
+  * munit (org.scalameta) and hedgehog (qa.hedgehog) are NOT forbidden —
+  * they are in the R-X3 allowed set. */
+def isForbiddenDependency(module: ModuleID, projectName: String): Boolean = {
+  val org: String = module.organization
+  val name: String = module.name
+  org == "org.typelevel" && (name == "cats" || name.startsWith("cats-")) ||
+  org == "co.fs2" ||
+  org == "org.llm4s" ||
+  org == "org.business4s" ||
+  org == "org.scalacheck" ||
+  org == "org.adk4s" ||
+  (projectName == "sbt-probatio" && org == "org.sinemenda.probatio")
+}
+
+// ── probatio-core — ported logic (Scala 3.8.4, pure by construction) ───────
+// ADTs (LedgerRecord, ChainStateReport, GatePayload, LintReport, Outcome),
+// validators (ex-jq contracts), verdict logic, banner/drift engine, metals
+// client. NO main, NO args, NO GraalVM config. Depends on NOTHING adk4s-side
+// (R-ARCH1). NO cats, NO cats-effect, NO fs2 (R-X3).
+lazy val `probatio-core` = (project in file("workflow/core"))
+  .dependsOn(
+    `probatio-verified` % Test
+  )
+  .settings(
+    name := "probatio-core",
+    organization := "org.sinemenda.probatio",
+    libraryDependencies ++= Seq(
+      Dependencies.osLib,
+      Dependencies.upickle.head
+    ) ++ Dependencies.probatioTestDeps,
+    scalacOptions ++= scala3Options ++ probatioScalacOptions,
+    // spec: hermetic-test-processes — workflow test sources lint under a
+    // dedicated conf adding the raw-process-construction bans; scalafix has
+    // no per-path scoping, so the Test configuration gets its own rule file.
+    Test / scalafixConfig := Some(
+      (ThisBuild / baseDirectory).value / ".scalafix-tests.conf"
+    ),
+    // R-ARCH1: dependency-lint runs as part of compile to enforce the
+    // leaf-by-construction invariant at build time.
+    dependencyLint := {
+      val report: UpdateReport = update.value
+      val log: sbt.Logger = streams.value.log
+      val forbidden: Seq[ModuleID] = report.allModules.filter(m => isForbiddenDependency(m, name.value))
+      val msgs: Seq[String] = forbidden.map(m =>
+        s"  ${m.organization}:${m.name}:${m.revision}"
+      )
+      if (forbidden.nonEmpty) {
+        sys.error(
+          s"R-ARCH1 violation: ${name.value} reaches forbidden dependencies:\n" +
+            msgs.mkString("\n")
+        )
+      } else {
+        log.info(s"R-ARCH1: ${name.value} classpath clean (no forbidden dependencies)")
+      }
+    }
+  )
+
+// ── probatio-cli — multicall CLI (Scala 3.8.4, mainargs + os-lib + uPickle) ─
+// The public CLI protocol: one subcommand per predecessor script, three-way
+// exit codes (0/1/2), byte-compatible stdout payloads, arg-parse error
+// attribution, --help with defaults, multicall dispatch by argv(1) and argv(0).
+// Depends on probatio-core (Outcome, LintReport, ChainStateReport, GatePayload,
+// Ledger). NO cats, NO cats-effect, NO fs2 (R-X3). R-ARCH1: no adk4s deps.
+lazy val `probatio-cli` = (project in file("workflow/cli"))
+  .dependsOn(`probatio-core`, `probatio-verified` % Test)
+  .enablePlugins(NativeImagePlugin)
+  .settings(
+    name := "probatio-cli",
+    organization := "org.sinemenda.probatio",
+    libraryDependencies ++= Seq(
+      Dependencies.osLib,
+      Dependencies.mainargs,
+      Dependencies.upickle.head
+    ) ++ Dependencies.probatioTestDeps,
+    scalacOptions ++= scala3Options ++ probatioScalacOptions,
+    // spec: hermetic-test-processes — see probatio-core for the rationale
+    // for the dedicated Test scalafix conf.
+    Test / scalafixConfig := Some(
+      (ThisBuild / baseDirectory).value / ".scalafix-tests.conf"
+    ),
+    // Native-image config (R-N1, R-N2): --no-fallback (V1 spike finding),
+    // -O1 optimization for gate latency budget. The multicall binary is
+    // named "probatio" (alias "prob"). Native-image is mandatory for the
+    // gate subcommand; other subcommands MAY use the assembly JAR fallback.
+    Compile / mainClass := Some("org.sinemenda.probatio.cli.ProbatioMain"),
+    assembly / mainClass := Some("org.sinemenda.probatio.cli.ProbatioMain"),
+    nativeImageOptions ++= Seq("--no-fallback", "-O1"),
+    nativeImageOutput := target.value / "native-image" / "probatio",
+    // Pin the local native-image toolchain to the release toolchain
+    // (release-probatio.yml matrix: graalvm-community / 21.0.2) so the
+    // binary tested locally is the same toolchain the release gate
+    // validates — the default graalvm-java17/22.3.1 embeds a different
+    // embedded toolchain marker and would fail the toolchain check.
+    // spec: finish-probatio-replacement/delivery-verified — Requirement: The delivered binary is built with the toolchain that was tested
+    // (Invisible rank: lintUnused cannot see the sbt-native-image task's
+    // consumption of these keys and would flag them as unused.)
+    nativeImageJvm.withRank(KeyRanks.Invisible) := "graalvm-community",
+    nativeImageVersion.withRank(KeyRanks.Invisible) := "21.0.2",
+    // Release-artifact tasks the release workflow names (spec 4 named them
+    // without defining them). sourceJar is the standard packageSrc jar;
+    // sbomGenerate renders probatio-sbom.spdx.json from the RESOLVED
+    // dependency report via the SbomGenerate entrypoint — the schema lives
+    // in Sbom, not duplicated here. The release version comes from
+    // RELEASE_VERSION (the workflow sets it to github.ref_name).
+    sourceJar := (Compile / packageSrc).value,
+    sbomGenerate := {
+      val out: File = (ThisBuild / baseDirectory).value / "probatio-sbom.spdx.json"
+      val releaseVersion: String = sys.env.getOrElse(
+        "RELEASE_VERSION",
+        sys.error("RELEASE_VERSION must name the release (e.g. v14.0.0)")
+      )
+      // Runtime external classpath only — Test-scope deps and internal
+      // project deps do not ship in the artifacts.
+      val deps: Seq[String] = (Runtime / externalDependencyClasspath).value
+        .flatMap(_.get(moduleID.key))
+        .map(m => s"${m.organization}:${m.name}|${m.revision}|Maven")
+      val classpath: Seq[File] = (Compile / fullClasspath).value.map(_.data)
+      (Compile / runner).value.run(
+        "org.sinemenda.probatio.packaging.SbomGenerate",
+        classpath,
+        Seq(out.getAbsolutePath, releaseVersion) ++ deps,
+        streams.value.log
+      )
+      out
+    },
+    // Several suites redirect the global System.out/System.err to assert on
+    // emitted bytes. With fork=false, sbt's default parallel task groups let
+    // another suite's production code print into a live capture buffer.
+    Test / parallelExecution := false,
+    dependencyLint := {
+      val report: UpdateReport = update.value
+      val log: sbt.Logger = streams.value.log
+      val forbidden: Seq[ModuleID] = report.allModules.filter(m => isForbiddenDependency(m, name.value))
+      val msgs: Seq[String] = forbidden.map(m =>
+        s"  ${m.organization}:${m.name}:${m.revision}"
+      )
+      if (forbidden.nonEmpty) {
+        sys.error(
+          s"R-ARCH1 violation: ${name.value} reaches forbidden dependencies:\n" +
+            msgs.mkString("\n")
+        )
+      } else {
+        log.info(s"R-ARCH1: ${name.value} classpath clean (no forbidden dependencies)")
+      }
+    }
+  )
+
+// ── sbt-probatio — sbt 1.x AutoPlugin (Scala 2.12, thin build adapter) ──────
+// Thin build-integration plugin: declares settings/tasks, resolves the
+// probatio binary, delegates all tool execution to the binary via argv +
+// exit codes + stdout JSON. Links NO probatio-core code (R-S1) — all
+// communication is subprocess invocation. NO cats, NO cats-effect (R-ARCH1).
+// The plugin's only dependencies are sbt APIs and the Scala 2.12 stdlib.
+// sbt-2-ready: no GlobalScope abuse, no deprecated operators, Def.task
+// composition only (R-S2).
+lazy val `sbt-probatio` = (project in file("workflow/plugin"))
+  .enablePlugins(SbtPlugin)
+  .settings(
+    name := "sbt-probatio",
+    organization := "org.sinemenda.probatio",
+    scalaVersion := Versions.Scala2_12,
+    // SbtPlugin sets sbtPlugin := true and configures publishing.
+    // The plugin targets sbt 1.x today; sbt 2.x migration is out of scope
+    // (proposal §2.2) but the code is sbt-2-ready (R-S2).
+    libraryDependencies ++= Dependencies.sbtPluginTestDeps,
+    // spec: hermetic-test-processes — DisableSyntax-only variant of the
+    // Test scalafix conf: this 2.12 build lacks -Ywarn-unused, so
+    // RemoveUnused/OrganizeImports cannot run here (Compile scalafix fails
+    // the same way at baseline).
+    Test / scalafixConfig := Some(
+      (ThisBuild / baseDirectory).value / ".scalafix-tests-2.12.conf"
+    ),
+    // R-ARCH1: dependency-lint rule — fails if any forbidden dependency
+    // (cats, cats-effect, fs2, llm4s, workflows4s, scalacheck, adk4s-*)
+    // appears on the plugin's classpath. Also catches probatio-core leaks.
+    dependencyLint := {
+      val report: UpdateReport = update.value
+      val log: sbt.Logger = streams.value.log
+      val forbidden: Seq[ModuleID] = report.allModules.filter(m => isForbiddenDependency(m, name.value))
+      val msgs: Seq[String] = forbidden.map(m =>
+        s"  ${m.organization}:${m.name}:${m.revision}"
+      )
+      if (forbidden.nonEmpty) {
+        sys.error(
+          s"R-ARCH1 violation: ${name.value} reaches forbidden dependencies:\n" +
+            msgs.mkString("\n")
+        )
+      } else {
+        log.info(s"R-ARCH1: ${name.value} classpath clean (no forbidden dependencies)")
+      }
+    }
+  )
+
+// ── probatio-verified — Ring 6 mirror leaf (Scala 3.7.2, Stainless) ────────
+// PureScala models of chain-state verdict logic, 12-clause validator, banner
+// engine. Pinned to 3.7.2 for the Stainless frontend. Depends on NOTHING
+// project-local. NOT aggregated by root (normal builds skip Stainless).
+lazy val `probatio-verified` = (project in file("verified/probatio"))
+  .enablePlugins(StainlessPlugin)
+  .settings(
+    name := "probatio-verified",
+    organization := "org.sinemenda.probatio",
+    scalaVersion := Versions.ScalaVerified,
+    scalacOptions := Seq(
+      "-deprecation",
+      "-feature",
+      "-Wconf:src=.*stainless-library.*:silent"
+    ),
+    wartremoverErrors := Seq.empty,
+    libraryDependencies ~= (_.filterNot(_.organization == "org.wartremover")),
+    semanticdbEnabled := false,
+    stainlessEnabled := false,
+    publish / skip := true,
+    // Native Z3: same ScalaZ3 jar as the `verified` project, but located at
+    // verified/unmanaged/ (one level up from this project's baseDirectory).
+    // See verified/unmanaged/README.md for the jar-merge explanation.
+    stainlessExtraDeps += "ch.epfl.lara" % "scalaz3_3" % "4.13.4"
+      from s"file://${baseDirectory.value.getParentFile / "unmanaged" / "scalaz3_3-4.13.4.jar"}",
+    mergeScalaZ3Plugin := {
+      val scalaz3  = baseDirectory.value.getParentFile / "unmanaged" / "scalaz3_3-4.13.4.jar"
+      val pluginDir = baseDirectory.value.getParentFile.getParentFile / "target" /
+        s"scala-${Versions.Scala}" / "compiler_plugins"
+      val pluginJar = pluginDir / s"stainless-dotty-plugin_${Versions.ScalaVerified}-0.9.9.3.jar"
+      if (!pluginJar.exists || !scalaz3.exists) {
+        pluginJar
+      } else {
+        val outJar = pluginJar.getParentFile / (pluginJar.getName.stripSuffix(".jar") + "-merged.jar")
+        val needsMerge = !outJar.exists || {
+          val p = new java.util.jar.JarFile(outJar)
+          val has = p.getEntry("z3/Z3Wrapper.class") != null
+          p.close()
+          !has
+        }
+        if (needsMerge) {
+          val log = streams.value.log
+          log.info(s"Merging ScalaZ3 into Stainless plugin jar: $outJar")
+          val tmpDir = java.nio.file.Files.createTempDirectory("stainless-merge")
+          new java.lang.ProcessBuilder("jar", "xf", pluginJar.getAbsolutePath)
+            .directory(tmpDir.toFile).inheritIO().start().waitFor()
+          new java.lang.ProcessBuilder("jar", "xf", scalaz3.getAbsolutePath)
+            .directory(tmpDir.toFile).inheritIO().start().waitFor()
+          new java.lang.ProcessBuilder(
+            "jar", "cf0", outJar.getAbsolutePath,
+            "-C", tmpDir.toFile.getAbsolutePath, "."
+          ).inheritIO().start().waitFor()
+          java.nio.file.Files.walk(tmpDir)
+            .sorted(java.util.Comparator.reverseOrder())
+            .forEach(p => java.nio.file.Files.delete(p))
+          outJar
+        } else {
+          outJar
+        }
+      }
+    },
+    Compile / scalacOptions := {
+      val opts   = (Compile / scalacOptions).value
+      val merged = mergeScalaZ3Plugin.value
+      if (stainlessEnabled.value) {
+        opts.map { opt =>
+          if (opt.startsWith("-Xplugin:") && opt.contains("stainless-dotty-plugin"))
+            "-Xplugin:" + merged.getAbsolutePath
+          else
+            opt
+        }
+      } else opts
+    },
+    dependencyLint := {
+      val report: UpdateReport = update.value
+      val log: sbt.Logger = streams.value.log
+      val forbidden: Seq[ModuleID] = report.allModules.filter(m => isForbiddenDependency(m, name.value))
+      val msgs: Seq[String] = forbidden.map(m =>
+        s"  ${m.organization}:${m.name}:${m.revision}"
+      )
+      if (forbidden.nonEmpty) {
+        sys.error(
+          s"R-ARCH1 violation: ${name.value} reaches forbidden dependencies:\n" +
+            msgs.mkString("\n")
+        )
+      } else {
+        log.info(s"R-ARCH1: ${name.value} classpath clean (no forbidden dependencies)")
+      }
+    }
+  )
+
+// Command alias: run dependency-lint across all probatio subprojects.
+addCommandAlias(
+  "probatioDependencyLint",
+  "; probatio-core/dependencyLint ; probatio-cli/dependencyLint ; sbt-probatio/dependencyLint ; probatio-verified/dependencyLint"
+)
+
+// ── probatioOracleDiff — Ring 3 acceptance task (cutover-gate spec) ────────
+// Materialises two seam-configured copies of the scanner tree inside the
+// repository, runs the suite against each, parses both outputs, and emits
+// a DifferentialResult. The gate decides based on the per-file comparison:
+// proceed iff no file is worse under the ported implementation than under
+// the predecessor.
+//
+// spec: cutover-gate — Implementation Anchors: probatioOracleDiff
+addCommandAlias(
+  "probatioOracleDiff",
+  "probatio-core/testOnly org.sinemenda.probatio.migration.OracleDiffRunner"
+)
+
+// ── V1 spike — throwaway native-image toolchain proof ──────────────────────
+// NOT spec-1 production. This subproject exists only to discharge the V1
+// hard-blocker: prove GraalVM native-image can build a probatio-style CLI
+// (uPickle + os-lib + mainargs) without hand-maintained reflection config.
+// Deleted after V1/V2 pass. Excluded from dependency-lint (spike-only).
+lazy val `probatio-spike` = (project in file("workflow/spike"))
+  .settings(
+    name := "probatio-spike",
+    organization := "org.sinemenda.probatio",
+    libraryDependencies ++= Seq(
+      Dependencies.osLib,
+      Dependencies.mainargs,
+      Dependencies.upickle.head
+    ),
+    scalacOptions ++= scala3Options,  // NO probatioScalacOptions — spike is throwaway
+    // Assembly config for native-image input: single fat JAR, main class set.
+    Compile / mainClass := Some("org.sinemenda.probatio.spike.SpikeMain"),
+    assembly / mainClass := Some("org.sinemenda.probatio.spike.SpikeMain")
+  )
+
 // Ring 6 — run Stainless verification (needs a big heap; z3 single-threaded).
 // The smt-z3 fallback solver requires the z3 binary in PATH:
 //   PATH=/home/gruggiero/opt/z3-4.13.4/z3-4.13.4-x64-glibc-2.35/bin:$PATH \
@@ -443,5 +812,9 @@ lazy val `verified` = (project in file("verified"))
 // plugin jar before compilation.
 addCommandAlias(
   "ring6",
-  "; set verified / stainlessEnabled := true ; verified / compile"
+  "; set verified / stainlessEnabled := true ; verified / compile ; set `probatio-verified` / stainlessEnabled := true ; `probatio-verified` / compile"
 )
+// NOTE: The `ring6` alias above does not work in sbt 1.12 because backtick-
+// quoted project IDs are not parsed correctly inside `addCommandAlias`.
+// Use the direct invocation instead (from docs/ring6-stainless-verification-experience.md §10):
+//   sbt -J-Xmx6g 'set `probatio-verified` / stainlessEnabled := true' 'probatio-verified/clean' 'probatio-verified/compile'

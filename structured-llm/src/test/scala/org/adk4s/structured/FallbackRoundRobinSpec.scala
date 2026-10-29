@@ -9,7 +9,7 @@ import hedgehog.munit.HedgehogSuite
 import munit.FunSuite
 import org.adk4s.structured.core.*
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.{Completion, CompletionOptions, Conversation, StreamedChunk}
+import org.llm4s.llmconnect.model.{ Completion, CompletionOptions, Conversation, StreamedChunk }
 import org.llm4s.error.LLMError
 import org.llm4s.error.UnknownError
 import scala.concurrent.duration.DurationInt
@@ -25,13 +25,15 @@ class FallbackRoundRobinSpec extends HedgehogSuite:
     override def complete(conversation: Conversation, options: CompletionOptions): Either[LLMError, Completion] =
       result match
         case Right(content) =>
-          Right(Completion(
-            id = "test-id",
-            created = 0L,
-            content = content,
-            model = "test-model",
-            message = org.llm4s.llmconnect.model.AssistantMessage(content)
-          ))
+          Right(
+            Completion(
+              id = "test-id",
+              created = 0L,
+              content = content,
+              model = "test-model",
+              message = org.llm4s.llmconnect.model.AssistantMessage(content)
+            )
+          )
         case Left(err) => Left(UnknownError(err.getMessage, err))
     override def streamComplete(
       conversation: Conversation,
@@ -39,7 +41,7 @@ class FallbackRoundRobinSpec extends HedgehogSuite:
       callback: StreamedChunk => Unit
     ): Either[LLMError, Completion] =
       complete(conversation, options)
-    def getContextWindow(): Int = 4096
+    def getContextWindow(): Int     = 4096
     def getReserveCompletion(): Int = 0
 
   // ════════════════════════════════════════════════════════════════════════
@@ -57,9 +59,11 @@ class FallbackRoundRobinSpec extends HedgehogSuite:
       val strategy: ClientStrategy = ClientStrategy.fallback(clients)
       val operation: LLMClient => IO[String] = client =>
         IO.fromEither(
-          client.complete(Conversation.empty(), CompletionOptions())
+          client
+            .complete(Conversation.empty(), CompletionOptions())
             .map(_.content)
-            .left.map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
+            .left
+            .map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
         )
       val result: Either[Throwable, String] =
         ClientStrategy.execute[IO, String](strategy, operation, Vector("a", "b", "c")).attempt.unsafeRunSync()
@@ -79,9 +83,11 @@ class FallbackRoundRobinSpec extends HedgehogSuite:
     val strategy: ClientStrategy = ClientStrategy.fallback(clients)
     val operation: LLMClient => IO[String] = client =>
       IO.fromEither(
-        client.complete(Conversation.empty(), CompletionOptions())
+        client
+          .complete(Conversation.empty(), CompletionOptions())
           .map(_.content)
-          .left.map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
+          .left
+          .map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
       )
     val result: Either[Throwable, String] =
       ClientStrategy.execute[IO, String](strategy, operation, Vector("a", "b")).attempt.unsafeRunSync()
@@ -99,9 +105,11 @@ class FallbackRoundRobinSpec extends HedgehogSuite:
     val strategy: ClientStrategy = ClientStrategy.fallback(clients)
     val operation: LLMClient => IO[String] = client =>
       IO.fromEither(
-        client.complete(Conversation.empty(), CompletionOptions())
+        client
+          .complete(Conversation.empty(), CompletionOptions())
           .map(_.content)
-          .left.map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
+          .left
+          .map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
       )
     val result: Either[Throwable, String] =
       ClientStrategy.execute[IO, String](strategy, operation, Vector("a")).attempt.unsafeRunSync()
@@ -127,9 +135,11 @@ class FallbackRoundRobinSpec extends HedgehogSuite:
     val strategy: ClientStrategy = ClientStrategy.fallback(clients)
     val operation: LLMClient => IO[String] = client =>
       IO.fromEither(
-        client.complete(Conversation.empty(), CompletionOptions())
+        client
+          .complete(Conversation.empty(), CompletionOptions())
           .map(_.content)
-          .left.map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
+          .left
+          .map(e => StructuredLLMError.LLMCallFailed(e, Prompt.empty))
       )
     val result: Either[Throwable, String] =
       ClientStrategy.execute[IO, String](strategy, operation, Vector("only")).attempt.unsafeRunSync()

@@ -26,7 +26,7 @@ final case class WIOGraph[Ctx <: WorkflowContext, In, Err, Out <: WCState[Ctx]] 
   ): Either[WIOGraphError, WIOGraph[Ctx, In, Err, Out]] =
     for
       nodeKey <- NodeKey.from(key).left.map(err => WIOGraphError.InvalidNodeKey(key, err.toString))
-      _      <- Either.cond(
+      _ <- Either.cond(
         !nodes.exists(entry => entry.ref.key == nodeKey),
         (),
         WIOGraphError.NodeAlreadyExists(key)

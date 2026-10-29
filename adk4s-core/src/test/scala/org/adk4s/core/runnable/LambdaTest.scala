@@ -8,7 +8,7 @@ import scala.language.implicitConversions
 
 class LambdaTest extends CatsEffectSuite:
   test("Lambda.apply toRunnable works correctly") {
-    val lambda: Lambda[String, Int] = Lambda((s: String) => IO(s.toInt))
+    val lambda: Lambda[String, Int]     = Lambda((s: String) => IO(s.toInt))
     val runnable: Runnable[String, Int] = lambda.toRunnable
 
     val result: IO[Int] = runnable.invoke("42")
@@ -16,7 +16,7 @@ class LambdaTest extends CatsEffectSuite:
   }
 
   test("Lambda.pure toRunnable works correctly") {
-    val lambda: Lambda[String, Int] = Lambda.pure((s: String) => s.toInt)
+    val lambda: Lambda[String, Int]     = Lambda.pure((s: String) => s.toInt)
     val runnable: Runnable[String, Int] = lambda.toRunnable
 
     val result: IO[Int] = runnable.invoke("42")
@@ -24,7 +24,7 @@ class LambdaTest extends CatsEffectSuite:
   }
 
   test("Lambda.stream toRunnable works correctly") {
-    val lambda: Lambda[String, Int] = Lambda.stream((s: String) => Stream.emits(s.split(",").map(_.toInt)))
+    val lambda: Lambda[String, Int]     = Lambda.stream((s: String) => Stream.emits(s.split(",").map(_.toInt)))
     val runnable: Runnable[String, Int] = lambda.toRunnable
 
     val result: IO[List[Int]] = runnable.stream("1,2,3").compile.toList
@@ -41,7 +41,7 @@ class LambdaTest extends CatsEffectSuite:
   }
 
   test("Lambda.transform toRunnable works correctly") {
-    val lambda: Lambda[String, Int] = Lambda.transform((stream: Stream[IO, String]) => stream.map(_.length))
+    val lambda: Lambda[String, Int]     = Lambda.transform((stream: Stream[IO, String]) => stream.map(_.length))
     val runnable: Runnable[String, Int] = lambda.toRunnable
 
     val result: IO[List[Int]] =
@@ -58,9 +58,9 @@ class LambdaTest extends CatsEffectSuite:
     )
     val runnable: Runnable[String, Int] = lambda.toRunnable
 
-    val invokeResult: IO[Int] = runnable.invoke("42")
-    val streamResult: IO[List[Int]] = runnable.stream("42").compile.toList
-    val collectResult: IO[Int] = runnable.collect(Stream.emit("42"))
+    val invokeResult: IO[Int]          = runnable.invoke("42")
+    val streamResult: IO[List[Int]]    = runnable.stream("42").compile.toList
+    val collectResult: IO[Int]         = runnable.collect(Stream.emit("42"))
     val transformResult: IO[List[Int]] = runnable.transform(Stream.emit("42")).compile.toList
 
     assertIO(invokeResult, 42)
@@ -71,14 +71,14 @@ class LambdaTest extends CatsEffectSuite:
 
   test("Lambda.named sets name in config") {
     val lambda: Lambda[String, Int] = Lambda((s: String) => IO(s.toInt))
-    val named: Lambda[String, Int] = lambda.named("myLambda")
+    val named: Lambda[String, Int]  = lambda.named("myLambda")
 
     assertEquals(named.config.name, Some("myLambda"))
     assertEquals(named.config.description, None)
   }
 
   test("Lambda.described sets description in config") {
-    val lambda: Lambda[String, Int] = Lambda((s: String) => IO(s.toInt))
+    val lambda: Lambda[String, Int]    = Lambda((s: String) => IO(s.toInt))
     val described: Lambda[String, Int] = lambda.described("My lambda description")
 
     assertEquals(described.config.name, None)
@@ -86,7 +86,7 @@ class LambdaTest extends CatsEffectSuite:
   }
 
   test("Lambda can chain named and described") {
-    val lambda: Lambda[String, Int] = Lambda((s: String) => IO(s.toInt))
+    val lambda: Lambda[String, Int]     = Lambda((s: String) => IO(s.toInt))
     val configured: Lambda[String, Int] = lambda.named("myLambda").described("My lambda description")
 
     assertEquals(configured.config.name, Some("myLambda"))
@@ -94,7 +94,7 @@ class LambdaTest extends CatsEffectSuite:
   }
 
   test("Implicitly converted Lambda works correctly") {
-    val lambda: Lambda[String, Int] = (s: String) => IO(s.toInt)
+    val lambda: Lambda[String, Int]     = (s: String) => IO(s.toInt)
     val runnable: Runnable[String, Int] = lambda.toRunnable
 
     val result: IO[Int] = runnable.invoke("42")

@@ -11,24 +11,31 @@ class RetrieverSpec extends CatsEffectSuite:
 
   test("Retrieve documents") {
     val retriever = Retriever.fromFunction[IO]((query: String, config: RetrieverConfig) =>
-      IO.pure(List(
-        Document("1", s"Result for $query"),
-        Document("2", s"Another result for $query")
-      ))
+      IO.pure(
+        List(
+          Document("1", s"Result for $query"),
+          Document("2", s"Another result for $query")
+        )
+      )
     )
 
     val result = retriever.retrieve("test query").unsafeRunSync()
 
     assertEquals(result.length, 2, "Should retrieve 2 documents")
-    assert(result.headOption.getOrElse(fail("expected non-empty list")).content.contains("test query"), "Should contain query in content")
+    assert(
+      result.headOption.getOrElse(fail("expected non-empty list")).content.contains("test query"),
+      "Should contain query in content"
+    )
   }
 
   test("Retrieve documents as stream") {
     val retriever = Retriever.fromFunction[IO]((query: String, config: RetrieverConfig) =>
-      IO.pure(List(
-        Document("1", s"Result for $query"),
-        Document("2", s"Another result for $query")
-      ))
+      IO.pure(
+        List(
+          Document("1", s"Result for $query"),
+          Document("2", s"Another result for $query")
+        )
+      )
     )
 
     val result = retriever.retrieveStream("streaming docs").compile.toList.unsafeRunSync()
@@ -65,10 +72,11 @@ class RetrieverSpec extends CatsEffectSuite:
   }
 
   test("Create Retriever from function") {
-    val calledWithQuery: Ref[IO, Option[String]] = Ref.of[IO, Option[String]](None).unsafeRunSync()
+    val calledWithQuery: Ref[IO, Option[String]]           = Ref.of[IO, Option[String]](None).unsafeRunSync()
     val calledWithConfig: Ref[IO, Option[RetrieverConfig]] = Ref.of[IO, Option[RetrieverConfig]](None).unsafeRunSync()
     val retriever = Retriever.fromFunction[IO]((query: String, config: RetrieverConfig) =>
-      calledWithQuery.update(_ => Some(query)) *> calledWithConfig.update(_ => Some(config)).as(List(Document("1", "Result")))
+      calledWithQuery
+        .update(_ => Some(query)) *> calledWithConfig.update(_ => Some(config)).as(List(Document("1", "Result")))
     )
 
     retriever.retrieve("test query").unsafeRunSync()

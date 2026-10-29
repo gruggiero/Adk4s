@@ -4,7 +4,7 @@ import cats.data.NonEmptyChain
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import munit.FunSuite
-import org.adk4s.core.types.{NodeKey, Reserved}
+import org.adk4s.core.types.{ NodeKey, Reserved }
 import org.adk4s.core.types.given
 import workflows4s.runtime.WorkflowInstanceId
 import workflows4s.wio.{

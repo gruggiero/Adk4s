@@ -196,19 +196,25 @@ object StructuredLLM:
     parseRetryDelay: Duration = Duration.Zero
   ): StructuredLLM[F] =
     fromClientWithMiddlewaresEither[F](
-      client, middlewares, defaultOptions, parseRetryTrigger, maxParseAttempts, parseRetryDelay
+      client,
+      middlewares,
+      defaultOptions,
+      parseRetryTrigger,
+      maxParseAttempts,
+      parseRetryDelay
     ).fold(
       err => throw new IllegalArgumentException(s"maxParseAttempts: $err"),
       identity
     )
 
-  /** Total factory returning a typed error for invalid maxParseAttempts.
-    *
-    * Refines `maxParseAttempts` via `refineEither[Positive]`, returning
-    * `Left(String)` for zero/negative input. No exception is thrown.
-    *
-    * spec: add-iron-refined-types/structured-llm — Requirement: StructuredLLM maxParseAttempts is refined to Positive
-    */
+  /**
+   * Total factory returning a typed error for invalid maxParseAttempts.
+   *
+   * Refines `maxParseAttempts` via `refineEither[Positive]`, returning
+   * `Left(String)` for zero/negative input. No exception is thrown.
+   *
+   * spec: add-iron-refined-types/structured-llm — Requirement: StructuredLLM maxParseAttempts is refined to Positive
+   */
   def fromClientWithMiddlewaresEither[F[_]: Async](
     client: LLMClient,
     middlewares: List[LLMMiddleware],
@@ -286,10 +292,11 @@ object StructuredLLM:
       identity
     )
 
-  /** Total factory for retry-enabled StructuredLLM returning a typed error.
-    *
-    * spec: add-iron-refined-types/structured-llm — Requirement: StructuredLLM maxParseAttempts is refined to Positive
-    */
+  /**
+   * Total factory for retry-enabled StructuredLLM returning a typed error.
+   *
+   * spec: add-iron-refined-types/structured-llm — Requirement: StructuredLLM maxParseAttempts is refined to Positive
+   */
   @deprecated("Use fromClient with ReliableClient middleware + ParseRetryTrigger", "llm4s-middleware-adoption")
   def fromClientWithRetryEither[F[_]: Async](
     client: LLMClient,

@@ -23,7 +23,8 @@ class ToolsNodeInterruptTest extends CatsEffectSuite:
       IO.raiseError(AgentInterruptedException(InterruptSignal.simple("Approve?")))
 
   test("sequential execution stops on interrupt") {
-    val config: ToolsNodeConfig = ToolsNodeConfig.fromAdkTools(List(normalTool, interruptingTool, normalTool))
+    val config: ToolsNodeConfig = ToolsNodeConfig
+      .fromAdkTools(List(normalTool, interruptingTool, normalTool))
       .copy(executeSequentially = true)
     val node: ToolsNode = ToolsNode(config)
     val inputs: List[ToolInput] = List(
@@ -42,9 +43,10 @@ class ToolsNodeInterruptTest extends CatsEffectSuite:
   }
 
   test("batch result with no interrupts has None signal") {
-    val config: ToolsNodeConfig = ToolsNodeConfig.fromAdkTools(List(normalTool))
+    val config: ToolsNodeConfig = ToolsNodeConfig
+      .fromAdkTools(List(normalTool))
       .copy(executeSequentially = true)
-    val node: ToolsNode = ToolsNode(config)
+    val node: ToolsNode         = ToolsNode(config)
     val inputs: List[ToolInput] = List(ToolInput("normal", """{}""", "call-1"))
     node.executeTools(inputs).map { (result: ToolExecutionResult) =>
       assertEquals(result.outputs.length, 1)
@@ -54,8 +56,8 @@ class ToolsNodeInterruptTest extends CatsEffectSuite:
 
   test("executeTool propagates interrupt exception for single tool") {
     val config: ToolsNodeConfig = ToolsNodeConfig.fromAdkTools(List(interruptingTool))
-    val node: ToolsNode = ToolsNode(config)
-    val input: ToolInput = ToolInput("interrupting", """{}""", "call-1")
+    val node: ToolsNode         = ToolsNode(config)
+    val input: ToolInput        = ToolInput("interrupting", """{}""", "call-1")
     node.executeTool(input).attempt.map {
       case Left(e: AgentInterruptedException) =>
         assertEquals(e.signal.info, "Approve?")

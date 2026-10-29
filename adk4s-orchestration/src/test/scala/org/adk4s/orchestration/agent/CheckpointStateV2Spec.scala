@@ -82,10 +82,10 @@ class CheckpointStateV2Spec extends HedgehogSuite:
   test("Unknown role is a hard error, not a silent UserMessage") {
     // Adversarial review fix: fromCheckpoint must not silently map an unknown
     // role to a valid UserMessage — that masks checkpoint corruption.
-    val corrupted: CheckpointMessage = CheckpointMessage(role = "bogus", content = "x")
+    val corrupted: CheckpointMessage    = CheckpointMessage(role = "bogus", content = "x")
     val result: Either[String, Message] = CheckpointMessageConverter.fromCheckpoint(corrupted)
     result match
-      case Left(err) => assert(err.contains("bogus"), s"expected error mentioning 'bogus', got: $err")
+      case Left(err)  => assert(err.contains("bogus"), s"expected error mentioning 'bogus', got: $err")
       case Right(msg) => fail(s"expected Left for unknown role, got Right($msg)")
   }
 
@@ -103,7 +103,8 @@ class CheckpointStateV2Spec extends HedgehogSuite:
       toolCallId = Some("call_1")
     )
     val reconstructed: List[Message] = List(assistantCm, toolCm).map { (cm: CheckpointMessage) =>
-      CheckpointMessageConverter.fromCheckpoint(cm)
+      CheckpointMessageConverter
+        .fromCheckpoint(cm)
         .getOrElse(sys.error(s"expected valid message for role ${cm.role}"))
     }
     val validation: org.llm4s.types.Result[Unit] = Message.validateConversation(reconstructed)

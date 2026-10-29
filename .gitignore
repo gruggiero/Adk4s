@@ -40,4 +40,3 @@ logs/
 *~
 stainless/
 .stainless-cache/
-project/lib/sbt-stainless.jar

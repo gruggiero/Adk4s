@@ -20,9 +20,12 @@ class ThrowSpec extends HedgehogSuite:
 
   property("NodeKey.from is total and rejects empty/reserved keys") {
     val reservedOrEmptyGen: Gen[String] = Gen.choice1(
-      Gen.constant(""), Gen.constant("__start__"), Gen.constant("__end__")
+      Gen.constant(""),
+      Gen.constant("__start__"),
+      Gen.constant("__end__")
     )
-    val validGen: Gen[String] = Gen.string(Gen.alphaNum, Range.linear(1, 10))
+    val validGen: Gen[String] = Gen
+      .string(Gen.alphaNum, Range.linear(1, 10))
       .filter(s => s != "__start__" && s != "__end__")
 
     val labeledGen: Gen[(String, String)] = Gen.choice1(
@@ -46,7 +49,9 @@ class ThrowSpec extends HedgehogSuite:
 
   property("NodeKeyError message contains the invalid key") {
     val invalidKeyGen: Gen[String] = Gen.choice1(
-      Gen.constant(""), Gen.constant("__start__"), Gen.constant("__end__")
+      Gen.constant(""),
+      Gen.constant("__start__"),
+      Gen.constant("__end__")
     )
     invalidKeyGen.forAll.map { (s: String) =>
       val error: NodeKeyError = NodeKeyError(s)
@@ -60,7 +65,8 @@ class ThrowSpec extends HedgehogSuite:
   // ════════════════════════════════════════════════════════════════════════
 
   property("NodeKey.from on valid key returns Right(NodeKey)") {
-    val validGen: Gen[String] = Gen.string(Gen.alphaNum, Range.linear(1, 20))
+    val validGen: Gen[String] = Gen
+      .string(Gen.alphaNum, Range.linear(1, 20))
       .filter(s => s != "__start__" && s != "__end__")
     validGen.forAll.map { (s: String) =>
       val result: Either[NodeKeyError, NodeKey] = NodeKey.from(s)
@@ -78,7 +84,7 @@ class ThrowSpec extends HedgehogSuite:
     anyStringGen.forAll.map { (s: String) =>
       // either should never throw — it returns Either for all inputs
       val result: Either[String, NodeKey] = NodeKey.either(s)
-      val isEither: Boolean = result.isLeft || result.isRight
+      val isEither: Boolean               = result.isLeft || result.isRight
       isEither ==== true
     }
   }

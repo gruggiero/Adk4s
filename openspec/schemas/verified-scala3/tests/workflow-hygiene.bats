@@ -19,94 +19,14 @@ setup() {
   SCHEMA_YAML="$SCHEMA/schema.yaml"
 }
 
-# ── D7: drift message references the correct script ──────────────────────
-
-@test "D7: spec-lint.sh drift message references scanner/install-skills.sh, not sync-skills.sh" {
-  # The INSTRUCTION DRIFT remediation message must reference the script
-  # that actually exists (scanner/install-skills.sh), not the dangling
-  # reference (verified-scala3/sync-skills.sh).
-  # grep returns exit 1 when 0 matches found — so we check the output count
-  run grep -c 'sync-skills\.sh' "$SPEC_LINT"
-  [ "$output" -eq 0 ]
-  run grep -c 'install-skills\.sh' "$SPEC_LINT"
-  [ "$output" -ge 1 ]
-}
-
-@test "D7: every tool-name in scanner messages resolves to a tracked file" {
-  # Extract tool-name references (paths containing .sh) from scanner
-  # messages and verify each resolves to a tracked file.
-  local root schema rel
-  root="$(repo_root)"
-  schema="$(schema_dir)"
-  rel="${schema#"$root"/}"
-
-  # Find all .sh references in scanner scripts' echo/printf messages
-  local refs
-  refs="$(grep -rohE '[a-zA-Z0-9_/.-]+\.sh' "$SCHEMA/scanner/"*.sh | sort -u)"
-
-  # Each referenced .sh must either be a tracked file or a well-known
-  # external tool (jq, git, etc. don't end in .sh so won't match)
-  local ref
-  local dangling=""
-  while IFS= read -r ref; do
-    # Skip bare filenames that are standard tools (not paths)
-    case "$ref" in
-      */*) ;;  # path-like — check it
-      *) continue ;;  # bare name — skip
-    esac
-    # Check if it resolves relative to schema dir or repo root
-    if [ -f "$schema/$ref" ] || [ -f "$root/$ref" ]; then
-      : # resolves
-    else
-      # Check if it's a tracked file (might be referenced as a relative path)
-      if ! (cd "$root" && git ls-files --error-unmatch "$ref" >/dev/null 2>&1); then
-        # Check relative to schema dir
-        local basename
-        basename="$(basename "$ref")"
-        if ! (cd "$root" && git ls-files "$rel/**/$basename" | grep -q .); then
-          dangling="$dangling $ref"
-        fi
-      fi
-    fi
-  done <<<"$refs"
-  [ -z "$dangling" ] || { echo "dangling references:$dangling"; false; }
-}
-
-# ── D8: dead duplicate case arm removed ───────────────────────────────────
-
-@test "D8: ledger.sh has no dead duplicate update|delete|rewrite|edit case arm in subcommand dispatch" {
-  # The pre-parse check at the top of ledger.sh already handles
-  # update|delete|rewrite|edit. The duplicate case arm at the bottom of
-  # the subcommand dispatch is dead code.
-  # Count occurrences of the case arm pattern.
-  local count
-  count="$(grep -c 'update | delete | rewrite | edit)' "$LEDGER")"
-  # Should be exactly 1 (the pre-parse check), not 2 (pre-parse + dead duplicate)
-  [ "$count" -eq 1 ]
-}
-
-# ── D8: gate.sh parses cwd with jq, not sed ──────────────────────────────
-
-@test "D8: gate.sh extracts cwd from hook JSON using jq, not sed" {
-  # The cwd extraction from the hook JSON payload must use jq (the
-  # declared prerequisite), not a sed regex over JSON.
-  # Find the cwd extraction line.
-  run grep -n 'cwd' "$GATE"
-  [ "$status" -eq 0 ]
-  # The line that extracts cwd must use jq, not sed
-  # Look for sed-based cwd extraction (the bug)
-  run grep -E 'sed.*cwd|cwd.*sed' "$GATE"
-  [ "$status" -eq 1 ]
-  # Verify jq is used for cwd extraction
-  run grep -E 'jq.*cwd|cwd.*jq' "$GATE"
-  # If jq is not directly on the cwd line, check that the payload is
-  # parsed with jq somewhere before cwd is used
-  if [ "$status" -ne 0 ]; then
-    # At minimum, the payload must be parsed with jq, not sed
-    run grep -E 'sed.*"cwd"' "$GATE"
-    [ "$status" -eq 1 ]
-  fi
-}
+# ── D7/D8 source-shape tests MOVED to shape/workflow-hygiene-shape.bats ──
+#
+# spec:oracle-independence (change: finish-probatio-replacement): the four
+# tests asserting over tool SOURCE TEXT — the drift-message scan, the
+# tool-name resolution scan, the ledger mutation-case check and the
+# gate.sh cwd-parse check — assert how a tool is written, not what it
+# does. They live in the shape suite where following the implementation
+# is expected; the acceptance oracle holds only behavioural tests.
 
 # ── D8: heartbeat written after relevance guard ──────────────────────────
 
@@ -194,7 +114,7 @@ jq -cn '{
   bound: 60,
   resolved: 60,
   discharged: 0,
-  unresolved: [range(60) | {requirement: ("req-\(.|tostring)"), reasons: ["undischarged"]}]
+  unresolved: [range(60) | {spec: "s", requirement: ("req-\(.|tostring)"), reasons: ["undischarged"]}]
 }'
 EOF
   chmod +x "$1"
@@ -210,9 +130,9 @@ jq -cn '{
   resolved: 3,
   discharged: 0,
   unresolved: [
-    {requirement: "req-a", reasons: ["undischarged"]},
-    {requirement: "req-b", reasons: ["undischarged"]},
-    {requirement: "req-c", reasons: ["undischarged"]}
+    {spec: "s", requirement: "req-a", reasons: ["undischarged"]},
+    {spec: "s", requirement: "req-b", reasons: ["undischarged"]},
+    {spec: "s", requirement: "req-c", reasons: ["undischarged"]}
   ]
 }'
 EOF
@@ -257,4 +177,47 @@ EOF
   echo "$output" | grep 'req-b'
   echo "$output" | grep 'req-c'
   ! echo "$output" | grep -E '\+[0-9]+ more'
+}
+
+# ── spec 10 of repair-probatio-cutover: schema-rename-completion ──────────
+# The shipped documents use the current name; the changelog keeps the old
+# one as history.
+
+# spec: schema-rename-completion — Scenario: Happy path — the tutorial names the current schema
+@test "the tutorial's entry document names the current schema" {
+  local index_html="$SCHEMA/docs/index.html"
+  [ -f "$index_html" ] || { printf 'tutorial index missing\n' >&2; return 1; }
+  # Title and brand name the current schema.
+  grep -q '<title>probatio — the workflow tutorial</title>' "$index_html" || {
+    printf 'index.html <title> does not name the current schema\n' >&2
+    return 1
+  }
+  grep -q '>probatio</a>' "$index_html" || {
+    printf 'index.html brand does not name the current schema\n' >&2
+    return 1
+  }
+  # The body names the schema by its current name.
+  grep -q '<code>probatio</code>' "$index_html" || {
+    printf 'index.html body does not name the current schema\n' >&2
+    return 1
+  }
+}
+
+# spec: schema-rename-completion — Scenario: Edge case — the changelog retains the previous name as history
+@test "the changelog's rename entry keeps the previous name, marked as the pre-rename identity" {
+  local changelog="$SCHEMA/CHANGELOG.md"
+  [ -f "$changelog" ] || return 1
+  local v14_block
+  v14_block="$(awk '/^ 14 /{found=1} found{print} /^ 13 /{if(found)exit}' "$changelog")"
+  [ -n "$v14_block" ] || { printf 'could not extract v14 changelog block\n' >&2; return 1; }
+  # The previous name appears in the rename entry...
+  echo "$v14_block" | grep -q 'verified-scala3' || {
+    printf 'v14 entry does not record the previous name\n' >&2
+    return 1
+  }
+  # ...marked as the pre-rename identity, not presented as current.
+  echo "$v14_block" | grep -qi 'former\|pre-rename\|renamed' || {
+    printf 'v14 entry names the previous identity without a historical marker\n' >&2
+    return 1
+  }
 }

@@ -53,7 +53,7 @@ class IronErrorHierarchySpec extends HedgehogSuite:
     // reliably extract information. The "valid input produces no ConfigError"
     // behavior is tested in the specs that implement refinement boundaries
     // (memory-orchestration-hook, tools-node, etc.).
-    val e: ConfigError = ConfigError("recallK", "-1", "NonNegative")
+    val e: ConfigError   = ConfigError("recallK", "-1", "NonNegative")
     val expected: String = "Invalid recallK: '-1' violates NonNegative"
     assertEquals(e.message, expected)
 
@@ -80,7 +80,7 @@ class IronErrorHierarchySpec extends HedgehogSuite:
   test("GraphCompilationError is recognized as AdkError variant with message containing errors"):
     // spec: add-iron-refined-types/error-hierarchy-dedup — Scenario: GraphCompilationError is an AdkError variant
     val errors: List[AdkError] = List(NodeNotFoundError("foo"), EdgeValidationError("a", "b", "missing"))
-    val e: AdkError = GraphCompilationError(errors)
+    val e: AdkError            = GraphCompilationError(errors)
     e match
       case gce: GraphCompilationError =>
         val msg: String = gce.message
@@ -114,7 +114,7 @@ class IronErrorHierarchySpec extends HedgehogSuite:
     // correctly receive the new variants. The exhaustiveness escalation is
     // verified via Ring 0 (sbt compile).
     val configErr: AdkError = ConfigError("f", "v", "c")
-    val graphErr: AdkError = GraphCompilationError(List(NodeNotFoundError("x")))
+    val graphErr: AdkError  = GraphCompilationError(List(NodeNotFoundError("x")))
     val configResult: String = configErr match
       case _: AgentInterruptedException => "interrupt"
       case _: ConfigError               => "config"
@@ -135,17 +135,18 @@ class IronErrorHierarchySpec extends HedgehogSuite:
     // Generator strategy: Gen.string(Gen.alpha, Range.linear(1, 20)) for
     // field/constraint; Gen.string(Gen.alphaNum, Range.linear(1, 20)) for
     // invalidValue — constructive, covers single-char and multi-char names.
-    val fieldGen: Gen[String] = Gen.string(Gen.alpha, Range.linear(1, 20))
+    val fieldGen: Gen[String]        = Gen.string(Gen.alpha, Range.linear(1, 20))
     val invalidValueGen: Gen[String] = Gen.string(Gen.alphaNum, Range.linear(1, 20))
-    val constraintGen: Gen[String] = Gen.string(Gen.alpha, Range.linear(1, 20))
+    val constraintGen: Gen[String]   = Gen.string(Gen.alpha, Range.linear(1, 20))
     (for
-      field <- fieldGen
+      field        <- fieldGen
       invalidValue <- invalidValueGen
-      constraint <- constraintGen
+      constraint   <- constraintGen
     yield
       val e: ConfigError = ConfigError(field, invalidValue, constraint)
-      val shown: String = summon[Show[AdkError]].show(e)
-      Result.assert(shown.contains(field))
+      val shown: String  = summon[Show[AdkError]].show(e)
+      Result
+        .assert(shown.contains(field))
         .and(Result.assert(shown.contains(invalidValue)))
         .and(Result.assert(shown.contains(constraint)))
     ).forAll

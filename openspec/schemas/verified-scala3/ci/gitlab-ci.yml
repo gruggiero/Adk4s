@@ -1,10 +1,10 @@
-# Gate checks for the verified-scala3 workflow.
+# Gate checks for the probatio workflow.
 # Add as a job to the existing .gitlab-ci.yml, or use standalone.
 #
-# Installs the DECLARED PREREQUISITE SET (schema v12 — see ../hooks/README.md).
+# Installs the DECLARED PREREQUISITE SET (schema v14 — see ../hooks/README.md).
 # Without an install step the shell rings are developer-local only, which is
 # the same opt-in weakness the hooks exist to remove.
-verified-scala3-gate:
+probatio-gate:
   stage: test
   image: alpine/git
   before_script:
@@ -33,7 +33,7 @@ verified-scala3-gate:
     # Ring 3 — the workflow's own shell suites.
     - bats openspec/schemas/verified-scala3/tests/
     - ./openspec/schemas/verified-scala3/scanner/registry-check.sh .
-    - ./openspec/schemas/verified-scala3/scanner/spec-lint.sh .
+    - ./openspec/schemas/verified-scala3/bin/probatio spec-lint .
   rules:
     - changes:
         - "openspec/**/*"

@@ -1,4 +1,4 @@
-/* verified-scala3 tutorial — shared behaviour
+/* probatio tutorial — shared behaviour
    No dependencies. Everything degrades gracefully without JS. */
 (function () {
   "use strict";

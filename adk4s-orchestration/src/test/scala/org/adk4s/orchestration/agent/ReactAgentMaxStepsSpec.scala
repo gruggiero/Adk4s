@@ -12,14 +12,7 @@ import hedgehog.munit.HedgehogSuite
 import munit.CatsEffectSuite
 import org.adk4s.core.component.{ ChatModel, ChatModelConfig }
 import org.adk4s.core.error.ConfigError
-import org.llm4s.llmconnect.model.{
-  AssistantMessage,
-  Completion,
-  Conversation,
-  Message,
-  StreamedChunk,
-  UserMessage
-}
+import org.llm4s.llmconnect.model.{ AssistantMessage, Completion, Conversation, Message, StreamedChunk, UserMessage }
 
 import java.util.UUID
 
@@ -65,17 +58,26 @@ class ReactAgentMaxStepsSpec extends CatsEffectSuite:
   test("Zero maxSteps is rejected with ConfigError"):
     // spec: add-iron-refined-types/react-agent — Scenario: Zero maxSteps is rejected
     val agent: ReactAgent = makeAgent
-    agent.generate(makeMessages, 0).attempt.assertEquals(Left(
-      ConfigError("maxSteps", "0", "Positive")
-    ))
+    agent
+      .generate(makeMessages, 0)
+      .attempt
+      .assertEquals(
+        Left(
+          ConfigError("maxSteps", "0", "Positive")
+        )
+      )
 
   test("Negative maxSteps is rejected with ConfigError"):
     // spec: add-iron-refined-types/react-agent — Scenario: Negative maxSteps is rejected
     val agent: ReactAgent = makeAgent
-    agent.generate(makeMessages, -3).attempt.map {
-      case Left(_: ConfigError) => true
-      case _ => false
-    }.assert
+    agent
+      .generate(makeMessages, -3)
+      .attempt
+      .map {
+        case Left(_: ConfigError) => true
+        case _                    => false
+      }
+      .assert
 
   test("Positive maxSteps enters the loop and completes"):
     // spec: add-iron-refined-types/react-agent — Scenario: Positive maxSteps enters the loop
@@ -96,20 +98,20 @@ class ReactAgentMaxStepsProps extends HedgehogSuite:
     // spec: add-iron-refined-types/react-agent — Property: maxSteps rejects zero and negatives
     val gen: Gen[Int] = Gen.int(Range.linear(-10, 0))
     for n <- gen.forAll
-      yield
-        val agent: ReactAgent = makeAgent
-        val messages: List[Message] = List(UserMessage("Hello"))
-        val result: Either[Throwable, AssistantMessage] =
-          agent.generate(messages, n).attempt.unsafeRunSync()
-        result.isLeft ==== true
+    yield
+      val agent: ReactAgent       = makeAgent
+      val messages: List[Message] = List(UserMessage("Hello"))
+      val result: Either[Throwable, AssistantMessage] =
+        agent.generate(messages, n).attempt.unsafeRunSync()
+      result.isLeft ==== true
 
   property("maxSteps preserves valid-input behavior"):
     // spec: add-iron-refined-types/react-agent — Property: maxSteps refinement preserves valid-input behavior
     val gen: Gen[Int] = Gen.int(Range.linear(1, 20))
     for n <- gen.forAll
-      yield
-        val agent: ReactAgent = makeAgent
-        val messages: List[Message] = List(UserMessage("Hello"))
-        val result: Either[Throwable, String] =
-          agent.generate(messages, n).map(_.content).attempt.unsafeRunSync()
-        result ==== Right("Done")
+    yield
+      val agent: ReactAgent       = makeAgent
+      val messages: List[Message] = List(UserMessage("Hello"))
+      val result: Either[Throwable, String] =
+        agent.generate(messages, n).map(_.content).attempt.unsafeRunSync()
+      result ==== Right("Done")

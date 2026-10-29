@@ -51,17 +51,18 @@ report_with_unresolved() { # $1=count
     '{change:"some-change", baseline:"abc1234", total:($n+1), bound:($n+1), resolved:($n+1), discharged:1, unresolved:$u, unmapped_obligations:[]}'
 }
 
-# CLAUDE_CODE_SESSION_ID is unset here DELIBERATELY. Found during
-# implementation: this suite runs INSIDE a live Claude Code session, which
-# sets a REAL CLAUDE_CODE_SESSION_ID in the ambient environment — and gate.sh
-# correctly prioritises it over VERIFIED_SCALA3_SESSION_ID (by design: it is
-# the verified, harness-native signal). Left ambient, every test's intended
-# session override was silently defeated by the REAL session id, making
-# every call in this suite collide into ONE session regardless of what the
-# test asked for. Unset by default; the one test that verifies the priority
-# order itself sets it back explicitly.
+# CLAUDE_CODE_SESSION_ID reaches no spawned gate: helpers.bash unsets every
+# controlled variable when this suite loads it (spec: hermetic-test-processes).
+# The hazard, found during implementation: this suite runs INSIDE a live
+# Claude Code session, which sets a REAL CLAUDE_CODE_SESSION_ID in the ambient
+# environment — and gate.sh correctly prioritises it over
+# VERIFIED_SCALA3_SESSION_ID (by design: it is the verified, harness-native
+# signal). Left ambient, every test's intended session override was silently
+# defeated by the REAL session id, making every call in this suite collide
+# into ONE session regardless of what the test asked for. The one test that
+# verifies the priority order itself declares it explicitly.
 run_gate() { # extra args after --repo $FX are passed through
-  run env -u CLAUDE_CODE_SESSION_ID "$GATE" --repo "$FX" "$@"
+  run env "$GATE" --repo "$FX" "$@"
 }
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -125,16 +126,8 @@ run_gate() { # extra args after --repo $FX are passed through
 }
 
 # spec: gate-payload — Requirement: the gate is invoked on prompt submission as well as session start
-@test "the harness configuration files register the prompt-submission event" {
-  # Testable half of a manual obligation: the CONFIGURATION names the event.
-  # Whether the harness actually FIRES it is Ring 8 / the README procedure.
-  run cat "$SCHEMA/hooks/adapters/claude.settings.json"
-  assert_contains "$output" "UserPromptSubmit" "Claude Code config names the event"
-  run cat "$SCHEMA/hooks/adapters/devin.hooks.v1.json"
-  assert_contains "$output" "UserPromptSubmit" "Devin config names the event"
-  run cat "$SCHEMA/hooks/adapters/pi/verified-scala3-gate.ts"
-  assert_contains "$output" "before_agent_start" "pi's per-prompt equivalent event"
-}
+# MOVED to shape/gate-payload-shape.bats by spec:oracle-independence: the
+# test asserts over the .ts adapter SOURCE, which is implementation shape.
 
 # ═════════════════════════════════════════════════════════════════════════
 # Requirement: An unchanged payload is not re-injected
@@ -334,7 +327,7 @@ run_gate() { # extra args after --repo $FX are passed through
   run "$GATE" --check-installed --repo "$FX"
   assert_contains "$output" '"installed":true' "heartbeat must persist for the main worktree checkout"
 
-  run env -u CLAUDE_CODE_SESSION_ID "$GATE" --repo "$FX-wt" --event session-start --format text
+  run env "$GATE" --repo "$FX-wt" --event session-start --format text
   assert_status 0 "$status" "the gate never fails from a secondary worktree"
   run "$GATE" --check-installed --repo "$FX-wt"
   assert_contains "$output" '"installed":true' "heartbeat must persist for a secondary worktree checkout too"
@@ -600,4 +593,42 @@ conforms_hookjson() { # $1=json text
         ;;
     esac
   done
+}
+
+# ═════════════════════════════════════════════════════════════════════════
+# spec: jar-launcher-dispatch — a forwarding script reaches the tool with
+# only the archive present
+# ═════════════════════════════════════════════════════════════════════════
+
+# Build a minimal ARCHIVE-ONLY tree: the hook shim, the repository launcher,
+# and the assembly archive — no native executable. The launcher's path
+# arithmetic resolves the tree root four levels above bin/probatio, so the
+# copied layout must preserve it.
+mk_archive_only_tree() {
+  local tree="$BATS_TEST_TMPDIR/archive-only"
+  mkdir -p "$tree/openspec/schemas/verified-scala3/bin" \
+           "$tree/openspec/schemas/verified-scala3/hooks" \
+           "$tree/workflow/cli/target/scala-3.8.4"
+  cp "$SCHEMA/bin/probatio"    "$tree/openspec/schemas/verified-scala3/bin/probatio"
+  cp "$SCHEMA/hooks/gate.sh"   "$tree/openspec/schemas/verified-scala3/hooks/gate.sh"
+  local jars=( "$ROOT"/workflow/cli/target/scala-3.8.4/probatio-cli-assembly-*.jar )
+  # A missing archive is a FAILURE, not a skip — the spec's conformance rule.
+  [ -f "${jars[0]}" ] || { printf 'built archive not found under %s\n' "$ROOT/workflow/cli/target/scala-3.8.4" >&2; return 1; }
+  cp "${jars[0]}" "$tree/workflow/cli/target/scala-3.8.4/"
+  printf '%s\n' "$tree"
+}
+
+# spec: jar-launcher-dispatch — Scenario: Happy path — a forwarding script reaches the tool with only the archive
+@test "the gate forwarding script reaches the tool in an archive-only tree" {
+  local tree
+  tree="$(mk_archive_only_tree)"
+  mk_repo
+  run env "$tree/openspec/schemas/verified-scala3/hooks/gate.sh" --repo "$FX" --event session-start --format text
+  # The gate's OWN status — reaching the tool, not a dispatch failure.
+  [ "$status" -ge 0 ] && [ "$status" -le 2 ] || {
+    printf 'gate through archive exited %s — outside {0,1,2}\n%s\n' "$status" "$output" >&2
+    return 1
+  }
+  assert_not_contains "$output" "unknown subcommand" "the archive's file name must not be read as a tool name"
+  assert_not_contains "$output" "Unable to access jarfile" "the launcher must reach the tool, not the JVM's failure"
 }

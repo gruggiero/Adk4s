@@ -11,7 +11,7 @@ import scala.language.implicitConversions
 
 extension (n: Double | Int)
   def toIntOrLong: Long = n match
-    case i: Int => i.toLong
+    case i: Int    => i.toLong
     case d: Double => d.toLong
 
 class ComponentRunnableTest extends CatsEffectSuite:
@@ -37,9 +37,9 @@ class ComponentRunnableTest extends CatsEffectSuite:
 
     val runnable = tool.asRunnable[ujson.Value, ujson.Value]
 
-    val invokeResult = runnable.invoke(ujson.Num(21))
-    val streamResult = runnable.stream(ujson.Num(21)).compile.toList
-    val collectResult = runnable.collect(Stream.emit(ujson.Num(21)))
+    val invokeResult    = runnable.invoke(ujson.Num(21))
+    val streamResult    = runnable.stream(ujson.Num(21)).compile.toList
+    val collectResult   = runnable.collect(Stream.emit(ujson.Num(21)))
     val transformResult = runnable.transform(Stream.emit(ujson.Num(21))).compile.toList
 
     assertIO(invokeResult, ujson.Num(42))

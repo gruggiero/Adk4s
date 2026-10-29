@@ -80,4 +80,7 @@ class DatasetSpec extends FunSuite:
     val msg: String = error.getMessage
     assert(msg.contains("15"), s"Error message should mention line 15, got: $msg")
     assert(msg.contains("Schema mismatch"), s"Error message should identify schema mismatch, got: $msg")
-    assert(!msg.contains("Malformed JSON"), s"Error message should NOT say 'Malformed JSON' for schema mismatch, got: $msg")
+    assert(
+      !msg.contains("Malformed JSON"),
+      s"Error message should NOT say 'Malformed JSON' for schema mismatch, got: $msg"
+    )

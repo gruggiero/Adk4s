@@ -1,16 +1,17 @@
 package org.adk4s.structured.core.typecontract
 
-/** Typed contract for spec: message-type-dedup
-  *
-  * This file is a COMPILE-ONLY contract. It declares the new type signatures
-  * that the implementation must honor.
-  *
-  * Key change: `Prompt` wraps `Conversation` directly instead of
-  * `Vector[Message]`. The adk4s `Message` case class and `Role` enum are
-  * replaced with deprecated type aliases pointing to the llm4s types.
-  *
-  * spec: message-type-dedup
-  */
+/**
+ * Typed contract for spec: message-type-dedup
+ *
+ * This file is a COMPILE-ONLY contract. It declares the new type signatures
+ * that the implementation must honor.
+ *
+ * Key change: `Prompt` wraps `Conversation` directly instead of
+ * `Vector[Message]`. The adk4s `Message` case class and `Role` enum are
+ * replaced with deprecated type aliases pointing to the llm4s types.
+ *
+ * spec: message-type-dedup
+ */
 
 import org.llm4s.llmconnect.model.{
   AssistantMessage,
@@ -68,7 +69,7 @@ object RefactoredPromptContract:
     def appendToLast(content: String): PromptShape =
       conversation.messages.lastOption match
         case Some(last: UserMessage) =>
-          val updated: UserMessage = UserMessage(last.content + content)
+          val updated: UserMessage           = UserMessage(last.content + content)
           val newMessages: Seq[Llm4sMessage] = conversation.messages.dropRight(1) :+ updated
           PromptShape(Conversation(newMessages))
         case Some(_) =>
@@ -102,10 +103,14 @@ object RefactoredPromptContract:
       single(UserMessage(content))
 
     def simple(systemPrompt: String, userMessage: String): PromptShape =
-      PromptShape(Conversation(Seq(
-        SystemMessage(systemPrompt),
-        UserMessage(userMessage)
-      )))
+      PromptShape(
+        Conversation(
+          Seq(
+            SystemMessage(systemPrompt),
+            UserMessage(userMessage)
+          )
+        )
+      )
 
 // ─────────────────────────────────────────────────────────────────
 // CONTRACT 3: withOutputFormat appends schema to last user message
@@ -114,9 +119,10 @@ object RefactoredPromptContract:
 object WithOutputFormatContract:
   import RefactoredPromptContract.*
 
-  /** Appends the schema block to the last UserMessage in the conversation.
-    * If no UserMessage exists, appends a new UserMessage with the schema block.
-    */
+  /**
+   * Appends the schema block to the last UserMessage in the conversation.
+   * If no UserMessage exists, appends a new UserMessage with the schema block.
+   */
   def withOutputFormat[A](prompt: PromptShape, schemaBlock: String): PromptShape =
     val messages: Seq[Llm4sMessage] = prompt.conversation.messages
     messages.lastOption match

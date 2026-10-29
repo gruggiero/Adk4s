@@ -13,7 +13,7 @@ import smithy4s.schema.Schema as Smithy4sSchema
 class OutputFormatRenderingSpec extends HedgehogSuite:
 
   given s4sInt: Smithy4sSchema[Int] = smithy4s.Schema.int
-  given schemaInt: Schema[Int] = Schema.instance("integer Integer")(using s4sInt)
+  given schemaInt: Schema[Int]      = Schema.instance("integer Integer")(using s4sInt)
 
   final case class DummyObj(a: Int)
   given s4sDummyObj: Smithy4sSchema[DummyObj] = smithy4s.Schema.recursive {

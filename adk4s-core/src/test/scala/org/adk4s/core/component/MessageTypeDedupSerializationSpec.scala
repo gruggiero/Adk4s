@@ -28,7 +28,7 @@ class MessageTypeDedupSerializationSpec extends HedgehogSuite:
       ),
       iterationCount = 3
     )
-    val json: String = write[AgentToolState](state)
+    val json: String            = write[AgentToolState](state)
     val decoded: AgentToolState = read[AgentToolState](json)
     assertEquals(decoded.messages.length, 3)
     assertEquals(decoded.messages(0).role, "user")
@@ -47,7 +47,7 @@ class MessageTypeDedupSerializationSpec extends HedgehogSuite:
 
   test("Old checkpoint JSON format is still readable as AgentToolState") {
     // spec: message-type-dedup — Scenario: Old checkpoint format still readable
-    val oldJson: String = """{"messages":[{"role":"user","content":"hello"}],"iterationCount":1}"""
+    val oldJson: String         = """{"messages":[{"role":"user","content":"hello"}],"iterationCount":1}"""
     val decoded: AgentToolState = read[AgentToolState](oldJson)
     assertEquals(decoded.messages.length, 1)
     assertEquals(decoded.messages(0).role, "user")
@@ -64,7 +64,7 @@ class MessageTypeDedupSerializationSpec extends HedgehogSuite:
     // Generator strategy: constructive — genRoleString and genContent.
     // Classify by role.
     val genRoleString: Gen[String] = Gen.element1("user", "assistant", "system", "tool")
-    val genContent: Gen[String] = Gen.string(Gen.alphaNum, Range.linear(0, 100))
+    val genContent: Gen[String]    = Gen.string(Gen.alphaNum, Range.linear(0, 100))
 
     val genSerializableMessage: Gen[SerializableMessage] =
       for

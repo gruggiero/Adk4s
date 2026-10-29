@@ -212,8 +212,13 @@ object TestHelpers:
     def remember(episode: Episode): IO[EpisodeOutcome] =
       rememberCalls.update(_ :+ episode) *> underlying.remember(episode)
 
-    def recall(query: String, k: Int, scope: Option[TemporalScope] = None): IO[List[MemoryHit]] =
-      recallCalls.update(_ :+ RecallCall(query, k, scope)) *> underlying.recall(query, k, scope)
+    def recall(
+        query: String,
+        k: Int,
+        scope: Option[TemporalScope] = None,
+        groupId: Option[String] = None
+    ): IO[List[MemoryHit]] =
+      recallCalls.update(_ :+ RecallCall(query, k, scope)) *> underlying.recall(query, k, scope, groupId)
 
     /** Observe the recorded recall calls. */
     def recordedRecallCalls: IO[List[RecallCall]] = recallCalls.get.map(_.toList)

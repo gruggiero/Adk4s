@@ -7,7 +7,7 @@ import hedgehog.Gen
 import hedgehog.Range
 import hedgehog.Syntax
 import hedgehog.munit.HedgehogSuite
-import io.github.iltotore.iron.{:|, refineEither}
+import io.github.iltotore.iron.{ :|, refineEither }
 import io.github.iltotore.iron.constraint.numeric.Positive
 
 @SuppressWarnings(Array("org.wartremover.warts.Null"))
@@ -19,17 +19,17 @@ class StructuredLLMConfigSpec extends HedgehogSuite:
     // spec: add-iron-refined-types/structured-llm — Property: maxParseAttempts refineEither round-trips
     val gen: Gen[Int] = Gen.int(Range.linear(1, 10))
     for n <- gen.forAll
-      yield
-        val result: Either[String, Int :| Positive] = n.refineEither[Positive]
-        result.map { (refined: Int :| Positive) => (refined: Int) } ==== Right(n)
+    yield
+      val result: Either[String, Int :| Positive] = n.refineEither[Positive]
+      result.map((refined: Int :| Positive) => refined: Int) ==== Right(n)
 
   property("maxParseAttempts rejects zero and negatives"):
     // spec: add-iron-refined-types/structured-llm — Property: maxParseAttempts rejects zero and negatives
     val gen: Gen[Int] = Gen.int(Range.linear(-10, 0))
     for n <- gen.forAll
-      yield
-        val result: Either[String, Int :| Positive] = n.refineEither[Positive]
-        result.isLeft ==== true
+    yield
+      val result: Either[String, Int :| Positive] = n.refineEither[Positive]
+      result.isLeft ==== true
 
   // ── Scenario tests ───────────────────────────────────────────────────────
 

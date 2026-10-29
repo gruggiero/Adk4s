@@ -10,7 +10,7 @@ class ToolCallingChatModelSpec extends CatsEffectSuite:
 
   test("Get tools list") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
+    val model      = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
 
     val tools = model.tools
 
@@ -19,10 +19,10 @@ class ToolCallingChatModelSpec extends CatsEffectSuite:
 
   test("Replace tools immutably") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
+    val model      = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
 
     val toolsBefore = model.tools
-    val newModel = model.withTools(Seq.empty)
+    val newModel    = model.withTools(Seq.empty)
 
     assertEquals(toolsBefore.length, 0, "Original should have 0 tools")
     assertEquals(model.tools.length, 0, "Original should still have 0 tools")
@@ -31,7 +31,7 @@ class ToolCallingChatModelSpec extends CatsEffectSuite:
 
   test("Add tools to existing model") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
+    val model      = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
 
     val newModel = model.addTools()
 
@@ -41,9 +41,9 @@ class ToolCallingChatModelSpec extends CatsEffectSuite:
 
   test("Generate without tools (base method)") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
+    val model      = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
 
-    val conv = Conversation(List(UserMessage("Just say hello")))
+    val conv   = Conversation(List(UserMessage("Just say hello")))
     val result = model.generate(conv).attempt.unsafeRunSync()
 
     assert(result.isRight, "Should complete without tools")
@@ -51,9 +51,9 @@ class ToolCallingChatModelSpec extends CatsEffectSuite:
 
   test("Create ToolCallingChatModel from LLM4S client") {
     val mockClient = new ComponentMockLLMClient()
-    val model = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
+    val model      = ToolCallingChatModel.fromLlm4s[IO](mockClient, Seq.empty)
 
-    val conv = Conversation(List(UserMessage("Test")))
+    val conv   = Conversation(List(UserMessage("Test")))
     val result = model.generate(conv).attempt.unsafeRunSync()
 
     assert(result.isRight, "Should wrap client successfully")

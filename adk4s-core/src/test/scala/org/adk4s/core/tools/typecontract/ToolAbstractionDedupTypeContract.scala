@@ -1,13 +1,14 @@
 package org.adk4s.core.tools.typecontract
 
-/** Typed contract for spec: tool-abstraction-dedup
-  *
-  * This file is a COMPILE-ONLY contract. It declares the new type signatures
-  * and method signatures that the implementation must honor. Method bodies
-  * are `???` — they will be promoted to main sources during Step 3.
-  *
-  * spec: tool-abstraction-dedup
-  */
+/**
+ * Typed contract for spec: tool-abstraction-dedup
+ *
+ * This file is a COMPILE-ONLY contract. It declares the new type signatures
+ * and method signatures that the implementation must honor. Method bodies
+ * are `???` — they will be promoted to main sources during Step 3.
+ *
+ * spec: tool-abstraction-dedup
+ */
 
 import org.adk4s.core.tools.StructuredToolFunction
 import org.adk4s.core.tools.ToolSchema
@@ -28,12 +29,13 @@ import upickle.default.*
 
 object ToToolFunctionContract:
 
-  /** Synthesizes a llm4s ToolFunction from a StructuredToolFunction.
-    *
-    * The ToolFunction's schema is built from the StructuredToolFunction's
-    * inputSchema.jsonSchema. The handler decodes args via inputSchema.decoder,
-    * calls the structured handler, and encodes the result via outputSchema.encoder.
-    */
+  /**
+   * Synthesizes a llm4s ToolFunction from a StructuredToolFunction.
+   *
+   * The ToolFunction's schema is built from the StructuredToolFunction's
+   * inputSchema.jsonSchema. The handler decodes args via inputSchema.decoder,
+   * calls the structured handler, and encodes the result via outputSchema.encoder.
+   */
   def synthesize[I, O](stf: StructuredToolFunction[I, O]): ToolFunction[ujson.Value, ujson.Value] =
     // SchemaDefinition is sealed — use ObjectSchema (permissive; real validation
     // is in the handler via inputSchema.decoder)
@@ -68,19 +70,21 @@ object RefactoredToolWrapperContract:
   def fromToolFunction[T, R](tf: ToolFunction[T, R]): ToolWrapperShape =
     ToolWrapperShape(tf)
 
-  /** Constructs a ToolWrapper from a StructuredToolFunction
-    * via the synthesized toToolFunction.
-    */
+  /**
+   * Constructs a ToolWrapper from a StructuredToolFunction
+   * via the synthesized toToolFunction.
+   */
   def fromStructuredToolFunction[I, O](
     stf: StructuredToolFunction[I, O]
   ): ToolWrapperShape =
     ToolWrapperShape(ToToolFunctionContract.synthesize(stf))
 
-  /** The refactored ToolWrapper shape — single toolFunction field.
-    * This mirrors the target signature of `ToolWrapper` in main sources.
-    */
+  /**
+   * The refactored ToolWrapper shape — single toolFunction field.
+   * This mirrors the target signature of `ToolWrapper` in main sources.
+   */
   final case class ToolWrapperShape(toolFunction: ToolFunction[?, ?]):
-    def name: String = toolFunction.name
+    def name: String        = toolFunction.name
     def description: String = toolFunction.description
     def execute(args: Value): Either[Throwable, Value] =
       toolFunction.execute(args).left.map {

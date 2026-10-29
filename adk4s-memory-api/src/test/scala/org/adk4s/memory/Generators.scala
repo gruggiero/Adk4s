@@ -83,13 +83,15 @@ object Generators:
 
   /** Generates a small payload map (0..3 entries). */
   val genPayload: Gen[Map[String, String]] =
-    Gen.list(
-      for
-        k <- Gen.string(Gen.alphaNum, Range.linear(1, 5))
-        v <- Gen.string(Gen.alphaNum, Range.linear(1, 5))
-      yield (k, v),
-      Range.linear(0, 3)
-    ).map(_.toMap)
+    Gen
+      .list(
+        for
+          k <- Gen.string(Gen.alphaNum, Range.linear(1, 5))
+          v <- Gen.string(Gen.alphaNum, Range.linear(1, 5))
+        yield (k, v),
+        Range.linear(0, 3)
+      )
+      .map(_.toMap)
 
   /** Generates a `MemoryHit` with constructive fields. */
   val genHit: Gen[MemoryHit] =

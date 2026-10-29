@@ -20,11 +20,10 @@ class NodeKeySpec extends HedgehogSuite:
 
   property("NodeKey.refineEither round-trips for valid inputs") {
     val validKeyGen: Gen[String] =
-      Gen.string(Gen.alphaNum, Range.linear(1, 30))
+      Gen
+        .string(Gen.alphaNum, Range.linear(1, 30))
         .filter(s => s != "__start__" && s != "__end__")
-    validKeyGen.forAll.map { (s: String) =>
-      NodeKey.refineEither(s).map(_.value) ==== Right(s)
-    }
+    validKeyGen.forAll.map((s: String) => NodeKey.refineEither(s).map(_.value) ==== Right(s))
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -34,14 +33,16 @@ class NodeKeySpec extends HedgehogSuite:
 
   property("NodeKey.refineEither rejects empty and reserved inputs") {
     val invalidGen: Gen[String] = Gen.choice1(
-      Gen.constant(""), Gen.constant("__start__"), Gen.constant("__end__")
+      Gen.constant(""),
+      Gen.constant("__start__"),
+      Gen.constant("__end__")
     )
     invalidGen.forAll.map { (s: String) =>
       val result: Either[ConfigError, NodeKey] = NodeKey.refineEither(s)
       result match
         case Left(err: ConfigError) =>
-          val fieldOk: Boolean = err.field == "NodeKey"
-          val valueOk: Boolean = err.invalidValue == s
+          val fieldOk: Boolean      = err.field == "NodeKey"
+          val valueOk: Boolean      = err.invalidValue == s
           val constraintOk: Boolean = err.constraint == "NonEmpty & Not[Reserved]"
           (fieldOk && valueOk && constraintOk) ==== true
         case Right(_) => Result.failure
@@ -58,7 +59,7 @@ class NodeKeySpec extends HedgehogSuite:
       Gen.element1(ReservedNodeKey.Start, ReservedNodeKey.End)
     reservedGen.forAll.map { (r: ReservedNodeKey) =>
       val isStart: Boolean = r == ReservedNodeKey.Start && r.value == "__start__"
-      val isEnd: Boolean = r == ReservedNodeKey.End && r.value == "__end__"
+      val isEnd: Boolean   = r == ReservedNodeKey.End && r.value == "__end__"
       (isStart || isEnd) ==== true
     }
   }
@@ -70,7 +71,8 @@ class NodeKeySpec extends HedgehogSuite:
 
   property("Eq compares by underlying value") {
     val validKeyGen: Gen[String] =
-      Gen.string(Gen.alphaNum, Range.linear(1, 30))
+      Gen
+        .string(Gen.alphaNum, Range.linear(1, 30))
         .filter(s => s != "__start__" && s != "__end__")
     validKeyGen.forAll.map { (s: String) =>
       val k: NodeKey = NodeKey.either(s).fold(_ => NodeKey("fallback"), identity)
@@ -80,7 +82,8 @@ class NodeKeySpec extends HedgehogSuite:
 
   property("Show renders the underlying value") {
     val validKeyGen: Gen[String] =
-      Gen.string(Gen.alphaNum, Range.linear(1, 30))
+      Gen
+        .string(Gen.alphaNum, Range.linear(1, 30))
         .filter(s => s != "__start__" && s != "__end__")
     validKeyGen.forAll.map { (s: String) =>
       val k: NodeKey = NodeKey.either(s).fold(_ => NodeKey("fallback"), identity)

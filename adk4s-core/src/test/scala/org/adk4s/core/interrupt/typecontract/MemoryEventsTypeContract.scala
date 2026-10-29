@@ -23,11 +23,12 @@ package typecontract
 //  Status: [x] Compiles via adk4s-core/Test/compile  [ ] Human-approved
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Type contract test suite for the two new `AgentEvent` variants.
-  *
-  * No behavioral tests here (those live in the test oracle:
-  * `MemoryEventsSpec` in adk4s-orchestration).
-  */
+/**
+ * Type contract test suite for the two new `AgentEvent` variants.
+ *
+ * No behavioral tests here (those live in the test oracle:
+ * `MemoryEventsSpec` in adk4s-orchestration).
+ */
 class MemoryEventsTypeContract extends munit.FunSuite:
 
   // ── Signature verification (compile-only, no runtime invocation) ──────────

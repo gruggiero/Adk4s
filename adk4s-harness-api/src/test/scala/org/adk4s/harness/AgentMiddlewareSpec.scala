@@ -410,7 +410,7 @@ class AgentMiddlewareSpec extends HedgehogSuite:
           val cell: StateCell[String] =
             StateCell[String](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), "data", "")
           new AgentMiddleware[IO]:
-            val name: MiddlewareName                    = MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity)
+            val name: MiddlewareName = MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity)
             override def stateCells: List[StateCell[?]] = List(cell)
             override def promptSections(state: HarnessState): List[PromptSection] =
               List(PromptSection(s"section-$i", state.get(cell)))

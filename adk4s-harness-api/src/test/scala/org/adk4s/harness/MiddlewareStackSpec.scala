@@ -486,9 +486,11 @@ class MiddlewareStackSpec extends HedgehogSuite:
       given upickle.default.ReadWriter[Int] = upickle.default.readwriter[Int]
       // Each middleware has its own unique cell (no duplicates)
       val cells: List[StateCell[Int]] =
-        (0 until stackSize).toList.map(i => StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), "val", 0))
+        (0 until stackSize).toList.map(i =>
+          StateCell[Int](MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity), "val", 0)
+        )
       def tracingMW(i: Int): AgentMiddleware[IO] = new AgentMiddleware[IO]:
-        val name: MiddlewareName                    = MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity)
+        val name: MiddlewareName = MiddlewareName.refineEither(s"m$i").fold(err => throw err, identity)
         override def stateCells: List[StateCell[?]] = List(cells(i))
         override def beforeAgent(state: HarnessState): IO[HarnessState] =
           IO.pure(state.update(cells(i))(_ + 1))
@@ -520,9 +522,10 @@ class MiddlewareStackSpec extends HedgehogSuite:
       given upickle.default.ReadWriter[Int] = upickle.default.readwriter[Int]
       // Each middleware has its own unique cell
       def mkMiddleware(prefix: String, i: Int): (StateCell[Int], AgentMiddleware[IO]) =
-        val cell: StateCell[Int] = StateCell[Int](MiddlewareName.refineEither(s"$prefix$i").fold(err => throw err, identity), "val", 0)
+        val cell: StateCell[Int] =
+          StateCell[Int](MiddlewareName.refineEither(s"$prefix$i").fold(err => throw err, identity), "val", 0)
         val mw: AgentMiddleware[IO] = new AgentMiddleware[IO]:
-          val name: MiddlewareName                    = MiddlewareName.refineEither(s"$prefix$i").fold(err => throw err, identity)
+          val name: MiddlewareName = MiddlewareName.refineEither(s"$prefix$i").fold(err => throw err, identity)
           override def stateCells: List[StateCell[?]] = List(cell)
           override def beforeAgent(state: HarnessState): IO[HarnessState] =
             IO.pure(state.update(cell)(_ + 1))

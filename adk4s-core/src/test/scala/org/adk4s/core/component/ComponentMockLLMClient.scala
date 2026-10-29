@@ -17,13 +17,15 @@ class ComponentMockLLMClient extends LLMClient:
     options: CompletionOptions
   ): Result[Completion] =
     lastOptions.set(Some(options))
-    Right(Completion(
-      id = "mock-id",
-      content = "Mock completion",
-      created = System.currentTimeMillis(),
-      model = "test-model",
-      message = AssistantMessage(Some("Mock completion"))
-    ))
+    Right(
+      Completion(
+        id = "mock-id",
+        content = "Mock completion",
+        created = System.currentTimeMillis(),
+        model = "test-model",
+        message = AssistantMessage(Some("Mock completion"))
+      )
+    )
 
   override def streamComplete(
     conversation: Conversation,
@@ -37,10 +39,12 @@ class ComponentMockLLMClient extends LLMClient:
       finishReason = None
     )
     onChunk(chunk)
-    Right(Completion(
-      id = "mock-id",
-      content = "Mock chunk1",
-      created = System.currentTimeMillis(),
-      model = "test-model",
-      message = AssistantMessage(Some("Mock chunk1"))
-    ))
+    Right(
+      Completion(
+        id = "mock-id",
+        content = "Mock chunk1",
+        created = System.currentTimeMillis(),
+        model = "test-model",
+        message = AssistantMessage(Some("Mock chunk1"))
+      )
+    )

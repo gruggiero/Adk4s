@@ -56,7 +56,7 @@ object RecordReplayExample extends IOApp.Simple:
   // Wraps a ChatModel[IO] with an atomic call counter so the test can
   // verify that the second run makes zero underlying calls.
 
-  private final class CallCountingModel(
+  final private class CallCountingModel(
     underlying: ChatModel[IO],
     counter: Ref[IO, Int]
   ) extends ChatModel[IO]:
@@ -112,9 +112,14 @@ object RecordReplayExample extends IOApp.Simple:
     val turn3: Completion = Completion(
       id = s"det-$seed-2",
       created = 0L,
-      content = "Based on the weather in Boston and the Italian restaurant I found, I recommend visiting Giuseppe's on a sunny day. Enjoy your meal!",
+      content =
+        "Based on the weather in Boston and the Italian restaurant I found, I recommend visiting Giuseppe's on a sunny day. Enjoy your meal!",
       model = "deterministic-test-model",
-      message = AssistantMessage(Some("Based on the weather in Boston and the Italian restaurant I found, I recommend visiting Giuseppe's on a sunny day. Enjoy your meal!"))
+      message = AssistantMessage(
+        Some(
+          "Based on the weather in Boston and the Italian restaurant I found, I recommend visiting Giuseppe's on a sunny day. Enjoy your meal!"
+        )
+      )
     )
     List(turn1, turn2, turn3)
 
@@ -174,12 +179,12 @@ object RecordReplayExample extends IOApp.Simple:
       )
     )
     val messages: List[Message] = List(UserMessage("Hello"))
-    val tempDir: IO[String] = IO.blocking(java.nio.file.Files.createTempDirectory("rr-zero").toString)
+    val tempDir: IO[String]     = IO.blocking(java.nio.file.Files.createTempDirectory("rr-zero").toString)
     tempDir.flatMap { dir =>
       val recorderPath: Path = Path(dir) / "records.jsonl"
       Recorder.file[IO](recorderPath).use { recorder =>
         for
-          counter <- Ref.of[IO, Int](0)
+          counter  <- Ref.of[IO, Int](0)
           detModel <- DeterministicChatModel(seed, script)
           countingModel = new CallCountingModel(detModel, counter)
           recordedModel = RecordedChatModel[IO](countingModel, recorder)
@@ -191,12 +196,12 @@ object RecordReplayExample extends IOApp.Simple:
           )
           // First run — populates the recorder
           firstOutput <- agent.generate(messages, maxSteps = 5).map(_.content)
-          firstCalls <- counter.get
+          firstCalls  <- counter.get
           // Reset counter for second run
           _ <- counter.set(0)
           // Second run — should hit cache, zero underlying calls
           secondOutput <- agent.generate(messages, maxSteps = 5).map(_.content)
-          secondCalls <- counter.get
+          secondCalls  <- counter.get
         yield ZeroCallResult(firstCalls, secondCalls, firstOutput, secondOutput)
       }
     }
@@ -211,7 +216,7 @@ object RecordReplayExample extends IOApp.Simple:
       val recorderPath: Path = Path(dir) / "records.jsonl"
       Recorder.file[IO](recorderPath).use { recorder =>
         for
-          counter <- Ref.of[IO, Int](0)
+          counter  <- Ref.of[IO, Int](0)
           detModel <- DeterministicChatModel(seed, buildScript)
           countingModel = new CallCountingModel(detModel, counter)
           recordedModel = RecordedChatModel[IO](countingModel, recorder)
@@ -239,21 +244,33 @@ object RecordReplayExample extends IOApp.Simple:
 
   def run: IO[Unit] =
     for
-      _ <- IO.println("=== RecordReplay Example ===")
-      _ <- IO.println("")
-      _ <- IO.println("Scenario 1: Zero-call replay (single-turn)")
+      _          <- IO.println("=== RecordReplay Example ===")
+      _          <- IO.println("")
+      _          <- IO.println("Scenario 1: Zero-call replay (single-turn)")
       zeroResult <- runZeroCallReplay
-      _ <- IO.println(s"  First run:  ${zeroResult.firstRunCalls} underlying call(s), output: \"${zeroResult.firstOutput}\"")
-      _ <- IO.println(s"  Second run: ${zeroResult.secondRunCalls} underlying call(s), output: \"${zeroResult.secondOutput}\"")
+      _ <- IO.println(
+        s"  First run:  ${zeroResult.firstRunCalls} underlying call(s), output: \"${zeroResult.firstOutput}\""
+      )
+      _ <- IO.println(
+        s"  Second run: ${zeroResult.secondRunCalls} underlying call(s), output: \"${zeroResult.secondOutput}\""
+      )
       _ <- IO.println(s"  Zero-call replay: ${if zeroResult.secondRunCalls == 0 then "PASS" else "FAIL"}")
-      _ <- IO.println(s"  Output match: ${if zeroResult.firstOutput == zeroResult.secondOutput then "PASS" else "FAIL"}")
-      _ <- IO.println("")
-      _ <- IO.println("Scenario 2: Multi-turn full cache hit (3 turns, tool calls in turns 1 and 2)")
+      _ <- IO.println(
+        s"  Output match: ${if zeroResult.firstOutput == zeroResult.secondOutput then "PASS" else "FAIL"}"
+      )
+      _           <- IO.println("")
+      _           <- IO.println("Scenario 2: Multi-turn full cache hit (3 turns, tool calls in turns 1 and 2)")
       multiResult <- runMultiTurnReplay
-      _ <- IO.println(s"  First run:  ${multiResult.firstRunCalls} underlying call(s), output: \"${multiResult.firstOutput}\"")
-      _ <- IO.println(s"  Second run: ${multiResult.secondRunCalls} underlying call(s), output: \"${multiResult.secondOutput}\"")
+      _ <- IO.println(
+        s"  First run:  ${multiResult.firstRunCalls} underlying call(s), output: \"${multiResult.firstOutput}\""
+      )
+      _ <- IO.println(
+        s"  Second run: ${multiResult.secondRunCalls} underlying call(s), output: \"${multiResult.secondOutput}\""
+      )
       _ <- IO.println(s"  Full cache hit: ${if multiResult.secondRunCalls == 0 then "PASS" else "FAIL"}")
-      _ <- IO.println(s"  Output match: ${if multiResult.firstOutput == multiResult.secondOutput then "PASS" else "FAIL"}")
+      _ <- IO.println(
+        s"  Output match: ${if multiResult.firstOutput == multiResult.secondOutput then "PASS" else "FAIL"}"
+      )
       _ <- IO.println("")
       _ <- IO.println("Scenario 3: Runs without API key")
       _ <- IO.println("  (Example completed using deterministic model double — no API key needed)")

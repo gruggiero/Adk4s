@@ -199,8 +199,8 @@ object NormalizationModel:
       case Nil() => acc
       case Cons(h, t) =>
         h match {
-          case UserMsg(_)   => pairingsHelper(t, idx + BigInt(1), acc)
-          case SystemMsg(_) => pairingsHelper(t, idx + BigInt(1), acc)
+          case UserMsg(_)                   => pairingsHelper(t, idx + BigInt(1), acc)
+          case SystemMsg(_)                 => pairingsHelper(t, idx + BigInt(1), acc)
           case AssistantMsg(_, toolCallIds) =>
             // Record each tool-call id with the assistant message index
             val newPairs: List[(BigInt, BigInt, BigInt)] =
@@ -248,10 +248,8 @@ object NormalizationModel:
     acc match {
       case Nil() => Nil()
       case Cons((a, r, id), t) =>
-        if id == toolCallId && r == BigInt(-1) then
-          Cons((a, replyIdx, id), t)
-        else
-          Cons((a, r, id), matchReply(t, replyIdx, toolCallId))
+        if id == toolCallId && r == BigInt(-1) then Cons((a, replyIdx, id), t)
+        else Cons((a, r, id), matchReply(t, replyIdx, toolCallId))
     }
   }
 
@@ -299,9 +297,9 @@ object NormalizationModel:
   @pure
   def orderPreservationLemma(conv: List[Msg]): Boolean = {
     val normalized: List[Msg] = normalize(conv)
-    val allIds: List[BigInt] = extractAllCallIds(normalized)
-    val positional: Boolean = isPositional(allIds, BigInt(0))
-    val pairsMatch: Boolean = pairsReferConsistently(normalized)
+    val allIds: List[BigInt]  = extractAllCallIds(normalized)
+    val positional: Boolean   = isPositional(allIds, BigInt(0))
+    val pairsMatch: Boolean   = pairsReferConsistently(normalized)
     positional && pairsMatch
   }
 

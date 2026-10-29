@@ -9,7 +9,7 @@ import org.adk4s.core.component.InvokableTool
 import org.adk4s.core.component.Tool
 import org.adk4s.core.error.{ AgentInterruptedException, CheckpointNotFoundError }
 import org.adk4s.core.interrupt.{ AgentEventEmitter, InterruptResult, InterruptSignal, AddressSegment }
-import org.adk4s.orchestration.interrupt.{CheckpointStore, InMemoryCheckpointStore}
+import org.adk4s.orchestration.interrupt.{ CheckpointStore, InMemoryCheckpointStore }
 import org.llm4s.llmconnect.model.{ AssistantMessage, Completion, Conversation, Message, StreamedChunk, UserMessage }
 import fs2.Stream
 

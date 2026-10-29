@@ -68,7 +68,7 @@ EOF
 run_gate_tool_call() { # $@ = args after --repo $FX
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="test-session" \
@@ -132,7 +132,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   mk_repo
   write_phase "oracle"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$PROD_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$PROD_PATH" --format text
   assert_status 2 "$status" "a production edit in oracle phase must be blocked (text format = exit 2)"
   assert_contains "$output" "oracle" "the reason must contain the word oracle"
   assert_contains "$output" "$SPEC" "the reason must name the spec"
@@ -144,7 +144,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   mk_repo
   write_phase "oracle"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$TEST_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$TEST_PATH" --format text
   assert_status 0 "$status" "a test edit in oracle phase must be allowed"
   assert_not_contains "$output" "block" "a test edit must not produce a block decision"
 }
@@ -154,7 +154,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   mk_repo
   write_phase "oracle"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$ARTIFACT_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$ARTIFACT_PATH" --format text
   assert_status 0 "$status" "a change-artifact edit in oracle phase must be allowed"
   assert_not_contains "$output" "block" "a change-artifact edit must not produce a block decision"
 }
@@ -164,7 +164,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   mk_repo
   write_phase "oracle"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$TOOLING_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$TOOLING_PATH" --format text
   assert_status 0 "$status" "a workflow-tooling edit in oracle phase must be allowed"
   assert_not_contains "$output" "block" "a workflow-tooling edit must not produce a block decision"
 }
@@ -181,7 +181,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   baseline="$(cd "$FX" && git rev-parse HEAD)"
   write_ledger_row 1 "$baseline"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$PROD_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$PROD_PATH" --format text
   assert_status 0 "$status" "a RED run at an ancestor baseline must advance the phase to implementation, allowing the edit"
   # Assert the TRANSITION happened — this is the new behavior that only the
   # tool-call event produces. Without it, the phase file stays "oracle" (RED).
@@ -204,7 +204,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   baseline="$(cd "$FX" && git rev-parse HEAD)"
   write_ledger_row 0 "$baseline"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$PROD_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$PROD_PATH" --format text
   assert_status 2 "$status" "a green run must NOT advance the phase from oracle — the edit must still be blocked"
 }
 
@@ -216,7 +216,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   # Actually: use a bogus baseline that is not an ancestor of HEAD
   write_ledger_row 1 "0000000000000000000000000000000000000000"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$PROD_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$PROD_PATH" --format text
   assert_status 2 "$status" "a row at a non-ancestor (stale) baseline must not advance the phase — the edit must be blocked"
 }
 
@@ -226,7 +226,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   write_phase "oracle"
   # No ledger rows written
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$PROD_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$PROD_PATH" --format text
   assert_status 2 "$status" "with no ledger row the phase must remain oracle — the edit must be blocked"
 }
 
@@ -243,7 +243,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   write_ledger_row 1 "$baseline"
   write_ledger_row 0 "$baseline"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$PROD_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$PROD_PATH" --format text
   assert_status 0 "$status" "a green run after a red run must allow the edit (phase advances to verified)"
   # Assert the TRANSITION to "verified" happened — new behavior only the
   # tool-call event produces. Without it, the phase file stays "implementation" (RED).
@@ -267,7 +267,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   # Only a green row, no red row — this is the inversion the gate exists to prevent
   write_ledger_row 0 "$baseline"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$PROD_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$PROD_PATH" --format text
   # In implementation phase, the edit is allowed (implementation phase allows edits);
   # but the phase must NOT transition to verified. The key assertion is that the
   # gate does not claim "verified" status. Since implementation allows edits, this
@@ -297,7 +297,7 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   # A RED row but with ring "R8" (adversarial review), not "R3" (test run)
   write_ledger_row 1 "$baseline" "R8"
   with_ledger
-  run_gate_tool_call --event tool-call --file "$FX/$PROD_PATH" --format text
+  run_gate_tool_call --event tool-call --tool Edit --file "$FX/$PROD_PATH" --format text
   assert_status 2 "$status" "a non-R3 ring row must NOT advance the phase — only test-execution evidence (R3) counts"
 }
 
@@ -312,11 +312,11 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   # No git init — git rev-parse --absolute-git-dir will fail, STATE_DIR stays empty
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="test-session" \
-    "$GATE" --repo "$no_git_fx" --event tool-call \
+    "$GATE" --repo "$no_git_fx" --event tool-call --tool Edit \
     --file "$no_git_fx/$PROD_PATH" --format text
   assert_status 0 "$status" "without a state dir the gate must fail open (allow), not block without a bound"
 }
@@ -332,12 +332,12 @@ TOOLING_PATH="openspec/schemas/verified-scala3/hooks/gate.sh"
   with_ledger
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_HOOKS=off \
     VERIFIED_SCALA3_SESSION_ID="test-session" \
-    "$GATE" --repo "$FX" --event tool-call \
+    "$GATE" --repo "$FX" --event tool-call --tool Edit \
     --file "$FX/$PROD_PATH" --format text
   assert_status 0 "$status" "VERIFIED_SCALA3_HOOKS=off must disable the tool-call gate — the edit must be allowed"
   assert_not_contains "$output" "block" "the escape hatch must not produce a block decision"

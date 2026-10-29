@@ -3,8 +3,12 @@
 # harder to navigate and every version bump added more boilerplate at the
 # top. The version number stays here (machine-read by tests and the CLI);
 # the narrative stays in CHANGELOG.md (human-read).
-name: verified-scala3
-version: 13
+name: probatio
+version: 14
+# v14 rename: formerly verified-scala3 (see CHANGELOG.md v14 entry).
+# The schema's declared name changed from the legacy identifier to the
+# probatio identifier at this version bump. The former name is recorded
+# in the changelog as the pre-rename identity.
 
 # ── invariant banner (defined once, referenced by all instruction blocks) ──
 # D8 fix: the invariant banner text was duplicated verbatim in 10 instruction

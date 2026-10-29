@@ -1,6 +1,7 @@
 package org.adk4s.core.json
 
 import hedgehog.*
+import hedgehog.core.{PropertyConfig, SuccessCount}
 import hedgehog.munit.HedgehogSuite
 import munit.*
 import smithy4s.Document
@@ -18,6 +19,12 @@ final class JsonValueCodecSpec extends HedgehogSuite:
 
   // JsonValueCodec is now imported from main sources (org.adk4s.core.json).
   // The stub was removed in Step 3 when the real implementation was promoted.
+
+  // Each leaf variant is drawn at ~6.7% (1/3 leaf x 1/5 variant) against a
+  // 2% cover floor — at the default 100 samples a leg lands within ~1 sigma
+  // of its floor and flakes ~1%/run. 500 samples puts every leg ~4 sigma out.
+  private def coverConfig: PropertyConfig => PropertyConfig =
+    (c: PropertyConfig) => c.copy(testLimit = SuccessCount(500))
 
   // ── Generators ───────────────────────────────────────────────────────────
 
@@ -99,7 +106,7 @@ final class JsonValueCodecSpec extends HedgehogSuite:
   // ── Properties (Ring 3) ──────────────────────────────────────────────────
 
   // spec: json-value-model — Property: JsonValue-ujson round-trip is identity
-  property("JsonValue-ujson round-trip is identity") {
+  property("JsonValue-ujson round-trip is identity", coverConfig) {
     for jv <- genJsonValue.forAll
         .cover(2, "DNull", (d: Document) => d == Document.DNull)
         .cover(2, "DBoolean", (d: Document) => d match { case _: Document.DBoolean => true; case _ => false })
@@ -113,7 +120,7 @@ final class JsonValueCodecSpec extends HedgehogSuite:
   }
 
   // spec: json-value-model — Property: ujson-JsonValue round-trip is identity
-  property("ujson-JsonValue round-trip is identity") {
+  property("ujson-JsonValue round-trip is identity", coverConfig) {
     for uv <- genUjsonValue.forAll
         .cover(2, "Null", (v: ujson.Value) => v == ujson.Null)
         .cover(2, "Bool", (v: ujson.Value) => v match { case _: ujson.Bool => true; case _ => false })

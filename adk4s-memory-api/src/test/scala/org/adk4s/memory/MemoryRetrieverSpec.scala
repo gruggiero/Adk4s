@@ -22,11 +22,12 @@ class MemoryRetrieverSpec extends HedgehogSuite:
 
   private val now: Instant = Instant.parse("2025-01-01T00:00:00Z")
 
-  /** Hedgehog's `assert`/`assertEquals` return `Result` objects that are silently
-    * discarded in `test` blocks (only `property` blocks check them). These
-    * helpers delegate to the real munit assertions via `withMunitAssertions`,
-    * which throw on failure.
-    */
+  /**
+   * Hedgehog's `assert`/`assertEquals` return `Result` objects that are silently
+   * discarded in `test` blocks (only `property` blocks check them). These
+   * helpers delegate to the real munit assertions via `withMunitAssertions`,
+   * which throw on failure.
+   */
   private def assertM(cond: => Boolean)(implicit loc: munit.Location): Unit =
     withMunitAssertions(a => a.assert(cond))
 
@@ -34,14 +35,14 @@ class MemoryRetrieverSpec extends HedgehogSuite:
     withMunitAssertions(a => a.assert(cond, clue))
 
   private def assertEqualsM[A, B](obtained: A, expected: B)(implicit
-      ev: B <:< A,
-      loc: munit.Location
+    ev: B <:< A,
+    loc: munit.Location
   ): Unit =
     withMunitAssertions(a => a.assertEquals(obtained, expected))
 
   private def assertEqualsM[A, B](obtained: A, expected: B, clue: => Any)(implicit
-      ev: B <:< A,
-      loc: munit.Location
+    ev: B <:< A,
+    loc: munit.Location
   ): Unit =
     withMunitAssertions(a => a.assertEquals(obtained, expected, clue))
 
@@ -54,9 +55,9 @@ class MemoryRetrieverSpec extends HedgehogSuite:
   test("retrieve maps recall hits to Documents") {
     // spec: memory-retriever-bridge — Scenario: retrieve maps recall hits to Documents
     val result = for
-      mem  <- InMemoryAgentMemory.create[IO]
-      _    <- mem.remember(Episode("Alice works at Meta", SourceType.Conversation, now, Some("g1")))
-      r     = MemoryRetriever(mem, k = 5)
+      mem <- InMemoryAgentMemory.create[IO]
+      _   <- mem.remember(Episode("Alice works at Meta", SourceType.Conversation, now, Some("g1")))
+      r = MemoryRetriever(mem, k = 5)
       docs <- r.retrieve("Meta", RetrieverConfig())
     yield docs
     val docs = result.unsafeRunSync()
@@ -69,9 +70,9 @@ class MemoryRetrieverSpec extends HedgehogSuite:
   test("retrieveStream emits the same documents as retrieve") {
     // spec: memory-retriever-bridge — Scenario: retrieveStream emits the same documents as retrieve
     val result = for
-      mem    <- InMemoryAgentMemory.create[IO]
-      _      <- mem.remember(Episode("Alice works at Meta", SourceType.Conversation, now, Some("g1")))
-      r       = MemoryRetriever(mem, k = 5)
+      mem <- InMemoryAgentMemory.create[IO]
+      _   <- mem.remember(Episode("Alice works at Meta", SourceType.Conversation, now, Some("g1")))
+      r = MemoryRetriever(mem, k = 5)
       batch  <- r.retrieve("Meta", RetrieverConfig())
       stream <- r.retrieveStream("Meta", RetrieverConfig()).compile.toList
     yield (batch, stream)
@@ -84,8 +85,8 @@ class MemoryRetrieverSpec extends HedgehogSuite:
   test("empty memory yields empty retrieve") {
     // spec: memory-retriever-bridge — Scenario: empty memory yields empty retrieve
     val result = for
-      mem  <- InMemoryAgentMemory.create[IO]
-      r     = MemoryRetriever(mem, k = 5)
+      mem <- InMemoryAgentMemory.create[IO]
+      r = MemoryRetriever(mem, k = 5)
       docs <- r.retrieve("anything", RetrieverConfig())
     yield docs
     val docs = result.unsafeRunSync()
@@ -169,7 +170,7 @@ class MemoryRetrieverSpec extends HedgehogSuite:
     val hit3 = MemoryHit(text = "alpha", score = 0.5, provenance = Some("g1"), payload = Map("k" -> "v"))
     val hit4 = MemoryHit(text = "alpha", score = 0.9, provenance = None, payload = Map("k" -> "v"))
     val hit5 = MemoryHit(text = "alpha", score = 0.9, provenance = Some("g1"), payload = Map("k" -> "w"))
-    val ids = List(hit1, hit2, hit3, hit4, hit5).map(MemoryRetriever.toDocument(_).id)
+    val ids  = List(hit1, hit2, hit3, hit4, hit5).map(MemoryRetriever.toDocument(_).id)
     assertEqualsM(ids.distinct.size, 5, s"all 5 ids must be distinct, got ${ids.distinct.size}")
   }
 
@@ -181,8 +182,8 @@ class MemoryRetrieverSpec extends HedgehogSuite:
     // spec: memory-retriever-bridge — Scenario: None vs Some provenance ids
     val hitNone = MemoryHit(text = "same", score = 0.5, provenance = None, payload = Map.empty)
     val hitSome = MemoryHit(text = "same", score = 0.5, provenance = Some("Stryker was here!"), payload = Map.empty)
-    val idNone = MemoryRetriever.toDocument(hitNone).id
-    val idSome = MemoryRetriever.toDocument(hitSome).id
+    val idNone  = MemoryRetriever.toDocument(hitNone).id
+    val idSome  = MemoryRetriever.toDocument(hitSome).id
     assertM(idNone != idSome, "None and Some provenance must produce different ids")
   }
 
@@ -192,10 +193,10 @@ class MemoryRetrieverSpec extends HedgehogSuite:
 
   test("multi-entry payload vs single-entry payload get different ids") {
     // spec: memory-retriever-bridge — Scenario: payload separator distinguishes ids
-    val hitMulti = MemoryHit(text = "same", score = 0.5, provenance = None, payload = Map("a" -> "b", "c" -> "d"))
+    val hitMulti  = MemoryHit(text = "same", score = 0.5, provenance = None, payload = Map("a" -> "b", "c" -> "d"))
     val hitSingle = MemoryHit(text = "same", score = 0.5, provenance = None, payload = Map("a" -> "bc=d"))
-    val idMulti = MemoryRetriever.toDocument(hitMulti).id
-    val idSingle = MemoryRetriever.toDocument(hitSingle).id
+    val idMulti   = MemoryRetriever.toDocument(hitMulti).id
+    val idSingle  = MemoryRetriever.toDocument(hitSingle).id
     assertM(idMulti != idSingle, "multi-entry and single-entry payloads must produce different ids")
   }
 
@@ -226,10 +227,10 @@ class MemoryRetrieverSpec extends HedgehogSuite:
     // "alpha gamma" with query "alpha beta" → score 0.5
     // minScore = 0.5 should include BOTH (>= not >)
     val result = for
-      mem  <- InMemoryAgentMemory.create[IO]
-      _    <- mem.remember(Episode("alpha beta gamma", SourceType.Document, now))
-      _    <- mem.remember(Episode("alpha gamma", SourceType.Document, now))
-      r     = MemoryRetriever(mem, k = 10)
+      mem <- InMemoryAgentMemory.create[IO]
+      _   <- mem.remember(Episode("alpha beta gamma", SourceType.Document, now))
+      _   <- mem.remember(Episode("alpha gamma", SourceType.Document, now))
+      r = MemoryRetriever(mem, k = 10)
       docs <- r.retrieve("alpha beta", RetrieverConfig(topK = 10, minScore = 0.5))
     yield docs
     val docs = result.unsafeRunSync()
@@ -247,9 +248,9 @@ class MemoryRetrieverSpec extends HedgehogSuite:
     // spec: memory-retriever-bridge — Scenario: config.topK tighter than factory k
     val eps = (1 to 10).map(i => Episode(s"widgets $i", SourceType.Document, now)).toList
     val result = for
-      mem  <- InMemoryAgentMemory.create[IO]
-      _    <- eps.traverse_(mem.remember)
-      r     = MemoryRetriever(mem, k = 10)
+      mem <- InMemoryAgentMemory.create[IO]
+      _   <- eps.traverse_(mem.remember)
+      r = MemoryRetriever(mem, k = 10)
       docs <- r.retrieve("widgets", RetrieverConfig(topK = 2, minScore = 0.0))
     yield docs
     val docs = result.unsafeRunSync()
@@ -262,9 +263,9 @@ class MemoryRetrieverSpec extends HedgehogSuite:
     // spec: memory-retriever-bridge — Scenario: factory k tighter than config.topK
     val eps = (1 to 10).map(i => Episode(s"widgets $i", SourceType.Document, now)).toList
     val result = for
-      mem  <- InMemoryAgentMemory.create[IO]
-      _    <- eps.traverse_(mem.remember)
-      r     = MemoryRetriever(mem, k = 2)
+      mem <- InMemoryAgentMemory.create[IO]
+      _   <- eps.traverse_(mem.remember)
+      r = MemoryRetriever(mem, k = 2)
       docs <- r.retrieve("widgets", RetrieverConfig(topK = 10, minScore = 0.0))
     yield docs
     val docs = result.unsafeRunSync()
@@ -282,10 +283,10 @@ class MemoryRetrieverSpec extends HedgehogSuite:
     // "alpha beta gamma" with query "alpha beta" → score 1.0 (substring match)
     // "alpha gamma" with query "alpha beta" → score 0.5 (1 of 2 terms match)
     val result = for
-      mem  <- InMemoryAgentMemory.create[IO]
-      _    <- mem.remember(Episode("alpha beta gamma", SourceType.Document, now))
-      _    <- mem.remember(Episode("alpha gamma", SourceType.Document, now))
-      r     = MemoryRetriever(mem, k = 10)
+      mem <- InMemoryAgentMemory.create[IO]
+      _   <- mem.remember(Episode("alpha beta gamma", SourceType.Document, now))
+      _   <- mem.remember(Episode("alpha gamma", SourceType.Document, now))
+      r = MemoryRetriever(mem, k = 10)
       docs <- r.retrieve("alpha beta", RetrieverConfig(topK = 10, minScore = 0.8))
     yield docs
     val docs = result.unsafeRunSync()
@@ -299,10 +300,10 @@ class MemoryRetrieverSpec extends HedgehogSuite:
   test("minScore = 0.0 keeps all hits") {
     // spec: memory-retriever-bridge — Scenario: minScore = 0.0 keeps all hits
     val result = for
-      mem  <- InMemoryAgentMemory.create[IO]
-      _    <- mem.remember(Episode("alpha beta gamma", SourceType.Document, now))
-      _    <- mem.remember(Episode("alpha gamma", SourceType.Document, now))
-      r     = MemoryRetriever(mem, k = 10)
+      mem <- InMemoryAgentMemory.create[IO]
+      _   <- mem.remember(Episode("alpha beta gamma", SourceType.Document, now))
+      _   <- mem.remember(Episode("alpha gamma", SourceType.Document, now))
+      r = MemoryRetriever(mem, k = 10)
       docs <- r.retrieve("alpha beta", RetrieverConfig(topK = 10, minScore = 0.0))
     yield docs
     val docs = result.unsafeRunSync()
@@ -325,9 +326,9 @@ class MemoryRetrieverSpec extends HedgehogSuite:
       topK     <- genTopK.forAll
     yield
       val docs = (for
-        mem  <- InMemoryAgentMemory.create[IO]
-        _    <- episodes.traverse_(mem.remember)
-        r     = MemoryRetriever(mem, k)
+        mem <- InMemoryAgentMemory.create[IO]
+        _   <- episodes.traverse_(mem.remember)
+        r = MemoryRetriever(mem, k)
         docs <- r.retrieve(query, RetrieverConfig(topK = topK, minScore = 0.0))
       yield docs).unsafeRunSync()
       (docs.size <= math.min(k, topK)) ==== true
@@ -343,12 +344,14 @@ class MemoryRetrieverSpec extends HedgehogSuite:
       minScore <- genMinScore.forAll
     yield
       val docs = (for
-        mem  <- InMemoryAgentMemory.create[IO]
-        _    <- episodes.traverse_(mem.remember)
-        r     = MemoryRetriever(mem, k = 20)
+        mem <- InMemoryAgentMemory.create[IO]
+        _   <- episodes.traverse_(mem.remember)
+        r = MemoryRetriever(mem, k = 20)
         docs <- r.retrieve(query, RetrieverConfig(topK = 20, minScore = minScore))
       yield docs).unsafeRunSync()
-      (docs.forall(d => d.metadata("score") match { case S4sDocument.DNumber(n) => n.toDouble >= minScore; case _ => false })) ==== true
+      (docs.forall(d =>
+        d.metadata("score") match { case S4sDocument.DNumber(n) => n.toDouble >= minScore; case _ => false }
+      )) ==== true
   }
 
   property("bridge-stream-equals-retrieve: stream == batch") {
@@ -361,9 +364,9 @@ class MemoryRetrieverSpec extends HedgehogSuite:
       config   <- genConfig.forAll
     yield
       val (batch, stream) = (for
-        mem    <- InMemoryAgentMemory.create[IO]
-        _      <- episodes.traverse_(mem.remember)
-        r       = MemoryRetriever(mem, k = 20)
+        mem <- InMemoryAgentMemory.create[IO]
+        _   <- episodes.traverse_(mem.remember)
+        r = MemoryRetriever(mem, k = 20)
         batch  <- r.retrieve(query, config)
         stream <- r.retrieveStream(query, config).compile.toList
       yield (batch, stream)).unsafeRunSync()

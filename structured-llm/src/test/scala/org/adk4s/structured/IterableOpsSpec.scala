@@ -19,9 +19,7 @@ class IterableOpsSpec extends HedgehogSuite:
   property("dropRight(1) equals init on non-empty lists") {
     val nonEmptyListGen: Gen[List[Int]] =
       Gen.list(Gen.int(Range.linear(-100, 100)), Range.linear(1, 20))
-    nonEmptyListGen.forAll.map { (xs: List[Int]) =>
-      xs.dropRight(1) ==== xs.take(xs.length - 1)
-    }
+    nonEmptyListGen.forAll.map((xs: List[Int]) => xs.dropRight(1) ==== xs.take(xs.length - 1))
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -34,7 +32,7 @@ class IterableOpsSpec extends HedgehogSuite:
       Gen.list(Gen.int(Range.linear(0, 100)), Range.linear(0, 20))
     listGen.forAll.map { (xs: List[Int]) =>
       val result: Option[Int] = xs.lastOption
-      (result.isDefined ==== xs.nonEmpty)
+      result.isDefined ==== xs.nonEmpty
     }
   }
 
@@ -45,7 +43,5 @@ class IterableOpsSpec extends HedgehogSuite:
 
   property("dropRight(1) on empty list returns empty (no throw)") {
     val emptyGen: Gen[List[Int]] = Gen.constant(List.empty[Int])
-    emptyGen.forAll.map { (xs: List[Int]) =>
-      xs.dropRight(1) ==== List.empty[Int]
-    }
+    emptyGen.forAll.map((xs: List[Int]) => xs.dropRight(1) ==== List.empty[Int])
   }

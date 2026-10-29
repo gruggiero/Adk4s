@@ -58,8 +58,8 @@ class MiddlewareNameSpec extends HedgehogSuite:
   property("MiddlewareName JSON round-trip"):
     val gen: Gen[String] = Gen.string(Gen.alphaNum, Range.linear(1, 30))
     gen.forAll.map { (s: String) =>
-      val name: MiddlewareName     = MiddlewareName.refineEither(s).fold(err => throw err, identity)
-      val json: String             = upickle.default.write(name)
-      val decoded: MiddlewareName  = upickle.default.read[MiddlewareName](json)
+      val name: MiddlewareName    = MiddlewareName.refineEither(s).fold(err => throw err, identity)
+      val json: String            = upickle.default.write(name)
+      val decoded: MiddlewareName = upickle.default.read[MiddlewareName](json)
       decoded.value ==== name.value
     }

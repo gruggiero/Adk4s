@@ -7,7 +7,7 @@ import fs2.Stream
 import munit.FunSuite
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
-import org.adk4s.core.types.{NodeKey, Reserved}
+import org.adk4s.core.types.{ NodeKey, Reserved }
 import org.adk4s.core.types.given
 import workflows4s.runtime.WorkflowInstanceId
 import workflows4s.wio.{ ActiveWorkflow, ErrorMeta, WCEffect, WCEffectLift, WCEvent, WCState, WIO }

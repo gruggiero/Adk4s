@@ -63,7 +63,7 @@ EOF
 run_gate() {
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="$SESSION" \
@@ -110,7 +110,7 @@ write_checkpoint_output() {
   mk_repo
   write_presentation
   # No grant written
-  run_gate --event tool-call --file "$FX/$PROGRESS_PATH" --format text
+  run_gate --event tool-call --tool Edit --file "$FX/$PROGRESS_PATH" --format text
   assert_status 2 "$status" "editing implementation-progress.md without a grant for the prior spec must be blocked"
   assert_contains "$output" "grant" "the reason must contain the word grant"
   assert_contains "$output" "$SPEC_N" "the reason must name the prior spec"
@@ -121,7 +121,7 @@ write_checkpoint_output() {
   mk_repo
   write_presentation
   write_grant
-  run_gate --event tool-call --file "$FX/$PROGRESS_PATH" --format text
+  run_gate --event tool-call --tool Edit --file "$FX/$PROGRESS_PATH" --format text
   assert_status 0 "$status" "editing implementation-progress.md with a grant for the prior spec must be allowed"
   assert_not_contains "$output" "block" "a granted next-spec start must not produce a block decision"
 }
@@ -144,11 +144,18 @@ write_checkpoint_output() {
   # spec N+1, which doesn't exist).
   # Since we only have 2 specs, we test: grant for SPEC_N exists, but editing
   # a file that requires a grant for SPEC_N_PLUS_1 (which doesn't exist) is blocked.
-  # We need a third spec for this. Add one.
+  # We need a third spec for this. Add one — TRACKED: a phase file at
+  # `oracle` marks it as entered-but-unstarted. Without it the gate treats
+  # the spec-dir edit as planning (untracked-spec exemption) and the grant
+  # lock never engages (spec:oracle-fixture-repair).
   mkdir -p "$FX/openspec/changes/$CHANGE/specs/judgment-ring-provenance"
+  local sd_n2
+  sd_n2="$(state_dir)"
+  mkdir -p "$sd_n2"
+  printf 'oracle' >"$sd_n2/phase-$CHANGE-judgment-ring-provenance"
   local spec_n2_file="openspec/changes/$CHANGE/specs/judgment-ring-provenance/spec.md"
   # Grant for SPEC_N exists, but no grant for SPEC_N_PLUS_1
-  run_gate --event tool-call --file "$FX/$spec_n2_file" --format text
+  run_gate --event tool-call --tool Edit --file "$FX/$spec_n2_file" --format text
   assert_status 2 "$status" "a grant for spec N must not authorize spec N+2 — the immediately prior spec N+1 has no grant"
   assert_contains "$output" "$SPEC_N_PLUS_1" "the reason must name the missing grant's spec (N+1)"
 }
@@ -188,7 +195,7 @@ write_checkpoint_output() {
   mk_repo
   write_presentation
   # Fire a tool-call event (not prompt-submit)
-  run_gate --event tool-call --file "$FX/adk4s-core/src/main/scala/org/adk4s/core/Foo.scala" --format text >/dev/null 2>&1
+  run_gate --event tool-call --tool Edit --file "$FX/adk4s-core/src/main/scala/org/adk4s/core/Foo.scala" --format text >/dev/null 2>&1
   local sd
   sd="$(state_dir)"
   [ ! -f "$sd/grant-$CHANGE-$SPEC_N-$ENCODED_SESSION" ] || {
@@ -207,7 +214,7 @@ write_checkpoint_output() {
   write_checkpoint_output
   # Fire any event — the gate should consume the checkpoint-output file and
   # write a presentation record
-  run_gate --event tool-call --file "$FX/adk4s-core/src/main/scala/org/adk4s/core/Foo.scala" --format text >/dev/null 2>&1
+  run_gate --event tool-call --tool Edit --file "$FX/adk4s-core/src/main/scala/org/adk4s/core/Foo.scala" --format text >/dev/null 2>&1
   local sd
   sd="$(state_dir)"
   [ -f "$sd/presentation-$CHANGE-$SPEC_N-$ENCODED_SESSION" ] || {
@@ -239,29 +246,47 @@ write_checkpoint_output() {
 # ═════════════════════════════════════════════════════════════════════════
 
 # spec: human-grant-lock — Scenario: a grant does not leak across sessions
-@test "a grant does not leak across sessions" {
+# RE-ASSERTED under the oracle-fixture-repair scoped exception (approved):
+# the archived scenario required S2 to see no grant, but the deliberate
+# any-session waiver added at 283319a (predecessor gate.sh ~line 598;
+# ported GateCmd.findAnySessionGrant) makes a grant from ANY session
+# satisfy the requirement — human approval is durable across sessions.
+# What stays session-scoped is the REQUIREMENT: S2's own ungranted
+# presentation is what creates it. This test verifies the delivered
+# semantics: S1's grant satisfies S2's requirement; with no grant from
+# any session, S2's ungranted presentation still blocks.
+@test "a prior-session grant satisfies the requirement that an ungranted session still carries" {
   mk_repo
   # S1 has a presentation and a grant
   write_presentation
   write_grant
-  # S2 has a presentation (same checkpoint) but NO grant — S1's grant must
-  # not satisfy S2's requirement. Without a S2 presentation, the gate has
-  # nothing to require a grant for, so the isolation is only meaningful
-  # when S2 also has a presentation.
+  # S2 has a presentation (same checkpoint) but NO grant — S2 carries its
+  # own requirement, satisfied by S1's grant as durable human approval.
   local sd enc_other
   sd="$(state_dir)"
   enc_other="$(printf 'other-session' | jq -Rr '@base64' | tr '+/=' '-_.')"
   printf '%s' "fake-checkpoint-report-hash-$SPEC_N" >"$sd/presentation-$CHANGE-$SPEC_N-$enc_other"
-  # Query with S2 — should block because S2 has a presentation but no grant
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="other-session" \
-    "$GATE" --repo "$FX" --event tool-call \
+    "$GATE" --repo "$FX" --event tool-call --tool Edit \
     --file "$FX/$PROGRESS_PATH" --format text
-  assert_status 2 "$status" "a grant from session S1 must not authorize session S2 — S2 has its own presentation but no grant"
+  assert_status 0 "$status" "a grant from a prior session satisfies the requirement — human approval is durable"
+  # Remove S1's grant — with no grant from any session, S2's own
+  # ungranted presentation still creates the requirement and blocks.
+  rm -f "$sd/grant-$CHANGE-$SPEC_N-$ENCODED_SESSION"
+  neutral_chain_state
+  neutral_spec_lint
+  run env \
+    CHAIN_STATE_OVERRIDE="$FAKE_CS" \
+    SPEC_LINT_OVERRIDE="$FAKE_SL" \
+    VERIFIED_SCALA3_SESSION_ID="other-session" \
+    "$GATE" --repo "$FX" --event tool-call --tool Edit \
+    --file "$FX/$PROGRESS_PATH" --format text
+  assert_status 2 "$status" "with no grant from any session, S2's ungranted presentation must still block"
   assert_contains "$output" "grant" "the block must mention the missing grant"
 }
 
@@ -270,11 +295,11 @@ write_checkpoint_output() {
   mk_repo
   write_presentation
   # No grant — first tool-call is refused
-  run_gate --event tool-call --file "$FX/$PROGRESS_PATH" --format text
+  run_gate --event tool-call --tool Edit --file "$FX/$PROGRESS_PATH" --format text
   assert_status 2 "$status" "the first attempt must be refused (no grant)"
   # prompt-submit clears refusal state AND writes a grant (presentation exists)
   run_gate --event prompt-submit --format text >/dev/null 2>&1
   # Now the grant exists — next tool-call should be allowed
-  run_gate --event tool-call --file "$FX/$PROGRESS_PATH" --format text
+  run_gate --event tool-call --tool Edit --file "$FX/$PROGRESS_PATH" --format text
   assert_status 0 "$status" "after prompt-submit writes a grant, the next attempt must be allowed"
 }

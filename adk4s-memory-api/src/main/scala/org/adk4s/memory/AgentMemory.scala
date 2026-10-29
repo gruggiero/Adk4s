@@ -25,7 +25,8 @@ trait AgentMemory[F[_]]:
   def recall(
     query: String,
     k: Int,
-    scope: Option[TemporalScope] = None
+    scope: Option[TemporalScope] = None,
+    groupId: Option[String] = None
   ): F[List[MemoryHit]]
 
   /**

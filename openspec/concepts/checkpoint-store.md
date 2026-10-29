@@ -41,7 +41,7 @@ operational principle
 | state `CheckpointStateV2` | `case class CheckpointStateV2(version, messages, harnessState, interruptSignalJson, agentName)` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/CheckpointStateV2.scala`) |
 | message `CheckpointMessage` | `case class CheckpointMessage(role, content, toolCalls, toolCallId)` — full-fidelity message with tool calls |
 | tool call `CheckpointToolCall` | `case class CheckpointToolCall(id, name, arguments)` — serialized tool call |
-| converter `CheckpointMessageConverter` | `CheckpointMessageConverter.toCheckpoint/fromCheckpoint` — bridges llm4s `Message` ↔ `CheckpointMessage` |
+| converter `CheckpointMessageConverter` | `CheckpointMessageConverter.toCheckpoint`/`fromCheckpoint` — bridges llm4s `Message` ↔ `CheckpointMessage` (`adk4s-orchestration/src/main/scala/org/adk4s/orchestration/agent/CheckpointStateV2.scala`) |
 | v1-compat `ReadWriter` | Custom `ReadWriter[CheckpointStateV2]` that decodes v1 `CheckpointState` payloads (harnessState defaults to empty, toolCalls/toolCallId default to Nil/None) |
 | node `InterruptibleNode` | `class InterruptibleNode` uses `CheckpointStore[IO]` for interrupt state |
 | runtime host | `org.adk4s.orchestration.interrupt`, `org.adk4s.orchestration.agent` |

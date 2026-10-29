@@ -3,7 +3,7 @@ package <target.package>.typecontract
 // ═══════════════════════════════════════════════════════════════════════════
 //  Typed Contract for spec: <spec-name>
 //  Generated: <date>
-//  Schema: verified-scala3
+//  Schema: probatio
 //
 //  This is a COMPILE-CHECKED TYPE-LEVEL CONTRACT. All method bodies are ???.
 //  Review types, signatures, error algebra, and properties before any

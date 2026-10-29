@@ -136,8 +136,8 @@ class ReactAgentTest extends CatsEffectSuite:
     val model: ChatModel[IO]         = mockChatModel(responses)
     val agent: ReactAgent            = ReactAgent.create(model, List(echoTool), maxSteps = 2)
     val result: IO[AssistantMessage] = agent.generate(List(UserMessage("loop")), 2)
-    interceptIO[org.adk4s.core.error.MaxStepsExceededError](result).map { (e: org.adk4s.core.error.MaxStepsExceededError) =>
-      assert(e.getMessage.contains("maximum steps"))
+    interceptIO[org.adk4s.core.error.MaxStepsExceededError](result).map {
+      (e: org.adk4s.core.error.MaxStepsExceededError) => assert(e.getMessage.contains("maximum steps"))
     }
   }
 

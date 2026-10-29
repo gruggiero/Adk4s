@@ -19,10 +19,12 @@ type MiddlewareName = MiddlewareName.T
 
 object MiddlewareName extends RefinedType[String, NonEmpty]:
 
-  /** Refinement returning a structured ConfigError on failure.
-    * This is the spec-required API: `MiddlewareName.refineEither(s)` returns
-    * `Either[ConfigError, MiddlewareName]` with the field name, invalid
-    * value, and constraint name. */
+  /**
+   * Refinement returning a structured ConfigError on failure.
+   * This is the spec-required API: `MiddlewareName.refineEither(s)` returns
+   * `Either[ConfigError, MiddlewareName]` with the field name, invalid
+   * value, and constraint name.
+   */
   def refineEither(s: String): Either[ConfigError, MiddlewareName] =
     either(s) match
       case Right(mn) => Right(mn)

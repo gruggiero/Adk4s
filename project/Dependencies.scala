@@ -63,6 +63,37 @@ object Dependencies {
   val logback: ModuleID =
     "ch.qos.logback" % "logback-classic" % Versions.Logback
 
+  // --- probatio tooling (R-X3 allowed-dependency set) ---
+  // These are the ONLY external deps probatio-core/cli may use. cats,
+  // cats-effect, fs2, llm4s, workflows4s, scalacheck are FORBIDDEN on
+  // any workflow/* classpath (enforced by the dependency-lint rule, R-ARCH1).
+
+  /** os-lib — filesystem/path library (com.lihaoyi). Used by probatio-cli
+    * for blocking file I/O. GraalVM native-image-safe. */
+  val osLib: ModuleID =
+    "com.lihaoyi" %% "os-lib" % Versions.OsLib
+
+  /** mainargs — CLI arg-parsing library (com.lihaoyi). Used by probatio-cli
+    * for @main entrypoint dispatch. GraalVM native-image-safe. */
+  val mainargs: ModuleID =
+    "com.lihaoyi" %% "mainargs" % Versions.Mainargs
+
+  /** probatio test dependencies — munit + hedgehog-munit ONLY (no
+    * cats-effect, no cats-effect-testkit, no munit-cats-effect).
+    * Hedgehog 0.13.1 per the detected stack (NOT ScalaCheck). */
+  val probatioTestDeps: Seq[ModuleID] = Seq(
+    "org.scalameta" %% "munit" % Versions.Munit % Test,
+    "qa.hedgehog" %% "hedgehog-munit" % Versions.Hedgehog % Test
+  )
+
+  /** sbt-probatio plugin test dependencies — Hedgehog 0.13.1 for Scala 2.12
+    * (sbt 1.x plugin runtime). munit + hedgehog-munit ONLY. NO probatio-core
+    * dependency (R-S1). NO cats/cats-effect (R-ARCH1). */
+  val sbtPluginTestDeps: Seq[ModuleID] = Seq(
+    "org.scalameta" %% "munit" % Versions.Munit % Test,
+    "qa.hedgehog" %% "hedgehog-munit" % Versions.Hedgehog % Test
+  )
+
   // --- Property testing: Hedgehog ---
   // Hedgehog provides integrated shrinking with no Arbitrary typeclass.
   // hedgehog-core carries the Gen/Property API.

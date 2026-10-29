@@ -24,11 +24,12 @@ class AgentMemorySpec extends HedgehogSuite:
 
   private val now: Instant = Instant.parse("2025-01-01T00:00:00Z")
 
-  /** Hedgehog's `assert`/`assertEquals` return `Result` objects that are silently
-    * discarded in `test` blocks (only `property` blocks check them). These
-    * helpers delegate to the real munit assertions via `withMunitAssertions`,
-    * which throw on failure.
-    */
+  /**
+   * Hedgehog's `assert`/`assertEquals` return `Result` objects that are silently
+   * discarded in `test` blocks (only `property` blocks check them). These
+   * helpers delegate to the real munit assertions via `withMunitAssertions`,
+   * which throw on failure.
+   */
   private def assertM(cond: => Boolean)(implicit loc: munit.Location): Unit =
     withMunitAssertions(a => a.assert(cond))
 
@@ -36,14 +37,14 @@ class AgentMemorySpec extends HedgehogSuite:
     withMunitAssertions(a => a.assert(cond, clue))
 
   private def assertEqualsM[A, B](obtained: A, expected: B)(implicit
-      ev: B <:< A,
-      loc: munit.Location
+    ev: B <:< A,
+    loc: munit.Location
   ): Unit =
     withMunitAssertions(a => a.assertEquals(obtained, expected))
 
   private def assertEqualsM[A, B](obtained: A, expected: B, clue: => Any)(implicit
-      ev: B <:< A,
-      loc: munit.Location
+    ev: B <:< A,
+    loc: munit.Location
   ): Unit =
     withMunitAssertions(a => a.assertEquals(obtained, expected, clue))
 

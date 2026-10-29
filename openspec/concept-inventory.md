@@ -553,3 +553,562 @@ The 2 WEAK rows are pre-existing in `react-agent.md` (`isDefined`, `foreach` cit
 
 > Registry concept count: **31** (`openspec/concepts/*.md`, excluding
 > `README.md`) as of 2026-08-08. The previous note in this section said 25.
+
+### port-scanner-to-probatio change — probatio-core spec concepts
+
+The following concepts were introduced by `spec:port-scanner-to-probatio/probatio-core`:
+
+| Type | Kind | Package | Status |
+|------|------|---------|--------|
+| `Outcome[+A]` | enum (Ran, Finding, Undetermined) | `org.sinemenda.probatio.core` | shipped |
+| `Ring` | enum (R0–R9, Manual) | `org.sinemenda.probatio.core` | shipped |
+| `ContractViolation` | sealed trait (15 clause variants — 12 original + 3 provenance clauses added by spec:port-scanner-to-probatio/provenance-validation) | `org.sinemenda.probatio.core` | shipped |
+| `LedgerRecord` | final case class (private[core] constructor); spec 7 joined `optional: LedgerRecordOptional` as a REQUIRED field — a record that cannot state what it observed is unrepresentable; `v`/`exit` widened Int→**BigInt** by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` (the jq contract's integral domain is whole doubles, not Int32 — aligns with the verified kernel's model) | `org.sinemenda.probatio.core` | shipped; field-joined by `spec:complete-probatio-cutover/ledger-checkpoint-parity`; widened by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `LedgerRecordOptional` | final case class (sha256, digest, wallTime, source, session — Option types); was orphaned pre-spec-7, now attached as `LedgerRecord.optional`; `extract` enforces the TYPE of each present field; `wallTime` widened Int→**BigInt** by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` | `org.sinemenda.probatio.core` | shipped; attached by `spec:complete-probatio-cutover/ledger-checkpoint-parity`; widened by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `Ledger.LedgerData` | final case class (immutable, append-only) | `org.sinemenda.probatio.core` | shipped |
+| `UnresolvedReason` | enum (Unbound, Unresolved, Undischarged, Unattributable, Failed) | `org.sinemenda.probatio.core` | shipped |
+| `UnresolvedEntry` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `UnmappedObligation` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `ChainStateReport` | final case class (private constructor; verdict-path factory `from(prePass: PrePassOutcome.Completed, …)` — a report cannot be built from a `DidNotRun`; `fromCounts` `private[probatio]` for wire reconstruction only) | `org.sinemenda.probatio.core` | shipped; construction narrowed by `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `ChainStateUndetermined` | final case class (change, baseline, reason: `UndeterminedReason` — carries no measurement counts) | `org.sinemenda.probatio.core` | shipped; re-shaped by `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `ChainState.Requirement` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `Verdict` | enum (Bound, Resolved, Unbound) | `org.sinemenda.probatio.core` | shipped |
+| `CheckId` | enum (F1–F10) | `org.sinemenda.probatio.core` | shipped |
+| `RequirementVerdict` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `LintWarning` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `LintReport` | final class, private constructor (verdicts, findings: List[CheckOutcome], applicability, resolvedRows, unresolvableRows, requirementRows — `lintSuccess` derived from findings) | `org.sinemenda.probatio.core` | shipped; re-shaped by `spec:complete-probatio-cutover/spec-lint-engine` |
+| `HookSpecificOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `GatePayload` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `InstallRootScan` | final case class (rootPath, state: InstallRootState — four-state root read, was a two-field stamp record) | `org.sinemenda.probatio.core` | shipped; modified by `spec:complete-probatio-cutover/live-fact-banner` |
+| `DriftWarning` | sealed trait (VersionMismatch, PreRenameStamp, NoStampDeclared, Unreadable — two variants added) | `org.sinemenda.probatio.core` | shipped; extended by `spec:complete-probatio-cutover/live-fact-banner` |
+| `DriftScanResult` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `BannerInputs` | final class (private constructor; only `BannerInputs.from(facts: RepositoryFacts)` — hand-constructed literals cannot reach the engine) | `org.sinemenda.probatio.core` | shipped; re-shaped by `spec:complete-probatio-cutover/live-fact-banner` |
+| `BannerEngine` | object (`render`: BannerInputs → BannerOutput — pure function; method name corrected from `assembleBanner` 2026-08-29 by spec:complete-probatio-cutover/inventory-check) | `org.sinemenda.probatio.core` | shipped |
+| `ActiveChangeWithChainState` | final case class (name, artifacts: FactRead[ArtifactScan], chainState: Either[ChainStateUndetermined, ChainStateReport] — "never attempted" unrepresentable) | `org.sinemenda.probatio.core` | shipped; re-shaped by `spec:complete-probatio-cutover/live-fact-banner` |
+| `BannerOutput` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `MetalsClient.LspMessage` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `MetalsClient.MetalsError` | sealed trait (FramingError, HandshakeFailed, Timeout) | `org.sinemenda.probatio.core` | shipped |
+| `MetalsClient.MetalsSession` | final case class | `org.sinemenda.probatio.core` | shipped |
+| `Subcommand` | enum (11 cases: Gate, SpecLint, ChainState, Ledger, Checkpoint, Reconcile, DangerScan, Metals, InstallSkills, InstallHooks, Graph — shrunk from 16 by removing 6 unported tools: RegistryCheck, Scan, RemovalAudit, ImpactScan, ConceptScanner, Graph; `Graph` restored 2026-09-23 by `repair-probatio-cutover/graph-tool-port` — the traceability tool is now ported) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract`, widened by `spec:repair-probatio-cutover/graph-tool-port` |
+| `ExitCode` | enum (3 cases: Clean, Finding, Undetermined) | `org.sinemenda.probatio.cli` | shipped |
+| `CliError` | sealed abstract class (UnknownSubcommand, MissingValue, InvalidEnum, UnknownFlag) | `org.sinemenda.probatio.cli` | shipped |
+| `MulticallDispatch` | object (resolveAndSplit: InvocationName + ProgramArgs → Either[CliError, (Subcommand, ProgramArgs)] — replaces old resolve(argv0, argv1)) | `org.sinemenda.probatio.cli` | shipped; updated by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
+| `ProgramArgs` | opaque type over List[String] (constructible only via fromRuntime/fromFixture — no public apply) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/cli-entrypoint-contract` |
+| `InvocationName` | opaque type over String (constructible only via fromRuntime: Either[String, InvocationName] — no public apply) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/cli-entrypoint-contract` |
+| `HelpOutput` | final case class (subcommand, flags: List[FlagHelp], exitCodes: List[ExitCodeDoc]) | `org.sinemenda.probatio.cli` | shipped |
+| `HelpRegistry` | object (helpFor: Subcommand → HelpOutput) | `org.sinemenda.probatio.cli` | shipped |
+| `ProbatioMain` | object (`dispatch`: (InvocationName, ProgramArgs) → Int — multicall entry point; `main`: Array[String] → Unit — JVM/native entry point, extracts invocation name from runtime) | `org.sinemenda.probatio.cli` | shipped; updated by `spec:complete-probatio-cutover/cli-entrypoint-contract` |
+| `FlagHelp` | final case class (name, description, default) | `org.sinemenda.probatio.cli` | shipped |
+| `ExitCodeDoc` | final case class (code, label, condition) | `org.sinemenda.probatio.cli` | shipped |
+| `CliErrorRender` | object (render: CliError → String) | `org.sinemenda.probatio.cli` | shipped |
+| `GateCmd` / `SpecLintCmd` / `ChainStateCmd` / `LedgerCmd` / `CheckpointCmd` / `ReconcileCmd` / `DangerScanCmd` / `MetalsCmd` / `InstallSkillsCmd` / `InstallHooksCmd` | objects (run: Array[String] → Outcome[Int] — subcommand entrypoints; 6 unported entrypoints removed: RegistryCheckCmd, ScanCmd, RemovalAuditCmd, ImpactScanCmd, ConceptScannerCmd, GraphCmd; SpecLintCmd implemented by spec-lint-engine: positional change-dir, `--context-only`, `--artifacts`, `--format json`, nested `specs/` discovery) | `org.sinemenda.probatio.cli` | shipped; shrunk by `spec:complete-probatio-cutover/cli-entrypoint-contract`; SpecLintCmd implemented by `spec:complete-probatio-cutover/spec-lint-engine`; LedgerCmd `validate`→`verify` + `run` rework and CheckpointCmd `report`/`regenerate-tasks` implemented by `spec:complete-probatio-cutover/ledger-checkpoint-parity`; InstallSkillsCmd/InstallHooksCmd predecessor surfaces restored by `spec:repair-probatio-cutover/install-tool-surface-parity` |
+
+### port-scanner-to-probatio change — sbt-plugin spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ProbatioPlugin` | sbt AutoPlugin (Scala 2.12, object extends AutoPlugin) | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioVersion` | sbt SettingKey[String] | `org.sinemenda.probatio.plugin` | shipped |
+| `graalVMHome` | sbt SettingKey[Option[String]] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioInstall` | sbt TaskKey[File] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioSpecLint` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioChainState` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioCheckpoint` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioLedgerAppend` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioGateShim` | sbt TaskKey[File] | `org.sinemenda.probatio.plugin` | shipped |
+| `probatioUninstall` | sbt TaskKey[Unit] | `org.sinemenda.probatio.plugin` | shipped |
+| `ShimGenerator` | object (generateShim: (ResolutionResult, ShimTargetScope[, subcommand]) → Either[String, String] — pure shim generator bound to the resolution result; blocked resolution, scope/resolution disagreement, non-absolute `AbsoluteInstall`, or an unquotable target → Left(reason), no shim; `RepositoryRelative` emits the `SCRIPT_DIR` self-resolution form) — scope parameter added by `spec:repair-probatio-cutover/workflow-delivery-hygiene`; earlier signature change by `spec:complete-probatio-cutover/native-gate-delivery` | `org.sinemenda.probatio.plugin` | shipped |
+| `ExitCodeMapping` | object (mapExitCode: (String, Int, String) → Either[String, Unit] — three-way exit protocol mapping) | `org.sinemenda.probatio.plugin` | shipped |
+| `InstallResolver` | object (resolve: ResolutionScenario → ResolutionResult, resolveForShim: (scenario, subcommand, platformHasNative) → ResolutionResult — pure install resolution model; resolveForShim blocks a launcher resolution for a per-turn subcommand on a native platform) — member added by `spec:complete-probatio-cutover/native-gate-delivery` | `org.sinemenda.probatio.plugin` | shipped |
+| `ResolutionScenario` | sealed trait (PrebuiltAvailable, PrebuiltChecksumInvalid, JarFallback, NativeImage) | `org.sinemenda.probatio.plugin` | shipped |
+| `ResolutionResult` | final case class (path: Option[String], logLines: List[String]) | `org.sinemenda.probatio.plugin` | shipped |
+
+### port-scanner-to-probatio change — native-packaging spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `Platform` | enum (LinuxX86_64, MacosAarch64, MacosX86_64, WindowsX86_64) | `org.sinemenda.probatio.packaging` | shipped |
+| `ReleaseArtifact` | enum (NativeBinary(Platform), AssemblyJar, SourcesJar, Sbom, Checksum(String)) | `org.sinemenda.probatio.packaging` | shipped |
+| `ChecksumVerifier` | object (computeSha256, verify, verifyForExecution) | `org.sinemenda.probatio.packaging` | shipped |
+| `ChecksumResult` | enum (Proceed, Mismatch(artifactName, expected, actual)) | `org.sinemenda.probatio.packaging` | shipped |
+| `Sbom` | final case class (derives ReadWriter — SPDX 2.3 model) | `org.sinemenda.probatio.packaging` | shipped |
+| `SbomPackage` | final case class (derives ReadWriter) | `org.sinemenda.probatio.packaging` | shipped |
+| `ReleaseManifest` | final case class (derives ReadWriter — version, artifacts, checksums, sbom, builtFromCI) | `org.sinemenda.probatio.packaging` | shipped |
+| `ReleaseValidator` | object (validateCompleteness, validatePlatformCoverage, validateSbom, validateChecksums, validateCIProvenance, validateAll) | `org.sinemenda.probatio.packaging` | shipped |
+| `BinaryResolution` | object (resolve: subcommand + platform + availability → ResolutionResult) | `org.sinemenda.probatio.packaging` | shipped |
+| `ResolutionResult` | enum (NativeBinary(path), JarFallback(path, warning), Blocked(reason)) | `org.sinemenda.probatio.packaging` | shipped |
+
+### port-scanner-to-probatio change — migration-protocol spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ConformanceModel` | object (Ring 6 PureScala model: modelValidate, modelContract, conformance, conformanceNoFalsePositive, conformanceNoFalseNegative, totality) | `org.sinemenda.probatio.verified` | shipped |
+| `RecordModel` | final case class (finite representation of ledger record clauses for Ring 6) | `org.sinemenda.probatio.verified` | shipped |
+| `ContractId` | enum (LedgerRecord, ChainStateReport, GateHookJson) | `org.sinemenda.probatio.migration` | test-only |
+| `ContractJudgment` | enum (Accept, Reject(clause)) | `org.sinemenda.probatio.migration` | test-only |
+| `ValidatorJudgment` | enum (Accept, Reject(reason)) | `org.sinemenda.probatio.migration` | test-only |
+| `ContractRecord` | final case class (contractId, json, violatedClause) | `org.sinemenda.probatio.migration` | test-only |
+| `ConformanceResult` | final case class (contractJudgment, validatorJudgment — isConformant, isFalsePositive, isFalseNegative) | `org.sinemenda.probatio.migration` | test-only |
+| `SeamConfiguration` | final case class (portedTools: Set[ToolId] — withPredecessor, withPorted) | `org.sinemenda.probatio.migration` | test-only |
+| `OracleOutcome` | final case class (passed, failed, skipped) | `org.sinemenda.probatio.migration` | test-only |
+| `MigrationState` | final case class (portedTools: Set[ToolId] — predecessorTools, isComplete) | `org.sinemenda.probatio.migration` | test-only |
+| `ShimTarget` | final case class (tool, resolvedTarget, candidateTargets — isExactlyOne, isMissing, isDual) | `org.sinemenda.probatio.migration` | test-only |
+| `ShimResolution` | final case class (targets: List[ShimTarget] — allExactlyOne, missing, dual) | `org.sinemenda.probatio.migration` | test-only |
+| `SkillDocReference` | final case class (skillDocPath, referencedPath, line — isPredecessorReference, isPortedReference) | `org.sinemenda.probatio.migration` | test-only |
+| `SkillDocLintResult` | final case class (brokenReferences, forwardReferences — isClean) | `org.sinemenda.probatio.migration` | test-only |
+| `ToolId` (migration) | enum (Ledger, ChainState, SpecLint, DangerScan, Reconcile, Checkpoint, Gate — swapOrder, seamPath, predecessorSource, `overrideEnvVar: Option[String]` with None for Ledger/Checkpoint). Widened 2026-09-21 by `repair-probatio-cutover/differential-harness-integrity` (+Ledger, +Checkpoint — the two seams the comparison never measured). `predecessorSource(Ledger|Checkpoint)` flipped 2026-09-24 by `repair-probatio-cutover/ledger-checkpoint-cutover` to resolve `.predecessor.bak` post-swap — without it the predecessor arm would resolve shim bytes and the arms compare identical → refusal. | `org.sinemenda.probatio.migration` | test-only |
+| `OracleGreenCheck` | **final class extends ProbatioSuite** (a munit suite, NOT an object) with instance methods `runOracle: SeamConfiguration → OracleOutcome` and `runDifferential: SeamConfiguration → DifferentialResult`, plus `genSeamConfiguration` — callers must instantiate it (`new OracleGreenCheck()`). Kind corrected 2026-09-20 by `repair-probatio-cutover` inventory-check; previously recorded as `object`. | `org.sinemenda.probatio.migration` | test-only |
+
+### complete-probatio-porting change — migration-protocol spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `OracleGreenGate` | object (apply: (Stage, SeamConfiguration) → Boolean — gates stage transitions on bats oracle green; instantiates `new OracleGreenCheck()` and calls its instance `runOracle`, since `OracleGreenCheck` is a suite class not an object; also apply: (ToolId, SeamConfiguration) → Boolean for per-swap gating) | `org.sinemenda.probatio.migration` | test-only |
+| `Stage` | enum (Wiring, Cutover — migration stages for oracle-green gating) | `org.sinemenda.probatio.migration` | test-only |
+
+### complete-probatio-cutover change — cutover-gate spec concepts
+
+<!-- Added 2026-09-20 by `repair-probatio-cutover` inventory-check. These seven
+     shipped with the archived `cutover-gate` spec but were never recorded; the
+     change's concept-delta check missed them. Provenance is therefore the
+     cutover-gate spec, not this change. -->
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `DifferentialHarness` | object (`runSuite`: ArmTree → SuiteRun; `divergence`: (List[SeamResolution], List[SeamResolution]) → ArmDivergence; `compare`: (ArmTree, ArmTree) → Either[ArmDivergence.Identical, DifferentialResult]; `exercisedToolPaths`/`unseamedToolPaths`: ArmTree → Map[String, Set[String]]; `checkPredecessorControl`: (ArmTree, SuiteRun, controlPath) → Outcome[Unit]; `diff`: (SuiteRun, SuiteRun, repository) → DifferentialResult; `verifySuiteDigests`: (oracleDir, Map[String,String]) → Either[String, Unit]; nested `SuiteRun`, `BatsFileResult`). **DEFECT REPAIRED 2026-09-21** by `spec:repair-probatio-cutover/differential-harness-integrity`: `runSuite` now executes the suite inside a materialised `ArmTree` (a `git worktree` at a baseline with per-seam content digests) instead of setting `*_OVERRIDE` env vars on the live tree; identical arms are refused (`Left`), never reported as a verdict. | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate`, repaired by `spec:repair-probatio-cutover/differential-harness-integrity` |
+| `FileComparison` | final case class (fileName, total, predecessorFailures, portedFailures, predecessorPresent, portedPresent — `isWorse`) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `DifferentialResult` | final case class (files: List[FileComparison], repository, suiteFileSet — `isComplete`, `worseFiles`, `hasRegression`, `worseFileNames`; +`unmeasuredFiles`/`justifyingFileNames` — a refusal names worse AND unmeasured files). `suiteFileSet` predates spec 8 (spec 1-2 closeout); the unmeasured/justifying probes added by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate`, extended by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `CutoverGate` | object (`decide`: DifferentialResult → CutoverVerdict; `record`: DifferentialResult → GateRecord; +`authoriseSwap(seam, comparison, exercising)` — scopes the comparison to the seam's exercising files, synthesises absent rows for exercising files with no comparison row, refuses and names them; empty scope refuses outright). `authoriseSwap` added by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate`, extended by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `CutoverVerdict` | enum (Proceed, Revert(evidence: DifferentialResult)) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `GateRecord` | final case class (verdict: CutoverVerdict, evidence: DifferentialResult — `authorisesSwap`, `hasEvidence`) | `org.sinemenda.probatio.migration` | test-only; shipped by `spec:complete-probatio-cutover/cutover-gate` |
+| `CutoverKernel` | object (Ring 6 PureScala mirror in `verified/probatio`): `cutoverDecision`/`noWorse`/`decideWithWitness` (`Decision` — proceed, or `Revert(witnessIndex)`), `findWorse`; and the arm-divergence extension `divergenceDecision` (`ArmVerdict` — identical, or `ArmsDiverged(firstDiff)`), `allEqualDigests`, `firstDiffIndex`, `worseIndices`/`countWorse`; plus ground lemmas (`emptyVectorsProceed`, `regressionBlocksDespiteTotalImprovement`, `identicalVectorsRefuse`, `oneDiffDiverges`, …). **Added 2026-09-25 by `finish-probatio-replacement` inventory-check** — it shipped without a row. | `org.sinemenda.probatio.core` (under `verified/probatio`) | shipped by `spec:complete-probatio-cutover/cutover-gate` (2026-09-13, `9e1ebc0`); extended by `spec:repair-probatio-cutover/differential-harness-integrity` (2026-09-21, `c59a2aa`) |
+| `SkillDocLintCheck` | **final class extends ProbatioCliSuite** (a munit suite, NOT an object) — detects stale skill-doc references after a shim swap | `org.sinemenda.probatio.migration` (cli test sources) | test-only; shipped by `spec:complete-probatio-porting/hook-cutover` |
+
+### repair-probatio-cutover change — differential-harness-integrity spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ArmTree` | final case class, private constructor (root, origin, baseline, config, resolutions) — constructible only via `ArmTree.materialise` (git worktree at baseline + seam resolution) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+| `ArmDivergence` | enum (Identical(seams: List[SeamResolution]) — a refusal, never a verdict; Diverged(perSeam: List[(SeamResolution, SeamResolution)]) — `isIdentical`, `divergingSeams`) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+| `SeamResolution` | final case class (seam: ToolId, implementationDigest: ContentDigest, sourcePath: os.Path) — identity is the digest; sourcePath is provenance only | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+| `ContentDigest` | opaque type over String (64-char lowercase SHA-256 hex — `ofBytes`, `ofFile`, `parse`, `hex`) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/differential-harness-integrity` |
+
+### repair-probatio-cutover change — chain-state-undetermined-fidelity spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `PrePassOutcome` | enum (`Completed(lints: Map[String, Outcome[LintReport]])` — carries the pre-pass's produced data; `DidNotRun(reason: UndeterminedReason)` — carries no lint data at all, so a measurement cannot be read out of a run that never happened) + `isCompleted`/`didNotRun` | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `UndeterminedReason` | opaque type over String (no public `apply` — an empty reason is unconstructible; `of: String => Either[String, UndeterminedReason]` validating route; `stated` total route — empty → `unclassifiable` = "the input under inspection"; `.text`; `ReadWriter` rejects empty on the wire) | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `ChainStatePrePass` | object (`runPrePassProbe` — spawns the resolved spec-lint (`SPEC_LINT_OVERRIDE` else `<repo>/openspec/schemas/verified-scala3/scanner/spec-lint.sh`) and classifies termination: absent / non-executable / launch failure / exit ∉ {0,1} / missing or count-mismatched completion marker / malformed graph-mode JSON → named `Left`s; mode-aware marker check — graph mode requires stdout to parse as a JSON array, degraded requires `spec-lint: <n> spec file(s)` with n == enumerated count) | `org.sinemenda.probatio.cli` | `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `ChainStateKernel.computeOutcome` | Ring 6 contract extension (`PrePassOutcome`{`PrePassCompleted(lintSuccess)`, `PrePassDidNotRun(reason: BigInt)`} + `computeOutcome` — `DidNotRun` → `Left(Undetermined)` without consulting evidence; `Completed` → existing fold) + laws `didNotRunIgnoresPopulatedEvidence`, `didNotRunCarriesStatedReason`, `completedOutcomeMatchesCompute`, `derivedCountsMonotone` | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+
+Existing rows modified by this spec (annotated in place above):
+`ChainStateReport` (verdict-path factory gated on `PrePassOutcome.Completed`;
+`fromCounts` narrowed to `private[probatio]`),
+`ChainStateUndetermined` (reason re-typed to `UndeterminedReason`; no count
+fields), `ChainState` (`compute` takes the typed `PrePassOutcome` — a bare
+lint map cannot reach the fold).
+
+### repair-probatio-cutover change — completion-witness-refusal spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `WitnessVerdict` | closed enum (`Witnessed` — every in-scope green claim corroborated; `Unwitnessed(row: ClaimVerdict)` — a refusal warrant carrying the offending row so a refusal names it; `Undeterminable(reason: UndeterminedReason)` — unreadable input, abstains without consuming the refusal budget) + `namedRow` | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/completion-witness-refusal` |
+| `CompletionDecision` | closed enum (`Allow` / `AllowUndetermined(reason: UndeterminedReason)` — fail-open, states the reason, never consumes the budget; `Refuse(unwitnessed: WitnessVerdict.Unwitnessed)` — the refusal carries the warrant row) + `isRefusal`/`namedRow` | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/completion-witness-refusal` |
+| `GateKernel.decideCompletion` | Ring 6 contract extension (`EvidenceRow(isGreen, baseline: BigInt, corroborated)`, `CompletionDecision`{`CompletionAllow`, `CompletionRefuse(rowIndex)`}, `decideCompletion(rows, baseline, priorRefusals)` — refusal iff `priorRefusals == 0` ∧ an in-range uncorroborated green row exists at `baseline`; the refusal names a justifying in-range row; `AllowUndetermined` unmodelled — the kernel quantifies over already-read rows) + discharge lemmas `fuSound`, `uncAtIndexImpliesExists`, `fuComplete` | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/completion-witness-refusal` |
+
+Existing rows modified by this spec (annotated in place above):
+`GateDecisions` (gained `corroborationVerdict` — current-baseline-scoped
+warrant detection — and `decideCompletion` — the budget-bounded decision;
+both pure, no I/O),
+`ReconcileReport` (gained `uncorroborated: List[ClaimVerdict]` — testimony
+∪ contradicted in record order, the verdict's warrant set),
+`GateKernel` (gained the `decideCompletion` mirror — see the new row).
+
+### repair-probatio-cutover change — gate-event-compatibility spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `EventDispatch` | closed enum (`Tier(event: GateEvent)` — a recognised `--event` name routes to its own tier; `Injection(suppliedName: String)` — every other supplied name routes to the context-injection tier carrying the name verbatim, so a fallback that discards what it fell back from is unconstructible) + `isTier`/`isInjection`; `EventDispatch.classify: String => EventDispatch` — **total** (no `Option`, no `Either` — a failable parse is unconstructible), single-sourced on `recognisedTable` (the six (token, event) pairs in predecessor dispatch order); `recognisedNames` derived from the same table so the closed set and the classification cannot drift | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/gate-event-compatibility` |
+| `DispatchKernel.classifyEvent` | Ring 6 contract extension (`EventDispatchModel`{`EventTier(event: BigInt)`|`EventInjection(supplied: BigInt)`} — supplied modelled by name-code, 0 = unrecognised; `recognisedEventNames` = codes 1–6; `classifyEvent(code)` with the spec's three postcondition clauses — totality, recognised⇔tier, injection-carries-name) + laws `classifyEventInjective`, `recognisedEventNamesDistinct` (`noDup` helper — stainless `List` has no `distinct`) | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/gate-event-compatibility` |
+
+Existing rows modified by this spec (annotated in place above): none —
+`GateContext.event: GateEvent` became `dispatch: EventDispatch` inside
+`SubcommandEntrypoints` (cli entrypoint plumbing, not an inventoried
+concept), and `DispatchKernel` gained the `classifyEvent` mirror (see the
+new row).
+
+### repair-probatio-cutover change — graph-tool-port spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `GraphNode` | sealed trait, nine kinds (`Concept`, `Action`, `Sync`, `TypeEntry`, `Spec`, `Requirement`, `Obligation`, `Artifact`, `Code`) — `id` derived per the predecessor convention (`concept:X`, `req:change/cap#N`, `artifact:path`, …), never stored; no `of("kind", id)` constructor, so a free-string kind is unconstructible | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphEdge` / `Edge` / `ObligationLink` | closed enum of the nine relations (`Declares`, `DefinesSync`, `ImplementedBy`, `Cites`, `Uses`, `Introduces`, `HasRequirement`, `EnforcedBy`, `VerifiedBy`) + `Edge` record (from, rel, to, `planned: Option[Boolean]` — `Cites`-only; `link: Option[ObligationLink]` — `EnforcedBy`-only) + `ObligationLink` (`Explicit`/`Title`/`Inferred` — the obligation-link basis); `wireName` gives the predecessor's lowercase rel/link words | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `UnlinkableRow` / `UnlinkableReason` | final case class (source, line, text, reason) + opaque `UnlinkableReason` over String (no public `apply` — a reasonless unlinkable row is unconstructible; `of` validates) | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `TraceabilityGraph` | final case class (nodes: `Vector[GraphNode]`, edges: `List[Edge]`, `unlinkable: List[UnlinkableRow]`) — the unlinkable set is a **required field**, a graph built without it is unconstructible; `node`/`outgoing`/`incoming`/`requirements`/`obligations`; `TraceabilityGraph.build` is pure — resolver predicates injected, no I/O | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphBuild` | final case class (graph, warnings, rowsRead, rowsBound) — the conservation accounting: rowsRead = rowsBound + unlinkable.size | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `ConceptRegistryDoc` / `InventoryDoc` / `SpecGraphDoc` | objects — the three document parsers (concept registry, concept inventory, spec tables incl. obligation marker rows and typed-source classification); `GraphParse` holds the shared row/section helpers | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphQuery` | closed enum of the five operations (`Export`, `Stats`, `Impact`, `Obligations`, `ConceptCode`) — an unknown operation word is unconstructible | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphAudit` / `ReachabilityResult` | object `GraphAudit` (`audit` — follows `EnforcedBy` (requirement→obligation) then `VerifiedBy` (obligation→artifact); unresolving artifacts are transparent; fuel = edge count) + `ReachabilityResult` (reaching, unenforcedRequirements, artifactlessObligations — **lists, not counts**) | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphWire` / `ExportedGraph` | object (`export`/`readExport`/`writeChangePayload`) + `ExportedGraph` — the predecessor's JSON wire object extended with the `unlinkable` array; malformed reads are `Left`, never partial | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/graph-tool-port` |
+| `ReachabilityKernel` | Ring 6 mirror (`verified/probatio`): `reachF`/`scan` fuel-bounded DFS on `BigInt` ids (scalar encoded measure `(fuel+1)*(E+1)` / `fuel*(E+1)+rem.size`); `reaches` postcondition = grounded ∧ complete iff over `pathToAny` (`gwRF`/`gwScan` witness recursion + `monoRF`/`monoScan` monotonicity recursion + `pathToAnyIntro`/`pathToAnyWit`); `audit` postcondition = size conservation + `disjoint` (self-verifying `partitionOf` + `memFirst`/`memSecond`/`disjointExtend`/`partitionDisjoint`); 658/658 VCs valid | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/graph-tool-port` |
+| `GraphConformance` / `diffExports` | test-only differential comparator — filters exactly the two sanctioned divergence classes (ported-only `unlinkable` rows; predecessor-only binds explained by a ported unlinkable/warning) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/graph-tool-port` |
+
+Existing rows modified by this spec (annotated in place above):
+`Subcommand` (+`Graph` — 10 → 11 cases, the traceability tool is ported).
+`SubcommandEntrypoints` gained the `GraphCmd` entrypoint and the
+`ChainStateCmd` graph seam now exports in-process via
+`GraphCmd.exportObligations` (cli entrypoint plumbing, not inventoried
+concepts); the chain-state verdict report states `degraded: true` when
+the graph read degraded — a wire-level field, `ChainStateReport` shape
+unchanged.
+
+### repair-probatio-cutover change — feature-freeze-guard-integrity spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/feature-freeze-guard-integrity`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `FixtureCorpus` | final class, **private** ctor (`ArmTree` precedent — a private case-class ctor still emits public `copy`, which would reopen the empty-corpus hole); `specs` are fixture paths relative to `origin` so active/archived placements compare equal; `resolve(name, openspecDir)`/`searchedLocations` probe the active area then `changes/archive/<date>-<name>` (`== name \|\| endsWith("-name")`); `fixturePath(spec)` | `org.sinemenda.probatio.guard` | test-only; `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+| `CorpusResolution` | enum (`Resolved(corpus)` / `NotFound(searched: List[os.Path])` — searched is a required field, so an undiagnosable not-found is unconstructible) + `isResolved`/`isNotFound`/`corpusOption` | `org.sinemenda.probatio.guard` | test-only; `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+| `FeatureFreezeGuard` | object — the guard's decisions: `corpusChangeName`, `reviewFeatureFreeze(violation)` (always `Rejected`; acceptance only flows through `guardOutcome`), `unknownCheckIds(emitted)` (closed F1–F10 set), `guardOutcome(resolution, disagreements): Outcome[FeatureFreezeVerdict]` (`NotFound → Undetermined` naming searched; `Resolved+Nil → Ran(Accepted)`; `Resolved+ds → Finding` naming each fixture + both verdicts) | `org.sinemenda.probatio.guard` | test-only; `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+| `GuardResult` | final case class in `SpecLintKernel` (isUndetermined, isUpheld, isViolation, namedFixtures) + `guardOutcome(resolved, disagreements)` — the Stainless mirror of the shipped three-way classification; postcondition = the spec contract verbatim | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+| `GuardCorpusFixtures` | test-oracle object — `withTempOpenspec`/`placeActive`/`placeArchived`/`placeAbsence` materialisers, `genCorpus`, `genEmptyCorpusCondition` (ChangeAbsent/LocationEmpty/LocationUnreadable), `genFixture` (predecessor clause-shape alphabet), `emittedCheckIds` | `org.sinemenda.probatio.guard` | test-only; `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+
+Existing rows modified by this spec (annotated in place above):
+`FeatureFreezeVerdict` (`Accepted` → `Accepted(corpus: FixtureCorpus)` —
+freeze-upheld is unconstructible without a resolved corpus);
+`SpecLintKernel` (+`GuardResult`, +`guardOutcome` mirror — 661/661 VCs).
+
+### repair-probatio-cutover change — install-tool-surface-parity spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/install-tool-surface-parity`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `InstallTarget` | enum (`AllPresentHarnesses` / `NamedHarness(name)` — no single-directory variant exists; `name` keeps the supplied token verbatim so unknown harnesses are diagnosed at install time, not rejected at construction) | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+| `InstallMode` | enum (`DryRun` / `Apply`) + `writes` probe — a required parameter with no default, so a write-by-default installer is unconstructible | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+| `PrerequisiteProbe` | final case class (`name`, `present`) — one probed tool | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+| `PrerequisiteReport` | final case class (`probes: List[PrerequisiteProbe]`) — holds probes, never names alone; `missing`/`missingCount`/`allPresent` are derived, so the report cannot disagree with its own count | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+| `InstallSurface` | object — the predecessor's closed sets verbatim: `prerequisites` (bash, git, jq, python3, shellcheck, bats, shfmt), `skillAgentDirs` (.claude/skills, .pi/skills, .devin/skills), `knownHarnesses`, `markerDirs`, hook destinations | `org.sinemenda.probatio.core` | `spec:repair-probatio-cutover/install-tool-surface-parity` |
+
+Existing rows modified by this spec (annotated in place above):
+`InstallSkillsCmd`/`InstallHooksCmd` (predecessor argument surfaces
+restored — `[project-root]` + `--check-installed` probe; `--agent` /
+`--apply` / `--project` / `-h,--help` with dry-run default, harness
+detection, claude merge and devin no-clobber), `SubcommandWiring`
+(+`schemaDirOf`).
+
+### repair-probatio-cutover change — ledger-checkpoint-cutover spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/ledger-checkpoint-cutover`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `SeamSwapRunner` | object (`attempt(seam, schemaDir, baseline, workRoot, timestamp) → Outcome[ShimSwap]` — the measured per-seam driver: predecessor-presence check → two `ArmTree` materialisations → live-suite overlay on both arms → `DifferentialHarness.compare` → seam-scoped `CutoverGate.authoriseSwap` → shim swap + `.predecessor.bak` backup ONLY on an authorising record. `Ran` = swapped+recorded; `Finding` = refused naming the justification or the absent predecessor; `Undetermined` = could-not-determine. `Using.resource(WorktreeCleanup)` for worktree teardown) | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `SeamSwapExec` | `final class … extends ProbatioSuite` — the `probatioSeamSwap` test-runner: `PROBATIO_SEAM=<ToolId>` env selects the seam (SKIPPED with no seam named — never swaps unconditionally in `sbt test`), calls `SeamSwapRunner.attempt` at HEAD, prints per-file pred/ported counts on `Ran` | `org.sinemenda.probatio.migration` | test-only; introduced by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `LedgerValidatorKernel.authoriseSwap` | Ring 6 contract extension (`SwapFileComparison(predecessorPresent, portedPresent, predecessorFailures, portedFailures)`, `SwapDecision(authorised, namedFiles)`, `swapViolationPositions` structural recursion + `swapViolationPositionsEmptyIffClean` induction instantiated in the body — `ensuring` discharges the spec postcondition verbatim: authorised ⇔ all-present ∧ no-worse, refusal ⇒ `namedFiles.nonEmpty`; 671/671 VCs valid) | `org.sinemenda.probatio.core` (verified/probatio) | `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `Validator` | object (`validate: ujson.Value → Either[ContractViolation, LedgerRecord]`, `validateFull → Either[ContractViolation, ValidatedRecord]` — the 15-clause mirror of `ledger-record-contract.jq`). **Shipped but never inventoried** — recorded now because spec 8 moved it: `timestampPattern` is the contract's exact fixed-second `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$` (fractional/offset forms rejected); integer recognition is `Double.isWhole` (the contract's whole-double domain — `v`/`exit`/`wallTime` extract as `BigInt`, no Int32 bound; `Infinity.isWhole` is false so non-finite parses fail closed) | `org.sinemenda.probatio.core` | shipped; recorded + repaired by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+
+Existing rows modified by this spec (annotated in place above):
+`ShimSwap` (+required `comparison: GateRecord`; `oracleGreen` derived),
+`CutoverGate` (+`authoriseSwap` — seam-scoped authorisation),
+`DifferentialResult` (+`unmeasuredFiles`, `justifyingFileNames`),
+`RingEvidence` (constructor sealed; `unevidenced`/`evidenced` smart
+constructors), `ToolId` (`predecessorSource(Ledger|Checkpoint)` →
+`.predecessor.bak` post-swap), `LedgerRecord`/`LedgerRecordOptional`
+(`v`/`exit`/`wallTime` → BigInt), `ClaimVerdict` (`observed` → BigInt),
+`ReplayVerdict` (`classify`'s recorded-exit argument → BigInt).
+
+### repair-probatio-cutover change — workflow-delivery-hygiene spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/workflow-delivery-hygiene`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ShimTargetScope` | sealed abstract class, `Serializable` product (`RepositoryRelative(fromShimToBinary: RelPath)`, `AbsoluteInstall(path: String)`) — the scope argument `generateShim`/`writeShim` now REQUIRE rather than infer from path shape: in-repository forwarding scripts are `RepositoryRelative` (emit `SCRIPT_DIR` self-resolution); a user-level install is `AbsoluteInstall` (validated absolute, must equal `resolution.path`, shell-quotable) | `org.sinemenda.probatio.plugin` | shipped; introduced by `spec:repair-probatio-cutover/workflow-delivery-hygiene` |
+| `ShimTargetScope.RelPath` | `final class … extends AnyVal`, PRIVATE constructor + `RelPath.from: String → Either[String, RelPath]` — the validated relative-path type: refuses empty, root-anchored (`/…`), home-anchored (`~…`), drive-anchored (`C:…` incl. bare `C:`), and UNC (`\\…`) inputs, so `RepositoryRelative` can never carry an absolute target | `org.sinemenda.probatio.plugin` | shipped; introduced by `spec:repair-probatio-cutover/workflow-delivery-hygiene` |
+
+Existing rows modified by this spec: `ShimGenerator.generateShim` (both
+arities gained the required `scope: ShimTargetScope` parameter),
+`ProbatioPlugin.writeShim` (same). The seven committed forwarding
+scripts were regenerated to the `RepositoryRelative` three-line shape
+(`SCRIPT_DIR` from `BASH_SOURCE`, then `exec "$SCRIPT_DIR/../bin/probatio"`).
+
+### repair-probatio-cutover change — schema-rename-completion spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/schema-rename-completion`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `RenameDeferral` | final case class (item, reason, blockedBy: Coupling) — all three required, so a reason-less or coupling-less deferral is unconstructible; companion `missing(d): List[Missing]` is the completeness check (blank fields are reportable data) and `recorded: List[RenameDeferral]` is the recorded deferral (the `openspec/schemas/verified-scala3 → probatio` directory rename, deferred because the workflow resolves schemas by directory name) | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/schema-rename-completion` |
+| `RenameDeferral.Coupling` | final case class (resolutionMechanism, configurationPin, recordedChangesPinning: Int) — the blocking coupling as checkable data: the pin count is an `Int` the test oracle recomputes from disk (19: 18 archived `.openspec.yaml` + the active change pin) | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/schema-rename-completion` |
+| `RenameDeferral.Missing` | enum (Item, Reason, ResolutionMechanism, ConfigurationPin, RecordedChanges) — the named gaps `missing` reports | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/schema-rename-completion` |
+| `CacheMigration` | object (`migrateOnce(env)`, `legacyDirName`, `currentDirName`) — the impure adapter wiring the verified `SchemaPolicy.migrateCache` kernel to `~/.cache`; snapshot is TOTAL (`Option` — an unreadable directory aborts the decision, never reads as empty), materialisation is all-or-nothing (`*.migrating` staging sibling + move, cleaned on failure so the next run retries), fail-open throughout (a migration that cannot run never fails the tool) | `org.sinemenda.probatio.cli` | shipped; introduced by `spec:repair-probatio-cutover/schema-rename-completion` |
+
+Existing rows modified by this spec: `BannerEngine` (emitted identity
+headers renamed `verified-scala3 —` → `probatio —`; pre-rename stamp
+warnings remain explicit), `ProbatioMain` (`runSubcommand` invokes
+`CacheMigration.migrateOnce` before dispatch — first-use migration on
+every real subcommand), `SchemaPolicy` (`migrateCache` now has a shipped
+caller — previously verified-but-unwired).
+
+### repair-probatio-cutover change — unported-tool-register spec concepts
+
+The following concepts were introduced by `spec:repair-probatio-cutover/unported-tool-register`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `PortBlocker` | enum (GatedOnSpike(spike: String), NotOnEnforcementPath, SupersededByPortedTool(subcommand: String)) — the closed blocker set every register entry must carry; a free-text reason is a parse `Left`, never a defaulted entry | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/unported-tool-register` |
+| `UnportedTool` | final case class (name, path, blocker: PortBlocker, citedBy: List[String]) — all four required; a blocker-less or citation-less entry is unconstructible | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/unported-tool-register` |
+| `ToolSurfaceClassification` | enum (Ported(subcommand: String), Registered(tool: UnportedTool)) — exactly two variants; a third does not compile | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/unported-tool-register` |
+| `UnportedToolRegister` | object — the pure classification core (no filesystem; No-I/O-in-core): `toolDirectories` (scanner + hooks), `isRevertTarget` (`*.predecessor.bak` excluded — swap-protocol revert targets, not tools), `classifyAll` (Ported wins, both → `doublyClassified`, neither → `unclassified`), `unresolvedCitations`, `checkSurface` (any `Unreadable` dir → `Undetermined`, never false-clean; clean → `Ran(Report)`, else `Finding` naming every problem), `parseRegister`/`renderRegister` (the committed markdown register round-trips through the closed blocker parser). Nested `DirListing` (`Read`/`Unreadable`) and `Report` (classified/unclassified/doublyClassified/unresolvedCitations, `isClean`) | `org.sinemenda.probatio.core` | shipped; introduced by `spec:repair-probatio-cutover/unported-tool-register` |
+
+Existing rows modified by this spec (annotated in place above): `MetalsCmd`
+(+`stop` subaction — the remaining `metals-start.sh` operation ported into
+the subcommand; the script leaves the unported set entirely),
+`Subcommand` scaladoc (the unported-tools prose replaced by a reference to
+`openspec/schemas/verified-scala3/unported-tools.md` — the machine-checked
+register: 5 entries, `registry-check.sh`/`scan.sh` `GatedOnSpike`,
+`impact-scan.sh`/`removal-audit.sh`/`metals-call.sh` `NotOnEnforcementPath`).
+
+### complete-probatio-porting change — hook-cutover spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ShimSwap` | final case class (tool: ToolId, predecessorPath, shimPath, binaryPath, oracleGreen, timestamp — immutable audit trail entry for one shim swap); +`comparison: GateRecord` REQUIRED and `oracleGreen` DERIVED (`comparison.authorisesSwap`) — a swap record detached from its gating comparison, or whose green flag contradicts its own evidence, is unrepresentable. Changed by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` | `org.sinemenda.probatio.migration` | test-only; reshaped by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `SwapOrder` | enum (LedgerFirst, ChainState, SpecLint, DangerScan, Reconcile, Checkpoint, GateLast — R-M3 dependency order for shim swaps; gate is always last; swapOrder, isLast, indexOf). Checkpoint position added 2026-09-21 by `repair-probatio-cutover/differential-harness-integrity`, matching the `strangler-migration-protocol` concept's declared order. | `org.sinemenda.probatio.migration` | test-only |
+
+### port-scanner-to-probatio change — non-goals-guard spec concepts
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `FeatureFreezeViolation` | enum (NewLintCheck(checkId), VerdictAlteration(fixture, expected, actual), NewWorkflowFeature(featureDescription)) | `org.sinemenda.probatio.guard` | test-only |
+| `FeatureFreezeVerdict` | enum (Accepted(corpus: FixtureCorpus), Rejected(violation, reason)) — `Accepted` narrowed 2026-09-23 by `spec:repair-probatio-cutover/feature-freeze-guard-integrity`: the verdict carries the resolved corpus it was earned against | `org.sinemenda.probatio.guard` | test-only |
+| `KnownCheckId` | enum (F1–F10 closed set — allIds, isKnown) | `org.sinemenda.probatio.guard` | test-only |
+| `FixtureVerdict` | final case class (fixture, verdict, warnings) | `org.sinemenda.probatio.guard` | test-only |
+| `DependencyModule` | final case class (organization, name) | `org.sinemenda.probatio.guard` | test-only |
+| `AllowedDependencySet` | object (allowed, forbidden, isAllowed, isForbidden, isForbiddenOrg — closed dependency set) | `org.sinemenda.probatio.guard` | test-only |
+| `WorkflowSubproject` | enum (ProbatioCore, ProbatioCli, SbtProbatio, ProbatioVerified — all) | `org.sinemenda.probatio.guard` | test-only |
+| `DependencyBoundaryResult` | enum (Clean(subproject), Violation(subproject, module)) | `org.sinemenda.probatio.guard` | test-only |
+| `HookPayload` | final case class (decision, hookSpecificOutput) | `org.sinemenda.probatio.guard` | test-only |
+| `PayloadStabilityResult` | enum (Stable, Unstable(field, before, after)) | `org.sinemenda.probatio.guard` | test-only |
+| `OracleImmutabilityResult` | enum (Immutable(commit), Modified(commit, file)) | `org.sinemenda.probatio.guard` | test-only |
+
+### port-scanner-to-probatio change — provenance-validation spec concepts
+
+The following concepts were introduced by `spec:port-scanner-to-probatio/provenance-validation`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `ProvenanceFields` | final case class (sha256, digest, wallTime, source, session — Option types) | `org.sinemenda.probatio.core` | shipped; REMOVED by `spec:complete-probatio-cutover/ledger-checkpoint-parity` (subsumed by `LedgerRecordOptional`) |
+| `ValidatedRecord` | final case class (wraps LedgerRecord after 15-clause validation); spec 7 made `provenance` a DERIVED view of `record.optional` — never a second source of truth | `org.sinemenda.probatio.core` | shipped; provenance derived by `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `ContractViolation.OptionalFieldTypeInvalid` | case object (clause 13 — optional field type invalid) | `org.sinemenda.probatio.core` | shipped |
+| `ContractViolation.ObserverProvenanceInvalid` | case object (clause 14 — observer provenance invalid) | `org.sinemenda.probatio.core` | shipped |
+| `ContractViolation.SessionProvenanceInvalid` | case object (clause 15 — session provenance invalid) | `org.sinemenda.probatio.core` | shipped |
+| `Ledger.LedgerReadError` | sealed trait (MalformedRow(rowIndex, violation), NotAnArray(other)) | `org.sinemenda.probatio.core` | shipped |
+| `LedgerValidatorKernel.Violation.OptionalFieldTypeInvalid` | case object (clause 13 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |
+| `LedgerValidatorKernel.Violation.ObserverProvenanceInvalid` | case object (clause 14 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |
+| `LedgerValidatorKernel.Violation.SessionProvenanceInvalid` | case object (clause 15 — Ring 6 model) | `org.sinemenda.probatio.verified` | shipped |
+
+### port-scanner-to-probatio change — schema-policy spec concepts
+
+The following concepts were introduced by `spec:port-scanner-to-probatio/schema-policy`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `StampFormat` | enum (Legacy, New) — pre-rename vs post-rename generatedBy stamp format | `org.sinemenda.probatio.core` | shipped |
+| `StampClassification` | enum (Matching, DriftWarning(expected, found), PreRename(found), NoSkill) — drift detector classification | `org.sinemenda.probatio.core` | shipped |
+| `RootStamp` | final case class (rootPath, stamp: Option[(StampFormat, Int)]) — stamp at one install root | `org.sinemenda.probatio.core` | shipped |
+| `StampScan` | final case class (roots: List[RootStamp]) — scan across install roots | `org.sinemenda.probatio.core` | shipped |
+| `DriftLine` | enum (NoSkillLine, MigrationMessage(rootPath, found), DriftWarningLine(rootPath, expected, found)) — drift scan output line | `org.sinemenda.probatio.core` | shipped |
+| `ResolvedValue` | enum (Default, Value(v)) — resolved hook control env var value | `org.sinemenda.probatio.core` | shipped |
+| `DeprecationWarning` | final case class (oldName, newName, majorWindow) — env var deprecation warning | `org.sinemenda.probatio.core` | shipped |
+| `EnvVarSetting` | enum (Neither, LegacyOnly(value), NewOnly(value), Both(newVal, legacyVal)) — four env var states | `org.sinemenda.probatio.core` | shipped |
+| `EnvResolution` | final case class (resolved: ResolvedValue, warnings: Warnings) — env var resolution result | `org.sinemenda.probatio.core` | shipped |
+| `CacheState` | final case class (legacyExists, newExists, legacyContents, newDirContents) — cache dir migration state | `org.sinemenda.probatio.core` | shipped |
+| `SchemaPolicy` | object (resolveHookEnv, migrateCache, classifyStamp, classifyDrift — pure migration functions) | `org.sinemenda.probatio.core` | shipped |
+
+### port-scanner-to-probatio change — gate-checkpoint-lock spec concepts
+
+The following concepts were introduced by `spec:port-scanner-to-probatio/gate-checkpoint-lock`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `GateEvent` | enum (SessionStart, PromptSubmit, PostEdit, ToolCall, Completion, PostBash) — six hook events + total `harnessName` (the harness's own event name per case) | `org.sinemenda.probatio.core` | shipped; +`PostBash`/`harnessName` by `spec:complete-probatio-cutover/gate-event-completeness` |
+| `GateDecision` | enum (Allow, Block(reason: BlockReason)) — gate decision | `org.sinemenda.probatio.core` | shipped |
+| `SpecPhase` | enum (Oracle, Implementation, Verified) — spec phase in implementation order + `fromStateFile` (total: unrecognised → `Oracle`) / `asToken` | `org.sinemenda.probatio.core` | shipped; +`fromStateFile`/`asToken` by `spec:complete-probatio-cutover/gate-event-completeness` |
+| `BlockReason` | sealed trait (PredecessorNotVerified(spec, phase), PredecessorNotCheckpointed(spec), OracleOrderingViolation, GrantRequired(spec), CompletionUnresolved(details), ChainStateUndetermined, Uncorroborated(details)) — block reason with render; the last three are the completion tier's refusal texts | `org.sinemenda.probatio.core` | shipped; +3 completion variants by `spec:complete-probatio-cutover/gate-event-completeness` |
+| `PredecessorCheck` | object (apply: pure function over List[(name, phase, hasPresentation)] + escapeHatch → Either[BlockReason, Unit]) | `org.sinemenda.probatio.core` | shipped |
+| `GrantWaiver` | object (apply: pure function over List[(name, phase, hasPresentation, hasGrant)] + escapeHatch → Either[BlockReason, Unit]) | `org.sinemenda.probatio.core` | shipped |
+| `PresentationMarker` | final case class (specName, exists: Boolean) — checkpoint presentation evidence | `org.sinemenda.probatio.core` | shipped |
+
+### complete-probatio-porting change — cli-wiring spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-porting/cli-wiring`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `CliContext` | final case class (repoRoot, changeDir, ledgerFile, gitDir: String; escapeHatch: Boolean) — resolved paths + env-var overrides read once at entrypoint start + `hooksControl(env, schemaVersion): EnvResolution` — the `PROBATIO_HOOKS`/`VERIFIED_SCALA3_HOOKS` alias window resolved through `SchemaPolicy` (`off` under either name skips the gate; the inverted `=1` reader is removed) | `org.sinemenda.probatio.cli` | shipped; +`hooksControl` by `spec:complete-probatio-cutover/gate-event-completeness` |
+| `StdoutRenderer[A]` | trait (render(value: A): String) — typeclass for byte-compatible stdout rendering; given instances for ChainStateReport, ChainStateUndetermined, LintReport, GatePayload, BannerOutput, LintContext | `org.sinemenda.probatio.cli` | shipped; +LintContext instance by `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SubcommandWiring` | object (parseArgs, readLedgerFile, appendLedgerLine, emitStdout, emitStderr, stampTimestamp, supportedVersion) — I/O adapter layer: reads files, parses args, calls core, renders, maps to Outcome[Int]; spec 7 added `repoContaining`/`gitExit`/`forgivePredicate` (moved from `ChainStateCmd`), `repoRootOf`, `sha256OfFile`/`sha256Hex`, `shellParses`, `replayCommand`, `executeCaptured`, `readTextFile`/`writeTextFile`, `absoluteGitDirOf`, boolean-aware `parseArgs`; `install-tool-surface-parity` added `schemaDirOf` (PROBATIO_SCHEMA_DIR → repo-relative schema path) | `org.sinemenda.probatio.cli` | shipped; extended by `spec:complete-probatio-cutover/ledger-checkpoint-parity` and `spec:repair-probatio-cutover/install-tool-surface-parity` |
+
+### complete-probatio-cutover change — live-fact-banner spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/live-fact-banner`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `FactRead[+A]` | enum (Present(value), Absent, Unreadable(reason)) — three-state read result; unreadable never collapses to absent | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `ArtifactRef` | final case class (id, generates) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `ArtifactScan` | final case class (present: List[String], next: Option[ArtifactRef]) — the schema.yaml artifact DAG as read | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `RepositoryFacts` | final case class (schemaVersion/registry/inventory: `FactRead[Int]`, profile: `FactRead[Option[String]]`, installRoots: `List[InstallRootScan]`, activeChanges: `FactRead[List[ActiveChangeWithChainState]]`; `fingerprint` — canonical whole-record JSON encoding incl. reasons/baselines) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `RootBase` | enum (RepoRoot, UserHome) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `InstallRootRef` | final case class (base: RootBase, relativePath) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `InstallRoots` | final case class — fixed-arity record of the predecessor's six install roots (`.all`, `.length`); cannot be narrowed without a compile error | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `InstallRootState` | enum (Absent, PresentNoStamp, Stamped(version, StampFormat), Unreadable(reason)) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `SessionId` | opaque type over String (fromRaw, resolve with signal-priority, `.raw`, `.encoded` — lossless base64url, injective) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `HeartbeatRecord` | final case class (ts, event, format) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `RepositoryFactsReader` | object (`read(repoRoot, userHome, env): RepositoryFacts` + `readLintContext(repoRoot, userHome): LintContext` — the single fact-reading seam; total: failures are data, never thrown) | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner`; +`readLintContext` by `spec:complete-probatio-cutover/spec-lint-engine` |
+| `GateStateDir` | final case class (path: Path) — declared for `gate-event-completeness`, introduced early here | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner` |
+| `GateStateDirReader` | object (resolve via `git rev-parse --absolute-git-dir`, fingerprint `fp-<SessionId.encoded>` read/write, heartbeat read/write; all ops fail-open) + spec-8 marker surface: `phaseFile`/`readPhase`/`writePhase`, `presentationFile`/`sessionPresentations` (`presentation-*-*-<sess>` glob parity)/`writePresentation`, `grantFile`/`hasGrant`/`hasAnySessionGrant`/`writeGrant`, `refusalFile`/`hasRefusal`/`writeRefusal` (write failure ⇒ fail open)/`clearRefusals`, `sweepCheckpointOutputs`, `specDirs`, `RefusalKind` + `markerPrefix` | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/live-fact-banner`; extended by `spec:complete-probatio-cutover/gate-event-completeness` |
+| `BannerEngineKernel.bannerClaims` | Ring 6 contract (`facts: List[BigInt] => List[BigInt]` — emitted claims equal fact codes; `-1` unreadable, `0` absent, `n>0` present-with-count) + helpers (`allFactCodesValid`, `claimsMatchFacts`, `noUnreadableClaimedAbsent`, `claimFor`) and five fixed-size law lemmas | `org.sinemenda.probatio.verified` | `spec:complete-probatio-cutover/live-fact-banner` |
+
+Existing rows modified by this spec (annotated in place above): `BannerInputs`
+(private constructor), `ActiveChangeWithChainState` (FactRead artifacts + Either
+chain state), `InstallRootScan` (four-state root read), `DriftWarning`
+(+NoStampDeclared, +Unreadable), `DriftScan.installRoots` (three-root list →
+six-root `InstallRoots` record).
+
+### complete-probatio-cutover change — spec-lint-engine spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/spec-lint-engine`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `SpecDocument` | final case class (name, lines: Vector[String], requirements, properties, temporals, scenarios, obligationRows, dataRowCount, bridgeRowCount, hasProofObligations, formalContractsContentLines, hasBehavioralConcepts, artifactRows, chainRows — the chain-state awk's own proof-obligation row set, admitted under `## `-only section flags) — the parsed spec as immutable data | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine`; +`chainRows` by `spec:complete-probatio-cutover/chain-state-attribution` |
+| `RequirementBlock` | final case class (title, line, endLine, hasNormative, negative, scenarioCount, normativeText) — `line`/`endLine` bracket the block for body rescans and live-visibility filtering | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `PropertyBlock` | final case class (title, line, endLine, hasGeneratorStrategy) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `TemporalBlock` | final case class (title, line, endLine, hasTriggerEvent, hasResponseEvent) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `ScenarioHeading` | final case class (title, line) — `#### Scenario:` headings wherever they appear; F8 source resolution target | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `ObligationRow` | final case class (line, fieldCount, source, enforcement, artifact, raw) derives ReadWriter — one evaluated proof-obligation table row; skipped rows (empty/comment source, `NF < 4`) never appear here | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `ObligationSource` | enum (ByTitle(requirementIndex), ByOrdinal(requirementIndex), Typed(kind, name), Unresolvable(cell)) — the predecessor `check_source` resolution algebra as a closed type | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SpecDocumentParser` | object (`parse(name, lines): SpecDocument` — pure port of the predecessor awk scan: heading dispatch, live-state block tracking, empty-title gating, artifact-row tracking under `## `-only section flags) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SpecLintEngine` | object (`lint(document, context, artifactTracked): LintReport` — pure total function emitting F1–F10/W1–W7 in predecessor order; `obligationSources`, `reachabilityFold` exposed for verification) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `CheckOutcome` | enum derives ReadWriter (Pass(check), Fail(check, line, message), Warn(warning)) — the emitted finding stream, predecessor emission order | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `LintContext` | final case class (schemaVersion/registry/registryConcepts/inventoryTypes/profile: FactRead, installRoots) — injected repository facts; `hasRegistry` gates F10/W7, `codeIdentifiers` is the predecessor `comm -23` | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/spec-lint-engine` |
+| `SpecLintKernel` | object — Ring 6 mirror of `reachabilityFold` (`numRequirements, rowTargets: List[BigInt] => (unenforced, unresolvableCount)`): `uncoveredFrom` same-shaped soundness postcondition + `uncoveredComplete` inductive lemma + four fixed-size law lemmas; +`GuardResult`/`guardOutcome` added 2026-09-23 by `spec:repair-probatio-cutover/feature-freeze-guard-integrity` (the guard's three-way classification mirrored alongside the lint kernel, 661/661 VCs) | `org.sinemenda.probatio.core` (verified/probatio) | `spec:complete-probatio-cutover/spec-lint-engine`; extended by `spec:repair-probatio-cutover/feature-freeze-guard-integrity` |
+
+Existing rows modified by this spec (annotated in place above): `LintReport`
+(re-shaped — verdicts + finding stream + applicability + resolvedRows/
+unresolvableRows/requirementRows; `lintSuccess` derived from findings),
+`RepositoryFactsReader` (+`readLintContext`), `StdoutRenderer` (+given
+instance for `LintContext`), `SpecLintCmd` (skeleton → real implementation:
+positional change-dir, `--context-only`, `--artifacts`, `--format json`,
+nested `specs/` discovery).
+
+The following concepts were introduced by `spec:complete-probatio-cutover/chain-state-attribution`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `FactSource` | enum (Graph, Degraded) + `asString` — which fact pipeline produced the requirement set; gates `unattributable` eligibility (degraded only) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `ExtractedObligation` | final case class (spec, line, obligation, artifact, artifacts, requirementClaims, unmappable) — one normalised obligation row; `unmappable` evaluated per-path at extraction time | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `RequirementSet` | final case class (specNames, requirements, obligations, source) + `empty` + `isEmpty` — the only way requirements enter `ChainState.compute`; a bare `List[Requirement]` cannot | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `RequirementExtractor` | object (`NamedSpec(name, document)`; `extract(specs, graphExport: Option[ujson.Value]): RequirementSet`; `usableExport`, `degradedObligations` exposed for verification) — total; degraded/empty inputs surface as data, never thrown | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution` |
+| `ChainState` | object (`compute(prePass: PrePassOutcome, ledger, reqs: RequirementSet, specBaselines: Map[String, List[String]], baseline, change, artifactUnchanged)` — `DidNotRun` short-circuits to `Left(ChainStateUndetermined)` without consulting evidence; `Completed` delegates to the measured fold) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/chain-state-attribution`; signature re-shaped by `spec:repair-probatio-cutover/chain-state-undetermined-fidelity` |
+| `ChainStateKernel.chainStateFold` | Ring 6 contract (`total, verdicts, discharged, unattributable => (bound, resolved, dis, unresolved)` — verdict codes 0/1/2, index ranges in `[0,total)`; postcondition: `dis <= resolved <= bound <= total`, `unresolved.size == total - dis`, unattributable indices never counted discharged and always appear in `unresolved`) + helpers (`filterOut`, `foldFrom`, `rangeClause`, `clauseFrom`, `filteredNotBanned`, `absentIsUnresolved`) + three witness lemmas | `org.sinemenda.probatio.core` (verified/probatio) | `spec:complete-probatio-cutover/chain-state-attribution` |
+
+Existing rows modified by this spec (annotated in place above):
+`SpecDocument` (+`chainRows` — the chain-state awk's own row set, populated
+under `## `-only section flags parallel to `obligationRows`),
+`UnresolvedEntry`/`ChainStateReport` (private constructors + `of`/`fromCounts`
+smart constructors; wire reads route through them),
+`UnresolvedReason` (`Unattributable` now reachable — degraded-mode-only
+reason), `ChainState.Requirement` (unchanged shape; consumed only via
+`RequirementSet`).
+
+The following concepts were introduced by `spec:complete-probatio-cutover/danger-reconcile-engines`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `DangerPattern` | enum (8 cases: `UnsafeGet`, `UnsafeHead`, `CatchAll`, `Cast`, `Blocking`, `Swallowed`, `UnreachableClaim`, `LintOff`) + `label` — the predecessor's pattern classes and report tokens | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `DangerHit` | final case class (file, line, pattern, text, justified) — one occurrence | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `DangerReport` | final case class, private ctor + `of` — `hits`/`justifiedExcluded` are a partition of the occurrence list; a summary disagreeing with contents is unrepresentable | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `DangerScanEngine` | object (`isProductionPath` — the `/src/main/` containment rule; `scanLine`; `scan` — pattern-major emission, pure, no I/O) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `Corroboration` | enum (5 cases: `SelfObserved`, `Witnessed(observer, preceding, following)` — the ambient set is `preceding ++ (observer :: following)` so witnessed-without-witness is unconstructible, `Testimony`, `Contradicted(observer, others)`, `Exempt`) + `verdictToken` | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `ClaimVerdict` | final case class (spec, ring, obligation, command, baseline, verdict, observed) — the predecessor's per-claim verdict object; `observed` widened Int→**BigInt** by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` (replay comparison must not saturate a large recorded exit) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines`; widened by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `ReconcileReport` | final case class, private ctor + `of` — every count/verdict list is a derived view of `classifications`; NO discharge verdict exists; +`uncorroborated: List[ClaimVerdict]` (testimony ∪ contradicted in record order — the completion refusal's warrant set) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines`; extended by `spec:repair-probatio-cutover/completion-witness-refusal` |
+| `ReconcileEngine` | object (`Classified(record, corroboration)`, `judgmentRings = Set(R2, R8, Manual)`, `classify(records, change, spec, baseline)` — pure fold; exact-key corroboration on (spec, ring, baseline, command)) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `ChangedFilesReader` | object (`resolveBaseline`, `changedProductionFiles`, `readFiles`) — the git/filesystem adapter for danger-scan; subprocess failure maps to `Left`/undetermined, never a silent clean report | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+| `ReconcileKernel.corroborationFold` | Ring 6 contract (`require(validRecords)`; `ensuring(cls.length == records.length && postOk(records, records, cls))`) + helpers (`observedAt`, `observedOutcomeAt`, `validRecords`, `classifyRow`, `postOk`, `foldGo`) — all structural recursion; classification codes CLS_SELF_OBSERVED/WITNESSED/TESTIMONY/CONTRADICTED/EXEMPT | `org.sinemenda.probatio.verified` (verified/probatio) | `spec:complete-probatio-cutover/danger-reconcile-engines` |
+
+Existing rows modified by this spec (annotated in place above): none — all
+concepts are new; `StdoutRenderer`, `SubcommandEntrypoints`, `HelpRegistry`
+were extended with the `reconcile`/`danger-scan` surfaces without changing
+existing concept shapes.
+
+### complete-probatio-cutover change — ledger-checkpoint-parity spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/ledger-checkpoint-parity`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `RingStatus` | enum (5 cases: `Green`, `Failed`, `Unevidenced`, `SameSession`, `UnverifiedSession`) + `token` — the predecessor's per-ring status tokens | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `RingEvidence` | final class, PRIVATE constructor (ring, status, record: Option[LedgerRecord], note: Option[String]) — one ring's classified evidence; the only construction routes are `unevidenced(ring)` and `evidenced(ring, status, record: LedgerRecord, note)` — an outcome-bearing entry with NO record is unconstructible (a private case-class ctor would still emit a public `copy` that could strip the record — hence a sealed final class, the ArmTree convention). Sealed by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity`; constructor sealed by `spec:repair-probatio-cutover/ledger-checkpoint-cutover` |
+| `ReplayVerdict` | enum (3 cases: `Matches`, `Diverges`, `Unreplayable` — NO "skipped" case, a skipped row could pass as verified) + `unreplayableRings = Set(R8, Manual)` + total `classify(ring, replayedExit, recordedExit)` | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `CheckpointReport` | final case class, private ctor + `of(change, spec, baseline, rings, chainState)` — `unresolvedCount` derives from the verdict's own `unresolved` member; `markerWritten` requires every requested ring green AND zero unresolved, so an unevidenced-marker report is unrepresentable; `toJson`/`toText` render predecessor structure | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `CheckpointEngine` | object (`report` — dedup first-occurrence, last-record-per-ring, verdict consumed as opaque `ujson.Value` never recomputed; `classify` — the R8 same-session ladder; `markerDecision`; `unresolvedCountOf` — jq `length` semantics; `specBaseline` — progress-tracker `Commit` cell; `regenerateTasks` — checkbox-only rewrite) — pure, no I/O, no `ChainState` reference | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+| `LedgerValidatorKernel.allEvidenced` / `.markerDecision` | Ring 6 mirror — structural recursion over Stainless lists; `markerDecision` carries `ensuring` equivalence to the `forall` formulation | `org.sinemenda.probatio.verified` (verified/probatio) | `spec:complete-probatio-cutover/ledger-checkpoint-parity` |
+
+Existing rows modified by this spec (annotated in place above):
+`LedgerRecord` (joined `optional` as required), `LedgerRecordOptional`
+(attached — was orphaned), `ValidatedRecord` (`provenance` derived),
+`ProvenanceFields` (removed — subsumed), `LedgerCmd`/`CheckpointCmd`
+(predecessor op surface), `SubcommandWiring` (shared I/O adapters +
+observation seams), `HelpRegistry` (ledger/checkpoint help surface).
+
+### complete-probatio-cutover change — gate-event-completeness spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/gate-event-completeness`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `HarnessPayload` | final case class, private ctor + `of(toolName, toolInput, toolResponse, cwd, stopHookActive)` — the structured input a harness supplies on stdin; `interrupted` derived from the response (one fact, stated once) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `ToolOutcome` | sealed trait, `private[ToolOutcome]` ctors — `classify(response)` is the only construction path (object → `Exit(0)` unless `interrupted:true`; `"Error: Exit code N"` → `Exit(N)` via `toIntOption`, unrepresentable digits → `Skip`; other string → `Skip(not-a-command-outcome)`; other shape → `Skip(unrecognised-response-shape)`); total and conservative | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `RefusalBudget` | final case class, private ctor (`issued: Int`) — `full`, `fromMarker` (present marker ⇒ spent), `exhausted`, `issue` (`None` when spent — the second refusal is unrepresentable); `apply(blockable)` fold — exactly one refusal at the first blockable, kernel-mirrored | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `GateDecisions` | object — the pure decision module (no I/O, enforced by the `NoIOInProbatioCore` scalafix rule): `readOnlyTools`, `isProductionEdit`, `isSpecEdit`, `specOrder`, `owningSpec` (Expected-Files table map — consulted on the production branch only), `advancePhase` (implementation→verified requires RED∧GREEN), `AmbientMatch`/`ambientRingMatch` + `ambientVerdict` (Either — the skip reason feeds the trace), `Step0Target`/`step0Target`, `markerTriple` (right-to-left parse quirks), `unresolvedBlock` (≤10 + `+N more`), `Polarity`/`hasRing3Row`/`firstRing3Baseline`/`hasGreenAfterRed`, `specEditChangeName` (sed-equivalent greedy-backtrack extraction), +`corroborationVerdict`/`decideCompletion` (the completion refusal: current-baseline-scoped warrant + budget-bounded decision — still pure, no I/O) | `org.sinemenda.probatio.core` | `spec:complete-probatio-cutover/gate-event-completeness`; extended by `spec:repair-probatio-cutover/completion-witness-refusal` |
+| `HarnessPayloadReader` | object — `consumesPayload`, `parse` (jq `// empty` semantics), `Empty`, `readChannel(inputPending)` — the at-most-once stdin read; silent open pipes read as no-payload | `org.sinemenda.probatio.cli` | `spec:complete-probatio-cutover/gate-event-completeness` |
+| `GateKernel` | object — Stainless Ring 6 mirror: `refusalBudget(blockable)` (`ensuring` exactly one refusal at the first blockable) and `classifyOutcome(shape, carriedCode)` (`ensuring` `Some` iff shape ∈ {0,2}); +`decideCompletion` (completion-witness-refusal mirror — see the spec-3 row); `GateBridgeSpec` in probatio-cli binds shipped code to the model on generated inputs | `org.sinemenda.probatio.verified` (verified/probatio) | `spec:complete-probatio-cutover/gate-event-completeness`; extended by `spec:repair-probatio-cutover/completion-witness-refusal` |
+
+Existing rows modified by this spec (annotated in place above): `GateEvent`
+(+`PostBash` sixth case, total `harnessName`), `SpecPhase`
+(+`fromStateFile`/`asToken`), `BlockReason` (+`CompletionUnresolved`,
++`ChainStateUndetermined`, +`Uncorroborated`), `CliContext`
+(+`hooksControl` — the `=off`-under-either-name hatch through
+`SchemaPolicy`; the inverted `=1` reader removed), `GateStateDir`/
+`GateStateDirReader` (phase, presentation, grant, refusal, sweep, specDirs
+surface), `GateCmd` (six-event dispatcher — `post-bash` ambient writer,
+tool-call grant/oracle locks, marker-driven completion, payload channel).
+
+### complete-probatio-cutover change — native-gate-delivery spec concepts
+
+The following concepts were introduced by `spec:complete-probatio-cutover/native-gate-delivery`:
+
+| Concept | Kind | Package | Status |
+|---------|------|---------|--------|
+| `LatencyMeasurement` | final case class (sampleCount, medianMillis, maxMillis, artifactKind: ArtifactKind ∈ {NativeImage, JarLauncher}) — an undersized measurement is a recordable observation; sufficiency is the verdict's call | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `BudgetVerdict` | enum (Met(m, b), Exceeded(m, b), Undetermined(NoMeasurement \| InsufficientSamples(observed, required))) — `evaluate(Option[LatencyMeasurement], LatencyBudget)`; Met/Exceeded carry the measurement as evidence | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `LatencyBudget` | final case class (medianMillis, minSamples) — `perTurn = (150.0, 100)` per native-packaging R-N1 | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `ReleaseManifestIO` | object — `fromDirectory(dir, version, builtFromCI): Either[String, ReleaseManifest]` rebuilds a typed manifest from a release-artifact directory (filename → artifact, `X.sha256` first token → `checksums(X)`, SPDX JSON → `Sbom`) | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `ReleaseCheck` | object — `main(args)`: the release-step gate; builds the manifest from the downloaded artifact dir and fails the release when `ReleaseValidator.validateAll` is non-empty | `org.sinemenda.probatio.packaging` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `probatioSpecLintArgs` / `probatioChainStateArgs` / `probatioCheckpointArgs` / `probatioLedgerAppendArgs` | sbt SettingKey[Option[Seq[String]]] — the argument list each delegating task passes; `None` = task reports the missing value without invoking | `org.sinemenda.probatio.plugin` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `probatioExpectedSha256` | sbt SettingKey[Option[String]] — the recorded digest a cached prebuilt binary must match; unset = a present binary is checksum-invalid, never assumed valid | `org.sinemenda.probatio.plugin` | `spec:complete-probatio-cutover/native-gate-delivery` |
+| `probatioAssemblyJar` | sbt SettingKey[Option[File]] — the concrete JAR the fallback launcher binds to; unset = the task reports rather than writing a launcher referencing an unset env var | `org.sinemenda.probatio.plugin` | `spec:complete-probatio-cutover/native-gate-delivery` |
+
+Existing rows modified by this spec (annotated in place above): `ShimGenerator`
+(`generateShim` re-bound from a raw path to `ResolutionResult` — blocked
+resolution yields `Left`, no shim), `InstallResolver` (+`resolveForShim` —
+per-turn launcher block on native platforms), `ReleaseValidator`
+(`validateChecksums` now reconciles `manifest.checksums` keys with `Checksum`
+sidecar names), `ProbatioPlugin` (+`writeShim` seam, +`detectScenario`
+checksum parameter, +`runDelegatingTask` explicit `args`).

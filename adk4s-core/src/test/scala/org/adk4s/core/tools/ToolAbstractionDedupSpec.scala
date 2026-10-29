@@ -47,20 +47,30 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
   )(
     decoder = json =>
       for
-        a <- json.obj.get("a").toRight(
-          ToolSchemaError.MissingRequiredField("a", "")
-        ).flatMap { v =>
-          v.numOpt.map(_.toInt).toRight(
-            ToolSchemaError.TypeMismatch("integer", v, "a")
+        a <- json.obj
+          .get("a")
+          .toRight(
+            ToolSchemaError.MissingRequiredField("a", "")
           )
-        }
-        b <- json.obj.get("b").toRight(
-          ToolSchemaError.MissingRequiredField("b", "")
-        ).flatMap { v =>
-          v.numOpt.map(_.toInt).toRight(
-            ToolSchemaError.TypeMismatch("integer", v, "b")
+          .flatMap { v =>
+            v.numOpt
+              .map(_.toInt)
+              .toRight(
+                ToolSchemaError.TypeMismatch("integer", v, "a")
+              )
+          }
+        b <- json.obj
+          .get("b")
+          .toRight(
+            ToolSchemaError.MissingRequiredField("b", "")
           )
-        }
+          .flatMap { v =>
+            v.numOpt
+              .map(_.toInt)
+              .toRight(
+                ToolSchemaError.TypeMismatch("integer", v, "b")
+              )
+          }
       yield AddRequest(a, b),
     encoder = req => ujson.Obj("a" -> req.a, "b" -> req.b)
   )
@@ -76,13 +86,19 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
     description = Some("Add result")
   )(
     decoder = json =>
-      json.obj.get("sum").toRight(
-        ToolSchemaError.MissingRequiredField("sum", "")
-      ).flatMap { v =>
-        v.numOpt.map(_.toInt).toRight(
-          ToolSchemaError.TypeMismatch("integer", v, "sum")
+      json.obj
+        .get("sum")
+        .toRight(
+          ToolSchemaError.MissingRequiredField("sum", "")
         )
-      }.map(AddResult(_)),
+        .flatMap { v =>
+          v.numOpt
+            .map(_.toInt)
+            .toRight(
+              ToolSchemaError.TypeMismatch("integer", v, "sum")
+            )
+        }
+        .map(AddResult(_)),
     encoder = res => ujson.Obj("sum" -> res.sum)
   )
 
@@ -115,14 +131,14 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
   test("ToolWrapper from ToolFunction stores toolFunction with correct name") {
     // spec: tool-abstraction-dedup — Scenario: ToolWrapper from ToolFunction
     val tf: ToolFunction[String, String] = makeEchoTool("get-weather")
-    val wrapper: ToolWrapper = ToolWrapper(tf)
+    val wrapper: ToolWrapper             = ToolWrapper(tf)
     assertEquals(wrapper.toolFunction.name, "get-weather")
   }
 
   test("ToolWrapper from ToolFunction delegates execute") {
     // spec: tool-abstraction-dedup — Scenario: ToolWrapper from ToolFunction
     val tf: ToolFunction[String, String] = makeEchoTool("echo")
-    val wrapper: ToolWrapper = ToolWrapper(tf)
+    val wrapper: ToolWrapper             = ToolWrapper(tf)
     val result: Either[Throwable, Value] = wrapper.execute(ujson.Str("hello"))
     assert(result.isRight)
   }
@@ -135,14 +151,14 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
   test("ToolWrapper from StructuredToolFunction has toolFunction with correct name") {
     // spec: tool-abstraction-dedup — Scenario: ToolWrapper from StructuredToolFunction
     val stf: StructuredToolFunction[AddRequest, AddResult] = makeAddStructuredTool
-    val wrapper: ToolWrapper = stf.toToolWrapper
+    val wrapper: ToolWrapper                               = stf.toToolWrapper
     assertEquals(wrapper.toolFunction.name, "add")
   }
 
   test("ToolWrapper from StructuredToolFunction toolFunction is not null") {
     // spec: tool-abstraction-dedup — Scenario: ToolWrapper from StructuredToolFunction
     val stf: StructuredToolFunction[AddRequest, AddResult] = makeAddStructuredTool
-    val wrapper: ToolWrapper = stf.toToolWrapper
+    val wrapper: ToolWrapper                               = stf.toToolWrapper
     // The toolFunction must be a real ToolFunction, not None (the old bug)
     assertEquals(wrapper.toolFunction.name, "add")
     assertEquals(wrapper.toolFunction.description, "Adds two numbers")
@@ -156,8 +172,8 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
   test("synthesized ToolFunction executes correctly with valid args") {
     // spec: tool-abstraction-dedup — Scenario: Synthesized ToolFunction executes correctly
     val stf: StructuredToolFunction[AddRequest, AddResult] = makeAddStructuredTool
-    val tf: ToolFunction[ujson.Value, ujson.Value] = stf.toToolFunction
-    val result: Either[ToolCallError, Value] = tf.execute(ujson.Obj("a" -> 2, "b" -> 3))
+    val tf: ToolFunction[ujson.Value, ujson.Value]         = stf.toToolFunction
+    val result: Either[ToolCallError, Value]               = tf.execute(ujson.Obj("a" -> 2, "b" -> 3))
     assert(result.isRight)
     result match
       case Right(json) =>
@@ -177,8 +193,8 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
     // field/path from the underlying ToolSchemaError. Assert the variant + message exactly —
     // NO loosened `|| contains` fallback (oracle faithfulness, schema Step 2 rule).
     val stf: StructuredToolFunction[AddRequest, AddResult] = makeAddStructuredTool
-    val tf: ToolFunction[ujson.Value, ujson.Value]   = stf.toToolFunction
-    val result: Either[ToolCallError, Value]        = tf.execute(ujson.Obj())
+    val tf: ToolFunction[ujson.Value, ujson.Value]         = stf.toToolFunction
+    val result: Either[ToolCallError, Value]               = tf.execute(ujson.Obj())
     result match
       case Left(err: ToolCallError.HandlerError) =>
         assertEquals(err.toolName, "add")
@@ -208,9 +224,9 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
 
   test("toToolRegistry includes all ToolWrappers from ToolFunction and StructuredToolFunction") {
     // spec: tool-abstraction-dedup — Scenario: All tools appear in registry
-    val tf1: ToolFunction[String, String] = makeEchoTool("echo1")
+    val tf1: ToolFunction[String, String]                  = makeEchoTool("echo1")
     val stf: StructuredToolFunction[AddRequest, AddResult] = makeAddStructuredTool
-    val tf3: ToolFunction[String, String] = makeEchoTool("echo3")
+    val tf3: ToolFunction[String, String]                  = makeEchoTool("echo3")
 
     val config: ToolsNodeConfig = ToolsNodeConfig.builder
       .withTool(tf1)
@@ -270,7 +286,7 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
   test("ToolWrapper.execute delegates to toolFunction.execute for valid args") {
     // spec: tool-abstraction-dedup — Scenario: Execute delegates to derived executable
     val tf: ToolFunction[String, String] = makeEchoTool("echo")
-    val wrapper: ToolWrapper = ToolWrapper(tf)
+    val wrapper: ToolWrapper             = ToolWrapper(tf)
     val result: Either[Throwable, Value] = wrapper.execute(ujson.Str("hello"))
     assert(result.isRight)
     result match
@@ -325,11 +341,9 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
     // Classify by tool count.
     val toolCountGen: Gen[Int] = Gen.int(Range.linear(0, 10))
     toolCountGen.forAll.map { (count: Int) =>
-      val tools: List[ToolFunction[String, String]] = (1 to count).toList.map { i =>
-        makeEchoTool(s"tool-$i")
-      }
-      val config: ToolsNodeConfig = ToolsNodeConfig.fromToolFunctions(tools)
-      val registry: ToolRegistry = config.toToolRegistry
+      val tools: List[ToolFunction[String, String]] = (1 to count).toList.map(i => makeEchoTool(s"tool-$i"))
+      val config: ToolsNodeConfig                   = ToolsNodeConfig.fromToolFunctions(tools)
+      val registry: ToolRegistry                    = config.toToolRegistry
       registry.tools.length ==== count
     }
   }
@@ -356,13 +370,13 @@ class ToolAbstractionDedupSpec extends HedgehogSuite:
       args <- argsGen
     yield (name, args)
     pairGen.forAll.map { (name: String, args: Value) =>
-      val tf: ToolFunction[String, String] = makeEchoTool(name)
-      val wrapper: ToolWrapper = ToolWrapper(tf)
+      val tf: ToolFunction[String, String]        = makeEchoTool(name)
+      val wrapper: ToolWrapper                    = ToolWrapper(tf)
       val wrapperResult: Either[Throwable, Value] = wrapper.execute(args)
       // Use tf.execute directly (ToolWrapper delegates to toolFunction.execute)
       val adapterResult: Either[ToolCallError, Value] = tf.execute(args)
       // Both should have the same Right/Left structure
-      (wrapperResult.isRight ==== adapterResult.isRight)
+      wrapperResult.isRight ==== adapterResult.isRight
     }
   }
 

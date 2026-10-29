@@ -51,7 +51,7 @@ class RunnableOpsTest extends CatsEffectSuite:
 
   test("timeout completes within duration") {
     val runnable = Runnable.fromInvoke((_: String) => IO.sleep(100.millis) *> IO(42))
-    val timed = runnable.timeout(1.second)
+    val timed    = runnable.timeout(1.second)
 
     val result = timed.invoke("test")
     assertIO(result, 42)
@@ -59,17 +59,18 @@ class RunnableOpsTest extends CatsEffectSuite:
 
   test("timeout fails when exceeded") {
     val runnable = Runnable.fromInvoke((_: String) => IO.sleep(2.seconds) *> IO(42))
-    val timed = runnable.timeout(100.millis)
+    val timed    = runnable.timeout(100.millis)
 
     val result = timed.invoke("test").attempt
     result.map {
       case Left(_: java.util.concurrent.TimeoutException) => true
-      case _ => false
+      case _                                              => false
     }.assert
   }
 
   test("handleError catches exceptions") {
-    val failing: Runnable[String, String] = Runnable.fromInvoke((s: String) => IO.raiseError(new RuntimeException("boom")))
+    val failing: Runnable[String, String] =
+      Runnable.fromInvoke((s: String) => IO.raiseError(new RuntimeException("boom")))
     val handled = failing.handleError((e: Throwable) => IO.pure("-1"))
 
     val result = handled.invoke("test")
@@ -77,8 +78,8 @@ class RunnableOpsTest extends CatsEffectSuite:
   }
 
   test("parallel runs two Runnables concurrently") {
-    val rA = Runnable.fromInvoke((s: String) => IO(s.toInt * 2))
-    val rB = Runnable.fromInvoke((s: String) => IO(s.toInt * 3))
+    val rA       = Runnable.fromInvoke((s: String) => IO(s.toInt * 2))
+    val rB       = Runnable.fromInvoke((s: String) => IO(s.toInt * 3))
     val combined = RunnableOps.parallel(rA, rB)
 
     val result = combined.invoke("21")
@@ -86,8 +87,8 @@ class RunnableOpsTest extends CatsEffectSuite:
   }
 
   test("parallel zips streams") {
-    val rA = Runnable.fromInvoke((s: String) => IO(s.toInt * 2))
-    val rB = Runnable.fromInvoke((s: String) => IO(s.toInt * 3))
+    val rA       = Runnable.fromInvoke((s: String) => IO(s.toInt * 2))
+    val rB       = Runnable.fromInvoke((s: String) => IO(s.toInt * 3))
     val combined = RunnableOps.parallel(rA, rB)
 
     val result = combined.stream("21").compile.toList
@@ -95,9 +96,9 @@ class RunnableOpsTest extends CatsEffectSuite:
   }
 
   test("parallel3 runs three Runnables concurrently") {
-    val rA = Runnable.fromInvoke((s: String) => IO(s.toInt * 2))
-    val rB = Runnable.fromInvoke((s: String) => IO(s.toInt * 3))
-    val rC = Runnable.fromInvoke((s: String) => IO(s.toInt + 5))
+    val rA       = Runnable.fromInvoke((s: String) => IO(s.toInt * 2))
+    val rB       = Runnable.fromInvoke((s: String) => IO(s.toInt * 3))
+    val rC       = Runnable.fromInvoke((s: String) => IO(s.toInt + 5))
     val combined = RunnableOps.parallel3(rA, rB, rC)
 
     val result = combined.invoke("10")
@@ -119,18 +120,19 @@ class RunnableOpsTest extends CatsEffectSuite:
   }
 
   test("withFallback (invoke): uses fallback when self fails for all semantics") {
-    val failing: Runnable[Int, Int] = Runnable.fromInvoke((_: Int) => IO.raiseError(boom))
+    val failing: Runnable[Int, Int]  = Runnable.fromInvoke((_: Int) => IO.raiseError(boom))
     val fallback: Runnable[Int, Int] = Runnable.fromInvoke((i: Int) => IO.pure(i + 1))
 
-    val resumed: IO[Int] = failing.withFallback(fallback, RunnableOps.FallbackSemantic.Resume).invoke(1)
-    val atomic: IO[Int] = failing.withFallback(fallback, RunnableOps.FallbackSemantic.Atomic).invoke(1)
+    val resumed: IO[Int]     = failing.withFallback(fallback, RunnableOps.FallbackSemantic.Resume).invoke(1)
+    val atomic: IO[Int]      = failing.withFallback(fallback, RunnableOps.FallbackSemantic.Atomic).invoke(1)
     val beforeFirst: IO[Int] = failing.withFallback(fallback, RunnableOps.FallbackSemantic.BeforeFirstElement).invoke(1)
 
     assertIO(resumed, 2) *> assertIO(atomic, 2) *> assertIO(beforeFirst, 2)
   }
 
   test("withFallback (stream): Resume appends fallback after failure (partial output preserved)") {
-    val self: Runnable[Int, Int] = Runnable.fromStream((_: Int) => Stream.emit[IO, Int](1) ++ Stream.raiseError[IO](boom))
+    val self: Runnable[Int, Int] =
+      Runnable.fromStream((_: Int) => Stream.emit[IO, Int](1) ++ Stream.raiseError[IO](boom))
     val fallback: Runnable[Int, Int] = Runnable.fromStream((_: Int) => Stream.emit[IO, Int](9))
 
     val r: Runnable[Int, Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.Resume)
@@ -139,7 +141,8 @@ class RunnableOpsTest extends CatsEffectSuite:
   }
 
   test("withFallback (stream): Atomic switches entirely to fallback on any failure") {
-    val self: Runnable[Int, Int] = Runnable.fromStream((_: Int) => Stream.emit[IO, Int](1) ++ Stream.raiseError[IO](boom))
+    val self: Runnable[Int, Int] =
+      Runnable.fromStream((_: Int) => Stream.emit[IO, Int](1) ++ Stream.raiseError[IO](boom))
     val fallback: Runnable[Int, Int] = Runnable.fromStream((_: Int) => Stream.emit[IO, Int](9))
 
     val r: Runnable[Int, Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.Atomic)
@@ -148,51 +151,54 @@ class RunnableOpsTest extends CatsEffectSuite:
   }
 
   test("withFallback (stream): BeforeFirstElement does not fallback after first element") {
-    val self: Runnable[Int, Int] = Runnable.fromStream((_: Int) => Stream.emit[IO, Int](1) ++ Stream.raiseError[IO](boom))
+    val self: Runnable[Int, Int] =
+      Runnable.fromStream((_: Int) => Stream.emit[IO, Int](1) ++ Stream.raiseError[IO](boom))
     val fallback: Runnable[Int, Int] = Runnable.fromStream((_: Int) => Stream.emit[IO, Int](9))
 
     val r: Runnable[Int, Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.BeforeFirstElement)
 
-    val first: IO[List[Int]] = r.stream(0).take(1).compile.toList
+    val first: IO[List[Int]]                           = r.stream(0).take(1).compile.toList
     val attemptedAll: IO[Either[Throwable, List[Int]]] = r.stream(0).compile.toList.attempt
 
     val assertFirst: IO[Unit] = assertIO(first, List(1))
     val assertAttempt: IO[Unit] = attemptedAll.map {
       case Left(_: RuntimeException) => true
-      case _ => false
+      case _                         => false
     }.assert
 
     assertFirst *> assertAttempt
   }
 
   test("withFallback (collect): uses fallback when self fails for all semantics") {
-    val self: Runnable[Int, Int] = Runnable.fromCollect((_: Stream[IO, Int]) => IO.raiseError(boom))
+    val self: Runnable[Int, Int]     = Runnable.fromCollect((_: Stream[IO, Int]) => IO.raiseError(boom))
     val fallback: Runnable[Int, Int] = Runnable.fromCollect((_: Stream[IO, Int]) => IO.pure(9))
 
     val input: Stream[IO, Int] = Stream.emit(1)
 
     val resumed: IO[Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.Resume).collect(input)
-    val atomic: IO[Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.Atomic).collect(input)
-    val beforeFirst: IO[Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.BeforeFirstElement).collect(input)
+    val atomic: IO[Int]  = self.withFallback(fallback, RunnableOps.FallbackSemantic.Atomic).collect(input)
+    val beforeFirst: IO[Int] =
+      self.withFallback(fallback, RunnableOps.FallbackSemantic.BeforeFirstElement).collect(input)
 
     assertIO(resumed, 9) *> assertIO(atomic, 9) *> assertIO(beforeFirst, 9)
   }
 
   test("withFallback (collect): keeps self result when self succeeds for all semantics") {
-    val self: Runnable[Int, Int] = Runnable.fromCollect((_: Stream[IO, Int]) => IO.pure(3))
+    val self: Runnable[Int, Int]     = Runnable.fromCollect((_: Stream[IO, Int]) => IO.pure(3))
     val fallback: Runnable[Int, Int] = Runnable.fromCollect((_: Stream[IO, Int]) => IO.pure(9))
 
     val input: Stream[IO, Int] = Stream.emit(1)
 
     val resumed: IO[Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.Resume).collect(input)
-    val atomic: IO[Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.Atomic).collect(input)
-    val beforeFirst: IO[Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.BeforeFirstElement).collect(input)
+    val atomic: IO[Int]  = self.withFallback(fallback, RunnableOps.FallbackSemantic.Atomic).collect(input)
+    val beforeFirst: IO[Int] =
+      self.withFallback(fallback, RunnableOps.FallbackSemantic.BeforeFirstElement).collect(input)
 
     assertIO(resumed, 3) *> assertIO(atomic, 3) *> assertIO(beforeFirst, 3)
   }
 
   test("withFallback (stream): BeforeFirstElement falls back when failing before emitting") {
-    val self: Runnable[Int, Int] = Runnable.fromStream((_: Int) => Stream.raiseError[IO](boom))
+    val self: Runnable[Int, Int]     = Runnable.fromStream((_: Int) => Stream.raiseError[IO](boom))
     val fallback: Runnable[Int, Int] = Runnable.fromStream((_: Int) => Stream.emit[IO, Int](9))
 
     val r: Runnable[Int, Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.BeforeFirstElement)
@@ -227,13 +233,13 @@ class RunnableOpsTest extends CatsEffectSuite:
 
     val r: Runnable[Int, Int] = self.withFallback(fallback, RunnableOps.FallbackSemantic.BeforeFirstElement)
 
-    val first: IO[List[Int]] = r.transform(Stream.emit[IO, Int](0)).take(1).compile.toList
+    val first: IO[List[Int]]                           = r.transform(Stream.emit[IO, Int](0)).take(1).compile.toList
     val attemptedAll: IO[Either[Throwable, List[Int]]] = r.transform(Stream.emit[IO, Int](0)).compile.toList.attempt
 
     val assertFirst: IO[Unit] = assertIO(first, List(1))
     val assertAttempt: IO[Unit] = attemptedAll.map {
       case Left(_: RuntimeException) => true
-      case _ => false
+      case _                         => false
     }.assert
 
     assertFirst *> assertAttempt

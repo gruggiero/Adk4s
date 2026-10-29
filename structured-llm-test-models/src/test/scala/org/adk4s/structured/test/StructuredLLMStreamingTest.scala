@@ -82,17 +82,19 @@ class StructuredLLMStreamingTest extends CatsEffectSuite:
         }
 
         // Final chunk with finish reason
-        onChunk(StreamedChunk(
-          id = "mock-chunk-id",
-          content = None,
-          toolCall = None,
-          finishReason = Some("stop"),
-          thinkingDelta = None
-        ))
+        onChunk(
+          StreamedChunk(
+            id = "mock-chunk-id",
+            content = None,
+            toolCall = None,
+            finishReason = Some("stop"),
+            thinkingDelta = None
+          )
+        )
 
         complete(conversation, options)
 
-      override def getContextWindow(): Int = 8192
+      override def getContextWindow(): Int     = 8192
       override def getReserveCompletion(): Int = 512
 
     val structured: StructuredLLM[IO] = StructuredLLM.fromClient[IO](mockClient)
@@ -150,16 +152,18 @@ class StructuredLLMStreamingTest extends CatsEffectSuite:
         onChunk: StreamedChunk => Unit
       ): Result[Completion] =
         // Emit as single chunk
-        onChunk(StreamedChunk(
-          id = "mock-chunk-id",
-          content = Some(malformedJson),
-          toolCall = None,
-          finishReason = Some("stop"),
-          thinkingDelta = None
-        ))
+        onChunk(
+          StreamedChunk(
+            id = "mock-chunk-id",
+            content = Some(malformedJson),
+            toolCall = None,
+            finishReason = Some("stop"),
+            thinkingDelta = None
+          )
+        )
         complete(conversation, options)
 
-      override def getContextWindow(): Int = 8192
+      override def getContextWindow(): Int     = 8192
       override def getReserveCompletion(): Int = 512
 
     val structured: StructuredLLM[IO] = StructuredLLM.fromClient[IO](mockClient)
@@ -211,16 +215,18 @@ class StructuredLLMStreamingTest extends CatsEffectSuite:
         options: CompletionOptions,
         onChunk: StreamedChunk => Unit
       ): Result[Completion] =
-        onChunk(StreamedChunk(
-          id = "mock-chunk-id",
-          content = Some(jsonResponse),
-          toolCall = None,
-          finishReason = Some("stop"),
-          thinkingDelta = None
-        ))
+        onChunk(
+          StreamedChunk(
+            id = "mock-chunk-id",
+            content = Some(jsonResponse),
+            toolCall = None,
+            finishReason = Some("stop"),
+            thinkingDelta = None
+          )
+        )
         complete(conversation, options)
 
-      override def getContextWindow(): Int = 8192
+      override def getContextWindow(): Int     = 8192
       override def getReserveCompletion(): Int = 512
 
     val structured: StructuredLLM[IO] = StructuredLLM.fromClient[IO](mockClient)

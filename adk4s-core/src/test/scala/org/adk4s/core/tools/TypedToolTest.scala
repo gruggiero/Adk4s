@@ -29,10 +29,12 @@ class TypedToolTest extends CatsEffectSuite:
         "book_trip",
         "Book a trip to a destination"
       ) { (args: BookingArgs) =>
-        IO.pure(BookingResult(
-          confirmation = s"Confirmed trip to ${args.destination}",
-          price = args.passengers * 200.0
-        ))
+        IO.pure(
+          BookingResult(
+            confirmation = s"Confirmed trip to ${args.destination}",
+            price = args.passengers * 200.0
+          )
+        )
       }
 
     // Test typed execution
@@ -50,10 +52,12 @@ class TypedToolTest extends CatsEffectSuite:
         "book_trip",
         "Book a trip to a destination"
       ) { (args: BookingArgs) =>
-        IO.pure(BookingResult(
-          confirmation = s"Confirmed trip to ${args.destination}",
-          price = args.passengers * 200.0
-        ))
+        IO.pure(
+          BookingResult(
+            confirmation = s"Confirmed trip to ${args.destination}",
+            price = args.passengers * 200.0
+          )
+        )
       }
 
     val invokable: org.adk4s.core.component.InvokableTool[IO] = bookTool.asInvokableTool
@@ -65,7 +69,7 @@ class TypedToolTest extends CatsEffectSuite:
     // Test execution with JSON arguments
     val arguments: ujson.Value = ujson.Obj(
       "destination" -> "Tokyo",
-      "passengers" -> 3
+      "passengers"  -> 3
     )
 
     val result: IO[ujson.Value] = invokable.run(arguments)
@@ -81,9 +85,7 @@ class TypedToolTest extends CatsEffectSuite:
       StructuredToolCall.createTool[IO, BookingArgs, BookingResult](
         "book_trip",
         "Book a trip to a destination"
-      ) { (_: BookingArgs) =>
-        IO.raiseError(new RuntimeException("Booking system down"))
-      }
+      )((_: BookingArgs) => IO.raiseError(new RuntimeException("Booking system down")))
 
     val result: IO[BookingResult] = failingTool.execute(BookingArgs("Paris", 2))
 
@@ -91,7 +93,7 @@ class TypedToolTest extends CatsEffectSuite:
       assert(either.isLeft)
       either match
         case Left(err) => assert(err.getMessage.contains("Booking system down"))
-        case Right(_) => fail("Expected error")
+        case Right(_)  => fail("Expected error")
     }
   }
 
@@ -101,10 +103,12 @@ class TypedToolTest extends CatsEffectSuite:
         "book_trip",
         "Book a trip to a destination"
       ) { (args: BookingArgs) =>
-        IO.pure(BookingResult(
-          confirmation = s"Confirmed trip to ${args.destination}",
-          price = args.passengers * 200.0
-        ))
+        IO.pure(
+          BookingResult(
+            confirmation = s"Confirmed trip to ${args.destination}",
+            price = args.passengers * 200.0
+          )
+        )
       }
 
     val invokable: org.adk4s.core.component.InvokableTool[IO] = bookTool.asInvokableTool
@@ -118,7 +122,7 @@ class TypedToolTest extends CatsEffectSuite:
       assert(either.isLeft)
       either match
         case Left(err) => assert(err.getMessage.contains("decode"))
-        case Right(_) => fail("Expected decode error")
+        case Right(_)  => fail("Expected decode error")
     }
   }
 
@@ -128,10 +132,12 @@ class TypedToolTest extends CatsEffectSuite:
         "book_trip",
         "Book a trip to a destination"
       ) { (args: BookingArgs) =>
-        IO.pure(BookingResult(
-          confirmation = s"Confirmed trip to ${args.destination}",
-          price = args.passengers * 200.0
-        ))
+        IO.pure(
+          BookingResult(
+            confirmation = s"Confirmed trip to ${args.destination}",
+            price = args.passengers * 200.0
+          )
+        )
       }
 
     assertEquals(bookTool.name, "book_trip")

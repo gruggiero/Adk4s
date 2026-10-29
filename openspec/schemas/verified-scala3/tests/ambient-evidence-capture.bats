@@ -59,7 +59,7 @@ EOF
 run_gate() {
   neutral_chain_state
   neutral_spec_lint
-  run env -u CLAUDE_CODE_SESSION_ID \
+  run env \
     CHAIN_STATE_OVERRIDE="$FAKE_CS" \
     SPEC_LINT_OVERRIDE="$FAKE_SL" \
     VERIFIED_SCALA3_SESSION_ID="$SESSION" \

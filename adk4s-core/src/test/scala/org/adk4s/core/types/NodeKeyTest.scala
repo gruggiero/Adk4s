@@ -60,9 +60,9 @@ class NodeKeyTest extends CatsEffectSuite:
   }
 
   test("Order instance sorts alphabetically") {
-    val key1: NodeKey = NodeKey("agent_1")
-    val key2: NodeKey = NodeKey("agent_2")
-    val key3: NodeKey = NodeKey("agent_10")
+    val key1: NodeKey       = NodeKey("agent_1")
+    val key2: NodeKey       = NodeKey("agent_2")
+    val key3: NodeKey       = NodeKey("agent_10")
     val keys: List[NodeKey] = List(key3, key2, key1).sorted(using Order[NodeKey].toOrdering)
     assertEquals(keys.map(_.value), List("agent_1", "agent_10", "agent_2"))
   }

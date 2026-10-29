@@ -57,7 +57,8 @@ final class FileBackedAgentMemory[F[_]: Sync] private (dataDir: Path) extends Ag
   def recall(
     query: String,
     k: Int,
-    scope: Option[TemporalScope] = None
+    scope: Option[TemporalScope] = None,
+    groupId: Option[String] = None
   ): F[List[MemoryHit]] =
     val F: Sync[F] = summon[Sync[F]]
     F.blocking {

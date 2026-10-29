@@ -1,4 +1,27 @@
 Changelog:
+ 14 — THE RENAME. The schema's declared name changed from `verified-scala3`
+      to `probatio` at this version bump. The former name is recorded here
+      as the pre-rename identity. The `generatedBy` stamp embedded in
+      installed skill copies changed from `verified-scala3-schema/<N>` to
+      `probatio-schema/<N>`; the drift detector treats the old stamp as a
+      pre-rename artifact (one-time migration message, not drift). The hook
+      control env var `VERIFIED_SCALA3_HOOKS` was renamed to `PROBATIO_HOOKS`;
+      the old name is read as a deprecated alias for one major version
+      (warning on stderr when the alias is used). The cache and state
+      directory moved from `~/.cache/verified-scala3/` to `~/.cache/probatio/`;
+      contents are auto-migrated on first run (idempotent). The prerequisite
+      table was amended: jq, python3, shellcheck, and shfmt retired (their
+      last consumer migrates to the ported native-binary tooling); a curl-
+      equivalent HTTP capability added (binary download via coursier/Java
+      HTTP); native-image toolkit added as optional (build-from-source only);
+      Java runtime removed as a stated prerequisite in the native-binary
+      happy path and retained where the JAR fallback is active (both rows
+      stated explicitly). The hooks/README.md "Still excluded" policy was
+      rewritten: JVM not required at hook runtime under default binary
+      install but required for build-from-source and JAR-fallback; network
+      not required at hook runtime but required once per version per
+      project for binary install. Cites change: port-scanner-to-probatio.
+      (2026-08-25)
  13 — A PROSE-ONLY CONTROL PLANE, AND THE UNIVERSAL TIER THAT FIXES IT. The
       completion tier (Tier A Stop) was promoted on 2/3 harnesses (Claude
       Code, Devin) while the universal pre-execution tier (PreToolUse /

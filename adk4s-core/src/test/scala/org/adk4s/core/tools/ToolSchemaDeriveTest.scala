@@ -44,7 +44,7 @@ class ToolSchemaDeriveTest extends FunSuite:
     given ToolSchema[SimpleRecord] = ToolSchema.derive[SimpleRecord]
 
     val schema: ToolSchema[SimpleRecord] = ToolSchema[SimpleRecord]
-    val jsonSchema: ujson.Value = schema.jsonSchema
+    val jsonSchema: ujson.Value          = schema.jsonSchema
 
     // Verify schema structure
     assertEquals(jsonSchema("type").str, "object")
@@ -63,7 +63,7 @@ class ToolSchemaDeriveTest extends FunSuite:
     given ToolSchema[SimpleRecord] = ToolSchema.derive[SimpleRecord]
 
     val schema: ToolSchema[SimpleRecord] = ToolSchema[SimpleRecord]
-    val record: SimpleRecord = SimpleRecord("test", 42)
+    val record: SimpleRecord             = SimpleRecord("test", 42)
 
     val encoded: ujson.Value = schema.encoder(record)
 
@@ -76,7 +76,7 @@ class ToolSchemaDeriveTest extends FunSuite:
 
     val schema: ToolSchema[SimpleRecord] = ToolSchema[SimpleRecord]
     val json: ujson.Value = ujson.Obj(
-      "name" -> "test",
+      "name"  -> "test",
       "count" -> 42
     )
 
@@ -153,7 +153,7 @@ class ToolSchemaDeriveTest extends FunSuite:
     assert(!encoded2.obj.contains("optionalInt") || encoded2("optionalInt").isNull)
 
     // Test decoding with missing optional fields
-    val json: ujson.Value = ujson.Obj("required" -> "test")
+    val json: ujson.Value                                      = ujson.Obj("required" -> "test")
     val decoded: Either[ToolSchemaError, OptionalFieldsRecord] = schema.decoder(json)
 
     assert(decoded.isRight)
@@ -177,7 +177,7 @@ class ToolSchemaDeriveTest extends FunSuite:
     )
 
     // Encode then decode
-    val encoded: ujson.Value = schema.encoder(original)
+    val encoded: ujson.Value                             = schema.encoder(original)
     val decoded: Either[ToolSchemaError, AllTypesRecord] = schema.decoder(encoded)
 
     assert(decoded.isRight)
@@ -191,7 +191,7 @@ class ToolSchemaDeriveTest extends FunSuite:
     val schema: ToolSchema[SimpleRecord] = ToolSchema[SimpleRecord]
 
     // Missing "count" field
-    val json: ujson.Value = ujson.Obj("name" -> "test")
+    val json: ujson.Value                              = ujson.Obj("name" -> "test")
     val decoded: Either[ToolSchemaError, SimpleRecord] = schema.decoder(json)
 
     assert(decoded.isLeft)

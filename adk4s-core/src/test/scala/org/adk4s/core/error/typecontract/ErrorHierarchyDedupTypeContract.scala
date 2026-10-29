@@ -1,28 +1,29 @@
 package org.adk4s.core.error.typecontract
 
-/** Typed contract for spec: error-hierarchy-dedup
-  *
-  * This file is a COMPILE-ONLY contract. It declares the new type signatures
-  * that the implementation must honor.
-  *
-  * IMPORTANT DEVIATION FROM SPEC:
-  * `LLMError` is NOT a `Throwable` (it extends `Product, Serializable`).
-  * Therefore, `Throwable.getCause` cannot return an `LLMError` directly.
-  * Instead, we introduce a wrapper `LLMErrorCause(error: LLMError)
-  * extends RuntimeException` that is set as the `cause` via the super
-  * constructor. `getCause` returns the `LLMErrorCause`, and the `LLMError`
-  * is accessible via `.error`. The `underlying` field is kept for source
-  * compatibility.
-  *
-  * MODULE DEPENDENCY NOTE:
-  * `LLMErrorCause` is defined in `structured-llm` (core package) so both
-  * `structured-llm` and `adk4s-core` (which depends on structured-llm)
-  * can access it. `RetryTrigger` in `structured-llm` checks `getCause`
-  * for `LLMErrorCause` to handle `AdkError.LlmCallError` without importing
-  * `adk4s-core` types.
-  *
-  * spec: error-hierarchy-dedup
-  */
+/**
+ * Typed contract for spec: error-hierarchy-dedup
+ *
+ * This file is a COMPILE-ONLY contract. It declares the new type signatures
+ * that the implementation must honor.
+ *
+ * IMPORTANT DEVIATION FROM SPEC:
+ * `LLMError` is NOT a `Throwable` (it extends `Product, Serializable`).
+ * Therefore, `Throwable.getCause` cannot return an `LLMError` directly.
+ * Instead, we introduce a wrapper `LLMErrorCause(error: LLMError)
+ * extends RuntimeException` that is set as the `cause` via the super
+ * constructor. `getCause` returns the `LLMErrorCause`, and the `LLMError`
+ * is accessible via `.error`. The `underlying` field is kept for source
+ * compatibility.
+ *
+ * MODULE DEPENDENCY NOTE:
+ * `LLMErrorCause` is defined in `structured-llm` (core package) so both
+ * `structured-llm` and `adk4s-core` (which depends on structured-llm)
+ * can access it. `RetryTrigger` in `structured-llm` checks `getCause`
+ * for `LLMErrorCause` to handle `AdkError.LlmCallError` without importing
+ * `adk4s-core` types.
+ *
+ * spec: error-hierarchy-dedup
+ */
 
 import org.adk4s.core.error.LlmCallError
 import org.adk4s.structured.core.Prompt
@@ -41,9 +42,10 @@ import org.llm4s.error.LLMError
 // so both modules can access it.
 // ─────────────────────────────────────────────────────────────────
 
-/** Wrapper exception that holds an LLMError, enabling getCause to return
-  * a Throwable from which the LLMError can be recovered.
-  */
+/**
+ * Wrapper exception that holds an LLMError, enabling getCause to return
+ * a Throwable from which the LLMError can be recovered.
+ */
 final class LLMErrorCause(val error: LLMError) extends RuntimeException(error.toString)
 
 // ─────────────────────────────────────────────────────────────────
@@ -69,15 +71,17 @@ object RefactoredRetryTriggerContract:
       case RetryTrigger.ParseFailure =>
         error match
           case _: StructuredLLMError.ParseFailed => true
-          case _                                  => false
+          case _                                 => false
       case RetryTrigger.ValidationFailure =>
         error match
           case _: StructuredLLMError.ValidationFailed => true
-          case _                                       => false
+          case _                                      => false
       case RetryTrigger.All => true
 
-  /** Extracts LLMError from a Throwable by inspecting wrapper types
-    * and the cause chain. */
+  /**
+   * Extracts LLMError from a Throwable by inspecting wrapper types
+   * and the cause chain.
+   */
   def extractLLMError(error: Throwable): Option[LLMError] =
     error match
       case llmCallFailed: StructuredLLMError.LLMCallFailed =>
@@ -86,9 +90,9 @@ object RefactoredRetryTriggerContract:
         Some(cause.error)
       case other =>
         other.getCause match
-          case cause: LLMErrorCause => Some(cause.error)
+          case cause: LLMErrorCause       => Some(cause.error)
           case llmCallError: LlmCallError => Some(llmCallError.underlying)
-          case _                     => None
+          case _                          => None
 
 // ─────────────────────────────────────────────────────────────────
 // PROPERTY OBLIGATIONS (structured comments — implemented in test oracle)

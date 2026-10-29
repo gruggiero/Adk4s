@@ -5,7 +5,7 @@ import cats.effect.IOApp
 import fs2.Stream
 import org.adk4s.core.runnable.Lambda
 import org.adk4s.core.runnable.Runnable
-import org.adk4s.core.types.{NodeKey, Reserved, given}
+import org.adk4s.core.types.{ NodeKey, Reserved, given }
 import org.adk4s.examples.eino.common.ExampleUtils
 import org.adk4s.orchestration.wiograph.WIOGraph
 import org.adk4s.orchestration.wiograph.WIOGraphError

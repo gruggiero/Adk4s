@@ -48,7 +48,11 @@ class CallKeySpec extends HedgehogSuite:
       val mutated          = mutation.apply(base)
       val kBase            = CallKey.fromCanonical(CanonicalFormOps.from(base))
       val kMutated         = CallKey.fromCanonical(CanonicalFormOps.from(mutated))
-      Result.assert(kBase != kMutated).log("RL3-key-sensitivity")
+      // The generator is not value-aware: a mutation can redraw the base's
+      // own value (ChangeRolloutId(Some(6)) onto rollout=Some(6)). A no-op
+      // is not an output-affecting mutation — the obligation is vacuous.
+      if mutated == base then Result.success
+      else Result.assert(kBase != kMutated).log("RL3-key-sensitivity")
 
   // ── RL4: key-insensitivity ──────────────────────────────────────────
   // spec: add-adk4s-record/call-key — Property: key-insensitivity
@@ -182,11 +186,11 @@ object CallKeySpec:
       maxTokensVal <- Gen.int(Range.linear(1, 4096))
       maxTokens = if hasMaxTokens then Some(maxTokensVal) else None
       topP       <- Gen.double(Range.linearFrac(0.0, 1.0))
-      hasRollout <- Gen.frequency1(55 -> Gen.constant(true), 45 -> Gen.constant(false))
+      hasRollout <- Gen.frequency1(60 -> Gen.constant(true), 40 -> Gen.constant(false))
       rolloutVal <- genRolloutId
       rollout = if hasRollout then Some(rolloutVal) else None
       conv      <- genConversation
-      hasTools  <- Gen.frequency1(82 -> Gen.constant(true), 18 -> Gen.constant(false))
+      hasTools  <- Gen.frequency1(90 -> Gen.constant(true), 10 -> Gen.constant(false))
       toolCount <- Gen.int(Range.linear(1, 3))
       tools <-
         if hasTools then Gen.list(genToolDef, Range.linear(toolCount, toolCount))

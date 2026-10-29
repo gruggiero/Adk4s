@@ -41,7 +41,7 @@ class ConstraintValidationSpec extends HedgehogSuite:
         age  <- Gen.int(Range.linear(0, 100))
       yield Student(name, age)
     studentGen.forAll.map { (s: Student) =>
-      val constraint: Constraint[Student] = Constraint.check("old_enough")(_.age > 5)
+      val constraint: Constraint[Student]   = Constraint.check("old_enough")(_.age > 5)
       val result: ValidationResult[Student] = constraint.evaluate(s)
       result.value ==== s
     }
@@ -59,7 +59,7 @@ class ConstraintValidationSpec extends HedgehogSuite:
         age  <- Gen.int(Range.linear(0, 100))
       yield Student(name, age)
     studentGen.forAll.map { (s: Student) =>
-      val constraint: Constraint[Student] = Constraint.assert("always_fail")(_ => false)
+      val constraint: Constraint[Student]           = Constraint.assert("always_fail")(_ => false)
       val result: Either[ValidationFailed, Student] = constraint.evaluateStrict(s)
       result.isLeft ==== true
     }
