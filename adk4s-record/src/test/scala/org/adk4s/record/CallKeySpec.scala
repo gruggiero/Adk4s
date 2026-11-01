@@ -43,6 +43,9 @@ class CallKeySpec extends HedgehogSuite:
   // spec: add-adk4s-record/call-key — Property: key-sensitivity
   property("RL3 — key-sensitivity: output-affecting mutation changes key", config):
     for pair <- genRequestMutationPair.forAll
+        .cover(20, "effective-mutation", (p: (ModelCallRequest, RequestMutation)) =>
+          p._2.apply(p._1) != p._1
+        )
     yield
       val (base, mutation) = pair
       val mutated          = mutation.apply(base)
