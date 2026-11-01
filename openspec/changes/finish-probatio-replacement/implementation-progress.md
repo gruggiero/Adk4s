@@ -178,7 +178,7 @@ SHA `b414a80fecb711672f9a12865bde724aeedcf259` (recorded at Step 0)
 ### Baseline
 SHA `38bfb2239c81a5cb7d1abe9c38e2e682d4fdc3d2` (recorded at Step 0)
 
-- **Status**: IN PROGRESS — Steps 0/1/2/3 + Rings 5/8 recorded; hosted-CI observation in flight (PR #3 open, 11 hosted runs observed failing at progressively later steps; module-suite coverage flakes fixed at `f556a98`, run pending)
+- **Status**: IN PROGRESS — Steps 0/1/2/3 + Rings 5/8 recorded; all three hosted obligations discharged (green run 22 `40954397619`, acceptance regression run 23 `41339809913` naming `evidence-ledger.bats`, module regression run 24 `41340717360` naming `ReleaseManifestIOSpec`); Ring 8 fresh-context COMPLETE (6 PASS, F1 remediated — RL3 effective-mutation cover floor); evidence ledger rows recorded; Step-3 human gate **pending**
 - **BASELINE SHA**: `38bfb2239c81a5cb7d1abe9c38e2e682d4fdc3d2`
 
 ### Step Progress
